@@ -69,7 +69,9 @@ describe('shared elevator', () => {
     expect(state.floors[1].totalTransported.equals(50)).toBe(true);
     expect(state.elevator.roundRobinCursor).toBe(2);
     expect(state.elevator.carriedMaterial.equals(0)).toBe(true);
-    expect(state.warehouse.inputQueue.equals(100)).toBe(true);
+    expect(state.warehouse.inputQueue.equals(50)).toBe(true);
+    expect(state.warehouse.totalGoldDelivered.equals(50)).toBe(true);
+    expect(state.gold.equals(initialState.gold.add(50))).toBe(true);
   });
 
   it('preserves all material across multiple extraction and transit cycles', () => {
@@ -81,12 +83,15 @@ describe('shared elevator', () => {
     );
     const accountedMaterial = sumQueues(state)
       .add(state.elevator.carriedMaterial)
-      .add(state.warehouse.inputQueue);
+      .add(state.warehouse.inputQueue)
+      .add(state.warehouse.totalGoldDelivered);
 
     expect(accountedMaterial.equals(initialMaterial.add(newlyExtracted))).toBe(
       true,
     );
-    expect(state.gold.equals(initialState.gold)).toBe(true);
+    expect(
+      state.gold.equals(initialState.gold.add(state.warehouse.totalGoldDelivered)),
+    ).toBe(true);
   });
 });
 

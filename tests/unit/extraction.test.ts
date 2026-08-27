@@ -77,8 +77,9 @@ describe('mine-floor extraction', () => {
       expect(floor.totalExtracted.equals(0)).toBe(true);
     });
     expect(state.elevator.carriedMaterial.equals(10)).toBe(true);
-    expect(state.warehouse.inputQueue.equals(10)).toBe(true);
-    expect(state.gold.equals(initialState.gold)).toBe(true);
+    expect(state.warehouse.inputQueue.equals(0)).toBe(true);
+    expect(state.warehouse.totalGoldDelivered.equals(10)).toBe(true);
+    expect(state.gold.equals(initialState.gold.add(10))).toBe(true);
   });
 
   it('applies each unlocked floor\'s own duration and yield', () => {

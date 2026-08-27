@@ -6,6 +6,7 @@ import {
 import { GameNumber } from '../numbers/GameNumber';
 import type { GameState, MineFloorState } from '../state/GameState';
 import { advanceElevator } from './advanceElevator';
+import { advanceWarehouse } from './advanceWarehouse';
 
 export const SIMULATION_STEP_MS = 100;
 export const MAX_FOREGROUND_DELTA_MS = 1_000;
@@ -46,8 +47,13 @@ function advanceFixedStep(
     throw new Error('Simulation tick exceeds the safe integer range.');
   }
 
-  const transportedState = advanceElevator(
+  const convertedState = advanceWarehouse(
     state,
+    config.warehouse,
+    SIMULATION_STEP_MS,
+  );
+  const transportedState = advanceElevator(
+    convertedState,
     config.elevator,
     SIMULATION_STEP_MS,
   );

@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 11 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates shared-elevator transport; Step 12 must not begin without explicit authorization.
+Implementation Plan Step 12 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates warehouse conversion; Step 13 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -44,6 +44,9 @@ Implementation Plan Step 11 is implemented and its automated validation passes. 
 - The user validated Step 10 and authorized Step 11 on 2026-08-27.
 - Added one timed shared elevator that selects unlocked non-empty floors round-robin, removes at most its capacity, records transported totals, carries material during transit, and delivers only to the warehouse input queue.
 - Added elevator coverage for empty idling, limited-capacity excess, locked/empty skipping, round-robin fairness, exact delivery timing, immutable state, and conservation across multiple extraction/transit cycles.
+- The user validated Step 11 and authorized Step 12 on 2026-08-27.
+- Added timed warehouse conversion that retains material in the input queue during progress, converts up to warehouse capacity at completion, and adds the same amount to spendable gold and total delivered gold.
+- Added warehouse coverage for idle behavior, pre-boundary isolation, capacity-limited and repeated cycles, immutable input, deterministic chunking, and end-to-end material conservation.
 
 ## Active Decisions
 
@@ -66,11 +69,13 @@ Implementation Plan Step 11 is implemented and its automated validation passes. 
 - Treat `roundRobinCursor` as the next floor index to scan; wrap top-to-bottom, advance it after a successful pickup, and leave it unchanged while idle.
 - Remove material from a floor and increment its transported total at elevator pickup; deliver carried material only when transit completes, adding it to `warehouse.inputQueue` without changing gold.
 - During the staged Step 11 integration, advance the elevator before extraction so new output remains queued until the next fixed tick; Step 13 owns the final all-stage update ordering.
+- Convert warehouse material to gold at a 1:1 ratio only on a completed configured cycle; leave excess input queued for later cycles and reset progress when no input remains.
+- During the staged Step 12 integration, advance warehouse conversion before elevator transport and extraction so newly delivered input begins conversion on the following fixed tick; Step 13 owns the final all-stage update ordering.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 11 test results.
-2. Begin Step 12 only after explicit user authorization.
+1. Wait for the user to validate the Step 12 test results.
+2. Begin Step 13 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

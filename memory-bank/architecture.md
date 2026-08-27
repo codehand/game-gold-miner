@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 10 are complete. Step 11's shared-elevator transport is implemented with passing automated checks and is awaiting user validation. Warehouse conversion and all later stages remain blocked; there is no database, migration, or persistence schema.
+Steps 1 through 11 are complete. Step 12's warehouse conversion is implemented with passing automated checks and is awaiting user validation. Full-stage ordering and all later work remain blocked; there is no database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -21,6 +21,7 @@ Steps 1 through 10 are complete. Step 11's shared-elevator transport is implemen
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
 | `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited round-robin pickup, timed in-transit state, and delivery to the warehouse input queue. |
+| `src/core/simulation/advanceWarehouse.ts` | Timed capacity-limited warehouse conversion from input material into spendable and cumulative delivered gold. |
 
 ## Current File Responsibilities
 
@@ -42,7 +43,7 @@ Steps 1 through 10 are complete. Step 11's shared-elevator transport is implemen
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, mine-floor extraction, and shared-elevator transport; conversion, economy, progression, upgrades, and offline-income logic remain future work. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, mine-floor extraction, shared-elevator transport, and warehouse conversion; rate calculations, progression, upgrades, and offline-income logic remain future work. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
@@ -89,7 +90,11 @@ Every unlocked floor advances extraction on each fixed tick using its configured
 
 ## Elevator Transport Contract
 
-When idle, the shared elevator scans from `roundRobinCursor` through the ordered floor list with wraparound, skipping locked or empty floors. A successful pickup removes the lesser of the selected queue and elevator capacity, adds that amount to the floor's `totalTransported`, stores it in `carriedMaterial`, and advances the cursor to the following floor. The configured 1,500 ms transit must complete before the load enters `warehouse.inputQueue`; excess remains at the floor, and gold never changes. Step 11 advances an existing elevator load before extraction during each fixed tick, making newly extracted output eligible on the following tick; Step 13 owns final full-pipeline ordering.
+When idle, the shared elevator scans from `roundRobinCursor` through the ordered floor list with wraparound, skipping locked or empty floors. A successful pickup removes the lesser of the selected queue and elevator capacity, adds that amount to the floor's `totalTransported`, stores it in `carriedMaterial`, and advances the cursor to the following floor. The configured 1,500 ms transit must complete before the load enters `warehouse.inputQueue`; excess remains at the floor, and elevator operations never change gold directly. Step 11 advances an existing elevator load before extraction during each fixed tick, making newly extracted output eligible on the following tick; Step 13 owns final full-pipeline ordering.
+
+## Warehouse Conversion Contract
+
+The warehouse idles with no input. While input exists, it advances normalized conversion progress using the configured 1,200 ms cycle. Material remains in `inputQueue` until the cycle boundary; completion consumes the lesser of input and warehouse capacity, adds that amount 1:1 to global `gold` and `totalGoldDelivered`, and leaves excess for later cycles. Progress resets when the queue empties. Step 12 advances warehouse conversion before elevator transport and extraction, making a newly delivered elevator load conversion-eligible on the following tick; Step 13 owns final full-pipeline ordering. For a state with no seeded material, conservation is `totalExtracted = floor queues + elevator carried material + warehouse input + totalGoldDelivered`.
 
 ## Provisional Balance Snapshot
 
