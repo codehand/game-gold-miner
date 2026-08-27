@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 3 is implemented with passing automated checks and is awaiting user validation. Step 4 has not started and remains blocked.
+**Phase:** Implementation Plan Step 4 is implemented with passing automated checks and is awaiting user validation. Step 5 has not started and remains blocked.
 
 ## Completed
 
@@ -21,6 +21,9 @@
 - Step 2 completed and validated on 2026-08-27: the Vite/TypeScript scaffold loads in a browser, Phaser 4.2.1 is locked, the production build passes, and simulator-preview scripts are available.
 - Step 3 implemented on 2026-08-27: strict TypeScript, ESLint flat configuration, Vitest, Playwright Chromium testing, required package scripts, and generated-artifact ignores are present.
 - Step 3 automated evidence: `npm run lint`, `npm run test`, `npm run test:e2e`, and `npm run build` pass; the development server responds successfully at its local URL and stops cleanly.
+- Step 3 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 4.
+- Step 4 implemented on 2026-08-27: all planned source-module entry points and placeholder asset storage exist, with no gameplay or Step 5 runtime code.
+- Step 4 automated evidence: lint and strict build pass; the architecture regression test accepts pure core TypeScript and rejects Phaser, persistence/platform, and browser dependencies.
 
 ## Implementation Step Status
 
@@ -28,12 +31,12 @@
 |---|---|---|
 | 1 — Scope and repository state | Complete | Documentation reviewed; scope consistent; repository and database checks passed. |
 | 2 — Scaffold the web application | Complete | Vite/TypeScript scaffold and Phaser 4.2.1 are locked; browser load and production build pass. |
-| 3 — Add quality tooling | Implemented / awaiting user validation | Lint, unit test, Chromium E2E smoke test, strict type check, production build, and development-server HTTP check pass. |
-| 4 — Create planned module boundaries | Not started / blocked | Must not begin until the user validates Step 3. |
+| 3 — Add quality tooling | Complete | User validated the passing Step 3 checks and authorized Step 4. |
+| 4 — Create planned module boundaries | Implemented / awaiting user validation | Module entry points exist; lint, architecture regression tests, and strict build pass. |
+| 5 — Create a minimal Phaser boot scene | Not started / blocked | Must not begin until the user validates Step 4. |
 
 ## Not Started
 
-- Planned runtime module boundaries and core import enforcement.
 - Pure simulation/economy implementation.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Base-game shaft/elevator/warehouse upgrades and floor unlocks.

@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 and 2 are complete. Step 3 quality tooling is implemented with passing automated checks and is awaiting user validation. The repository currently contains only the root Vite scaffold and quality-tooling files; the planned Step 4 runtime module boundaries have not been created. There is no game simulation, database, migration, or persistence schema.
+Steps 1 through 3 are complete. Step 4 module boundaries and architecture enforcement are implemented with passing automated checks and are awaiting user validation. The source boundaries are empty entry points only: there is no game simulation, Phaser boot scene, database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -13,6 +13,7 @@ Steps 1 and 2 are complete. Step 3 quality tooling is implemented with passing a
 | `eslint.config.mjs` | Flat lint configuration for TypeScript, configuration files, and the Node simulator script. |
 | `vitest.config.ts`, `tests/unit/` | Node-based unit-test configuration and scaffold baseline coverage. |
 | `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, and browser smoke coverage. |
+| `tests/unit/architecture.test.ts` | Regression coverage proving the core boundary accepts pure TypeScript and rejects renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
 
 ## Current File Responsibilities
@@ -31,23 +32,23 @@ Steps 1 and 2 are complete. Step 3 quality tooling is implemented with passing a
 | `memory-bank/tech-stack.md` | Technology choices and the rationale for the web-first Phaser stack. |
 | `memory-bank/techContext.md` | Verified repository state, pinned technologies, planned commands, constraints, security rules, and database-schema status. |
 
-## Planned Runtime Modules — Not Yet Created
+## Runtime Module Boundaries
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Pure deterministic game state, simulation, economy, progression, upgrades, and offline-income calculations. |
-| `src/config/` | Data-driven balance values for four mine shafts, the shared elevator, warehouse, milestones, and unlocks. |
-| `src/game/` | Phaser scenes, game objects, animations, input, camera, rendering, and binding read-only snapshots to visuals. |
-| `src/ui/` | HUD and overlays that translate user actions into core commands without directly mutating game state. |
-| `src/persistence/` | Versioned save validation, migration, serialization, and IndexedDB/Dexie adapters. |
-| `src/platform/` | Browser lifecycle adapter first; Telegram and Capacitor adapters only in later milestones. |
-| `public/assets/` | Original placeholder and later production sprites, atlases, fonts, and audio assets. |
+| `src/core/` | Implemented empty boundary for future pure deterministic game state, simulation, economy, progression, upgrades, and offline-income calculations. |
+| `src/config/` | Implemented empty boundary for future data-driven balance values. |
+| `src/game/` | Implemented empty boundary for future Phaser scenes, game objects, animation, input, camera, and rendering. |
+| `src/ui/` | Implemented empty boundary for future HUD and overlays. |
+| `src/persistence/` | Implemented empty boundary for future save validation, migration, serialization, and IndexedDB/Dexie adapters. |
+| `src/platform/web/` | Implemented empty boundary for the future browser lifecycle adapter. |
+| `public/assets/placeholder/` | Implemented tracked directory for future original placeholder assets. |
 | `tests/unit/` | Deterministic core, economy, save, migration, and offline-income tests. |
 | `tests/e2e/` | Browser-level player journeys, responsive layout, persistence, and production-bundle smoke tests. |
 
 ## Dependency Boundaries
 
-- `src/core/` must not import Phaser, DOM APIs, persistence implementations, or platform adapters.
+- `src/core/` must not import Phaser, DOM/browser APIs, persistence implementations, or platform adapters; scoped ESLint rules enforce this for direct, subpath, and type-only imports plus restricted browser globals.
 - `src/config/` is declarative input to the core and must not contain renderer behavior.
 - `src/game/` and `src/ui/` may read core snapshots and issue commands; they must not become authoritative stores.
 - `src/persistence/` serializes authoritative state but must not own economy or simulation rules.

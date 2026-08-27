@@ -31,4 +31,58 @@ export default defineConfig(
     files: ['**/*.ts'],
     extends: [js.configs.recommended, tseslint.configs.recommended],
   },
+  {
+    files: ['src/core/**/*.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'document',
+          message: 'Core modules must not depend on DOM APIs.',
+        },
+        {
+          name: 'indexedDB',
+          message: 'Core modules must not depend on browser persistence.',
+        },
+        {
+          name: 'localStorage',
+          message: 'Core modules must not depend on browser persistence.',
+        },
+        {
+          name: 'navigator',
+          message: 'Core modules must not depend on browser APIs.',
+        },
+        {
+          name: 'sessionStorage',
+          message: 'Core modules must not depend on browser persistence.',
+        },
+        {
+          name: 'window',
+          message: 'Core modules must not depend on DOM APIs.',
+        },
+      ],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'phaser',
+              message: 'Core modules must remain independent of Phaser.',
+            },
+          ],
+          patterns: [
+            {
+              regex: '^phaser/',
+              message: 'Core modules must remain independent of Phaser.',
+            },
+            {
+              regex: '(^|/)(persistence|platform)(/|$)',
+              message:
+                'Core modules must not import persistence or platform adapters.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

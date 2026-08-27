@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 3 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the quality-tooling test; Step 4 must not begin without explicit authorization.
+Implementation Plan Step 4 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the architecture test; Step 5 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -19,6 +19,9 @@ Implementation Plan Step 3 is implemented and its automated validation passes. T
 - Completed and validated Step 2 on 2026-08-27 with a root Vite/TypeScript scaffold, Phaser 4.2.1, an npm lockfile, and a simulator-preview workflow.
 - Implemented Step 3 quality tooling with strict TypeScript 6.0.3, ESLint 10.9.1, Vitest 4.1.11, and Playwright 1.62.1.
 - Added one baseline unit test and one Chromium browser smoke test; lint, unit tests, E2E tests, production build, and the development-server HTTP check pass.
+- The user validated Step 3 and authorized Step 4 on 2026-08-27.
+- Implemented Step 4 module entry points for core, config, game, UI, persistence, and the browser platform adapter, plus tracked placeholder asset storage.
+- Added scoped ESLint rules and a regression test that keep core modules independent of Phaser, persistence/platform adapters, and browser globals.
 
 ## Active Decisions
 
@@ -34,8 +37,8 @@ Implementation Plan Step 3 is implemented and its automated validation passes. T
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 3 test results.
-2. Begin Step 4 only after explicit user authorization.
+1. Wait for the user to validate the Step 4 test results.
+2. Begin Step 5 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 
