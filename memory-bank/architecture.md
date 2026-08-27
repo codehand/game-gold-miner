@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 12 are complete. Step 13's concurrent production pipeline is implemented with passing automated checks and is awaiting user validation. Step 14 and all later work remain blocked; there is no database, migration, or persistence schema.
+Steps 1 through 13 are complete. Step 14's production-rate calculations are implemented with passing automated checks and are awaiting user validation. Step 15 and all later work remain blocked; there is no database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -19,6 +19,7 @@ Steps 1 through 12 are complete. Step 13's concurrent production pipeline is imp
 | `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional four-floor/shared-stage data, its public types, and fail-fast startup validation. |
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
+| `src/core/economy/calculateProductionRates.ts` | Pure theoretical floor throughput, aggregate unlocked extraction, shared-stage throughput, effective mine-rate, and bottleneck calculations. |
 | `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited round-robin pickup, timed in-transit state, and delivery to the warehouse input queue. |
 | `src/core/simulation/advanceWarehouse.ts` | Timed capacity-limited warehouse conversion from input material into spendable and cumulative delivered gold. |
@@ -43,7 +44,7 @@ Steps 1 through 12 are complete. Step 13's concurrent production pipeline is imp
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, mine-floor extraction, shared-elevator transport, and warehouse conversion; rate calculations, progression, upgrades, and offline-income logic remain future work. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, mine-floor extraction, shared-elevator transport, warehouse conversion, and derived production rates; progression, upgrades, and offline-income logic remain future work. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
@@ -97,6 +98,10 @@ When idle, the shared elevator scans from `roundRobinCursor` through the ordered
 ## Warehouse Conversion Contract
 
 The warehouse idles with no input. While input exists, it advances normalized conversion progress using the configured 1,200 ms cycle. Material remains in `inputQueue` until the cycle boundary; completion consumes the lesser of input and warehouse capacity, adds that amount 1:1 to global `gold` and `totalGoldDelivered`, and leaves excess for later cycles. Progress resets when the queue empties. For a state with no seeded material, conservation is `totalExtracted = floor queues + elevator carried material + warehouse input + totalGoldDelivered`.
+
+## Production Rate Contract
+
+Production rates are pure derived values and are not stored in authoritative state. Each floor's theoretical extraction per second is `baseYield × outputGrowthRate^(level - 1) × 1,000 / cycleDurationMs`, including a theoretical value for locked floors. Aggregate mine extraction sums only unlocked floors. Elevator and warehouse throughput use their current authoritative capacity multiplied by `1,000 / cycleDurationMs`; effective mine production is the minimum of aggregate extraction and those two shared-stage rates. The result also identifies the limiting stage, with deterministic extraction → elevator → warehouse precedence for exact ties. Milestone effects remain excluded until Step 17.
 
 ## Provisional Balance Snapshot
 

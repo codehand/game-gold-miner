@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 13 is implemented with passing automated checks and is awaiting user validation. Step 14 has not started and remains blocked.
+**Phase:** Implementation Plan Step 14 is implemented with passing automated checks and is awaiting user validation. Step 15 has not started and remains blocked.
 
 ## Completed
 
@@ -51,6 +51,9 @@
 - Step 12 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 13.
 - Step 13 implemented on 2026-08-27: every unlocked floor advances automatically before the shared elevator and warehouse on each fixed tick, enabling same-tick handoffs while locked floors remain inert.
 - Step 13 automated evidence: independently calculated floor outputs and progress match simulation results; same-tick handoffs, locked-floor inactivity, deterministic chunking, and full material conservation are covered.
+- Step 13 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 14.
+- Step 14 implemented on 2026-08-27: pure calculations expose theoretical extraction per second for every floor and derive effective mine production from the minimum of aggregate unlocked extraction, elevator capacity per second, and warehouse capacity per second.
+- Step 14 automated evidence: tests cover current-level floor rates, locked-floor exclusion from aggregate extraction, extraction/transport/warehouse bottlenecks, correct effective rates, and no mutation of authoritative state.
 
 ## Implementation Step Status
 
@@ -68,12 +71,13 @@
 | 10 — Implement extraction | Complete | User validated the passing Step 10 checks and authorized Step 11. |
 | 11 — Implement the shared elevator | Complete | User validated the passing Step 11 checks and authorized Step 12. |
 | 12 — Implement warehouse conversion | Complete | User validated the passing Step 12 checks and authorized Step 13. |
-| 13 — Run four floors concurrently | Implemented / awaiting user validation | Forty-three unit tests pass; all-floor timing/output, same-tick ordering, locked-floor inactivity, chunking, and conservation are covered. |
-| 14 — Add production-rate calculations | Not started / blocked | Must not begin until the user validates Step 13. |
+| 13 — Run four floors concurrently | Complete | User validated the passing Step 13 checks and authorized Step 14. |
+| 14 — Add production-rate calculations | Implemented / awaiting user validation | Forty-eight unit tests pass; theoretical floor rates and extraction/elevator/warehouse bottleneck estimates are covered. |
+| 15 — Implement upgrade costs for all three stages | Not started / blocked | Must not begin until the user validates Step 14. |
 
 ## Not Started
 
-- Production-rate calculations and later economy simulation.
+- Upgrade costs, commands, stage effects, and later economy simulation.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Base-game shaft/elevator/warehouse upgrades and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

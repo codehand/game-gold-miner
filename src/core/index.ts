@@ -1,4 +1,11 @@
 export {
+  calculateMineProductionRates,
+  calculateTheoreticalFloorExtractionRate,
+  type FloorProductionRate,
+  type MineProductionRates,
+  type ProductionBottleneck,
+} from './economy/calculateProductionRates';
+export {
   GameNumber,
   type GameNumberSource,
   type SerializedGameNumber,

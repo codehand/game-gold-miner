@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 13 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates concurrent production; Step 14 must not begin without explicit authorization.
+Implementation Plan Step 14 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates production-rate calculations; Step 15 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -50,6 +50,9 @@ Implementation Plan Step 13 is implemented and its automated validation passes. 
 - The user validated Step 12 and authorized Step 13 on 2026-08-27.
 - Finalized each fixed tick as all unlocked floor extractions in configured order, then the shared elevator, then the shared warehouse; locked floors remain inert and all production runs automatically.
 - Added concurrent-pipeline coverage for independently calculated floor output/progress, same-tick handoffs, locked-floor inactivity, material conservation, and equivalent update chunking.
+- The user validated Step 13 and authorized Step 14 on 2026-08-27.
+- Added pure theoretical per-floor extraction rates and a mine-wide effective production estimate based on the slowest of aggregate unlocked extraction, shared elevator throughput, and shared warehouse throughput.
+- Added rate coverage for current floor levels, locked-floor exclusion from the mine aggregate, extraction/elevator/warehouse bottlenecks, and authoritative-state immutability.
 
 ## Active Decisions
 
@@ -74,11 +77,12 @@ Implementation Plan Step 13 is implemented and its automated validation passes. 
 - During every fixed tick, advance every unlocked floor's extraction first, then the shared elevator, then the shared warehouse; newly produced and delivered material is eligible for the next stage in that same tick.
 - Convert warehouse material to gold at a 1:1 ratio only on a completed configured cycle; leave excess input queued for later cycles and reset progress when no input remains.
 - Keep locked floors fully inert while all unlocked production stages run automatically without managers or player taps.
+- Treat production rates as derived read-only values: expose every floor's theoretical rate, sum only unlocked floors for the mine estimate, and cap that estimate at the slower shared-stage throughput.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 13 test results.
-2. Begin Step 14 only after explicit user authorization.
+1. Wait for the user to validate the Step 14 test results.
+2. Begin Step 15 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 
