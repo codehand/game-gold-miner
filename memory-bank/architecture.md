@@ -2,19 +2,20 @@
 
 ## Current Status
 
-Steps 1 through 3 are complete. Step 4 module boundaries and architecture enforcement are implemented with passing automated checks and are awaiting user validation. The source boundaries are empty entry points only: there is no game simulation, Phaser boot scene, database, migration, or persistence schema.
+Steps 1 through 4 are complete. Step 5's minimal Phaser bootstrap is implemented with passing automated checks and is awaiting user validation. There is one game instance and one boot scene, but no game simulation, balance configuration, database, migration, or persistence schema.
 
 ## Implemented Foundation
 
 | Path | Responsibility |
 |---|---|
-| `index.html`, `src/main.ts`, `src/style.css` | Minimal English Vite/TypeScript application scaffold used to validate browser loading. |
+| `index.html`, `src/main.ts`, `src/style.css` | Browser entry point, Phaser game startup, hot-reload cleanup, and full-viewport canvas host styling. |
 | `package.json`, `package-lock.json`, `tsconfig.json` | Locked dependencies, strict compiler settings, and verified development/build/test scripts. |
 | `eslint.config.mjs` | Flat lint configuration for TypeScript, configuration files, and the Node simulator script. |
 | `vitest.config.ts`, `tests/unit/` | Node-based unit-test configuration and scaffold baseline coverage. |
 | `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, and browser smoke coverage. |
 | `tests/unit/architecture.test.ts` | Regression coverage proving the core boundary accepts pure TypeScript and rejects renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
+| `src/game/scenes/BootScene.ts` | Single neutral boot scene that records startup and renderer diagnostics on the game canvas for browser validation. |
 
 ## Current File Responsibilities
 
@@ -38,7 +39,7 @@ Steps 1 through 3 are complete. Step 4 module boundaries and architecture enforc
 |---|---|
 | `src/core/` | Implemented empty boundary for future pure deterministic game state, simulation, economy, progression, upgrades, and offline-income calculations. |
 | `src/config/` | Implemented empty boundary for future data-driven balance values. |
-| `src/game/` | Implemented empty boundary for future Phaser scenes, game objects, animation, input, camera, and rendering. |
+| `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
 | `src/persistence/` | Implemented empty boundary for future save validation, migration, serialization, and IndexedDB/Dexie adapters. |
 | `src/platform/web/` | Implemented empty boundary for the future browser lifecycle adapter. |

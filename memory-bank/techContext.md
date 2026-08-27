@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 3 are complete. Step 4 is implemented with passing automated checks and is awaiting user validation; Step 5 has not started. The repository contains the root Vite scaffold, strict quality tooling, empty entry points for every planned runtime boundary, tracked placeholder asset storage, architecture enforcement for the pure core, two unit-test files, and one Chromium E2E smoke test. No game simulation, Phaser instance, scene, canvas, or persistence schema exists yet.
+Steps 1 through 4 are complete. Step 5 is implemented with passing automated checks and is awaiting user validation; Step 6 has not started. The browser entry creates one Phaser 4.2.1 game with one boot scene, automatic renderer selection, a 360×640 logical canvas, fit-and-center scaling, a neutral background, and hot-reload cleanup. No physics system, gameplay simulation, balance configuration, or persistence schema exists yet.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -27,6 +27,7 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Vitest 4.1.11 runs Node-based unit tests from `tests/unit/`.
 - Playwright 1.62.1 runs Chromium E2E tests from `tests/e2e/` and starts a fixed-port Vite test server automatically.
 - ESLint applies additional rules to `src/core/**/*.ts` that reject Phaser, persistence/platform imports, and browser globals; the Vitest suite probes these rules through the repository's real flat configuration.
+- Phaser is configured without a physics property. Its E2E diagnostics identify the selected renderer and count boot-scene starts without making presentation state authoritative.
 
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
@@ -41,7 +42,7 @@ If a database is introduced, replace this statement with the complete authoritat
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
 - `npm run test`: three tests across the scaffold and architecture suites pass.
-- `npm run test:e2e`: one Chromium scaffold smoke test passes without console or page errors.
+- `npm run test:e2e`: one Chromium boot-scene test passes before and after reload, with one canvas, one scene start per load, valid logical dimensions and renderer, and no console or page errors.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 
 ## Conventions

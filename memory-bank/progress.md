@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 4 is implemented with passing automated checks and is awaiting user validation. Step 5 has not started and remains blocked.
+**Phase:** Implementation Plan Step 5 is implemented with passing automated checks and is awaiting user validation. Step 6 has not started and remains blocked.
 
 ## Completed
 
@@ -24,6 +24,9 @@
 - Step 3 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 4.
 - Step 4 implemented on 2026-08-27: all planned source-module entry points and placeholder asset storage exist, with no gameplay or Step 5 runtime code.
 - Step 4 automated evidence: lint and strict build pass; the architecture regression test accepts pure core TypeScript and rejects Phaser, persistence/platform, and browser dependencies.
+- Step 4 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 5.
+- Step 5 implemented on 2026-08-27: one Phaser game boots one scene into a 360×640 canvas using automatic WebGL/Canvas selection, fit-and-center scaling, a neutral background, and no physics configuration.
+- Step 5 automated evidence: lint, unit tests, strict production build, and the Chromium E2E test pass; the browser test confirms exactly one canvas and one scene start before and after reload with no console or page errors.
 
 ## Implementation Step Status
 
@@ -32,8 +35,9 @@
 | 1 — Scope and repository state | Complete | Documentation reviewed; scope consistent; repository and database checks passed. |
 | 2 — Scaffold the web application | Complete | Vite/TypeScript scaffold and Phaser 4.2.1 are locked; browser load and production build pass. |
 | 3 — Add quality tooling | Complete | User validated the passing Step 3 checks and authorized Step 4. |
-| 4 — Create planned module boundaries | Implemented / awaiting user validation | Module entry points exist; lint, architecture regression tests, and strict build pass. |
-| 5 — Create a minimal Phaser boot scene | Not started / blocked | Must not begin until the user validates Step 4. |
+| 4 — Create planned module boundaries | Complete | User validated the passing Step 4 checks and authorized Step 5. |
+| 5 — Create a minimal Phaser boot scene | Implemented / awaiting user validation | One 360×640 Phaser canvas and one boot scene survive a browser reload without duplication or renderer errors. |
+| 6 — Define base-game balance configuration | Not started / blocked | Must not begin until the user validates Step 5. |
 
 ## Not Started
 

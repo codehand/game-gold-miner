@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 4 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the architecture test; Step 5 must not begin without explicit authorization.
+Implementation Plan Step 5 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the Phaser boot-scene test; Step 6 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -22,6 +22,10 @@ Implementation Plan Step 4 is implemented and its automated validation passes. T
 - The user validated Step 3 and authorized Step 4 on 2026-08-27.
 - Implemented Step 4 module entry points for core, config, game, UI, persistence, and the browser platform adapter, plus tracked placeholder asset storage.
 - Added scoped ESLint rules and a regression test that keep core modules independent of Phaser, persistence/platform adapters, and browser globals.
+- The user validated Step 4 and authorized Step 5 on 2026-08-27.
+- Implemented one Phaser game and one boot scene with automatic WebGL/Canvas selection, a 360×640 logical viewport, fit-and-center scaling, a neutral background, and no physics configuration.
+- Replaced the temporary DOM scaffold with the Phaser canvas and added hot-reload cleanup that destroys the prior game instance before replacement.
+- Updated the Chromium smoke test to verify one canvas, one boot-scene start per load, the logical dimensions, a valid renderer, reload behavior, and no browser errors.
 
 ## Active Decisions
 
@@ -37,8 +41,8 @@ Implementation Plan Step 4 is implemented and its automated validation passes. T
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 4 test results.
-2. Begin Step 5 only after explicit user authorization.
+1. Wait for the user to validate the Step 5 test results.
+2. Begin Step 6 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 
