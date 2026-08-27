@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 12 is implemented with passing automated checks and is awaiting user validation. Step 13 has not started and remains blocked.
+**Phase:** Implementation Plan Step 13 is implemented with passing automated checks and is awaiting user validation. Step 14 has not started and remains blocked.
 
 ## Completed
 
@@ -48,6 +48,9 @@
 - Step 11 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 12.
 - Step 12 implemented on 2026-08-27: the warehouse advances a timed conversion only with queued input, consumes at most capacity per completed cycle, and adds converted material 1:1 to spendable gold and total delivered gold.
 - Step 12 automated evidence: tests cover idle behavior, progress before the boundary, capacity-limited and repeated completion, input immutability, deterministic chunking, and conservation across floor queues, elevator transit, warehouse input, and delivered gold.
+- Step 12 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 13.
+- Step 13 implemented on 2026-08-27: every unlocked floor advances automatically before the shared elevator and warehouse on each fixed tick, enabling same-tick handoffs while locked floors remain inert.
+- Step 13 automated evidence: independently calculated floor outputs and progress match simulation results; same-tick handoffs, locked-floor inactivity, deterministic chunking, and full material conservation are covered.
 
 ## Implementation Step Status
 
@@ -64,12 +67,13 @@
 | 9 — Implement fixed-step simulation time | Complete | User validated the passing Step 9 checks and authorized Step 10. |
 | 10 — Implement extraction | Complete | User validated the passing Step 10 checks and authorized Step 11. |
 | 11 — Implement the shared elevator | Complete | User validated the passing Step 11 checks and authorized Step 12. |
-| 12 — Implement warehouse conversion | Implemented / awaiting user validation | Thirty-eight unit tests pass; idling, timing, capacity, repeated cycles, immutability, chunking, and full-pipeline conservation are covered. |
-| 13 — Run four floors concurrently | Not started / blocked | Must not begin until the user validates Step 12. |
+| 12 — Implement warehouse conversion | Complete | User validated the passing Step 12 checks and authorized Step 13. |
+| 13 — Run four floors concurrently | Implemented / awaiting user validation | Forty-three unit tests pass; all-floor timing/output, same-tick ordering, locked-floor inactivity, chunking, and conservation are covered. |
+| 14 — Add production-rate calculations | Not started / blocked | Must not begin until the user validates Step 13. |
 
 ## Not Started
 
-- Final full-stage ordering, production-rate calculations, and later economy simulation.
+- Production-rate calculations and later economy simulation.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Base-game shaft/elevator/warehouse upgrades and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

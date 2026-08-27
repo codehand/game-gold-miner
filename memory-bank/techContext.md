@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 11 are complete. Step 12 is implemented with passing automated checks and is awaiting user validation; Step 13 has not started. The pure core now exports immutable large numbers, authoritative state contracts, deterministic fresh-state construction, bounded fixed-step advancement, mine-floor extraction, shared-elevator transport, and warehouse conversion. No physics system or persistence schema exists yet.
+Steps 1 through 12 are complete. Step 13 is implemented with passing automated checks and is awaiting user validation; Step 14 has not started. The pure core now exports immutable large numbers, authoritative state contracts, deterministic fresh-state construction, bounded fixed-step advancement, and the final automatic extraction → elevator → warehouse pipeline. No physics system or persistence schema exists yet.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -34,9 +34,8 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Foreground simulation advances in 100 ms fixed ticks, stores a monotonically increasing tick plus sub-tick remainder in authoritative state, and credits at most 1,000 ms per update. Valid elapsed time must be finite and non-negative; the full elapsed duration advances `lastUpdateTimestampMs` even when credited simulation time is capped.
 - Each unlocked floor advances extraction from the base balance's cycle duration. Completed cycles add `baseYield × outputGrowthRate^(level - 1)` to local material and total-extracted `GameNumber` values, preserve normalized overflow progress, and do not alter spendable gold or downstream stage state. Milestone multipliers remain deferred to Step 17.
 - The shared elevator scans floor order from its round-robin cursor, skips locked/empty floors, removes up to its authoritative `GameNumber` capacity, advances the cursor after pickup, and completes its configured 1,500 ms transit before adding carried material to `warehouse.inputQueue`. Pickup increments the source floor's transported total; neither pickup nor delivery changes gold.
-- Step 11 advances elevator state before extraction inside each fixed tick, so new extraction becomes pickup-eligible on the next tick. The final extraction → elevator → warehouse update order remains deferred to Step 13.
 - The warehouse advances only while input exists, retains material during its configured 1,200 ms progress, consumes at most authoritative capacity on completion, and adds the converted amount 1:1 to global gold and cumulative delivered gold. Excess input remains queued and empty queues reset progress.
-- Step 12 advances warehouse conversion before elevator and extraction inside each fixed tick, so new elevator deliveries become conversion-eligible on the next tick. Final full-pipeline ordering remains deferred to Step 13.
+- Each fixed tick advances every floor's extraction in configured order, then the shared elevator, then the shared warehouse. Newly extracted and delivered material can enter the following stage in the same tick; locked floors remain inert and no manager or player tap is required.
 
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
@@ -50,7 +49,7 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: thirty-eight tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, fixed-step timing, extraction, elevator, and warehouse suites pass.
+- `npm run test`: forty-three tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, fixed-step timing, extraction, elevator, warehouse, and concurrent-pipeline suites pass.
 - `npm run test:e2e`: one Chromium boot-scene test passes before and after reload, with one canvas, one scene start per load, valid logical dimensions and renderer, and no console or page errors.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 

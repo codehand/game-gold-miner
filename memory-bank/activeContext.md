@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 12 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates warehouse conversion; Step 13 must not begin without explicit authorization.
+Implementation Plan Step 13 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates concurrent production; Step 14 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -47,6 +47,9 @@ Implementation Plan Step 12 is implemented and its automated validation passes. 
 - The user validated Step 11 and authorized Step 12 on 2026-08-27.
 - Added timed warehouse conversion that retains material in the input queue during progress, converts up to warehouse capacity at completion, and adds the same amount to spendable gold and total delivered gold.
 - Added warehouse coverage for idle behavior, pre-boundary isolation, capacity-limited and repeated cycles, immutable input, deterministic chunking, and end-to-end material conservation.
+- The user validated Step 12 and authorized Step 13 on 2026-08-27.
+- Finalized each fixed tick as all unlocked floor extractions in configured order, then the shared elevator, then the shared warehouse; locked floors remain inert and all production runs automatically.
+- Added concurrent-pipeline coverage for independently calculated floor output/progress, same-tick handoffs, locked-floor inactivity, material conservation, and equivalent update chunking.
 
 ## Active Decisions
 
@@ -68,14 +71,14 @@ Implementation Plan Step 12 is implemented and its automated validation passes. 
 - Deposit completed extraction only into the producing floor's material queue and total-extracted counter; spendable gold changes only after later transport and warehouse stages.
 - Treat `roundRobinCursor` as the next floor index to scan; wrap top-to-bottom, advance it after a successful pickup, and leave it unchanged while idle.
 - Remove material from a floor and increment its transported total at elevator pickup; deliver carried material only when transit completes, adding it to `warehouse.inputQueue` without changing gold.
-- During the staged Step 11 integration, advance the elevator before extraction so new output remains queued until the next fixed tick; Step 13 owns the final all-stage update ordering.
+- During every fixed tick, advance every unlocked floor's extraction first, then the shared elevator, then the shared warehouse; newly produced and delivered material is eligible for the next stage in that same tick.
 - Convert warehouse material to gold at a 1:1 ratio only on a completed configured cycle; leave excess input queued for later cycles and reset progress when no input remains.
-- During the staged Step 12 integration, advance warehouse conversion before elevator transport and extraction so newly delivered input begins conversion on the following fixed tick; Step 13 owns the final all-stage update ordering.
+- Keep locked floors fully inert while all unlocked production stages run automatically without managers or player taps.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 12 test results.
-2. Begin Step 13 only after explicit user authorization.
+1. Wait for the user to validate the Step 13 test results.
+2. Begin Step 14 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

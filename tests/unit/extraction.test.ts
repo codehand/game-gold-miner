@@ -24,13 +24,16 @@ describe('mine-floor extraction', () => {
 
     const atBoundary = advanceSimulation(beforeBoundary, FIXED_STEP_MS);
 
-    expectFloor(atBoundary, 0, 10);
+    expectFloor(atBoundary, 0, 0, 10);
+    expect(atBoundary.elevator.carriedMaterial.equals(10)).toBe(true);
+    expect(atBoundary.elevator.transitProgress).toBeCloseTo(1 / 15);
     expect(atBoundary.gold.equals(BASE_GAME_BALANCE.startingGold)).toBe(true);
 
     const beyondBoundary = advanceSimulation(atBoundary, FIXED_STEP_MS);
 
     expectFloor(beyondBoundary, 0.05, 0, 10);
     expect(beyondBoundary.elevator.carriedMaterial.equals(10)).toBe(true);
+    expect(beyondBoundary.elevator.transitProgress).toBeCloseTo(2 / 15);
     expect(beyondBoundary.gold.equals(BASE_GAME_BALANCE.startingGold)).toBe(true);
   });
 
@@ -58,8 +61,9 @@ describe('mine-floor extraction', () => {
       BASE_GAME_BALANCE.floors[0].upgrade.outputGrowthRate ** (level - 1),
     );
 
-    expect(state.floors[0].materialQueue.equals(expectedYield)).toBe(true);
+    expect(state.floors[0].materialQueue.equals(0)).toBe(true);
     expect(state.floors[0].totalExtracted.equals(expectedYield)).toBe(true);
+    expect(state.elevator.carriedMaterial.equals(expectedYield)).toBe(true);
     expect(state.gold.equals(BASE_GAME_BALANCE.startingGold)).toBe(true);
   });
 
@@ -100,7 +104,7 @@ describe('mine-floor extraction', () => {
       ['10', '30', '90', '270'],
     );
     expect(state.floors.map(({ materialQueue }) => materialQueue.toJSON())).toEqual(
-      ['0', '30', '90', '270'],
+      ['0', '0', '90', '270'],
     );
     [0.75, 0.4, 1 / 6, 0].forEach((expectedProgress, index) => {
       expect(state.floors[index].extractionProgress).toBeCloseTo(

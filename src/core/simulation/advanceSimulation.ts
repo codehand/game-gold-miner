@@ -47,27 +47,30 @@ function advanceFixedStep(
     throw new Error('Simulation tick exceeds the safe integer range.');
   }
 
-  const convertedState = advanceWarehouse(
-    state,
-    config.warehouse,
-    SIMULATION_STEP_MS,
-  );
-  const transportedState = advanceElevator(
-    convertedState,
-    config.elevator,
-    SIMULATION_STEP_MS,
-  );
-
-  return {
-    ...transportedState,
-    simulationTick,
-    floors: transportedState.floors.map((floor) => {
+  const extractedState: GameState = {
+    ...state,
+    floors: state.floors.map((floor) => {
       return advanceExtraction(
         floor,
         findFloorConfig(config, floor.id),
         SIMULATION_STEP_MS,
       );
     }),
+  };
+  const transportedState = advanceElevator(
+    extractedState,
+    config.elevator,
+    SIMULATION_STEP_MS,
+  );
+  const convertedState = advanceWarehouse(
+    transportedState,
+    config.warehouse,
+    SIMULATION_STEP_MS,
+  );
+
+  return {
+    ...convertedState,
+    simulationTick,
   };
 }
 

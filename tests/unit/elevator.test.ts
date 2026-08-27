@@ -47,6 +47,7 @@ describe('shared elevator', () => {
     expect(delivered.elevator.carriedMaterial.equals(0)).toBe(true);
     expect(delivered.elevator.transitProgress).toBe(0);
     expect(delivered.warehouse.inputQueue.equals(50)).toBe(true);
+    expect(delivered.warehouse.conversionProgress).toBeCloseTo(1 / 12);
     expect(delivered.gold.equals(initialState.gold)).toBe(true);
   });
 
