@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 6 are complete. Step 7's large-number boundary is implemented with passing automated checks and is awaiting user validation. There is no authoritative game state, simulation, database, migration, or persistence schema.
+Steps 1 through 7 are complete. Step 8's authoritative state model is implemented with passing automated checks and is awaiting user validation. There is no simulation-time advancement, database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -18,6 +18,7 @@ Steps 1 through 6 are complete. Step 7's large-number boundary is implemented wi
 | `src/game/scenes/BootScene.ts` | Single neutral boot scene that records startup and renderer diagnostics on the game canvas for browser validation. |
 | `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional four-floor/shared-stage data, its public types, and fail-fast startup validation. |
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
+| `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
 
 ## Current File Responsibilities
 
@@ -39,7 +40,7 @@ Steps 1 through 6 are complete. Step 7's large-number boundary is implemented wi
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns the renderer-independent `GameNumber` boundary; authoritative state, simulation, economy, progression, upgrades, and offline-income logic remain future work. |
+| `src/core/` | Owns renderer-independent numbers and authoritative state; simulation, economy, progression, upgrades, and offline-income logic remain future work. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
@@ -64,6 +65,17 @@ Steps 1 through 6 are complete. Step 7's large-number boundary is implemented wi
 Load and validate save → migrate if required → calculate capped offline reward → initialize pure core state → advance deterministic simulation → publish read-only snapshot → render Phaser/UI → translate player input into core commands → persist debounced authoritative snapshots.
 
 The production pipeline is four independent mine shafts → one shared round-robin elevator → one shared warehouse → spendable gold.
+
+## Authoritative State Model
+
+| State | Authoritative fields |
+|---|---|
+| Global | `saveVersion`, `lastUpdateTimestampMs`, `gold`, four floor states, elevator state, warehouse state |
+| Floor | Identifier/number, unlock status, mine-shaft level, normalized extraction progress, local material queue, total extracted, total transported |
+| Elevator | Level, `GameNumber` capacity, round-robin cursor, normalized transit progress, carried material |
+| Warehouse | Level, `GameNumber` capacity, input queue, normalized conversion progress, total delivered gold |
+
+Fresh state uses version `1`, receives its timestamp from the caller, and serializes `GameNumber` values as strings. Renderer, scene, canvas, sprite, texture, tween, animation, and function state are excluded.
 
 ## Provisional Balance Snapshot
 

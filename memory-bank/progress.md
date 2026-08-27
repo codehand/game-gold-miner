@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 7 is implemented with passing automated checks and is awaiting user validation. Step 8 has not started and remains blocked.
+**Phase:** Implementation Plan Step 8 is implemented with passing automated checks and is awaiting user validation. Step 9 has not started and remains blocked.
 
 ## Completed
 
@@ -33,6 +33,9 @@
 - Step 6 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 7.
 - Step 7 implemented on 2026-08-27: `GameNumber` encapsulates break_infinity.js 2.2.0 behind immutable construction, arithmetic, comparison, and string-serialization APIs.
 - Step 7 automated evidence: unit tests pass for ordinary values, values beyond JavaScript's safe-integer range, immutable add/subtract/multiply operations, comparisons, serialization/deserialization, JSON output, and invalid sources.
+- Step 7 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 8.
+- Step 8 implemented on 2026-08-27: authoritative state types and a deterministic factory now model save version, timestamp, gold, four floors, elevator, warehouse, progress, queues, capacities, and production totals.
+- Step 8 automated evidence: fresh state has only floor one unlocked, all progress is normalized, all quantities initialize correctly through `GameNumber`, invalid timestamps fail, and JSON output contains only authoritative plain data.
 
 ## Implementation Step Status
 
@@ -44,8 +47,9 @@
 | 4 — Create planned module boundaries | Complete | User validated the passing Step 4 checks and authorized Step 5. |
 | 5 — Create a minimal Phaser boot scene | Complete | User validated the passing Step 5 checks and authorized Step 6. |
 | 6 — Define base-game balance configuration | Complete | User validated the passing Step 6 checks and authorized Step 7. |
-| 7 — Introduce the large-number boundary | Implemented / awaiting user validation | Fourteen unit tests pass, including immutable arithmetic and serialization at `1e100`–`1e250`. |
-| 8 — Define authoritative game state | Not started / blocked | Must not begin until the user validates Step 7. |
+| 7 — Introduce the large-number boundary | Complete | User validated the passing Step 7 checks and authorized Step 8. |
+| 8 — Define authoritative game state | Implemented / awaiting user validation | Eighteen unit tests pass; fresh state and renderer-free serialization match the validated balance configuration. |
+| 9 — Implement fixed-step simulation time | Not started / blocked | Must not begin until the user validates Step 8. |
 
 ## Not Started
 

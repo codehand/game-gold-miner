@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 7 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the large-number tests; Step 8 must not begin without explicit authorization.
+Implementation Plan Step 8 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the authoritative-state tests; Step 9 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -32,6 +32,9 @@ Implementation Plan Step 7 is implemented and its automated validation passes. T
 - The user validated Step 6 and authorized Step 7 on 2026-08-27.
 - Added an immutable `GameNumber` abstraction backed privately by `break_infinity.js` 2.2.0 for arithmetic, comparisons, and stable string serialization.
 - Added unit coverage for ordinary and very large values, immutable operations, serialization/JSON round trips, and invalid numeric sources.
+- The user validated Step 7 and authorized Step 8 on 2026-08-27.
+- Added renderer-independent authoritative state types for global gold, four floors, the elevator, and the warehouse, with save version and last-update timestamp.
+- Added a deterministic fresh-state factory that consumes validated balance data and an explicit timestamp, plus tests for unlocks, progress, quantities, serialization, and invalid timestamps.
 
 ## Active Decisions
 
@@ -47,11 +50,12 @@ Implementation Plan Step 7 is implemented and its automated validation passes. T
 - Start with 100 gold; provisional floor unlock costs are 250, 1,500, and 7,500, gated by prior-floor levels 5, 5, and 7.
 - Use a 1.15 upgrade-cost growth rate, 1.10 mine-yield growth, and 1.12 shared-stage capacity growth until the Step 19 economy simulation and playtesting refine them.
 - Represent runtime gold, material quantities, yields, and costs through `GameNumber`; keep abbreviated display formatting outside the arithmetic abstraction.
+- Store only authoritative production data in core state; renderer, scene, animation, sprite, tween, and texture objects never enter serialized state.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 7 test results.
-2. Begin Step 8 only after explicit user authorization.
+1. Wait for the user to validate the Step 8 test results.
+2. Begin Step 9 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

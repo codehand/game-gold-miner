@@ -31,6 +31,7 @@ Persistence and Platform Adapters
 - Calculate offline rewards from timestamps and a configured cap/efficiency.
 - Represent very large values through the immutable `GameNumber` abstraction; keep break_infinity.js private, serialize as strings, and implement abbreviated display formatting separately.
 - Serialize only authoritative game state, never transient animation state.
+- Construct fresh state from validated balance data and an injected timestamp; never read the wall clock inside deterministic state creation.
 - Version every save and test migrations.
 - Add seeded randomness only when later probabilistic systems are introduced.
 
