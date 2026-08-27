@@ -32,3 +32,5 @@ Prioritize one-thumb controls, readable large-number notation, strong upgrade af
 ## Base-Game Delivery Boundary
 
 The current implementation milestone is limited to four floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, sequential unlocks, local saves, and capped offline income. Production is automatic without managers. UI copy is English, the logical viewport is 360×640, and no inactive bottom navigation is shown. Managers, boosts, gift drops, shops, tasks, social systems, Telegram integration, backend services, monetization, audio, and final production assets remain deferred until the base-game acceptance checks in `memory-bank/implementation-plan.md` pass.
+
+Step 1 validated this boundary without changing product intent. The implementation may proceed to scaffolding only after explicit authorization for Step 2.
