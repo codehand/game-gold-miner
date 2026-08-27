@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 9 is implemented with passing automated checks and is awaiting user validation. Step 10 has not started and remains blocked.
+**Phase:** Implementation Plan Step 10 is implemented with passing automated checks and is awaiting user validation. Step 11 has not started and remains blocked.
 
 ## Completed
 
@@ -39,6 +39,9 @@
 - Step 8 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 9.
 - Step 9 implemented on 2026-08-27: foreground time advances through immutable 100 ms fixed ticks, carries authoritative sub-tick remainder, caps credited simulation time at 1,000 ms per update, and consumes the full wall-clock delta.
 - Step 9 automated evidence: one large update, ten regular updates, and irregular chunks produce identical state; partial time carries correctly, oversized and invalid deltas are handled as specified, and production values remain unchanged before extraction is implemented.
+- Step 9 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 10.
+- Step 10 implemented on 2026-08-27: unlocked floors advance extraction during fixed ticks, apply configured exponential level yield, enqueue output only at completed cycle boundaries, update total extracted, and retain overflow progress.
+- Step 10 automated evidence: tests cover immediately before, exactly at, and beyond a cycle boundary; level-adjusted output; every configured floor; locked-floor inactivity; deterministic chunking; multiple cycles; and unchanged gold, elevator, and warehouse state.
 
 ## Implementation Step Status
 
@@ -52,12 +55,13 @@
 | 6 — Define base-game balance configuration | Complete | User validated the passing Step 6 checks and authorized Step 7. |
 | 7 — Introduce the large-number boundary | Complete | User validated the passing Step 7 checks and authorized Step 8. |
 | 8 — Define authoritative game state | Complete | User validated the passing Step 8 checks and authorized Step 9. |
-| 9 — Implement fixed-step simulation time | Implemented / awaiting user validation | Twenty-four unit tests pass; deterministic chunking, remainder carry, delta bounding, timestamp advancement, and invalid input handling are covered. |
-| 10 — Implement extraction | Not started / blocked | Must not begin until the user validates Step 9. |
+| 9 — Implement fixed-step simulation time | Complete | User validated the passing Step 9 checks and authorized Step 10. |
+| 10 — Implement extraction | Implemented / awaiting user validation | Twenty-nine unit tests pass; extraction boundaries, overflow, level yield, floor configuration, lock state, chunk invariance, and downstream isolation are covered. |
+| 11 — Implement the shared elevator | Not started / blocked | Must not begin until the user validates Step 10. |
 
 ## Not Started
 
-- Production and economy simulation beyond the fixed-step clock.
+- Shared-elevator transport, warehouse conversion, and later economy simulation.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Base-game shaft/elevator/warehouse upgrades and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

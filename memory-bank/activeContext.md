@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 9 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates deterministic fixed-step timing; Step 10 must not begin without explicit authorization.
+Implementation Plan Step 10 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates mine-floor extraction; Step 11 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -38,6 +38,9 @@ Implementation Plan Step 9 is implemented and its automated validation passes. T
 - The user validated Step 8 and authorized Step 9 on 2026-08-27.
 - Added a pure 100 ms fixed-step simulation clock with a 1,000 ms foreground-delta cap, authoritative tick/remainder state, immutable elapsed-time advancement, and full wall-clock timestamp consumption.
 - Added deterministic timing coverage for single, repeated, and irregular update chunks, partial-tick carry, oversized deltas, invalid elapsed values, and unchanged production state before Step 10.
+- The user validated Step 9 and authorized Step 10 on 2026-08-27.
+- Added config-driven extraction to fixed simulation ticks: unlocked floors advance normalized progress, completed cycles add level-adjusted yield to local queues and extraction totals, and overflow carries into the next cycle.
+- Added extraction coverage for cycle boundaries, overflow, exponential level yield, all configured floor durations/yields, locked floors, deterministic chunking, and isolation from gold, elevator, and warehouse state.
 
 ## Active Decisions
 
@@ -55,11 +58,13 @@ Implementation Plan Step 9 is implemented and its automated validation passes. T
 - Represent runtime gold, material quantities, yields, and costs through `GameNumber`; keep abbreviated display formatting outside the arithmetic abstraction.
 - Store only authoritative production data in core state; renderer, scene, animation, sprite, tween, and texture objects never enter serialized state.
 - Advance foreground simulation in deterministic 100 ms ticks, carry sub-tick remainder in authoritative state, and credit at most 1,000 ms of simulation per update while consuming the full wall-clock delta.
+- Calculate mine-shaft yield as base yield multiplied by the configured output-growth rate for each level above one; milestone multipliers remain deferred to Step 17.
+- Deposit completed extraction only into the producing floor's material queue and total-extracted counter; spendable gold changes only after later transport and warehouse stages.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 9 test results.
-2. Begin Step 10 only after explicit user authorization.
+1. Wait for the user to validate the Step 10 test results.
+2. Begin Step 11 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

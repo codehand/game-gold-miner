@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 8 are complete. Step 9's deterministic fixed-step clock is implemented with passing automated checks and is awaiting user validation. Extraction and all later production stages remain blocked; there is no database, migration, or persistence schema.
+Steps 1 through 9 are complete. Step 10's mine-floor extraction is implemented with passing automated checks and is awaiting user validation. Shared-elevator transport and all later stages remain blocked; there is no database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -19,7 +19,7 @@ Steps 1 through 8 are complete. Step 9's deterministic fixed-step clock is imple
 | `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional four-floor/shared-stage data, its public types, and fail-fast startup validation. |
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
-| `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks with authoritative remainder carry. |
+| `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
 
 ## Current File Responsibilities
 
@@ -41,7 +41,7 @@ Steps 1 through 8 are complete. Step 9's deterministic fixed-step clock is imple
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, and fixed-step timing; production, economy, progression, upgrades, and offline-income logic remain future work. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, and mine-floor extraction; transport, conversion, economy, progression, upgrades, and offline-income logic remain future work. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
@@ -80,7 +80,11 @@ Fresh state uses version `1`, receives its timestamp from the caller, initialize
 
 ## Simulation Timing Contract
 
-Foreground simulation uses a 100 ms fixed tick. Each update credits at most 1,000 ms to the fixed-step accumulator, carries any sub-tick remainder in authoritative state, and advances the wall-clock timestamp by the full valid elapsed duration. Equal credited elapsed time produces identical tick, remainder, queue, total, and gold state regardless of chunking. The fixed-step hook changes only the tick in Step 9; extraction begins only after Step 9 validation.
+Foreground simulation uses a 100 ms fixed tick. Each update credits at most 1,000 ms to the fixed-step accumulator, carries any sub-tick remainder in authoritative state, and advances the wall-clock timestamp by the full valid elapsed duration. Equal credited elapsed time produces identical tick, remainder, queue, total, and gold state regardless of chunking.
+
+## Extraction Contract
+
+Every unlocked floor advances extraction on each fixed tick using its configured cycle duration. A completed cycle yields `baseYield × outputGrowthRate^(mineShaftLevel - 1)`; milestone multipliers are not applied before Step 17. Completed output is added immutably to that floor's `materialQueue` and `totalExtracted`, while normalized overflow progress carries into the next cycle. Locked floors remain inert, and extraction never changes global gold, elevator state, warehouse state, or transport totals.
 
 ## Provisional Balance Snapshot
 
