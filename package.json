@@ -15,6 +15,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "break_infinity.js": "^2.2.0",
     "phaser": "4.2.1"
   },
   "devDependencies": {

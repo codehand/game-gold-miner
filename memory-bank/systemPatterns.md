@@ -29,7 +29,7 @@ Persistence and Platform Adapters
 - Use events/commands between presentation and core logic; never mutate economy state directly from a scene.
 - Advance simulation using elapsed time, with bounded deltas after suspension.
 - Calculate offline rewards from timestamps and a configured cap/efficiency.
-- Represent very large values through a `GameNumber` abstraction so the numeric library can change.
+- Represent very large values through the immutable `GameNumber` abstraction; keep break_infinity.js private, serialize as strings, and implement abbreviated display formatting separately.
 - Serialize only authoritative game state, never transient animation state.
 - Version every save and test migrations.
 - Add seeded randomness only when later probabilistic systems are introduced.

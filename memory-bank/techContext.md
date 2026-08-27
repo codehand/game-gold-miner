@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 5 are complete. Step 6 is implemented with passing automated checks and is awaiting user validation; Step 7 has not started. The application now validates typed provisional balance data before creating the Phaser game. No large-number abstraction, gameplay simulation, physics system, or persistence schema exists yet.
+Steps 1 through 6 are complete. Step 7 is implemented with passing automated checks and is awaiting user validation; Step 8 has not started. The pure core exports an immutable `GameNumber` boundary, while the application continues to validate balance data before creating Phaser. No authoritative state, gameplay simulation, physics system, or persistence schema exists yet.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -28,7 +28,8 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Playwright 1.62.1 runs Chromium E2E tests from `tests/e2e/` and starts a fixed-port Vite test server automatically.
 - ESLint applies additional rules to `src/core/**/*.ts` that reject Phaser, persistence/platform imports, and browser globals; the Vitest suite probes these rules through the repository's real flat configuration.
 - Phaser is configured without a physics property. Its E2E diagnostics identify the selected renderer and count boot-scene starts without making presentation state authoritative.
-- Balance data uses ordinary finite JavaScript numbers only until Step 7. Startup validation requires exactly four sequential floors, unique identifiers, valid unlock chains, positive timing/yield/capacity values, upgrade growth above one, and the configured milestone schedule.
+- Balance data remains declarative finite JavaScript-number input; future authoritative state converts monetary and material values into `GameNumber`. Startup validation requires exactly four sequential floors, unique identifiers, valid unlock chains, positive timing/yield/capacity values, upgrade growth above one, and the configured milestone schedule.
+- `GameNumber` encapsulates break_infinity.js 2.2.0. It accepts finite numbers or numeric strings, returns new values for add/subtract/multiply, exposes comparisons, and serializes to a backend-neutral string; formatting is deliberately separate.
 
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
@@ -42,7 +43,7 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: nine tests across the scaffold, architecture, and balance-configuration suites pass.
+- `npm run test`: fourteen tests across the scaffold, architecture, balance-configuration, and large-number suites pass.
 - `npm run test:e2e`: one Chromium boot-scene test passes before and after reload, with one canvas, one scene start per load, valid logical dimensions and renderer, and no console or page errors.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 

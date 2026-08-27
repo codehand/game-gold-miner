@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 5 are complete. Step 6's typed balance configuration and startup validation are implemented with passing automated checks and are awaiting user validation. There is no game simulation, large-number abstraction, database, migration, or persistence schema.
+Steps 1 through 6 are complete. Step 7's large-number boundary is implemented with passing automated checks and is awaiting user validation. There is no authoritative game state, simulation, database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -17,6 +17,7 @@ Steps 1 through 5 are complete. Step 6's typed balance configuration and startup
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
 | `src/game/scenes/BootScene.ts` | Single neutral boot scene that records startup and renderer diagnostics on the game canvas for browser validation. |
 | `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional four-floor/shared-stage data, its public types, and fail-fast startup validation. |
+| `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
 
 ## Current File Responsibilities
 
@@ -38,7 +39,7 @@ Steps 1 through 5 are complete. Step 6's typed balance configuration and startup
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Implemented empty boundary for future pure deterministic game state, simulation, economy, progression, upgrades, and offline-income calculations. |
+| `src/core/` | Owns the renderer-independent `GameNumber` boundary; authoritative state, simulation, economy, progression, upgrades, and offline-income logic remain future work. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
@@ -56,6 +57,7 @@ Steps 1 through 5 are complete. Step 6's typed balance configuration and startup
 - `src/persistence/` serializes authoritative state but must not own economy or simulation rules.
 - `src/platform/` translates host lifecycle events and must not contain game balance logic.
 - Presentation animation timing must never determine production output.
+- Runtime gold, material, yield, and cost values must cross the core through `GameNumber`; persistence uses its serialized string form and UI formatting remains a separate concern.
 
 ## Planned Data Flow
 

@@ -11,7 +11,7 @@ Stack phù hợp nhất cho game này là **TypeScript + Phaser 4 + Vite**, xây
 | Build/dev server | **Vite** |
 | Game UI | Phaser UI; dùng **Preact** cho modal/menu phức tạp nếu cần |
 | State | Event-driven store đơn giản; chưa cần Redux |
-| Số cực lớn | `break_infinity.js` hoặc abstraction `GameNumber` |
+| Số cực lớn | `GameNumber` abstraction backed by **break_infinity.js 2.2.0** |
 | Local save | **IndexedDB + Dexie** |
 | Telegram | Telegram Mini Apps JavaScript API |
 | Mobile native | **Capacitor 8** nếu cần App Store/Google Play |
