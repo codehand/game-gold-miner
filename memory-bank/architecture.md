@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 9 are complete. Step 10's mine-floor extraction is implemented with passing automated checks and is awaiting user validation. Shared-elevator transport and all later stages remain blocked; there is no database, migration, or persistence schema.
+Steps 1 through 10 are complete. Step 11's shared-elevator transport is implemented with passing automated checks and is awaiting user validation. Warehouse conversion and all later stages remain blocked; there is no database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -20,6 +20,7 @@ Steps 1 through 9 are complete. Step 10's mine-floor extraction is implemented w
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
 | `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
+| `src/core/simulation/advanceElevator.ts` | Capacity-limited round-robin pickup, timed in-transit state, and delivery to the warehouse input queue. |
 
 ## Current File Responsibilities
 
@@ -41,7 +42,7 @@ Steps 1 through 9 are complete. Step 10's mine-floor extraction is implemented w
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, and mine-floor extraction; transport, conversion, economy, progression, upgrades, and offline-income logic remain future work. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, mine-floor extraction, and shared-elevator transport; conversion, economy, progression, upgrades, and offline-income logic remain future work. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
@@ -85,6 +86,10 @@ Foreground simulation uses a 100 ms fixed tick. Each update credits at most 1,00
 ## Extraction Contract
 
 Every unlocked floor advances extraction on each fixed tick using its configured cycle duration. A completed cycle yields `baseYield × outputGrowthRate^(mineShaftLevel - 1)`; milestone multipliers are not applied before Step 17. Completed output is added immutably to that floor's `materialQueue` and `totalExtracted`, while normalized overflow progress carries into the next cycle. Locked floors remain inert, and extraction never changes global gold, elevator state, warehouse state, or transport totals.
+
+## Elevator Transport Contract
+
+When idle, the shared elevator scans from `roundRobinCursor` through the ordered floor list with wraparound, skipping locked or empty floors. A successful pickup removes the lesser of the selected queue and elevator capacity, adds that amount to the floor's `totalTransported`, stores it in `carriedMaterial`, and advances the cursor to the following floor. The configured 1,500 ms transit must complete before the load enters `warehouse.inputQueue`; excess remains at the floor, and gold never changes. Step 11 advances an existing elevator load before extraction during each fixed tick, making newly extracted output eligible on the following tick; Step 13 owns final full-pipeline ordering.
 
 ## Provisional Balance Snapshot
 

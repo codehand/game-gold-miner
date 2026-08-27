@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 10 is implemented with passing automated checks and is awaiting user validation. Step 11 has not started and remains blocked.
+**Phase:** Implementation Plan Step 11 is implemented with passing automated checks and is awaiting user validation. Step 12 has not started and remains blocked.
 
 ## Completed
 
@@ -41,7 +41,10 @@
 - Step 9 automated evidence: one large update, ten regular updates, and irregular chunks produce identical state; partial time carries correctly, oversized and invalid deltas are handled as specified, and production values remain unchanged before extraction is implemented.
 - Step 9 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 10.
 - Step 10 implemented on 2026-08-27: unlocked floors advance extraction during fixed ticks, apply configured exponential level yield, enqueue output only at completed cycle boundaries, update total extracted, and retain overflow progress.
-- Step 10 automated evidence: tests cover immediately before, exactly at, and beyond a cycle boundary; level-adjusted output; every configured floor; locked-floor inactivity; deterministic chunking; multiple cycles; and unchanged gold, elevator, and warehouse state.
+- Step 10 automated evidence: tests cover immediately before, exactly at, and beyond a cycle boundary; level-adjusted output; every configured floor; locked-floor inactivity; deterministic chunking; multiple cycles; and no direct spendable-gold increase.
+- Step 10 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 11.
+- Step 11 implemented on 2026-08-27: one shared elevator scans unlocked non-empty floors round-robin, picks up to its capacity, leaves excess queued, tracks in-transit material and progress, and delivers completed loads to the warehouse input queue.
+- Step 11 automated evidence: tests cover empty idling, capacity limits, pre-completion isolation, locked/empty skipping, round-robin fairness, multiple cycles, unchanged gold, and exact material conservation across queues, transit, and warehouse input.
 
 ## Implementation Step Status
 
@@ -56,12 +59,13 @@
 | 7 — Introduce the large-number boundary | Complete | User validated the passing Step 7 checks and authorized Step 8. |
 | 8 — Define authoritative game state | Complete | User validated the passing Step 8 checks and authorized Step 9. |
 | 9 — Implement fixed-step simulation time | Complete | User validated the passing Step 9 checks and authorized Step 10. |
-| 10 — Implement extraction | Implemented / awaiting user validation | Twenty-nine unit tests pass; extraction boundaries, overflow, level yield, floor configuration, lock state, chunk invariance, and downstream isolation are covered. |
-| 11 — Implement the shared elevator | Not started / blocked | Must not begin until the user validates Step 10. |
+| 10 — Implement extraction | Complete | User validated the passing Step 10 checks and authorized Step 11. |
+| 11 — Implement the shared elevator | Implemented / awaiting user validation | Thirty-four unit tests pass; idling, capacity, timing, skipping, fairness, immutability, and conservation are covered. |
+| 12 — Implement warehouse conversion | Not started / blocked | Must not begin until the user validates Step 11. |
 
 ## Not Started
 
-- Shared-elevator transport, warehouse conversion, and later economy simulation.
+- Warehouse conversion and later economy simulation.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Base-game shaft/elevator/warehouse upgrades and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

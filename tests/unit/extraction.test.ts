@@ -29,7 +29,8 @@ describe('mine-floor extraction', () => {
 
     const beyondBoundary = advanceSimulation(atBoundary, FIXED_STEP_MS);
 
-    expectFloor(beyondBoundary, 0.05, 10);
+    expectFloor(beyondBoundary, 0.05, 0, 10);
+    expect(beyondBoundary.elevator.carriedMaterial.equals(10)).toBe(true);
     expect(beyondBoundary.gold.equals(BASE_GAME_BALANCE.startingGold)).toBe(true);
   });
 
@@ -62,21 +63,21 @@ describe('mine-floor extraction', () => {
     expect(state.gold.equals(BASE_GAME_BALANCE.startingGold)).toBe(true);
   });
 
-  it('keeps locked floors inert and leaves later production stages untouched', () => {
+  it('keeps locked floors inert while the unlocked floor continues extracting', () => {
     const initialState = createInitialGameState(
       BASE_GAME_BALANCE,
       TIMESTAMP_MS,
     );
     const state = advanceFor(initialState, 5_000);
 
-    expectFloor(state, 0.5, 20);
+    expectFloor(state, 0.5, 0, 20);
     state.floors.slice(1).forEach((floor) => {
       expect(floor.extractionProgress).toBe(0);
       expect(floor.materialQueue.equals(0)).toBe(true);
       expect(floor.totalExtracted.equals(0)).toBe(true);
     });
-    expect(state.elevator).toEqual(initialState.elevator);
-    expect(state.warehouse).toEqual(initialState.warehouse);
+    expect(state.elevator.carriedMaterial.equals(10)).toBe(true);
+    expect(state.warehouse.inputQueue.equals(10)).toBe(true);
     expect(state.gold.equals(initialState.gold)).toBe(true);
   });
 
@@ -94,8 +95,11 @@ describe('mine-floor extraction', () => {
     };
     const state = advanceFor(unlockedState, 3_500);
 
-    expect(state.floors.map(({ materialQueue }) => materialQueue.toJSON())).toEqual(
+    expect(state.floors.map(({ totalExtracted }) => totalExtracted.toJSON())).toEqual(
       ['10', '30', '90', '270'],
+    );
+    expect(state.floors.map(({ materialQueue }) => materialQueue.toJSON())).toEqual(
+      ['0', '30', '90', '270'],
     );
     [0.75, 0.4, 1 / 6, 0].forEach((expectedProgress, index) => {
       expect(state.floors[index].extractionProgress).toBeCloseTo(
@@ -139,11 +143,12 @@ function advanceFor(initialState: GameState, elapsedMs: number): GameState {
 function expectFloor(
   state: GameState,
   extractionProgress: number,
-  extracted: number,
+  queued: number,
+  extracted: number = queued,
 ): void {
   const floor = state.floors[0];
 
   expect(floor.extractionProgress).toBeCloseTo(extractionProgress);
-  expect(floor.materialQueue.equals(extracted)).toBe(true);
+  expect(floor.materialQueue.equals(queued)).toBe(true);
   expect(floor.totalExtracted.equals(extracted)).toBe(true);
 }

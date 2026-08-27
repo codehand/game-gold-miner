@@ -5,6 +5,7 @@ import {
 } from '../../config';
 import { GameNumber } from '../numbers/GameNumber';
 import type { GameState, MineFloorState } from '../state/GameState';
+import { advanceElevator } from './advanceElevator';
 
 export const SIMULATION_STEP_MS = 100;
 export const MAX_FOREGROUND_DELTA_MS = 1_000;
@@ -45,10 +46,16 @@ function advanceFixedStep(
     throw new Error('Simulation tick exceeds the safe integer range.');
   }
 
+  const transportedState = advanceElevator(
+    state,
+    config.elevator,
+    SIMULATION_STEP_MS,
+  );
+
   return {
-    ...state,
+    ...transportedState,
     simulationTick,
-    floors: state.floors.map((floor) => {
+    floors: transportedState.floors.map((floor) => {
       return advanceExtraction(
         floor,
         findFloorConfig(config, floor.id),

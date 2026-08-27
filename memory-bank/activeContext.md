@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 10 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates mine-floor extraction; Step 11 must not begin without explicit authorization.
+Implementation Plan Step 11 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates shared-elevator transport; Step 12 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -40,7 +40,10 @@ Implementation Plan Step 10 is implemented and its automated validation passes. 
 - Added deterministic timing coverage for single, repeated, and irregular update chunks, partial-tick carry, oversized deltas, invalid elapsed values, and unchanged production state before Step 10.
 - The user validated Step 9 and authorized Step 10 on 2026-08-27.
 - Added config-driven extraction to fixed simulation ticks: unlocked floors advance normalized progress, completed cycles add level-adjusted yield to local queues and extraction totals, and overflow carries into the next cycle.
-- Added extraction coverage for cycle boundaries, overflow, exponential level yield, all configured floor durations/yields, locked floors, deterministic chunking, and isolation from gold, elevator, and warehouse state.
+- Added extraction coverage for cycle boundaries, overflow, exponential level yield, all configured floor durations/yields, locked floors, deterministic chunking, and no direct spendable-gold increase.
+- The user validated Step 10 and authorized Step 11 on 2026-08-27.
+- Added one timed shared elevator that selects unlocked non-empty floors round-robin, removes at most its capacity, records transported totals, carries material during transit, and delivers only to the warehouse input queue.
+- Added elevator coverage for empty idling, limited-capacity excess, locked/empty skipping, round-robin fairness, exact delivery timing, immutable state, and conservation across multiple extraction/transit cycles.
 
 ## Active Decisions
 
@@ -60,11 +63,14 @@ Implementation Plan Step 10 is implemented and its automated validation passes. 
 - Advance foreground simulation in deterministic 100 ms ticks, carry sub-tick remainder in authoritative state, and credit at most 1,000 ms of simulation per update while consuming the full wall-clock delta.
 - Calculate mine-shaft yield as base yield multiplied by the configured output-growth rate for each level above one; milestone multipliers remain deferred to Step 17.
 - Deposit completed extraction only into the producing floor's material queue and total-extracted counter; spendable gold changes only after later transport and warehouse stages.
+- Treat `roundRobinCursor` as the next floor index to scan; wrap top-to-bottom, advance it after a successful pickup, and leave it unchanged while idle.
+- Remove material from a floor and increment its transported total at elevator pickup; deliver carried material only when transit completes, adding it to `warehouse.inputQueue` without changing gold.
+- During the staged Step 11 integration, advance the elevator before extraction so new output remains queued until the next fixed tick; Step 13 owns the final all-stage update ordering.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 10 test results.
-2. Begin Step 11 only after explicit user authorization.
+1. Wait for the user to validate the Step 11 test results.
+2. Begin Step 12 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

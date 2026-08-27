@@ -29,6 +29,7 @@ Persistence and Platform Adapters
 - Use events/commands between presentation and core logic; never mutate economy state directly from a scene.
 - Advance foreground simulation through 100 ms fixed ticks, retain sub-tick remainder in authoritative state, and credit at most 1,000 ms per update after suspension while consuming the full wall-clock delta.
 - Advance extraction only for unlocked floors, retain normalized overflow progress, and place completed level-adjusted output in the producing floor's local queue without changing spendable gold.
+- Let the shared elevator scan unlocked non-empty floors from an authoritative round-robin cursor, remove no more than its capacity, hold material during timed transit, and deliver only to the warehouse input queue.
 - Calculate offline rewards from timestamps and a configured cap/efficiency.
 - Represent very large values through the immutable `GameNumber` abstraction; keep break_infinity.js private, serialize as strings, and implement abbreviated display formatting separately.
 - Serialize only authoritative game state, never transient animation state.
