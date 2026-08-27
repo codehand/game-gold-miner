@@ -2,7 +2,7 @@
 
 ## Current State
 
-Step 1 was validated on 2026-08-27. The repository remains documentation-only. There is no `package.json`, application scaffold, dependency lockfile, source code, database, migration, schema, or executable test suite. Step 2 has not started. Do not report planned commands as working until they have been created and verified.
+Steps 1 and 2 are complete. Step 3 is implemented with passing automated checks and is awaiting user validation; Step 4 has not started. The repository contains a root Vite application scaffold, strict TypeScript configuration, Phaser 4.2.1, an npm lockfile, ESLint, Vitest, Playwright, one unit test, and one Chromium E2E smoke test. No game simulation or planned Step 4 runtime module boundaries exist yet.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -19,23 +19,29 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Capacitor 8 only if native packaging becomes necessary
 - Optional Preact for complex DOM overlays; no React-rendered gameplay
 
+## Implemented Toolchain
+
+- Node.js 22.18.0 and npm 10.9.3 were used for Step 3 validation.
+- TypeScript 6.0.3 is selected because the Step 2 TypeScript 7 scaffold version was outside the supported peer range of typescript-eslint 8.68.0.
+- ESLint 10.9.1 uses a flat configuration with `@eslint/js` and `typescript-eslint` recommended correctness rules.
+- Vitest 4.1.11 runs Node-based unit tests from `tests/unit/`.
+- Playwright 1.62.1 runs Chromium E2E tests from `tests/e2e/` and starts a fixed-port Vite test server automatically.
+
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
 ## Complete Database Schema
 
-**Current schema: none.** The documentation-only repository has no database, migrations, tables, indexes, or relationships. The MVP is intentionally client-only and plans to use IndexedDB for local saves.
+**Current schema: none.** The repository has no database, migrations, tables, indexes, object stores, or relationships. The MVP is intentionally client-only and plans to use IndexedDB for local saves.
 
 If a database is introduced, replace this statement with the complete authoritative schema: every table, column, data type, default, nullable rule, primary/foreign key, unique/check constraint, index, and relationship. Update this section in the same change as each migration; do not leave schema details only in migration files.
 
-## Planned Commands
+## Verified Commands
 
-After scaffolding, provide and verify:
-
-- `npm run dev`
+- `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`
-- `npm run test:e2e`
-- `npm run lint`
+- `npm run test`: one baseline unit test passes.
+- `npm run test:e2e`: one Chromium scaffold smoke test passes without console or page errors.
+- `npm run lint`: the repository passes the ESLint flat configuration.
 
 ## Conventions
 

@@ -2,7 +2,18 @@
 
 ## Current Status
 
-Step 1 was validated on 2026-08-27. The repository is documentation-only: there is no application scaffold, source tree, package manifest, runtime module, database, migration, or executable test suite. The structures below are approved responsibilities for future implementation, not claims that those files already exist.
+Steps 1 and 2 are complete. Step 3 quality tooling is implemented with passing automated checks and is awaiting user validation. The repository currently contains only the root Vite scaffold and quality-tooling files; the planned Step 4 runtime module boundaries have not been created. There is no game simulation, database, migration, or persistence schema.
+
+## Implemented Foundation
+
+| Path | Responsibility |
+|---|---|
+| `index.html`, `src/main.ts`, `src/style.css` | Minimal English Vite/TypeScript application scaffold used to validate browser loading. |
+| `package.json`, `package-lock.json`, `tsconfig.json` | Locked dependencies, strict compiler settings, and verified development/build/test scripts. |
+| `eslint.config.mjs` | Flat lint configuration for TypeScript, configuration files, and the Node simulator script. |
+| `vitest.config.ts`, `tests/unit/` | Node-based unit-test configuration and scaffold baseline coverage. |
+| `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, and browser smoke coverage. |
+| `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
 
 ## Current File Responsibilities
 
@@ -20,7 +31,7 @@ Step 1 was validated on 2026-08-27. The repository is documentation-only: there 
 | `memory-bank/tech-stack.md` | Technology choices and the rationale for the web-first Phaser stack. |
 | `memory-bank/techContext.md` | Verified repository state, pinned technologies, planned commands, constraints, security rules, and database-schema status. |
 
-## Planned Runtime Modules
+## Planned Runtime Modules — Not Yet Created
 
 | Path | Responsibility |
 |---|---|

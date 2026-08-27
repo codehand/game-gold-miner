@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 1 complete and validated. Step 2 is blocked pending explicit user authorization. No runnable game exists yet.
+**Phase:** Implementation Plan Step 3 is implemented with passing automated checks and is awaiting user validation. Step 4 has not started and remains blocked.
 
 ## Completed
 
@@ -18,18 +18,22 @@
 - Architecture documentation workflow added; the file began as an empty placeholder and is now maintained as the architecture map.
 - Step 1 completed on 2026-08-27: all Memory Bank files and `AGENTS.md` were reviewed; the base-game boundary was confirmed; the repository was verified as documentation-only; no package manifest, source tree, database, migration, or schema was found.
 - `memory-bank/architecture.md` populated with current document responsibilities, planned runtime-module ownership, dependency boundaries, data flow, and the explicit `none` database schema.
+- Step 2 completed and validated on 2026-08-27: the Vite/TypeScript scaffold loads in a browser, Phaser 4.2.1 is locked, the production build passes, and simulator-preview scripts are available.
+- Step 3 implemented on 2026-08-27: strict TypeScript, ESLint flat configuration, Vitest, Playwright Chromium testing, required package scripts, and generated-artifact ignores are present.
+- Step 3 automated evidence: `npm run lint`, `npm run test`, `npm run test:e2e`, and `npm run build` pass; the development server responds successfully at its local URL and stops cleanly.
 
 ## Implementation Step Status
 
 | Step | Status | Evidence |
 |---|---|---|
 | 1 — Scope and repository state | Complete | Documentation reviewed; scope consistent; repository and database checks passed. |
-| 2 — Scaffold the web application | Not started / blocked | Requires explicit user authorization after the Step 1 stop gate. |
+| 2 — Scaffold the web application | Complete | Vite/TypeScript scaffold and Phaser 4.2.1 are locked; browser load and production build pass. |
+| 3 — Add quality tooling | Implemented / awaiting user validation | Lint, unit test, Chromium E2E smoke test, strict type check, production build, and development-server HTTP check pass. |
+| 4 — Create planned module boundaries | Not started / blocked | Must not begin until the user validates Step 3. |
 
 ## Not Started
 
-- Vite/TypeScript/Phaser scaffold and dependency installation.
-- Package scripts, linting, type checking, Vitest, and Playwright configuration.
+- Planned runtime module boundaries and core import enforcement.
 - Pure simulation/economy implementation.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Base-game shaft/elevator/warehouse upgrades and floor unlocks.

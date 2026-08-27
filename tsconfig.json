@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "target": "ES2022",
     "useDefineForClassFields": true,
     "module": "ESNext",
@@ -16,5 +16,11 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "tests",
+    "eslint.config.mjs",
+    "playwright.config.ts",
+    "vitest.config.ts"
+  ]
 }
