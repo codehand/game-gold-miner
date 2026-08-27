@@ -15,6 +15,8 @@ describe('initial authoritative game state', () => {
 
     expect(state.saveVersion).toBe(INITIAL_SAVE_VERSION);
     expect(state.lastUpdateTimestampMs).toBe(TIMESTAMP_MS);
+    expect(state.simulationTick).toBe(0);
+    expect(state.simulationRemainderMs).toBe(0);
     expect(state.gold).toBeInstanceOf(GameNumber);
     expect(state.gold.equals(BASE_GAME_BALANCE.startingGold)).toBe(true);
     expect(state.floors).toHaveLength(4);

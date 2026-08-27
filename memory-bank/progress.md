@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 8 is implemented with passing automated checks and is awaiting user validation. Step 9 has not started and remains blocked.
+**Phase:** Implementation Plan Step 9 is implemented with passing automated checks and is awaiting user validation. Step 10 has not started and remains blocked.
 
 ## Completed
 
@@ -36,6 +36,9 @@
 - Step 7 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 8.
 - Step 8 implemented on 2026-08-27: authoritative state types and a deterministic factory now model save version, timestamp, gold, four floors, elevator, warehouse, progress, queues, capacities, and production totals.
 - Step 8 automated evidence: fresh state has only floor one unlocked, all progress is normalized, all quantities initialize correctly through `GameNumber`, invalid timestamps fail, and JSON output contains only authoritative plain data.
+- Step 8 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 9.
+- Step 9 implemented on 2026-08-27: foreground time advances through immutable 100 ms fixed ticks, carries authoritative sub-tick remainder, caps credited simulation time at 1,000 ms per update, and consumes the full wall-clock delta.
+- Step 9 automated evidence: one large update, ten regular updates, and irregular chunks produce identical state; partial time carries correctly, oversized and invalid deltas are handled as specified, and production values remain unchanged before extraction is implemented.
 
 ## Implementation Step Status
 
@@ -48,12 +51,13 @@
 | 5 — Create a minimal Phaser boot scene | Complete | User validated the passing Step 5 checks and authorized Step 6. |
 | 6 — Define base-game balance configuration | Complete | User validated the passing Step 6 checks and authorized Step 7. |
 | 7 — Introduce the large-number boundary | Complete | User validated the passing Step 7 checks and authorized Step 8. |
-| 8 — Define authoritative game state | Implemented / awaiting user validation | Eighteen unit tests pass; fresh state and renderer-free serialization match the validated balance configuration. |
-| 9 — Implement fixed-step simulation time | Not started / blocked | Must not begin until the user validates Step 8. |
+| 8 — Define authoritative game state | Complete | User validated the passing Step 8 checks and authorized Step 9. |
+| 9 — Implement fixed-step simulation time | Implemented / awaiting user validation | Twenty-four unit tests pass; deterministic chunking, remainder carry, delta bounding, timestamp advancement, and invalid input handling are covered. |
+| 10 — Implement extraction | Not started / blocked | Must not begin until the user validates Step 9. |
 
 ## Not Started
 
-- Pure simulation/economy implementation.
+- Production and economy simulation beyond the fixed-step clock.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Base-game shaft/elevator/warehouse upgrades and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

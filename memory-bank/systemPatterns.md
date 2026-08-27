@@ -27,7 +27,7 @@ Persistence and Platform Adapters
 - Let the shared elevator service non-empty unlocked floors round-robin from top to bottom.
 - Upgrade each mine shaft, the elevator, and the warehouse independently; upgrades retain queued material and in-progress completion percentage.
 - Use events/commands between presentation and core logic; never mutate economy state directly from a scene.
-- Advance simulation using elapsed time, with bounded deltas after suspension.
+- Advance foreground simulation through 100 ms fixed ticks, retain sub-tick remainder in authoritative state, and credit at most 1,000 ms per update after suspension while consuming the full wall-clock delta.
 - Calculate offline rewards from timestamps and a configured cap/efficiency.
 - Represent very large values through the immutable `GameNumber` abstraction; keep break_infinity.js private, serialize as strings, and implement abbreviated display formatting separately.
 - Serialize only authoritative game state, never transient animation state.

@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 8 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the authoritative-state tests; Step 9 must not begin without explicit authorization.
+Implementation Plan Step 9 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates deterministic fixed-step timing; Step 10 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -35,6 +35,9 @@ Implementation Plan Step 8 is implemented and its automated validation passes. T
 - The user validated Step 7 and authorized Step 8 on 2026-08-27.
 - Added renderer-independent authoritative state types for global gold, four floors, the elevator, and the warehouse, with save version and last-update timestamp.
 - Added a deterministic fresh-state factory that consumes validated balance data and an explicit timestamp, plus tests for unlocks, progress, quantities, serialization, and invalid timestamps.
+- The user validated Step 8 and authorized Step 9 on 2026-08-27.
+- Added a pure 100 ms fixed-step simulation clock with a 1,000 ms foreground-delta cap, authoritative tick/remainder state, immutable elapsed-time advancement, and full wall-clock timestamp consumption.
+- Added deterministic timing coverage for single, repeated, and irregular update chunks, partial-tick carry, oversized deltas, invalid elapsed values, and unchanged production state before Step 10.
 
 ## Active Decisions
 
@@ -51,11 +54,12 @@ Implementation Plan Step 8 is implemented and its automated validation passes. T
 - Use a 1.15 upgrade-cost growth rate, 1.10 mine-yield growth, and 1.12 shared-stage capacity growth until the Step 19 economy simulation and playtesting refine them.
 - Represent runtime gold, material quantities, yields, and costs through `GameNumber`; keep abbreviated display formatting outside the arithmetic abstraction.
 - Store only authoritative production data in core state; renderer, scene, animation, sprite, tween, and texture objects never enter serialized state.
+- Advance foreground simulation in deterministic 100 ms ticks, carry sub-tick remainder in authoritative state, and credit at most 1,000 ms of simulation per update while consuming the full wall-clock delta.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 8 test results.
-2. Begin Step 9 only after explicit user authorization.
+1. Wait for the user to validate the Step 9 test results.
+2. Begin Step 10 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

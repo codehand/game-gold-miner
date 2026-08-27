@@ -17,6 +17,8 @@ export function createInitialGameState(
   return {
     saveVersion: INITIAL_SAVE_VERSION,
     lastUpdateTimestampMs: timestampMs,
+    simulationTick: 0,
+    simulationRemainderMs: 0,
     gold: GameNumber.from(config.startingGold),
     floors: config.floors.map(createFloorState),
     elevator: {

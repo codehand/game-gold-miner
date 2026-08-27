@@ -30,6 +30,8 @@ export interface WarehouseState {
 export interface GameState {
   readonly saveVersion: number;
   readonly lastUpdateTimestampMs: number;
+  readonly simulationTick: number;
+  readonly simulationRemainderMs: number;
   readonly gold: GameNumber;
   readonly floors: readonly MineFloorState[];
   readonly elevator: ElevatorState;
