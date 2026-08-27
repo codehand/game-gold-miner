@@ -15,6 +15,8 @@ When implementation begins, follow `memory-bank/tech-stack.md`: keep simulation 
 No application scaffold or package scripts exist yet. Once the Vite project is created, expose these standard commands in `package.json`:
 
 - `npm run dev`: start the local Vite development server.
+- `npm run dev:sim`: boot an iPhone Simulator, open the Vite app in Safari, and stream it through `serve-sim` for AI-assisted visual review.
+- `npm run sim:list` / `npm run sim:stop`: inspect or stop active simulator streams.
 - `npm run build`: type-check and create the production bundle.
 - `npm run test`: run Vitest unit tests.
 - `npm run test:e2e`: run Playwright browser tests.

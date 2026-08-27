@@ -1,0 +1,22 @@
+{
+  "name": "cat-mine-idle",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:sim": "node scripts/dev-simulator.mjs",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "sim:list": "serve-sim --list",
+    "sim:stop": "serve-sim --kill"
+  },
+  "dependencies": {
+    "phaser": "4.2.1"
+  },
+  "devDependencies": {
+    "serve-sim": "^0.1.46",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  }
+}
