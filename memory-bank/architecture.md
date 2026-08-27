@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 4 are complete. Step 5's minimal Phaser bootstrap is implemented with passing automated checks and is awaiting user validation. There is one game instance and one boot scene, but no game simulation, balance configuration, database, migration, or persistence schema.
+Steps 1 through 5 are complete. Step 6's typed balance configuration and startup validation are implemented with passing automated checks and are awaiting user validation. There is no game simulation, large-number abstraction, database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -16,6 +16,7 @@ Steps 1 through 4 are complete. Step 5's minimal Phaser bootstrap is implemented
 | `tests/unit/architecture.test.ts` | Regression coverage proving the core boundary accepts pure TypeScript and rejects renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
 | `src/game/scenes/BootScene.ts` | Single neutral boot scene that records startup and renderer diagnostics on the game canvas for browser validation. |
+| `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional four-floor/shared-stage data, its public types, and fail-fast startup validation. |
 
 ## Current File Responsibilities
 
@@ -38,7 +39,7 @@ Steps 1 through 4 are complete. Step 5's minimal Phaser bootstrap is implemented
 | Path | Responsibility |
 |---|---|
 | `src/core/` | Implemented empty boundary for future pure deterministic game state, simulation, economy, progression, upgrades, and offline-income calculations. |
-| `src/config/` | Implemented empty boundary for future data-driven balance values. |
+| `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
 | `src/persistence/` | Implemented empty boundary for future save validation, migration, serialization, and IndexedDB/Dexie adapters. |
@@ -61,6 +62,19 @@ Steps 1 through 4 are complete. Step 5's minimal Phaser bootstrap is implemented
 Load and validate save → migrate if required → calculate capped offline reward → initialize pure core state → advance deterministic simulation → publish read-only snapshot → render Phaser/UI → translate player input into core commands → persist debounced authoritative snapshots.
 
 The production pipeline is four independent mine shafts → one shared round-robin elevator → one shared warehouse → spendable gold.
+
+## Provisional Balance Snapshot
+
+| Stage | Starting values | Upgrade values | Unlock |
+|---|---|---|---|
+| Floor 1 | Level 1, yield 10 / 2,000 ms, unlocked | Base cost 25, cost x1.15, yield x1.10 | None |
+| Floor 2 | Level 1, yield 30 / 2,500 ms, locked | Base cost 75, cost x1.15, yield x1.10 | 250 gold; Floor 1 level 5 |
+| Floor 3 | Level 1, yield 90 / 3,000 ms, locked | Base cost 225, cost x1.15, yield x1.10 | 1,500 gold; Floor 2 level 5 |
+| Floor 4 | Level 1, yield 270 / 3,500 ms, locked | Base cost 675, cost x1.15, yield x1.10 | 7,500 gold; Floor 3 level 7 |
+| Elevator | Level 1, capacity 50 / 1,500 ms | Base cost 100, cost x1.15, capacity x1.12 | Shared and always available |
+| Warehouse | Level 1, capacity 60 / 1,200 ms | Base cost 120, cost x1.15, capacity x1.12 | Shared and always available |
+
+Starting gold is 100. Every upgradeable stage uses milestones at levels 10/25/50/100 with x2/x2/x3/x4 multipliers. These values are hypotheses until the Step 19 deterministic economy simulation and later playtesting validate them.
 
 ## Complete Database Schema
 

@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 5 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the Phaser boot-scene test; Step 6 must not begin without explicit authorization.
+Implementation Plan Step 6 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the balance-configuration test; Step 7 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -26,6 +26,9 @@ Implementation Plan Step 5 is implemented and its automated validation passes. T
 - Implemented one Phaser game and one boot scene with automatic WebGL/Canvas selection, a 360×640 logical viewport, fit-and-center scaling, a neutral background, and no physics configuration.
 - Replaced the temporary DOM scaffold with the Phaser canvas and added hot-reload cleanup that destroys the prior game instance before replacement.
 - Updated the Chromium smoke test to verify one canvas, one boot-scene start per load, the logical dimensions, a valid renderer, reload behavior, and no browser errors.
+- The user validated Step 5 and authorized Step 6 on 2026-08-27.
+- Added typed, data-driven provisional balance configuration for four mine floors, one shared elevator, one shared warehouse, and the required level 10/25/50/100 milestones.
+- Added startup validation plus unit coverage for missing floors, duplicate identifiers, invalid durations, non-positive yields, and invalid milestone ordering.
 
 ## Active Decisions
 
@@ -38,16 +41,18 @@ Implementation Plan Step 5 is implemented and its automated validation passes. T
 - Run production automatically through four mine shafts, one shared round-robin elevator, and one shared warehouse.
 - Upgrade mine shafts, elevator, and warehouse independently while preserving progress percentage.
 - Use saved-rate offline rewards, K/M/B/T number formatting, Phaser 4.2.1, and a mid-range Android Chrome performance baseline.
+- Start with 100 gold; provisional floor unlock costs are 250, 1,500, and 7,500, gated by prior-floor levels 5, 5, and 7.
+- Use a 1.15 upgrade-cost growth rate, 1.10 mine-yield growth, and 1.12 shared-stage capacity growth until the Step 19 economy simulation and playtesting refine them.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 5 test results.
-2. Begin Step 6 only after explicit user authorization.
+1. Wait for the user to validate the Step 6 test results.
+2. Begin Step 7 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 
 ## Open Questions
 
-- Exact balance curve and milestone multipliers.
+- Validation and refinement of the provisional balance curve through Step 19 and playtesting.
 - Final art-production workflow and original visual identity.
 - Target Telegram launch requirements beyond the prototype.

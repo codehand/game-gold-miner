@@ -18,6 +18,7 @@ Persistence and Platform Adapters
 - `src/persistence/`: versioned save schema, migrations, IndexedDB access, and future cloud synchronization.
 - `src/platform/`: adapters for browser, Telegram, and optional Capacitor builds.
 - `src/config/`: data-driven balance tables rather than hard-coded economy values.
+- Validate balance tables before game startup so malformed floor, stage, unlock, or milestone data fails before simulation state is created.
 
 ## Core Patterns
 

@@ -145,6 +145,17 @@ offlineGold = min(offlineSeconds, offlineCap)
 
 MVP chỉ dùng tiền ảo nội bộ, không blockchain, NFT, quy đổi tiền thật hoặc Play-to-Earn. Các hệ thống đó không cần thiết để kiểm chứng vòng lặp idle cốt lõi.
 
+### 6.1 Cấu hình cân bằng tạm thời cho base game
+
+- Vàng khởi đầu: `100`.
+- Bốn tầng có sản lượng/chu kỳ lần lượt là `10/2,0s`, `30/2,5s`, `90/3,0s`, và `270/3,5s`.
+- Chi phí mở tầng 2–4 là `250`, `1.500`, và `7.500`; yêu cầu tầng trước đạt cấp `5`, `5`, và `7`.
+- Elevator dùng chung bắt đầu với sức chứa `50` và chu kỳ `1,5s`; warehouse dùng chung có sức chứa `60` và chu kỳ `1,2s`.
+- Chi phí nâng cấp tăng theo hệ số `1,15`; sản lượng tầng tăng `1,10`; sức chứa elevator/warehouse tăng `1,12`.
+- Mọi hạng mục nâng cấp dùng mốc cấp `10/25/50/100` với multiplier `x2/x2/x3/x4`.
+
+Các giá trị này là giả thuyết triển khai ban đầu, chưa phải cân bằng cuối. Chúng phải được kiểm chứng bằng mô phỏng kinh tế ở Step 19 và playtest thực tế.
+
 ## 7. Điều khiển và giao diện
 
 ### Điều khiển
