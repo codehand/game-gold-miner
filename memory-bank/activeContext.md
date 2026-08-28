@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 17 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates milestone multipliers; Step 18 must not begin without explicit authorization.
+Implementation Plan Step 18 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates sequential floor unlocks; Step 19 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -63,6 +63,9 @@ Implementation Plan Step 17 is implemented and its automated validation passes. 
 - The user validated Step 16 and authorized Step 17 on 2026-08-28.
 - Added one shared level-effect calculation that applies configured milestone multipliers cumulatively at levels 10/25/50/100 to mine-shaft yield and shared-stage capacity.
 - Added milestone coverage for every threshold, actual production and derived rates across all three stages, milestone-aware initial state, preserved in-progress work, and reload-style idempotence.
+- The user validated Step 17 and authorized Step 18 on 2026-08-28.
+- Added an immutable floor-unlock purchase command that enforces the configured immediately previous unlocked-floor level requirement, checks funds, deducts the exact cost once, and initializes the opened floor from balance configuration.
+- Added unlock coverage for unmet and locked prerequisites, insufficient funds, configured initialization, repeated requests, unknown floors, all three sequential unlocks, and production after opening.
 
 ## Active Decisions
 
@@ -91,12 +94,14 @@ Implementation Plan Step 17 is implemented and its automated validation passes. 
 - Calculate an upgrade's next price from the stage's current level without rounding; expected player-action failures return the original state, while invalid/non-incrementable levels are invariant errors.
 - Recalculate each stage effect as `baseValue × outputGrowthRate^(level - 1) × cumulativeMilestoneMultiplier`; shared-stage cycle durations remain fixed.
 - Derive milestone effects from the current level rather than storing grant state, so each threshold activates once and reloads cannot apply it twice.
-- Bulk purchases, unlocks, and UI controls remain deferred.
+- Unlock floors 2–4 only in sequence after the immediately previous unlocked mine shaft reaches levels 5, 5, and 7 respectively and the configured 250/1,500/7,500 gold cost can be paid.
+- Initialize a successfully opened floor at its configured starting level with zero progress, queues, and totals; preserve unrelated floors, shared stages, and simulation metadata.
+- Bulk purchases and UI controls remain deferred.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 17 test results.
-2. Begin Step 18 only after explicit user authorization.
+1. Wait for the user to validate the Step 18 test results.
+2. Begin Step 19 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

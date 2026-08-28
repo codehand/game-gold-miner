@@ -21,7 +21,9 @@ export function createInitialGameState(
     simulationTick: 0,
     simulationRemainderMs: 0,
     gold: GameNumber.from(config.startingGold),
-    floors: config.floors.map(createFloorState),
+    floors: config.floors.map((floor) => {
+      return createMineFloorState(floor, floor.startingUnlocked);
+    }),
     elevator: {
       level: config.elevator.startingLevel,
       capacity: calculateLevelEffect(
@@ -47,13 +49,14 @@ export function createInitialGameState(
   };
 }
 
-function createFloorState(
+export function createMineFloorState(
   floor: BaseGameBalanceConfig['floors'][number],
+  isUnlocked: boolean,
 ): MineFloorState {
   return {
     id: floor.id,
     floorNumber: floor.floorNumber,
-    isUnlocked: floor.startingUnlocked,
+    isUnlocked,
     mineShaftLevel: floor.startingLevel,
     extractionProgress: 0,
     materialQueue: zero(),

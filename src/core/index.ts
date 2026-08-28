@@ -25,11 +25,17 @@ export {
   type UpgradePurchaseResult,
 } from './progression/upgrades';
 export {
+  purchaseFloorUnlock,
+  type FloorUnlockFailureReason,
+  type FloorUnlockResult,
+} from './progression/unlocks';
+export {
   advanceSimulation,
   MAX_FOREGROUND_DELTA_MS,
   SIMULATION_STEP_MS,
 } from './simulation/advanceSimulation';
 export {
+  createMineFloorState,
   createInitialGameState,
   INITIAL_SAVE_VERSION,
 } from './state/createInitialGameState';
