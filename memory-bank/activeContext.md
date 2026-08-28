@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 16 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates stage-specific upgrade effects; Step 17 must not begin without explicit authorization.
+Implementation Plan Step 17 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates milestone multipliers; Step 18 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -60,6 +60,9 @@ Implementation Plan Step 16 is implemented and its automated validation passes. 
 - The user validated Step 15 and authorized Step 16 on 2026-08-28.
 - Applied stage-specific upgrade effects: mine-shaft levels increase extraction yield, while elevator and warehouse purchases deterministically recalculate capacity from base capacity and the configured growth rate.
 - Added coverage comparing equal-duration production and derived rates before and after every stage upgrade, including preservation of queues, carried material, totals, cursors, timestamps, and normalized in-progress completion.
+- The user validated Step 16 and authorized Step 17 on 2026-08-28.
+- Added one shared level-effect calculation that applies configured milestone multipliers cumulatively at levels 10/25/50/100 to mine-shaft yield and shared-stage capacity.
+- Added milestone coverage for every threshold, actual production and derived rates across all three stages, milestone-aware initial state, preserved in-progress work, and reload-style idempotence.
 
 ## Active Decisions
 
@@ -77,7 +80,7 @@ Implementation Plan Step 16 is implemented and its automated validation passes. 
 - Represent runtime gold, material quantities, yields, and costs through `GameNumber`; keep abbreviated display formatting outside the arithmetic abstraction.
 - Store only authoritative production data in core state; renderer, scene, animation, sprite, tween, and texture objects never enter serialized state.
 - Advance foreground simulation in deterministic 100 ms ticks, carry sub-tick remainder in authoritative state, and credit at most 1,000 ms of simulation per update while consuming the full wall-clock delta.
-- Calculate mine-shaft yield as base yield multiplied by the configured output-growth rate for each level above one; milestone multipliers remain deferred to Step 17.
+- Calculate mine-shaft yield as base yield multiplied by the configured output-growth rate for each level above one and every cumulative milestone multiplier reached at the current level.
 - Deposit completed extraction only into the producing floor's material queue and total-extracted counter; spendable gold changes only after later transport and warehouse stages.
 - Treat `roundRobinCursor` as the next floor index to scan; wrap top-to-bottom, advance it after a successful pickup, and leave it unchanged while idle.
 - Remove material from a floor and increment its transported total at elevator pickup; deliver carried material only when transit completes, adding it to `warehouse.inputQueue` without changing gold.
@@ -86,13 +89,14 @@ Implementation Plan Step 16 is implemented and its automated validation passes. 
 - Keep locked floors fully inert while all unlocked production stages run automatically without managers or player taps.
 - Treat production rates as derived read-only values: expose every floor's theoretical rate, sum only unlocked floors for the mine estimate, and cap that estimate at the slower shared-stage throughput.
 - Calculate an upgrade's next price from the stage's current level without rounding; expected player-action failures return the original state, while invalid/non-incrementable levels are invariant errors.
-- Step 16 recalculates shared-stage capacity as `baseCapacity × outputGrowthRate^(newLevel - 1)` while retaining configured cycle durations. Mine-shaft yield remains level-derived, and all upgrades preserve valid progress percentages and material already queued or in transit.
-- Milestones, bulk purchases, unlocks, and UI controls remain deferred; configured milestone multipliers are not applied before Step 17.
+- Recalculate each stage effect as `baseValue × outputGrowthRate^(level - 1) × cumulativeMilestoneMultiplier`; shared-stage cycle durations remain fixed.
+- Derive milestone effects from the current level rather than storing grant state, so each threshold activates once and reloads cannot apply it twice.
+- Bulk purchases, unlocks, and UI controls remain deferred.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 16 test results.
-2. Begin Step 17 only after explicit user authorization.
+1. Wait for the user to validate the Step 17 test results.
+2. Begin Step 18 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

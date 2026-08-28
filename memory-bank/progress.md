@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 16 is implemented with passing automated checks and is awaiting user validation. Step 17 has not started and remains blocked.
+**Phase:** Implementation Plan Step 17 is implemented with passing automated checks and is awaiting user validation. Step 18 has not started and remains blocked.
 
 ## Completed
 
@@ -60,6 +60,9 @@
 - Step 15 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 16.
 - Step 16 implemented on 2026-08-28: mine-shaft upgrades immediately affect level-derived extraction yield, while elevator and warehouse purchases deterministically recalculate capacity from base capacity and the configured 1.12 growth rate without changing cycle durations.
 - Step 16 automated evidence: fifty-six unit tests pass, including equal-duration production comparisons for all three stages, bottleneck-aware rate improvements, exact level-two target capacities, and preservation of queues, carried material, totals, cursors, timestamps, and normalized in-progress work.
+- Step 16 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 17.
+- Step 17 implemented on 2026-08-28: mine shafts, the elevator, and the warehouse now apply cumulative configured milestones at levels 10/25/50/100 through a shared level-effect calculation used by actual production, initial capacity, purchases, and rate estimates.
+- Step 17 automated evidence: sixty-one unit tests pass, covering every multiplier threshold, all three production stages crossing level 10, milestone-aware rates and initial state, preservation of in-progress work, and reload-style proof that a reached milestone is not applied twice.
 
 ## Implementation Step Status
 
@@ -80,12 +83,13 @@
 | 13 — Run four floors concurrently | Complete | User validated the passing Step 13 checks and authorized Step 14. |
 | 14 — Add production-rate calculations | Complete | User validated the passing Step 14 checks and authorized Step 15. |
 | 15 — Implement upgrade costs for all three stages | Complete | User validated the passing Step 15 checks and authorized Step 16. |
-| 16 — Apply stage-specific upgrade effects | Implemented / awaiting user validation | Fifty-six unit tests pass; actual production, derived rates, progress preservation, queue conservation, and deterministic capacity growth are covered. |
-| 17 — Add milestone multipliers | Not started / blocked | Must not begin until the user validates Step 16. |
+| 16 — Apply stage-specific upgrade effects | Complete | User validated the passing Step 16 checks and authorized Step 17. |
+| 17 — Add milestone multipliers | Implemented / awaiting user validation | Sixty-one unit tests pass; cumulative thresholds, actual production, rates, preserved progress, milestone-aware initialization, and reload idempotence are covered. |
+| 18 — Implement sequential floor unlocks | Not started / blocked | Must not begin until the user validates Step 17. |
 
 ## Not Started
 
-- Milestones, unlocks, and later economy simulation.
+- Sequential unlocks and later economy simulation.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Player-facing shaft/elevator/warehouse upgrade controls and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

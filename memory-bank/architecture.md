@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 15 are complete. Step 16's stage-specific upgrade effects are implemented with passing automated checks and are awaiting user validation. Step 17 and all later work remain blocked; there is no database, migration, or persistence schema.
+Steps 1 through 16 are complete. Step 17's milestone multipliers are implemented with passing automated checks and are awaiting user validation. Step 18 and all later work remain blocked; there is no database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -20,6 +20,7 @@ Steps 1 through 15 are complete. Step 16's stage-specific upgrade effects are im
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
 | `src/core/economy/calculateProductionRates.ts` | Pure theoretical floor throughput, aggregate unlocked extraction, shared-stage throughput, effective mine-rate, and bottleneck calculations. |
+| `src/core/progression/calculateLevelEffect.ts` | Shared level-growth and cumulative milestone-effect calculation used by state creation, simulation, rates, and upgrades. |
 | `src/core/progression/upgrades.ts` | Pure next-upgrade pricing plus immutable mine-shaft, elevator, and warehouse purchase commands that apply level-derived yield/capacity effects with explicit results. |
 | `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited round-robin pickup, timed in-transit state, and delivery to the warehouse input queue. |
@@ -45,7 +46,7 @@ Steps 1 through 15 are complete. Step 16's stage-specific upgrade effects are im
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, and upgrade pricing, purchases, and stage-specific effects; milestones, later progression, and offline-income logic remain future work. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrade pricing/purchases, stage-specific effects, and cumulative milestones; later progression and offline-income logic remain future work. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
@@ -90,7 +91,7 @@ Within each fixed tick, all floors advance extraction in configured order, then 
 
 ## Extraction Contract
 
-Every unlocked floor advances extraction on each fixed tick using its configured cycle duration. A completed cycle yields `baseYield × outputGrowthRate^(mineShaftLevel - 1)`; milestone multipliers are not applied before Step 17. Completed output is added immutably to that floor's `materialQueue` and `totalExtracted`, while normalized overflow progress carries into the next cycle. Locked floors remain inert, and extraction never changes global gold, elevator state, warehouse state, or transport totals.
+Every unlocked floor advances extraction on each fixed tick using its configured cycle duration. A completed cycle yields `baseYield × outputGrowthRate^(mineShaftLevel - 1) × cumulativeMilestoneMultiplier`. Completed output is added immutably to that floor's `materialQueue` and `totalExtracted`, while normalized overflow progress carries into the next cycle. Locked floors remain inert, and extraction never changes global gold, elevator state, warehouse state, or transport totals.
 
 ## Elevator Transport Contract
 
@@ -102,11 +103,15 @@ The warehouse idles with no input. While input exists, it advances normalized co
 
 ## Production Rate Contract
 
-Production rates are pure derived values and are not stored in authoritative state. Each floor's theoretical extraction per second is `baseYield × outputGrowthRate^(level - 1) × 1,000 / cycleDurationMs`, including a theoretical value for locked floors. Aggregate mine extraction sums only unlocked floors. Elevator and warehouse throughput use their current authoritative capacity multiplied by `1,000 / cycleDurationMs`; effective mine production is the minimum of aggregate extraction and those two shared-stage rates. The result also identifies the limiting stage, with deterministic extraction → elevator → warehouse precedence for exact ties. Milestone effects remain excluded until Step 17.
+Production rates are pure derived values and are not stored in authoritative state. Each floor's theoretical extraction per second includes level growth and the cumulative milestone multiplier, including a theoretical value for locked floors. Aggregate mine extraction sums only unlocked floors. Elevator and warehouse throughput use their milestone-aware authoritative capacity multiplied by `1,000 / cycleDurationMs`; effective mine production is the minimum of aggregate extraction and those two shared-stage rates. The result also identifies the limiting stage, with deterministic extraction → elevator → warehouse precedence for exact ties.
 
 ## Upgrade Purchase Contract
 
-The next price for every upgradeable stage is `baseCost × costGrowthRate^currentLevel`, calculated without rounding through `GameNumber`. Mine-shaft, elevator, and warehouse purchases are distinct immutable commands. A successful command deducts exactly one price and increments only the selected level. Mine-shaft output is derived from the new level; elevator and warehouse capacity is recalculated as `baseCapacity × outputGrowthRate^(newLevel - 1)` without changing cycle duration. Queues, normalized progress, carried material, totals, cursors, timestamps, and unrelated stages remain unchanged. Insufficient funds, a missing floor, or a locked floor returns an explicit failure with the original state object. Invalid or non-incrementable levels are invariant errors, and milestone multipliers remain deferred to Step 17.
+The next price for every upgradeable stage is `baseCost × costGrowthRate^currentLevel`, calculated without rounding through `GameNumber`. Mine-shaft, elevator, and warehouse purchases are distinct immutable commands. A successful command deducts exactly one price and increments only the selected level. Mine-shaft output is derived from the new level; elevator and warehouse capacity is recalculated with level growth and cumulative milestones without changing cycle duration. Queues, normalized progress, carried material, totals, cursors, timestamps, and unrelated stages remain unchanged. Insufficient funds, a missing floor, or a locked floor returns an explicit failure with the original state object. Invalid or non-incrementable levels are invariant errors.
+
+## Milestone Contract
+
+Milestones are cumulative pure functions of the current stage level. Reaching levels 10/25/50/100 multiplies the stage effect by x2/x2/x3/x4 respectively, producing cumulative multipliers x2/x4/x12/x48. No milestone-award flag or mutable bonus is stored, so reconstructing the same authoritative state cannot grant a multiplier twice. The same calculation drives fresh shared-stage capacity, purchases, actual extraction, and production-rate estimates.
 
 ## Provisional Balance Snapshot
 

@@ -3,6 +3,7 @@ import {
   validateBaseGameBalance,
 } from '../../config';
 import { GameNumber } from '../numbers/GameNumber';
+import { calculateLevelEffect } from '../progression/calculateLevelEffect';
 import type { GameState, MineFloorState } from './GameState';
 
 export const INITIAL_SAVE_VERSION = 1;
@@ -23,14 +24,22 @@ export function createInitialGameState(
     floors: config.floors.map(createFloorState),
     elevator: {
       level: config.elevator.startingLevel,
-      capacity: GameNumber.from(config.elevator.baseCapacity),
+      capacity: calculateLevelEffect(
+        config.elevator.baseCapacity,
+        config.elevator.startingLevel,
+        config.elevator.upgrade,
+      ),
       roundRobinCursor: 0,
       transitProgress: 0,
       carriedMaterial: zero(),
     },
     warehouse: {
       level: config.warehouse.startingLevel,
-      capacity: GameNumber.from(config.warehouse.baseCapacity),
+      capacity: calculateLevelEffect(
+        config.warehouse.baseCapacity,
+        config.warehouse.startingLevel,
+        config.warehouse.upgrade,
+      ),
       inputQueue: zero(),
       conversionProgress: 0,
       totalGoldDelivered: zero(),

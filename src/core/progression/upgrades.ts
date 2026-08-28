@@ -11,6 +11,7 @@ import type {
   MineFloorState,
   WarehouseState,
 } from '../state/GameState';
+import { calculateLevelEffect } from './calculateLevelEffect';
 
 export type UpgradePurchaseFailureReason =
   | 'insufficient-funds'
@@ -171,9 +172,7 @@ function calculateSharedStageCapacity(
   level: number,
   config: SharedStageConfig,
 ): GameNumber {
-  return GameNumber.from(config.baseCapacity).multiply(
-    integerPower(config.upgrade.outputGrowthRate, level - 1),
-  );
+  return calculateLevelEffect(config.baseCapacity, level, config.upgrade);
 }
 
 function integerPower(base: number, exponent: number): GameNumber {

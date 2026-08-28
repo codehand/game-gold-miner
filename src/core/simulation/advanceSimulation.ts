@@ -4,6 +4,7 @@ import {
   type MineFloorConfig,
 } from '../../config';
 import { GameNumber } from '../numbers/GameNumber';
+import { calculateLevelEffect } from '../progression/calculateLevelEffect';
 import type { GameState, MineFloorState } from '../state/GameState';
 import { advanceElevator } from './advanceElevator';
 import { advanceWarehouse } from './advanceWarehouse';
@@ -113,10 +114,11 @@ function calculateExtractionYield(
   floor: MineFloorState,
   config: MineFloorConfig,
 ): GameNumber {
-  const levelMultiplier = config.upgrade.outputGrowthRate **
-    (floor.mineShaftLevel - 1);
-
-  return GameNumber.from(config.baseYield).multiply(levelMultiplier);
+  return calculateLevelEffect(
+    config.baseYield,
+    floor.mineShaftLevel,
+    config.upgrade,
+  );
 }
 
 function findFloorConfig(

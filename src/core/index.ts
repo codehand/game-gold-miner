@@ -11,6 +11,10 @@ export {
   type SerializedGameNumber,
 } from './numbers/GameNumber';
 export {
+  calculateLevelEffect,
+  calculateMilestoneMultiplier,
+} from './progression/calculateLevelEffect';
+export {
   calculateElevatorUpgradeCost,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,

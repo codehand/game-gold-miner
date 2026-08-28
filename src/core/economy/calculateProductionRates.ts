@@ -4,6 +4,7 @@ import type {
   SharedStageConfig,
 } from '../../config';
 import { GameNumber } from '../numbers/GameNumber';
+import { calculateLevelEffect } from '../progression/calculateLevelEffect';
 import type { GameState, MineFloorState } from '../state/GameState';
 
 const MILLISECONDS_PER_SECOND = 1_000;
@@ -39,8 +40,10 @@ export function calculateTheoreticalFloorExtractionRate(
     );
   }
 
-  const outputPerCycle = GameNumber.from(config.baseYield).multiply(
-    config.upgrade.outputGrowthRate ** (floor.mineShaftLevel - 1),
+  const outputPerCycle = calculateLevelEffect(
+    config.baseYield,
+    floor.mineShaftLevel,
+    config.upgrade,
   );
 
   return outputPerCycle.multiply(
