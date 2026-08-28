@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import {
+  advanceSimulation,
   calculateElevatorUpgradeCost,
+  calculateMineProductionRates,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,
   createInitialGameState,
@@ -102,9 +104,16 @@ describe('stage upgrades', () => {
     expect(result.state.floors[0].materialQueue).toBe(
       state.floors[0].materialQueue,
     );
+    expect(result.state.floors[0].totalExtracted).toBe(
+      state.floors[0].totalExtracted,
+    );
+    expect(result.state.floors[0].totalTransported).toBe(
+      state.floors[0].totalTransported,
+    );
     expect(result.state.floors.slice(1)).toEqual(state.floors.slice(1));
     expect(result.state.elevator).toBe(state.elevator);
     expect(result.state.warehouse).toBe(state.warehouse);
+    expectSimulationMetadataPreserved(result.state, state);
   });
 
   it('purchases elevator and warehouse upgrades independently', () => {
@@ -119,6 +128,12 @@ describe('stage upgrades', () => {
     const elevatorState = {
       ...initialState,
       gold: elevatorCost,
+      elevator: {
+        ...initialState.elevator,
+        roundRobinCursor: 2,
+        transitProgress: 0.4,
+        carriedMaterial: GameNumber.from(25),
+      },
     };
     const elevatorResult = purchaseElevatorUpgrade(
       elevatorState,
@@ -133,14 +148,21 @@ describe('stage upgrades', () => {
 
     expect(elevatorResult.state.gold.equals(0)).toBe(true);
     expect(elevatorResult.state.elevator.level).toBe(2);
-    expect(elevatorResult.state.elevator.capacity).toBe(
-      elevatorState.elevator.capacity,
+    expect(Number(elevatorResult.state.elevator.capacity.toJSON())).toBeCloseTo(
+      56,
     );
     expect(elevatorResult.state.elevator.transitProgress).toBe(
       elevatorState.elevator.transitProgress,
     );
+    expect(elevatorResult.state.elevator.carriedMaterial).toBe(
+      elevatorState.elevator.carriedMaterial,
+    );
+    expect(elevatorResult.state.elevator.roundRobinCursor).toBe(
+      elevatorState.elevator.roundRobinCursor,
+    );
     expect(elevatorResult.state.floors).toBe(elevatorState.floors);
     expect(elevatorResult.state.warehouse).toBe(elevatorState.warehouse);
+    expectSimulationMetadataPreserved(elevatorResult.state, elevatorState);
 
     const warehouseCost = calculateWarehouseUpgradeCost(
       initialState.warehouse,
@@ -149,6 +171,11 @@ describe('stage upgrades', () => {
     const warehouseState = {
       ...initialState,
       gold: warehouseCost,
+      warehouse: {
+        ...initialState.warehouse,
+        inputQueue: GameNumber.from(75),
+        conversionProgress: 0.6,
+      },
     };
     const warehouseResult = purchaseWarehouseUpgrade(
       warehouseState,
@@ -163,14 +190,206 @@ describe('stage upgrades', () => {
 
     expect(warehouseResult.state.gold.equals(0)).toBe(true);
     expect(warehouseResult.state.warehouse.level).toBe(2);
-    expect(warehouseResult.state.warehouse.capacity).toBe(
-      warehouseState.warehouse.capacity,
+    expect(Number(warehouseResult.state.warehouse.capacity.toJSON())).toBeCloseTo(
+      67.2,
     );
     expect(warehouseResult.state.warehouse.conversionProgress).toBe(
       warehouseState.warehouse.conversionProgress,
     );
+    expect(warehouseResult.state.warehouse.inputQueue).toBe(
+      warehouseState.warehouse.inputQueue,
+    );
+    expect(warehouseResult.state.warehouse.totalGoldDelivered).toBe(
+      warehouseState.warehouse.totalGoldDelivered,
+    );
     expect(warehouseResult.state.floors).toBe(warehouseState.floors);
     expect(warehouseResult.state.elevator).toBe(warehouseState.elevator);
+    expectSimulationMetadataPreserved(warehouseResult.state, warehouseState);
+  });
+
+  it('improves production over equal durations for each upgraded stage', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const fundedState = { ...initialState, gold: GameNumber.from(10_000) };
+    const shaftResult = purchaseMineShaftUpgrade(
+      fundedState,
+      'floor-1',
+      BASE_GAME_BALANCE,
+    );
+
+    if (!shaftResult.success) {
+      throw new Error('Expected mine-shaft purchase to succeed.');
+    }
+
+    const baseExtraction = advanceFor(initialState, 2_000);
+    const upgradedExtraction = advanceFor(shaftResult.state, 2_000);
+
+    expect(baseExtraction.floors[0].totalExtracted.equals(10)).toBe(true);
+    expect(upgradedExtraction.floors[0].totalExtracted.equals(11)).toBe(true);
+
+    const stockedFloorState: GameState = {
+      ...initialState,
+      gold: GameNumber.from(10_000),
+      floors: initialState.floors.map((floor, index) => ({
+        ...floor,
+        materialQueue: index === 0
+          ? GameNumber.from(100)
+          : floor.materialQueue,
+      })),
+    };
+    const elevatorResult = purchaseElevatorUpgrade(
+      stockedFloorState,
+      BASE_GAME_BALANCE,
+    );
+
+    if (!elevatorResult.success) {
+      throw new Error('Expected elevator purchase to succeed.');
+    }
+
+    const baseTransit = advanceSimulation(stockedFloorState, 100);
+    const upgradedTransit = advanceSimulation(elevatorResult.state, 100);
+
+    expect(baseTransit.elevator.carriedMaterial.equals(50)).toBe(true);
+    expect(Number(upgradedTransit.elevator.carriedMaterial.toJSON())).toBeCloseTo(
+      56,
+    );
+
+    const stockedWarehouseState: GameState = {
+      ...initialState,
+      gold: GameNumber.from(10_000),
+      warehouse: {
+        ...initialState.warehouse,
+        inputQueue: GameNumber.from(100),
+      },
+    };
+    const warehouseResult = purchaseWarehouseUpgrade(
+      stockedWarehouseState,
+      BASE_GAME_BALANCE,
+    );
+
+    if (!warehouseResult.success) {
+      throw new Error('Expected warehouse purchase to succeed.');
+    }
+
+    const baseConversion = advanceFor(stockedWarehouseState, 1_200);
+    const upgradedConversion = advanceFor(warehouseResult.state, 1_200);
+
+    expect(baseConversion.warehouse.totalGoldDelivered.equals(60)).toBe(true);
+    expect(
+      Number(upgradedConversion.warehouse.totalGoldDelivered.toJSON()),
+    ).toBeCloseTo(
+      67.2,
+    );
+  });
+
+  it('preserves progress and queues while improving production-rate estimates', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const progressState: GameState = {
+      ...initialState,
+      gold: GameNumber.from(10_000),
+      floors: initialState.floors.map((floor, index) => ({
+        ...floor,
+        isUnlocked: true,
+        extractionProgress: index === 0 ? 0.65 : floor.extractionProgress,
+        materialQueue: index === 0
+          ? GameNumber.from(40)
+          : floor.materialQueue,
+      })),
+      elevator: {
+        ...initialState.elevator,
+        capacity: GameNumber.from(1_000),
+        roundRobinCursor: 3,
+        transitProgress: 0.4,
+        carriedMaterial: GameNumber.from(25),
+      },
+      warehouse: {
+        ...initialState.warehouse,
+        inputQueue: GameNumber.from(100),
+        conversionProgress: 0.75,
+      },
+    };
+    const baseRates = calculateMineProductionRates(
+      progressState,
+      BASE_GAME_BALANCE,
+    );
+    const shaftResult = purchaseMineShaftUpgrade(
+      progressState,
+      'floor-1',
+      BASE_GAME_BALANCE,
+    );
+    const transportRateState: GameState = {
+      ...progressState,
+      elevator: {
+        ...progressState.elevator,
+        capacity: initialState.elevator.capacity,
+      },
+    };
+    const elevatorResult = purchaseElevatorUpgrade(
+      transportRateState,
+      BASE_GAME_BALANCE,
+    );
+    const warehouseResult = purchaseWarehouseUpgrade(
+      progressState,
+      BASE_GAME_BALANCE,
+    );
+
+    if (
+      !shaftResult.success ||
+      !elevatorResult.success ||
+      !warehouseResult.success
+    ) {
+      throw new Error('Expected stage purchases to succeed.');
+    }
+
+    expect(shaftResult.state.floors[0].extractionProgress).toBe(0.65);
+    expect(shaftResult.state.floors[0].materialQueue).toBe(
+      progressState.floors[0].materialQueue,
+    );
+    expect(shaftResult.state.elevator).toBe(progressState.elevator);
+    expect(shaftResult.state.warehouse).toBe(progressState.warehouse);
+
+    const shaftRates = calculateMineProductionRates(
+      shaftResult.state,
+      BASE_GAME_BALANCE,
+    );
+    const elevatorRates = calculateMineProductionRates(
+      elevatorResult.state,
+      BASE_GAME_BALANCE,
+    );
+    const warehouseRates = calculateMineProductionRates(
+      warehouseResult.state,
+      BASE_GAME_BALANCE,
+    );
+
+    expect(
+      shaftRates.floors[0].theoreticalExtractionPerSecond.equals(5.5),
+    ).toBe(true);
+    expect(
+      shaftRates.aggregateExtractionPerSecond.greaterThan(
+        baseRates.aggregateExtractionPerSecond,
+      ),
+    ).toBe(true);
+    expect(elevatorRates.bottleneck).toBe('elevator');
+    expect(
+      Number(elevatorRates.elevatorCapacityPerSecond.toJSON()),
+    ).toBeCloseTo(56 * (1_000 / 1_500));
+    expect(baseRates.bottleneck).toBe('warehouse');
+    expect(baseRates.effectiveProductionPerSecond.equals(50)).toBe(true);
+    expect(warehouseRates.bottleneck).toBe('warehouse');
+    expect(
+      Number(warehouseRates.effectiveProductionPerSecond.toJSON()),
+    ).toBeCloseTo(56);
+    expect(warehouseResult.state.warehouse.conversionProgress).toBe(0.75);
+    expect(warehouseResult.state.warehouse.inputQueue).toBe(
+      progressState.warehouse.inputQueue,
+    );
+    expect(warehouseResult.state.elevator).toBe(progressState.elevator);
+    expect(warehouseResult.state.floors).toBe(progressState.floors);
   });
 
   it('returns insufficient funds without changing state', () => {
@@ -242,3 +461,27 @@ describe('stage upgrades', () => {
     ).toThrow(/room to increment/);
   });
 });
+
+function advanceFor(initialState: GameState, elapsedMs: number): GameState {
+  const fullUpdates = Math.floor(elapsedMs / 1_000);
+  const remainderMs = elapsedMs % 1_000;
+  const updates = [
+    ...Array<number>(fullUpdates).fill(1_000),
+    ...(remainderMs === 0 ? [] : [remainderMs]),
+  ];
+
+  return updates.reduce(
+    (state, updateMs) => advanceSimulation(state, updateMs),
+    initialState,
+  );
+}
+
+function expectSimulationMetadataPreserved(
+  actual: GameState,
+  expected: GameState,
+): void {
+  expect(actual.saveVersion).toBe(expected.saveVersion);
+  expect(actual.lastUpdateTimestampMs).toBe(expected.lastUpdateTimestampMs);
+  expect(actual.simulationTick).toBe(expected.simulationTick);
+  expect(actual.simulationRemainderMs).toBe(expected.simulationRemainderMs);
+}

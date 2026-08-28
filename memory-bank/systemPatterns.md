@@ -25,7 +25,7 @@ Persistence and Platform Adapters
 - Model mining as a three-stage pipeline: four independent mine shafts → one shared elevator → one shared warehouse.
 - Run base-game production automatically without managers or player tapping.
 - Let the shared elevator service non-empty unlocked floors round-robin from top to bottom.
-- Upgrade each mine shaft, the elevator, and the warehouse independently; upgrades retain queued material and in-progress completion percentage.
+- Upgrade each mine shaft, the elevator, and the warehouse independently; shaft levels derive higher extraction yield, shared-stage levels derive higher capacity, and all upgrades retain queued material and in-progress completion percentage.
 - Use events/commands between presentation and core logic; never mutate economy state directly from a scene.
 - Advance foreground simulation through 100 ms fixed ticks, retain sub-tick remainder in authoritative state, and credit at most 1,000 ms per update after suspension while consuming the full wall-clock delta.
 - Advance extraction only for unlocked floors, retain normalized overflow progress, and place completed level-adjusted output in the producing floor's local queue without changing spendable gold.
@@ -33,7 +33,7 @@ Persistence and Platform Adapters
 - Advance warehouse conversion only with queued input, consume no more than capacity at a completed cycle, and add converted material 1:1 to spendable and cumulative delivered gold.
 - Within each fixed tick, advance every floor's extraction in configured order, then the shared elevator, then the shared warehouse so stage handoffs are immediately eligible while locked floors remain inert.
 - Derive each floor's theoretical extraction rate from its current level and configuration; derive mine-wide effective production as the minimum of unlocked aggregate extraction, shared elevator throughput, and shared warehouse throughput without storing the estimate in authoritative state.
-- Calculate next-upgrade prices through `GameNumber` from base cost, growth rate, and current level; route each production stage through a distinct immutable purchase command that returns an explicit result and never partially mutates state.
+- Calculate next-upgrade prices through `GameNumber` from base cost, growth rate, and current level; route each production stage through a distinct immutable purchase command that returns an explicit result, applies its level-derived effect, and never partially mutates state.
 - Calculate offline rewards from timestamps and a configured cap/efficiency.
 - Represent very large values through the immutable `GameNumber` abstraction; keep break_infinity.js private, serialize as strings, and implement abbreviated display formatting separately.
 - Serialize only authoritative game state, never transient animation state.

@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 15 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates upgrade pricing and purchase commands; Step 16 must not begin without explicit authorization.
+Implementation Plan Step 16 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates stage-specific upgrade effects; Step 17 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -57,6 +57,9 @@ Implementation Plan Step 15 is implemented and its automated validation passes. 
 - Added deterministic next-upgrade prices for mine shafts, the elevator, and the warehouse using `baseCost × costGrowthRate^currentLevel` through `GameNumber` arithmetic.
 - Added three immutable purchase commands with explicit insufficient-funds, missing-floor, and locked-floor results; successful purchases deduct the exact cost and increment only the selected level.
 - Added upgrade coverage for starting and representative costs, exact-balance purchases, all three success paths, expected failures, invalid levels, and preservation of unrelated authoritative state.
+- The user validated Step 15 and authorized Step 16 on 2026-08-28.
+- Applied stage-specific upgrade effects: mine-shaft levels increase extraction yield, while elevator and warehouse purchases deterministically recalculate capacity from base capacity and the configured growth rate.
+- Added coverage comparing equal-duration production and derived rates before and after every stage upgrade, including preservation of queues, carried material, totals, cursors, timestamps, and normalized in-progress completion.
 
 ## Active Decisions
 
@@ -83,12 +86,13 @@ Implementation Plan Step 15 is implemented and its automated validation passes. 
 - Keep locked floors fully inert while all unlocked production stages run automatically without managers or player taps.
 - Treat production rates as derived read-only values: expose every floor's theoretical rate, sum only unlocked floors for the mine estimate, and cap that estimate at the slower shared-stage throughput.
 - Calculate an upgrade's next price from the stage's current level without rounding; expected player-action failures return the original state, while invalid/non-incrementable levels are invariant errors.
-- Step 15 changes only gold and the purchased stage level. Capacity recalculation, new effect logic, milestones, bulk purchases, unlocks, and UI controls remain deferred.
+- Step 16 recalculates shared-stage capacity as `baseCapacity × outputGrowthRate^(newLevel - 1)` while retaining configured cycle durations. Mine-shaft yield remains level-derived, and all upgrades preserve valid progress percentages and material already queued or in transit.
+- Milestones, bulk purchases, unlocks, and UI controls remain deferred; configured milestone multipliers are not applied before Step 17.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 15 test results.
-2. Begin Step 16 only after explicit user authorization.
+1. Wait for the user to validate the Step 16 test results.
+2. Begin Step 17 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

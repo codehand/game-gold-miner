@@ -111,13 +111,16 @@ export function purchaseElevatorUpgrade(
     return failure(state, cost, 'insufficient-funds');
   }
 
+  const nextLevel = state.elevator.level + 1;
+
   return success(
     {
       ...state,
       gold: state.gold.subtract(cost),
       elevator: {
         ...state.elevator,
-        level: state.elevator.level + 1,
+        level: nextLevel,
+        capacity: calculateSharedStageCapacity(nextLevel, config.elevator),
       },
     },
     cost,
@@ -137,13 +140,16 @@ export function purchaseWarehouseUpgrade(
     return failure(state, cost, 'insufficient-funds');
   }
 
+  const nextLevel = state.warehouse.level + 1;
+
   return success(
     {
       ...state,
       gold: state.gold.subtract(cost),
       warehouse: {
         ...state.warehouse,
-        level: state.warehouse.level + 1,
+        level: nextLevel,
+        capacity: calculateSharedStageCapacity(nextLevel, config.warehouse),
       },
     },
     cost,
@@ -158,6 +164,15 @@ function calculateNextUpgradeCost(
 
   return GameNumber.from(config.baseCost).multiply(
     integerPower(config.costGrowthRate, currentLevel),
+  );
+}
+
+function calculateSharedStageCapacity(
+  level: number,
+  config: SharedStageConfig,
+): GameNumber {
+  return GameNumber.from(config.baseCapacity).multiply(
+    integerPower(config.upgrade.outputGrowthRate, level - 1),
   );
 }
 
