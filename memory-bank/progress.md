@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 18 is implemented with passing automated checks and is awaiting user validation. Step 19 has not started and remains blocked.
+**Phase:** Implementation Plan Step 19 is implemented with passing automated checks and is awaiting user validation. Step 20 has not started and remains blocked.
 
 ## Completed
 
@@ -66,6 +66,9 @@
 - Step 17 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 18.
 - Step 18 implemented on 2026-08-28: one immutable command now unlocks floors 2–4 only when the configured immediately previous floor is unlocked at the required shaft level and the exact unlock cost is affordable, then initializes the target floor from configuration.
 - Step 18 automated evidence: sixty-eight unit tests pass, covering unmet and locked prerequisites, insufficient funds, exact single deduction, configured initialization, duplicate and unknown requests, all three sequential unlocks, state preservation, and production from a newly opened floor.
+- Step 18 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 19.
+- Step 19 implemented on 2026-08-28: a pure deterministic economy harness advances a fresh session in one-second decisions, unlocks eligible floors, reserves unlock funds after prerequisites are met, and otherwise buys the affordable upgrade with the best modeled bottleneck improvement using deterministic progression-aware tie-breaking.
+- Step 19 automated evidence: seventy-four unit tests pass. The ten-minute session deterministically opens floors 2, 3, and 4 at 45, 139, and 317 simulated seconds, reaches a level-10 milestone without runaway level-100 growth, keeps every balance and progress value finite and non-negative, retains a positive effective production rate, and records only positive-cost actions with non-negative modeled improvements. Focused tests also prove elevator-bottleneck selection, next-unlock tie-breaking, deterministic replay, and invalid-duration rejection. Lint and production build pass without changing the provisional balance.
 
 ## Implementation Step Status
 
@@ -88,12 +91,13 @@
 | 15 — Implement upgrade costs for all three stages | Complete | User validated the passing Step 15 checks and authorized Step 16. |
 | 16 — Apply stage-specific upgrade effects | Complete | User validated the passing Step 16 checks and authorized Step 17. |
 | 17 — Add milestone multipliers | Complete | User validated the passing Step 17 checks and authorized Step 18. |
-| 18 — Implement sequential floor unlocks | Implemented / awaiting user validation | Sixty-eight unit tests pass; prerequisite and affordability failures, configured initialization, exact deduction, repeated requests, full unlock order, and post-unlock production are covered. |
-| 19 — Add an economy progression simulation | Not started / blocked | Must not begin until the user validates Step 18. |
+| 18 — Implement sequential floor unlocks | Complete | User validated the passing Step 18 checks and authorized Step 19. |
+| 19 — Add an economy progression simulation | Implemented / awaiting user validation | Seventy-four unit tests pass; the deterministic ten-minute playthrough opens all four floors, reaches milestones without level-100 runaway growth, retains finite non-negative state, and does not stall. |
+| 20 — Define the versioned save format | Not started / blocked | Must not begin until the user validates Step 19. |
 
 ## Not Started
 
-- Economy progression simulation and later phases.
+- Versioned save format, validation, migrations, persistence, and later phases.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Player-facing shaft/elevator/warehouse upgrade controls and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

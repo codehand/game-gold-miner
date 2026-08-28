@@ -154,7 +154,7 @@ MVP chỉ dùng tiền ảo nội bộ, không blockchain, NFT, quy đổi tiề
 - Chi phí nâng cấp tăng theo hệ số `1,15`; sản lượng tầng tăng `1,10`; sức chứa elevator/warehouse tăng `1,12`.
 - Mọi hạng mục nâng cấp dùng mốc cấp `10/25/50/100` với multiplier `x2/x2/x3/x4`.
 
-Các giá trị này là giả thuyết triển khai ban đầu, chưa phải cân bằng cuối. Chúng phải được kiểm chứng bằng mô phỏng kinh tế ở Step 19 và playtest thực tế.
+Các giá trị này đã đạt mục tiêu mô phỏng tự động ở Step 19: mở cả bốn tầng (tầng 4 ở giây 317), chạm multiplier nhưng không tăng mất kiểm soát tới cấp 100 trong mười phút, và không kẹt tiến trình. Chúng vẫn là cân bằng tạm thời cho tới khi được kiểm chứng bằng playtest thực tế.
 
 ## 7. Điều khiển và giao diện
 

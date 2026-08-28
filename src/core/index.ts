@@ -6,6 +6,16 @@ export {
   type ProductionBottleneck,
 } from './economy/calculateProductionRates';
 export {
+  DEFAULT_ECONOMY_SIMULATION_DURATION_MS,
+  ECONOMY_DECISION_INTERVAL_MS,
+  chooseBestAffordableUpgrade,
+  simulateEconomyProgression,
+  type EconomyProgressionActionType,
+  type EconomyProgressionEvent,
+  type EconomyProgressionReport,
+  type EconomyUpgradeChoice,
+} from './economy/simulateEconomyProgression';
+export {
   GameNumber,
   type GameNumberSource,
   type SerializedGameNumber,

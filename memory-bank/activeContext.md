@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 18 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates sequential floor unlocks; Step 19 must not begin without explicit authorization.
+Implementation Plan Step 19 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the deterministic ten-minute economy progression; Step 20 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -66,6 +66,9 @@ Implementation Plan Step 18 is implemented and its automated validation passes. 
 - The user validated Step 17 and authorized Step 18 on 2026-08-28.
 - Added an immutable floor-unlock purchase command that enforces the configured immediately previous unlocked-floor level requirement, checks funds, deducts the exact cost once, and initializes the opened floor from balance configuration.
 - Added unlock coverage for unmet and locked prerequisites, insufficient funds, configured initialization, repeated requests, unknown floors, all three sequential unlocks, and production after opening.
+- The user validated Step 18 and authorized Step 19 on 2026-08-28.
+- Added a deterministic automated economy playthrough that advances production once per second, prioritizes eligible floor unlocks, otherwise purchases the affordable upgrade with the greatest modeled effective-rate improvement, and resolves ties toward the next unlock prerequisite.
+- Confirmed the provisional balance opens all four floors by 317 simulated seconds, reaches a level-10 multiplier without runaway level-100 growth, preserves finite non-negative state, and remains deterministic over ten simulated minutes without balance changes.
 
 ## Active Decisions
 
@@ -97,11 +100,12 @@ Implementation Plan Step 18 is implemented and its automated validation passes. 
 - Unlock floors 2–4 only in sequence after the immediately previous unlocked mine shaft reaches levels 5, 5, and 7 respectively and the configured 250/1,500/7,500 gold cost can be paid.
 - Initialize a successfully opened floor at its configured starting level with zero progress, queues, and totals; preserve unrelated floors, shared stages, and simulation metadata.
 - Bulk purchases and UI controls remain deferred.
+- Use the Step 19 automated policy only as a reproducible balance-analysis harness; it does not issue player-runtime purchases or replace later playtesting.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 18 test results.
-2. Begin Step 19 only after explicit user authorization.
+1. Wait for the user to validate the Step 19 test results.
+2. Begin Step 20 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 17 are complete. Step 18 is implemented with passing automated checks and is awaiting user validation; Step 19 has not started. The pure core now exports immutable large numbers, authoritative state contracts, deterministic simulation and rate estimates, upgrades, cumulative milestones, and sequential floor unlocks. No physics system or persistence schema exists yet.
+Steps 1 through 18 are complete. Step 19 is implemented with passing automated checks and is awaiting user validation; Step 20 has not started. The pure core now exports immutable large numbers, authoritative state contracts, deterministic production and rate estimates, upgrades, cumulative milestones, sequential floor unlocks, and a reproducible economy-analysis simulation. No physics system or persistence schema exists yet.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -39,6 +39,7 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Theoretical floor extraction rates use configured yield, current level growth, cumulative milestones, and cycle duration. The effective mine rate is the minimum of aggregate unlocked extraction and the current milestone-aware elevator/warehouse capacity per second; rates do not mutate or extend authoritative state.
 - Upgrade prices use `baseCost × costGrowthRate^currentLevel` with `GameNumber` exponentiation and no rounding. Separate mine-shaft, elevator, and warehouse commands return discriminated success/failure results and preserve the original state on expected failures. Success deducts gold and increments the selected level; the shared level-effect calculation applies growth plus every reached milestone to shaft yield and shared-stage capacity. Milestone effects are derived from level, not stored as grant state, so reloads cannot apply them twice. Cycle durations, queues, carried material, totals, cursors, timestamps, and normalized progress remain unchanged.
 - The floor-unlock command requires an existing locked target, an unlocked immediately previous floor at the configured shaft level, and sufficient `GameNumber` gold. Success deducts the configured cost once and initializes the target from balance data with its starting level and zero progress, queues, and totals. Expected failures preserve the original state object.
+- The economy progression harness advances a fresh base-game state in one-second decisions for ten minutes. It unlocks an eligible next floor first, reserves gold when that unlock prerequisite is met, and otherwise selects the affordable upgrade with the largest hypothetical improvement to effective production per second. Deterministic ties favor the next unlock prerequisite and then configured order. Its report records exact action timing, target, cost, modeled improvement, final state, unlocked-floor count, highest level, and milestone status; it is analysis-only and does not automate player runtime.
 
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
@@ -52,7 +53,7 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: sixty-eight tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, simulation pipeline, production-rate, upgrade, milestone, and unlock suites pass.
+- `npm run test`: seventy-four tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, simulation pipeline, production-rate, upgrade, milestone, unlock, and economy-progression suites pass.
 - `npm run test:e2e`: one Chromium boot-scene test passes before and after reload, with one canvas, one scene start per load, valid logical dimensions and renderer, and no console or page errors.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 
