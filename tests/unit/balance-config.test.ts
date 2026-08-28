@@ -16,6 +16,10 @@ describe('base-game balance configuration', () => {
         return !startingUnlocked;
       }),
     ).toBe(true);
+    expect(BASE_GAME_BALANCE.offlineIncome).toEqual({
+      capDurationMs: 7_200_000,
+      efficiency: 0.5,
+    });
   });
 
   it('rejects missing floors', () => {
@@ -88,6 +92,24 @@ describe('base-game balance configuration', () => {
     expect(() => validateBaseGameBalance(config)).toThrow(
       /ordered 10\/25\/50\/100/,
     );
+  });
+
+  it('rejects invalid offline-income configuration', () => {
+    expect(() => validateBaseGameBalance({
+      ...BASE_GAME_BALANCE,
+      offlineIncome: { capDurationMs: 0, efficiency: 0.5 },
+    })).toThrow(/capDurationMs/);
+    expect(() => validateBaseGameBalance({
+      ...BASE_GAME_BALANCE,
+      offlineIncome: {
+        capDurationMs: Number.MAX_SAFE_INTEGER + 1,
+        efficiency: 0.5,
+      },
+    })).toThrow(/capDurationMs/);
+    expect(() => validateBaseGameBalance({
+      ...BASE_GAME_BALANCE,
+      offlineIncome: { capDurationMs: 7_200_000, efficiency: 1.1 },
+    })).toThrow(/efficiency/);
   });
 });
 

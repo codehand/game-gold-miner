@@ -85,4 +85,8 @@ export const BASE_GAME_BALANCE = {
     cycleDurationMs: 1_200,
     upgrade: upgrade(120, 1.12),
   },
+  offlineIncome: {
+    capDurationMs: 2 * 60 * 60 * 1_000,
+    efficiency: 0.5,
+  },
 } as const satisfies BaseGameBalanceConfig;

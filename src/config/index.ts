@@ -3,6 +3,7 @@ export type {
   BaseGameBalanceConfig,
   MineFloorConfig,
   MilestoneConfig,
+  OfflineIncomeConfig,
   SharedStageConfig,
   UpgradeConfig,
 } from './types';

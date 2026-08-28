@@ -63,6 +63,14 @@ export function validateBaseGameBalance(
 
   validateSharedStage(config.elevator, 'elevator');
   validateSharedStage(config.warehouse, 'warehouse');
+  assertPositiveSafeInteger(
+    config.offlineIncome.capDurationMs,
+    'offlineIncome.capDurationMs',
+  );
+  assertUnitInterval(
+    config.offlineIncome.efficiency,
+    'offlineIncome.efficiency',
+  );
 
   if (config.elevator.id !== 'elevator') {
     throw new Error('Elevator config must use the elevator identifier.');
@@ -120,8 +128,20 @@ function assertPositiveInteger(value: number, label: string): void {
   }
 }
 
+function assertPositiveSafeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a positive safe integer.`);
+  }
+}
+
 function assertGreaterThanOne(value: number, label: string): void {
   if (!Number.isFinite(value) || value <= 1) {
     throw new Error(`${label} must be a finite number greater than one.`);
+  }
+}
+
+function assertUnitInterval(value: number, label: string): void {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`${label} must be a finite number from zero to one.`);
   }
 }

@@ -37,7 +37,8 @@ Persistence and Platform Adapters
 - Within each fixed tick, advance every floor's extraction in configured order, then the shared elevator, then the shared warehouse so stage handoffs are immediately eligible while locked floors remain inert.
 - Derive each floor's theoretical extraction rate from its current level and configuration; derive mine-wide effective production as the minimum of unlocked aggregate extraction, shared elevator throughput, and shared warehouse throughput without storing the estimate in authoritative state.
 - Calculate next-upgrade prices through `GameNumber` from base cost, growth rate, and current level; route each production stage through a distinct immutable purchase command that returns an explicit result, applies its level-derived growth and milestones, and never partially mutates state.
-- Calculate offline rewards from timestamps and a configured cap/efficiency.
+- Calculate offline rewards purely from the saved rate snapshot, injected current time, and configured cap/efficiency; settle the load timestamp before exposing a positive pending reward, award zero for future clocks or failed settlement writes, and keep spendable gold unchanged until the claim command.
+- Create a pending-reward view only for positive income. Claim immutably into one cached authoritative candidate, force-persist it before dismissing the modal, and reuse the candidate on save retry so repeated input cannot add gold twice.
 - Represent very large values through the immutable `GameNumber` abstraction; keep break_infinity.js private, serialize as strings, and implement abbreviated display formatting separately.
 - Serialize only authoritative game state, never transient animation state.
 - Construct fresh state from validated balance data and an injected timestamp; never read the wall clock inside deterministic state creation.
@@ -49,7 +50,7 @@ Persistence and Platform Adapters
 
 ## Critical Flow
 
-Load and validate save → migrate if needed → calculate capped offline reward → initialize simulation snapshot → render Phaser scene → send player commands to core → persist debounced snapshots.
+Load save → migrate and validate → recover fresh state if invalid → calculate capped offline reward → persist consumed timestamp interval → show positive pending reward → claim into one state candidate → force-persist claim → dismiss modal → initialize simulation snapshot → render Phaser scene → send player commands to core → persist debounced snapshots.
 
 ## Performance
 

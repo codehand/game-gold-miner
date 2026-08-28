@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 22 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates corrupt/incompatible-save recovery; Step 23 must not begin without explicit authorization.
+Implementation Plan Step 24 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates offline-reward presentation and claiming; Step 25 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -78,6 +78,13 @@ Implementation Plan Step 22 is implemented and its automated validation passes. 
 - The user validated Step 21 and authorized Step 22 on 2026-08-28.
 - Added a recovery-aware active-game loader that restores valid saves, creates a fresh playable state for empty storage, and converts malformed or unsupported payloads into typed visible warnings plus fresh state without partial application.
 - Preserved invalid payloads as detached diagnostic snapshots when structured cloning is safe, and isolated persistence/recovery callbacks so presentation failures cannot escape into the running session.
+- The user validated Step 22 and authorized Step 23 on 2026-08-28.
+- Added pure saved-rate offline-income calculation with a configured two-hour cap and 50% efficiency; zero/normal/capped/future-clock intervals remain deterministic inside the `GameNumber` boundary.
+- Integrated offline settlement into valid-save loading: the authoritative timestamp advances to the caller-provided current time and is persisted before a positive pending reward is exposed, preventing repeated reloads from rewarding the same interval. Failed settlement writes withhold the reward and surface the existing persistence diagnostic.
+- The user validated Step 23 and authorized Step 24 on 2026-08-28.
+- Added a pure pending-reward claim command that adds the exact `GameNumber` reward to gold and consumes the pending value, while a repeated claim with no pending value returns the original state.
+- Wired browser startup through IndexedDB recovery and offline calculation, added a simple accessible modal showing credited time and reward, and force-persists the claimed snapshot before dismissing the modal. A failed write keeps the same claim candidate for retry without adding the reward again.
+- Added browser coverage proving fresh players see no modal and a returning player can claim a capped reward exactly once across reload; one hundred twenty-five unit tests, two Chromium E2E tests, lint, and production build pass.
 
 ## Active Decisions
 
@@ -113,11 +120,13 @@ Implementation Plan Step 22 is implemented and its automated validation passes. 
 - Persist every `GameNumber` as a finite decimal/scientific string, validate exact version-1 structure and authoritative invariants before deserialization, and keep migration dispatch separate from IndexedDB storage.
 - Store one active document under the fixed `active` key, debounce routine writes by 500 ms, force the newest snapshot on supported lifecycle events, and surface storage failures without terminating the running session.
 - Treat unsupported schema versions separately from malformed current-version saves, preserve a cloneable invalid payload in the recovery warning, and initialize a fully fresh state at the caller-provided current timestamp.
+- Configure offline income as a 7,200,000 ms cap at 0.5 efficiency, calculate from the saved effective-rate snapshot, keep a positive reward outside spendable gold until the player claims it, and settle consumed time before exposing that reward.
+- Consume pending rewards through one pure claim result, reuse the same in-memory claim candidate across save retries, and dismiss the modal only after the claimed authoritative snapshot is force-persisted.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 22 test results.
-2. Begin Step 23 only after explicit user authorization.
+1. Wait for the user to validate the Step 24 test results and modal behavior.
+2. Begin Step 25 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

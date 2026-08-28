@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 21 are complete. Step 22 is implemented with passing automated checks and is awaiting user validation; Step 23 has not started. The repository persists one strict version-1 save document through a Dexie-backed IndexedDB adapter and now recovers malformed or unsupported payloads into a fully fresh playable state with typed warnings. No relational/server database or physics system exists.
+Steps 1 through 23 are complete. Step 24 is implemented with passing automated checks and is awaiting user validation; Step 25 has not started. The browser calculates and settles capped saved-rate offline income, presents positive rewards in a simple modal, and force-persists one exact claim before dismissal. No relational/server database or physics system exists.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -44,6 +44,10 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Save schema version 1 is a strict plain-JSON document with exactly `schemaVersion`, `savedAtTimestampMs`, `effectiveProductionRatePerSecond`, and `state`. `state` contains version/timing counters, serialized gold, exactly four configured floor records, elevator state, and warehouse state. Every `GameNumber` is a finite decimal/scientific string. Validation rejects unknown properties, missing/unsupported versions, unsafe or inconsistent timestamps, invalid counters/progress, non-positive levels/capacities, unknown/reordered/missing floors, broken unlock order/gates, locked-floor production, negative quantities, transported totals above extracted totals, mismatched level-derived capacities, and active progress without corresponding material. Migration dispatch precedes validation; runtime deserialization follows it before restored state can enter the game.
 - `ActiveSaveRepository` keeps storage replaceable. `DexieActiveSaveRepository` stores only `{ id: 'active', document }`, and reopening the same database restores the full serialized snapshot. `SavePersistenceCoordinator` keeps only the newest pending document, debounces routine writes by 500 ms, retains a failed write for retry, resolves load/save failures without throwing into the session, and exposes stable diagnostic messages/callbacks. The web adapter forces the latest document on hidden visibility and page-hide events when those targets exist.
 - `loadActiveGame` accepts only a completely deserialized valid save. Empty storage returns fresh state without warning. Failed migration or validation returns fresh state at the supplied timestamp plus either a `corrupt-save` or `incompatible-save` warning, including a detached copy of the invalid payload when structured cloning succeeds. Neither warning callbacks nor persistence diagnostic callbacks may escape into the load/save flow.
+- Balance configuration includes `offlineIncome.capDurationMs = 7_200_000` and `offlineIncome.efficiency = 0.5`; startup validation requires a positive safe-integer cap and finite efficiency in `[0, 1]`.
+- `calculateOfflineIncome` is pure core logic. It uses the loaded document's saved effective-rate snapshot, clamps elapsed time to the configured cap, applies efficiency through `GameNumber`, treats future timestamps as zero elapsed, preserves gold and production state, and replaces only the authoritative last-update timestamp. `loadActiveGame` force-flushes that settlement before returning a positive pending reward; repeated loads at the same time return zero, and failed settlement writes expose zero reward plus the existing save diagnostic.
+- `createPendingOfflineReward` filters zero rewards out of presentation. `claimOfflineReward` consumes a positive pending value into a new state whose gold is increased by the exact `GameNumber` amount; no-pending calls return the original state. Browser orchestration caches one claim candidate across persistence retries and the DOM modal closes only after a forced save succeeds.
+- `src/main.ts` now composes balance validation, IndexedDB loading/recovery, Phaser startup, lifecycle saves, pending reward presentation, and claim persistence. The Step 24 modal is the only player-facing overlay; responsive mine layout remains blocked until Step 25.
 
 ## Complete Save Document Schema
 
@@ -88,8 +92,8 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: one hundred ten tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, simulation pipeline, production-rate, upgrade, milestone, unlock, economy-progression, save-schema, persistence, and save-recovery coverage pass.
-- `npm run test:e2e`: one Chromium boot-scene test passes before and after reload, with one canvas, one scene start per load, valid logical dimensions and renderer, and no console or page errors.
+- `npm run test`: one hundred twenty-five tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, simulation pipeline, production-rate, upgrade, milestone, unlock, economy-progression, save-schema, persistence, save-recovery, offline-income, pending-reward claim, and duration-display coverage pass.
+- `npm run test:e2e`: two Chromium tests pass: the fresh boot/reload smoke test sees no offline modal, and a controlled returning-player flow displays credited time and reward, claims the exact amount, persists it, and cannot recreate the consumed reward after reload.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 
 ## Conventions

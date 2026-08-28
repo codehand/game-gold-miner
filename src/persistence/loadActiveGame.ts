@@ -1,11 +1,14 @@
 import type { BaseGameBalanceConfig } from '../config';
 import {
+  calculateOfflineIncome,
   createInitialGameState,
   type GameState,
+  type OfflineIncomeCalculation,
 } from '../core';
 import type { SavePersistenceCoordinator } from './SavePersistenceCoordinator';
 import {
   CURRENT_SAVE_SCHEMA_VERSION,
+  createSaveDocument,
   deserializeSaveDocument,
   type LoadedSaveDocument,
 } from './saveSchema';
@@ -31,12 +34,16 @@ export type ActiveGameLoadResult =
       readonly source: 'saved';
       readonly state: GameState;
       readonly loadedSave: LoadedSaveDocument;
+      readonly offlineIncome: OfflineIncomeCalculation;
+      readonly offlineIncomeSettlementPersisted: boolean;
       readonly warning: null;
     }
   | {
       readonly source: 'fresh';
       readonly state: GameState;
       readonly loadedSave: null;
+      readonly offlineIncome: null;
+      readonly offlineIncomeSettlementPersisted: null;
       readonly warning: SaveRecoveryWarning | null;
     };
 
@@ -45,7 +52,10 @@ export interface LoadActiveGameOptions {
 }
 
 export async function loadActiveGame(
-  persistence: Pick<SavePersistenceCoordinator, 'loadActiveSave'>,
+  persistence: Pick<
+    SavePersistenceCoordinator,
+    'flush' | 'loadActiveSave' | 'queueSave'
+  >,
   config: BaseGameBalanceConfig,
   currentTimestampMs: number,
   options: LoadActiveGameOptions = {},
@@ -56,15 +66,10 @@ export async function loadActiveGame(
     return createFreshResult(config, currentTimestampMs, null);
   }
 
-  try {
-    const loadedSave = deserializeSaveDocument(candidate, config);
+  let loadedSave: LoadedSaveDocument;
 
-    return {
-      source: 'saved',
-      state: loadedSave.state,
-      loadedSave,
-      warning: null,
-    };
+  try {
+    loadedSave = deserializeSaveDocument(candidate, config);
   } catch (cause) {
     const incompatible = hasUnsupportedSchemaVersion(candidate);
     const warning: SaveRecoveryWarning = {
@@ -80,6 +85,37 @@ export async function loadActiveGame(
 
     return createFreshResult(config, currentTimestampMs, warning);
   }
+
+  const offlineIncome = calculateOfflineIncome(
+    loadedSave.state,
+    loadedSave.savedAtTimestampMs,
+    currentTimestampMs,
+    loadedSave.effectiveProductionRatePerSecond,
+    config.offlineIncome,
+  );
+  const settledDocument = createSaveDocument(
+    offlineIncome.state,
+    config,
+    currentTimestampMs,
+  );
+
+  persistence.queueSave(settledDocument);
+  const offlineIncomeSettlementPersisted = await persistence.flush();
+  const availableOfflineIncome = offlineIncomeSettlementPersisted
+    ? offlineIncome
+    : {
+        ...offlineIncome,
+        reward: offlineIncome.reward.multiply(0),
+      };
+
+  return {
+    source: 'saved',
+    state: offlineIncome.state,
+    loadedSave,
+    offlineIncome: availableOfflineIncome,
+    offlineIncomeSettlementPersisted,
+    warning: null,
+  };
 }
 
 function createFreshResult(
@@ -91,6 +127,8 @@ function createFreshResult(
     source: 'fresh',
     state: createInitialGameState(config, currentTimestampMs),
     loadedSave: null,
+    offlineIncome: null,
+    offlineIncomeSettlementPersisted: null,
     warning,
   };
 }

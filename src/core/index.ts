@@ -21,6 +21,16 @@ export {
   type SerializedGameNumber,
 } from './numbers/GameNumber';
 export {
+  calculateOfflineIncome,
+  type OfflineIncomeCalculation,
+} from './offline-income/calculateOfflineIncome';
+export {
+  claimOfflineReward,
+  createPendingOfflineReward,
+  type OfflineRewardClaimResult,
+  type PendingOfflineReward,
+} from './offline-income/claimOfflineIncome';
+export {
   calculateLevelEffect,
   calculateMilestoneMultiplier,
 } from './progression/calculateLevelEffect';

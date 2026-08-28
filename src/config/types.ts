@@ -35,9 +35,15 @@ export interface SharedStageConfig {
   readonly upgrade: UpgradeConfig;
 }
 
+export interface OfflineIncomeConfig {
+  readonly capDurationMs: number;
+  readonly efficiency: number;
+}
+
 export interface BaseGameBalanceConfig {
   readonly startingGold: number;
   readonly floors: readonly MineFloorConfig[];
   readonly elevator: SharedStageConfig;
   readonly warehouse: SharedStageConfig;
+  readonly offlineIncome: OfflineIncomeConfig;
 }

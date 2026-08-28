@@ -2,7 +2,11 @@ import { IDBKeyRange, indexedDB } from 'fake-indexeddb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
-import { simulateEconomyProgression } from '../../src/core';
+import {
+  claimOfflineReward,
+  createPendingOfflineReward,
+  simulateEconomyProgression,
+} from '../../src/core';
 import {
   ACTIVE_SAVE_DATABASE_VERSION,
   ACTIVE_SAVE_RECORD_ID,
@@ -17,6 +21,7 @@ import {
   deserializeSaveDocument,
   loadActiveGame,
   type ActiveSaveRepository,
+  type ActiveGameLoadResult,
   type PersistenceDiagnostic,
   type SaveDocumentV1,
   type SaveRecoveryWarning,
@@ -234,11 +239,13 @@ describe('corrupt and incompatible save recovery', () => {
     const result = await loadActiveGame(
       coordinator,
       BASE_GAME_BALANCE,
-      TIMESTAMP_MS + 999_999,
+      document.savedAtTimestampMs,
     );
 
-    expect(result.source).toBe('saved');
+    expectSavedLoad(result);
     expect(result.warning).toBeNull();
+    expect(result.offlineIncome.reward.equals(0)).toBe(true);
+    expect(result.offlineIncomeSettlementPersisted).toBe(true);
     expect(result.loadedSave?.savedAtTimestampMs).toBe(
       document.savedAtTimestampMs,
     );
@@ -315,7 +322,133 @@ describe('corrupt and incompatible save recovery', () => {
 
     expect(result.source).toBe('fresh');
     expect(result.warning).toBeNull();
+    expect(result.offlineIncome).toBeNull();
+    expect(result.offlineIncomeSettlementPersisted).toBeNull();
     expect(result.state.lastUpdateTimestampMs).toBe(TIMESTAMP_MS);
+  });
+
+  it('settles offline time before returning and cannot reward it twice', async () => {
+    const document = createProgressedDocument();
+    const repository = new MemoryActiveSaveRepository();
+    repository.storedDocuments.push(document);
+    const currentTimestampMs = document.savedAtTimestampMs + 60 * 60 * 1_000;
+    const firstCoordinator = new SavePersistenceCoordinator(repository);
+    const firstLoad = await loadActiveGame(
+      firstCoordinator,
+      BASE_GAME_BALANCE,
+      currentTimestampMs,
+    );
+
+    expectSavedLoad(firstLoad);
+    expect(firstLoad.offlineIncome.reward.equals(
+      firstLoad.loadedSave.effectiveProductionRatePerSecond
+        .multiply(60 * 60)
+        .multiply(0.5),
+    )).toBe(true);
+    expect(firstLoad.state.gold.equals(firstLoad.loadedSave.state.gold)).toBe(
+      true,
+    );
+    expect(firstLoad.state.lastUpdateTimestampMs).toBe(currentTimestampMs);
+    expect(repository.storedDocuments.at(-1)?.savedAtTimestampMs).toBe(
+      currentTimestampMs,
+    );
+
+    const secondCoordinator = new SavePersistenceCoordinator(repository);
+    const secondLoad = await loadActiveGame(
+      secondCoordinator,
+      BASE_GAME_BALANCE,
+      currentTimestampMs,
+    );
+
+    expectSavedLoad(secondLoad);
+    expect(secondLoad.offlineIncome.elapsedDurationMs).toBe(0);
+    expect(secondLoad.offlineIncome.reward.equals(0)).toBe(true);
+  });
+
+  it('persists one exact claim and reloads without recreating the reward', async () => {
+    const document = createProgressedDocument();
+    const repository = new MemoryActiveSaveRepository();
+    repository.storedDocuments.push(document);
+    const currentTimestampMs = document.savedAtTimestampMs + 60 * 60 * 1_000;
+    const coordinator = new SavePersistenceCoordinator(repository);
+    const loaded = await loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      currentTimestampMs,
+    );
+
+    expectSavedLoad(loaded);
+    const pendingReward = createPendingOfflineReward(loaded.offlineIncome);
+    const claim = claimOfflineReward(loaded.state, pendingReward);
+
+    expect(claim.status).toBe('claimed');
+    coordinator.queueSave(createSaveDocument(
+      claim.state,
+      BASE_GAME_BALANCE,
+      currentTimestampMs,
+    ));
+    await expect(coordinator.flush()).resolves.toBe(true);
+
+    const repeatedClaim = claimOfflineReward(
+      claim.state,
+      claim.pendingReward,
+    );
+    expect(repeatedClaim.status).toBe('no-pending-reward');
+    expect(repeatedClaim.state.gold.equals(claim.state.gold)).toBe(true);
+
+    const reloaded = await loadActiveGame(
+      new SavePersistenceCoordinator(repository),
+      BASE_GAME_BALANCE,
+      currentTimestampMs,
+    );
+    expectSavedLoad(reloaded);
+    expect(reloaded.state.gold.equals(claim.state.gold)).toBe(true);
+    expect(reloaded.offlineIncome.reward.equals(0)).toBe(true);
+    expect(createPendingOfflineReward(reloaded.offlineIncome)).toBeNull();
+  });
+
+  it('withholds offline income when its timestamp settlement cannot persist', async () => {
+    const document = createProgressedDocument();
+    const repository = new MemoryActiveSaveRepository();
+    repository.storedDocuments.push(document);
+    repository.failWrites = true;
+    const coordinator = new SavePersistenceCoordinator(repository);
+    const result = await loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      document.savedAtTimestampMs + 60 * 60 * 1_000,
+    );
+
+    expectSavedLoad(result);
+    expect(result.offlineIncome.elapsedDurationMs).toBe(3_600_000);
+    expect(result.offlineIncome.reward.equals(0)).toBe(true);
+    expect(result.offlineIncomeSettlementPersisted).toBe(false);
+    expect(coordinator.lastDiagnostic?.code).toBe('save-failed');
+    expect(repository.storedDocuments).toEqual([document]);
+  });
+
+  it('replaces a future save timestamp with now without awarding income', async () => {
+    const document = createProgressedDocument();
+    const repository = new MemoryActiveSaveRepository();
+    repository.storedDocuments.push(document);
+    const currentTimestampMs = document.savedAtTimestampMs - 1_000;
+    const coordinator = new SavePersistenceCoordinator(repository);
+    const result = await loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      currentTimestampMs,
+    );
+
+    expectSavedLoad(result);
+    expect(result.offlineIncome.elapsedDurationMs).toBe(0);
+    expect(result.offlineIncome.reward.equals(0)).toBe(true);
+    expect(result.state.lastUpdateTimestampMs).toBe(currentTimestampMs);
+    expect(repository.storedDocuments.at(-1)?.savedAtTimestampMs).toBe(
+      currentTimestampMs,
+    );
+    expect(
+      repository.storedDocuments.at(-1)?.state.lastUpdateTimestampMs,
+    ).toBe(currentTimestampMs);
   });
 
   it('does not let a warning callback block corrupt-save recovery', async () => {
@@ -425,4 +558,14 @@ function createProgressedDocument(durationMs = 350_000): SaveDocumentV1 {
     BASE_GAME_BALANCE,
     state.lastUpdateTimestampMs,
   );
+}
+
+function expectSavedLoad(
+  result: ActiveGameLoadResult,
+): asserts result is Extract<ActiveGameLoadResult, { source: 'saved' }> {
+  expect(result.source).toBe('saved');
+
+  if (result.source !== 'saved') {
+    throw new Error('Expected a restored save.');
+  }
 }

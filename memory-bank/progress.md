@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 22 is implemented with passing automated checks and is awaiting user validation. Step 23 has not started and remains blocked.
+**Phase:** Implementation Plan Step 24 is implemented with passing automated checks and is awaiting user validation. Step 25 has not started and remains blocked.
 
 ## Completed
 
@@ -78,6 +78,12 @@
 - Step 21 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 22.
 - Step 22 implemented on 2026-08-28: the active-game load boundary now fully restores valid saves, creates an ordinary fresh game for empty storage, and automatically replaces malformed or unsupported load candidates with a complete fresh runtime state plus a typed visible warning. Invalid payloads are detached for diagnostics when structured cloning is safe, no corrupt field is partially applied, and diagnostic listeners cannot crash recovery or leave persistence flushes permanently rejected.
 - Step 22 automated evidence: one hundred ten unit tests pass. Seven new recovery/regression tests cover valid restoration, empty-save startup, malformed current-version recovery, unsupported-version recovery, safe and unsafe payload preservation, playable fresh-state invariants, throwing warning callbacks, and throwing persistence diagnostic callbacks with successful later retry. Lint and production build pass.
+- Step 22 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 23.
+- Step 23 implemented on 2026-08-28: offline income now uses the saved effective-production-rate snapshot, a validated two-hour cap, and 50% efficiency. Valid loads replace the authoritative timestamp with the injected current time and force-save that consumed interval before returning a positive pending reward; future clocks return zero and are corrected, repeated same-time reloads return zero, and failed settlement writes withhold the reward while preserving the running session and save diagnostic. Spendable gold remains unchanged for the Step 24 claim flow.
+- Step 23 automated evidence: one hundred twenty unit tests pass. Ten new balance/offline/persistence tests cover exact provisional configuration, invalid caps and efficiencies, zero and normal absences, two-hour capping, future timestamps, very large saved rates, invalid inputs, immutable gold/state, load-time timestamp persistence, repeated reload protection, and reward withholding when settlement storage fails. Lint and production build pass.
+- Step 23 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 24.
+- Step 24 implemented on 2026-08-28: browser startup now loads the active IndexedDB save before Phaser boot, creates a pending view only for positive offline income, and displays credited time plus the exact reward in an accessible modal. Claiming adds the exact `GameNumber` amount through a pure command, consumes the pending value, and force-persists the claimed authoritative state before dismissal. One cached claim candidate makes save retries idempotent.
+- Step 24 automated evidence: one hundred twenty-five unit tests and two Chromium E2E tests pass. New coverage verifies positive-only pending creation, exact large-number addition, consumed/no-op repeated claims, invalid pending values, credited-duration copy, fresh-player modal absence, returning-player modal contents, exact persisted gold, and no reward recreation after a controlled-clock reload. Lint and production build pass; `git diff --check` is clean.
 
 ## Implementation Step Status
 
@@ -104,16 +110,17 @@
 | 19 — Add an economy progression simulation | Complete | User validated the passing Step 19 checks and authorized Step 20. |
 | 20 — Define the versioned save format | Complete | User validated the passing Step 20 checks and authorized Step 21. |
 | 21 — Add IndexedDB persistence | Complete | User validated the passing Step 21 checks and authorized Step 22. |
-| 22 — Handle corrupt or incompatible saves | Implemented / awaiting user validation | One hundred ten unit tests pass; valid restoration, malformed/unsupported recovery, safe diagnostic payload handling, fresh-state playability, and non-throwing callbacks are covered. |
-| 23 — Calculate capped offline income | Not started / blocked | Must not begin until the user validates Step 22. |
+| 22 — Handle corrupt or incompatible saves | Complete | User validated the passing Step 22 checks and authorized Step 23. |
+| 23 — Calculate capped offline income | Complete | User validated the passing Step 23 checks and authorized Step 24. |
+| 24 — Present and claim offline rewards | Implemented / awaiting user validation | One hundred twenty-five unit and two Chromium tests pass; positive-only modal presentation, exact-once claim, persistence, claim idempotence, reload protection, and fresh-player absence are covered. |
+| 25 — Establish responsive portrait layout | Not started / blocked | Must not begin until the user validates Step 24. |
 
 ## Not Started
 
-- Offline income and later phases.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Player-facing shaft/elevator/warehouse upgrade controls and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.
-- Offline-income calculation and claiming.
+- Offline-income presentation and claiming.
 - Original art, sprite atlases, audio, and visual polish.
 - Mobile performance, responsive layout, and Telegram integration testing.
 - Deployment pipeline.

@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 21 are complete. Step 22's corrupt/incompatible-save recovery is implemented with passing automated checks and is awaiting user validation. Step 23 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
+Steps 1 through 23 are complete. Step 24's offline-reward presentation, exact-once claim command, and claimed-state persistence are implemented with passing automated checks and are awaiting user validation. Step 25 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -21,6 +21,8 @@ Steps 1 through 21 are complete. Step 22's corrupt/incompatible-save recovery is
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
 | `src/core/economy/calculateProductionRates.ts` | Pure theoretical floor throughput, aggregate unlocked extraction, shared-stage throughput, effective mine-rate, and bottleneck calculations. |
 | `src/core/economy/simulateEconomyProgression.ts` | Deterministic automated balance-analysis policy, action trace, and ten-minute progression report. |
+| `src/core/offline-income/calculateOfflineIncome.ts` | Pure elapsed/credited-time calculation, saved-rate reward calculation, future-clock handling, and immutable load-timestamp settlement. |
+| `src/core/offline-income/claimOfflineIncome.ts` | Pure positive-pending-reward creation and exact-once claim-state transition that adds gold without changing unrelated authoritative state. |
 | `src/core/progression/calculateLevelEffect.ts` | Shared level-growth and cumulative milestone-effect calculation used by state creation, simulation, rates, and upgrades. |
 | `src/core/progression/unlocks.ts` | Immutable sequential floor-unlock command with explicit prerequisite, affordability, duplicate, and missing-floor outcomes. |
 | `src/core/progression/upgrades.ts` | Pure next-upgrade pricing plus immutable mine-shaft, elevator, and warehouse purchase commands that apply level-derived yield/capacity effects with explicit results. |
@@ -33,6 +35,7 @@ Steps 1 through 21 are complete. Step 22's corrupt/incompatible-save recovery is
 | `src/persistence/SavePersistenceCoordinator.ts` | Debounced writes, forced flushing, retry retention, and non-throwing load/save diagnostics. |
 | `src/persistence/loadActiveGame.ts` | Valid-save restoration plus typed malformed/incompatible-save recovery into a fresh state with a safe diagnostic payload snapshot. |
 | `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document and forces a flush when supported. |
+| `src/ui/OfflineRewardModal.ts` | Accessible DOM modal for credited offline duration, raw `GameNumber` reward display, claim/save progress, and retryable persistence failure feedback. |
 
 ## Current File Responsibilities
 
@@ -54,10 +57,10 @@ Steps 1 through 21 are complete. Step 22's corrupt/incompatible-save recovery is
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, and deterministic economy analysis; offline-income logic remains future work. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, and pending-reward claim transitions. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
-| `src/ui/` | Implemented empty boundary for future HUD and overlays. |
+| `src/ui/` | Owns the implemented offline-reward DOM modal; the mine HUD and later overlays remain deferred. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding; broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Implemented tracked directory for future original placeholder assets. |
@@ -76,7 +79,7 @@ Steps 1 through 21 are complete. Step 22's corrupt/incompatible-save recovery is
 
 ## Planned Data Flow
 
-Load active payload → migrate and validate → restore valid state or warn and create a fully fresh state → calculate capped offline reward → advance deterministic simulation → publish read-only snapshot → render Phaser/UI → translate player input into core commands → persist debounced authoritative snapshots.
+Load active payload → migrate and validate → restore valid state or warn and create a fully fresh state → calculate capped offline reward from the saved rate → persist the consumed timestamp interval → expose a positive pending reward in the modal → claim into an immutable authoritative candidate → force-persist the candidate → dismiss the modal → advance deterministic simulation → publish read-only snapshot → render Phaser/UI → translate player input into core commands → persist debounced authoritative snapshots.
 
 The production pipeline is four independent mine shafts → one shared round-robin elevator → one shared warehouse → spendable gold.
 
@@ -137,7 +140,7 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 |---|---|---|
 | `schemaVersion` | integer | Required; exactly `1`. Missing and unsupported versions fail through the migration dispatcher. |
 | `savedAtTimestampMs` | number | Non-negative safe integer; cannot precede `state.lastUpdateTimestampMs`. |
-| `effectiveProductionRatePerSecond` | string | Finite non-negative serialized `GameNumber`; snapshot used by later offline-income logic. |
+| `effectiveProductionRatePerSecond` | string | Finite non-negative serialized `GameNumber`; authoritative rate snapshot used by offline-income calculation. |
 | `state` | object | Exact serialized authoritative state described below. |
 | `state.saveVersion` | integer | Required; exactly authoritative state version `1`. |
 | `state.lastUpdateTimestampMs` | number | Non-negative safe integer. |
@@ -168,7 +171,13 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 
 ## Save Recovery Contract
 
-`loadActiveGame` is the application load boundary above raw persistence. Empty storage creates a normal fresh state without a warning. A valid document is fully migrated, validated, and deserialized before any authoritative state is returned. If migration or validation fails, no field from the candidate enters runtime state: the loader classifies unsupported schema versions as incompatible and all other invalid candidates as corrupt, records a stable warning with a detached structured-clone snapshot when safe, and creates a complete fresh state at the caller-provided timestamp. Diagnostic callbacks are best-effort and cannot turn a recoverable persistence or save-format failure into an uncaught exception. The invalid IndexedDB record is not mutated during recovery, and offline reward calculation remains deferred to Step 23.
+`loadActiveGame` is the application load boundary above raw persistence. Empty storage creates a normal fresh state without a warning. A valid document is fully migrated, validated, and deserialized before any authoritative state is returned. If migration or validation fails, no field from the candidate enters runtime state: the loader classifies unsupported schema versions as incompatible and all other invalid candidates as corrupt, records a stable warning with a detached structured-clone snapshot when safe, and creates a complete fresh state at the caller-provided timestamp. Diagnostic callbacks are best-effort and cannot turn a recoverable persistence or save-format failure into an uncaught exception. The invalid IndexedDB record is not mutated during recovery.
+
+## Offline Income Contract
+
+Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. `calculateOfflineIncome` computes non-negative elapsed time from the validated save timestamp to an injected current timestamp, clamps credited time to the cap, and returns `savedEffectiveRate × creditedSeconds × efficiency` as a `GameNumber`. A future save timestamp produces zero elapsed time and zero reward. The calculation never changes spendable gold or other production state; it immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
+
+The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration caches one claim candidate, force-persists it before dismissing the modal, and reuses that candidate after a failed write so retry cannot add gold twice. The version-1 save and IndexedDB schemas remain unchanged because only the post-claim authoritative gold snapshot is stored.
 
 ## Provisional Balance Snapshot
 
