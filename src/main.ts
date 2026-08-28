@@ -16,7 +16,8 @@ import {
 import { bindSaveLifecycle } from './platform/web';
 import { showOfflineRewardModal, type OfflineRewardModal } from './ui';
 
-const app = getApplicationRoot();
+const app = getRequiredElement('#app', 'Application root');
+const gameViewport = getRequiredElement('#game-viewport', 'Game viewport');
 
 validateBaseGameBalance(BASE_GAME_BALANCE);
 
@@ -44,7 +45,7 @@ async function startApplication(): Promise<void> {
   let pendingReward = createPendingOfflineReward(loadResult.offlineIncome);
   let claimCandidate: GameState | null = null;
 
-  game = createGame(app);
+  game = createGame(gameViewport);
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
     () => createSaveDocument(currentState, BASE_GAME_BALANCE, Date.now()),
@@ -95,12 +96,12 @@ if (import.meta.hot) {
   });
 }
 
-function getApplicationRoot(): HTMLElement {
-  const root = document.querySelector<HTMLElement>('#app');
+function getRequiredElement(selector: string, name: string): HTMLElement {
+  const element = document.querySelector<HTMLElement>(selector);
 
-  if (root === null) {
-    throw new Error('Application root was not found.');
+  if (element === null) {
+    throw new Error(`${name} was not found.`);
   }
 
-  return root;
+  return element;
 }

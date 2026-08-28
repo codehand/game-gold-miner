@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 24 is implemented with passing automated checks and is awaiting user validation. Step 25 has not started and remains blocked.
+**Phase:** Implementation Plan Step 25 is implemented with passing automated checks and is awaiting user validation. Step 26 has not started and remains blocked.
 
 ## Completed
 
@@ -84,6 +84,9 @@
 - Step 23 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 24.
 - Step 24 implemented on 2026-08-28: browser startup now loads the active IndexedDB save before Phaser boot, creates a pending view only for positive offline income, and displays credited time plus the exact reward in an accessible modal. Claiming adds the exact `GameNumber` amount through a pure command, consumes the pending value, and force-persists the claimed authoritative state before dismissal. One cached claim candidate makes save retries idempotent.
 - Step 24 automated evidence: one hundred twenty-five unit tests and two Chromium E2E tests pass. New coverage verifies positive-only pending creation, exact large-number addition, consumed/no-op repeated claims, invalid pending values, credited-duration copy, fresh-player modal absence, returning-player modal contents, exact persisted gold, and no reward recreation after a controlled-clock reload. Lint and production build pass; `git diff --check` is clean.
+- Step 24 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 25.
+- Step 25 implemented on 2026-08-28: a pure Phaser-free layout module tiles the fixed 360×640 portrait viewport into a fixed top HUD, a shared elevator/warehouse surface strip, and a scrollable mine area that reaches the bottom edge with no bottom navigation reserved or rendered. `viewport-fit=cover` plus `env(safe-area-inset-*)` padding on `#app` makes the `#game-viewport` Phaser parent the safe box, and `FIT` with `CENTER_BOTH` letterboxes instead of cropping. The mine is clipped by a dedicated camera viewport because Phaser 4 removed WebGL geometry masks, and its 514-pixel placeholder content exceeds the 428-pixel region so the area must scroll.
+- Step 25 automated evidence: one hundred forty-four unit tests and six Chromium E2E tests pass. Sixteen layout/palette unit tests cover the documented region rectangles, gap-free tiling, the absent bottom-navigation strip, larger logical viewports, invalid and too-short dimensions, overflowing scroll content, sequential floor slots, invalid floor counts/indexes, and the diagnostic serialization format. Four Playwright viewport tests (narrow phone 320×568, tall phone 390×844, tablet portrait 768×1024, desktop 1280×800) assert the canvas fits both the viewport and the safe box, preserves its aspect ratio, keeps every region on screen in HUD → surface → mine order, pins the HUD to the top and the mine to the bottom edge, exposes no navigation element, and logs no console errors. Four pixel probes per viewport sample the real canvas and prove both camera ignore lists hold; they were validated by mutation, each of three broken-render mutations now failing with a named assertion. `eslint.config.mjs` enforces the `src/game/layout` purity claim and `tests/unit/architecture.test.ts` probes that rule. Lint and production build pass; `git diff --check` is clean.
 
 ## Implementation Step Status
 
@@ -112,17 +115,18 @@
 | 21 — Add IndexedDB persistence | Complete | User validated the passing Step 21 checks and authorized Step 22. |
 | 22 — Handle corrupt or incompatible saves | Complete | User validated the passing Step 22 checks and authorized Step 23. |
 | 23 — Calculate capped offline income | Complete | User validated the passing Step 23 checks and authorized Step 24. |
-| 24 — Present and claim offline rewards | Implemented / awaiting user validation | One hundred twenty-five unit and two Chromium tests pass; positive-only modal presentation, exact-once claim, persistence, claim idempotence, reload protection, and fresh-player absence are covered. |
-| 25 — Establish responsive portrait layout | Not started / blocked | Must not begin until the user validates Step 24. |
+| 24 — Present and claim offline rewards | Complete | User validated the passing Step 24 checks and authorized Step 25. |
+| 25 — Establish responsive portrait layout | Implemented / awaiting user validation | One hundred forty-four unit and six Chromium tests pass; region geometry, safe-area host padding, uncropped fitting, HUD visibility, bottom-edge mine area, overflowing scroll content, the absent bottom navigation, and mutation-verified pixel proof of camera clipping are covered at four viewport sizes. |
+| 26 — Render four mine floors | Not started / blocked | Must not begin until the user validates Step 25. |
 
 ## Not Started
 
-- Phaser mine scene, four floors, miners, transport, warehouse, and UI.
-- Player-facing shaft/elevator/warehouse upgrade controls and floor unlocks.
+- Bound floor views, miners, transport, and warehouse visuals inside the established layout regions.
+- Live HUD values and player-facing shaft/elevator/warehouse upgrade controls and floor unlocks.
+- Mine scroll input and one-thumb interaction.
 - Expanded manager, boost, and gift-drop systems after the base milestone.
-- Offline-income presentation and claiming.
 - Original art, sprite atlases, audio, and visual polish.
-- Mobile performance, responsive layout, and Telegram integration testing.
+- Mobile performance and Telegram integration testing.
 - Deployment pipeline.
 
 ## Acceptance Targets

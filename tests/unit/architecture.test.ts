@@ -5,14 +5,21 @@ import { describe, expect, it } from 'vitest';
 
 const PROJECT_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CORE_PROBE_PATH = 'src/core/architecture-probe.ts';
+const LAYOUT_PROBE_PATH = 'src/game/layout/architecture-probe.ts';
 
-async function lintCore(source: string) {
+async function lintProbe(source: string, filePath: string) {
   const eslint = new ESLint({ cwd: PROJECT_ROOT });
-  const [result] = await eslint.lintText(source, {
-    filePath: CORE_PROBE_PATH,
-  });
+  const [result] = await eslint.lintText(source, { filePath });
 
   return result.messages;
+}
+
+async function lintCore(source: string) {
+  return lintProbe(source, CORE_PROBE_PATH);
+}
+
+async function lintLayout(source: string) {
+  return lintProbe(source, LAYOUT_PROBE_PATH);
 }
 
 describe('core architecture boundary', () => {
@@ -44,5 +51,35 @@ describe('core architecture boundary', () => {
 
     expect(restrictedImportMessages).toHaveLength(3);
     expect(restrictedGlobalMessages).toHaveLength(2);
+  });
+});
+
+describe('layout geometry boundary', () => {
+  it('accepts pure TypeScript modules', async () => {
+    const messages = await lintLayout(`
+      export function double(value: number): number {
+        return value * 2;
+      }
+    `);
+
+    expect(messages).toEqual([]);
+  });
+
+  it('rejects renderer and browser dependencies', async () => {
+    const messages = await lintLayout(`
+      import Phaser from 'phaser';
+
+      document.title = Phaser.VERSION;
+      window.postMessage(navigator.userAgent, '*');
+    `);
+    const restrictedImportMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-imports',
+    );
+    const restrictedGlobalMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-globals',
+    );
+
+    expect(restrictedImportMessages).toHaveLength(1);
+    expect(restrictedGlobalMessages).toHaveLength(3);
   });
 });

@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 24 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates offline-reward presentation and claiming; Step 25 must not begin without explicit authorization.
+Implementation Plan Step 25 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the responsive portrait layout; Step 26 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -85,6 +85,15 @@ Implementation Plan Step 24 is implemented and its automated validation passes. 
 - Added a pure pending-reward claim command that adds the exact `GameNumber` reward to gold and consumes the pending value, while a repeated claim with no pending value returns the original state.
 - Wired browser startup through IndexedDB recovery and offline calculation, added a simple accessible modal showing credited time and reward, and force-persists the claimed snapshot before dismissing the modal. A failed write keeps the same claim candidate for retry without adding the reward again.
 - Added browser coverage proving fresh players see no modal and a returning player can claim a capped reward exactly once across reload; one hundred twenty-five unit tests, two Chromium E2E tests, lint, and production build pass.
+- The user authorized Step 25 on 2026-08-28, which validated Step 24.
+- Added `src/game/layout/mineLayout.ts`, a pure Phaser-free module that tiles the 360×640 portrait viewport into a fixed HUD, a shared surface strip, and a scrollable mine region reaching the bottom edge with no reserved bottom navigation.
+- Moved the Phaser parent into `#game-viewport` and gave `#app` `env(safe-area-inset-*)` padding plus `viewport-fit=cover`, so safe-area insets are applied once, outside the canvas, before the scale manager measures its parent.
+- Rebuilt `BootScene` around separate fixed and scrolling layers, English HUD/surface placeholders, and four placeholder floor slots whose combined 514-pixel content exceeds the 428-pixel mine region.
+- Replaced an initial geometry-mask attempt with a dedicated mine camera viewport after Phaser 4 warned that `setMask` does nothing in WebGL; the mine area is now genuinely clipped in both renderers.
+- Added sixteen layout/palette unit tests and four Playwright viewport tests (320×568, 390×844, 768×1024, 1280×800).
+- Review of the first Step 25 implementation found the browser suite could not detect a broken render: deleting either camera-ignore call left all four viewport tests green while the HUD was visibly destroyed. Added pixel probes that sample the real canvas, extracted the palette into a pure module so scene and test read one source of truth, replaced a hardcoded `428` with the published mine height, threaded `layout.width` into the floor slots, and put the `src/game/layout` purity claim behind a lint rule with an `architecture.test.ts` probe.
+- Verified the new probes by mutation: removing either ignore call, or misplacing the mine camera viewport, now fails with a named assertion. A first attempt probing a floor panel missed one mutation because a later-drawn panel hid the duplicated layer; the probe moved to the mine gutter.
+- One hundred forty-four unit tests, six Chromium E2E tests, lint, and production build pass.
 
 ## Active Decisions
 
@@ -122,11 +131,18 @@ Implementation Plan Step 24 is implemented and its automated validation passes. 
 - Treat unsupported schema versions separately from malformed current-version saves, preserve a cloneable invalid payload in the recovery warning, and initialize a fully fresh state at the caller-provided current timestamp.
 - Configure offline income as a 7,200,000 ms cap at 0.5 efficiency, calculate from the saved effective-rate snapshot, keep a positive reward outside spendable gold until the player claims it, and settle consumed time before exposing that reward.
 - Consume pending rewards through one pure claim result, reuse the same in-memory claim candidate across save retries, and dismiss the modal only after the claimed authoritative snapshot is force-persisted.
+- Keep the logical viewport a fixed 360×640 and make responsiveness a scaling concern: `FIT` plus `CENTER_BOTH` letterboxes instead of cropping, so later render steps keep addressing stable logical coordinates.
+- Apply host safe-area insets exactly once, as CSS padding on `#app` around the `#game-viewport` Phaser parent, never inside the canvas.
+- Keep layout geometry pure and Phaser-free so it is unit-testable in Node; the scene only positions objects and publishes canvas dataset diagnostics for browser assertions.
+- Clip the scrollable mine with a dedicated camera viewport rather than a geometry mask, because Phaser 4 removed WebGL geometry masks; Step 31 will drive only that camera's scroll.
+- Render no bottom navigation and reserve no space for it; the mine region runs to the bottom edge.
+- Treat canvas dataset diagnostics as geometry reporting only, never as renderer evidence; every rendering guarantee needs a pixel probe sampling the shared palette.
+- Keep colors in the pure layout palette rather than private scene constants, so browser tests assert the same values the scene draws.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 24 test results and modal behavior.
-2. Begin Step 25 only after explicit user authorization.
+1. Wait for the user to validate the Step 25 layout results.
+2. Begin Step 26 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

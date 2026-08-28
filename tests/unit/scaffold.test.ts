@@ -10,7 +10,14 @@ describe('application scaffold', () => {
 
     expect(document).toContain('<html lang="en">');
     expect(document).toContain('<title>Cat Mine Idle</title>');
-    expect(document).toContain('<main id="app"></main>');
+    expect(document).toContain('<main id="app">');
+    expect(document).toContain('<div id="game-viewport"');
     expect(document).toContain('src="/src/main.ts"');
+  });
+
+  it('opts into safe-area insets for the portrait layout', async () => {
+    const document = await readFile(INDEX_URL, 'utf8');
+
+    expect(document).toContain('viewport-fit=cover');
   });
 });

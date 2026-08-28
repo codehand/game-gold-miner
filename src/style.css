@@ -1,5 +1,6 @@
 :root {
-  background: #111827;
+  /* Letterbox around the fitted 360x640 canvas, darker than the mine area. */
+  background: #030712;
 }
 
 * {
@@ -13,14 +14,29 @@ body {
   overflow: hidden;
 }
 
+/*
+ * `#app` absorbs the host safe-area insets so the Phaser parent (`#game-viewport`)
+ * is already the safe box when the scale manager measures it.
+ */
 #app {
   position: relative;
+  display: flex;
   width: 100vw;
   min-height: 100vh;
   height: 100dvh;
+  padding:
+    env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
-#app canvas {
+#game-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+#game-viewport canvas {
   display: block;
 }
 

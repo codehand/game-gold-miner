@@ -46,6 +46,15 @@ Persistence and Platform Adapters
 - Route every save candidate through migration dispatch and strict schema/config validation before reconstructing runtime `GameNumber` values; keep this pure document boundary independent of the later IndexedDB adapter.
 - Access local storage through an `ActiveSaveRepository`; let the Dexie adapter replace one fixed record, let the coordinator debounce routine writes and absorb failures into diagnostics, and keep browser lifecycle event binding in `src/platform/web/`.
 - Restore a save only after complete migration, validation, and deserialization; otherwise classify it as corrupt or incompatible, preserve a safe detached diagnostic payload, warn without throwing, and return a fully fresh authoritative state.
+- Keep screen geometry in a pure Phaser-free layout module so region maths is unit-testable in Node and the scene only positions objects.
+- Absorb host safe-area insets in CSS around the Phaser parent element rather than inside the canvas, so insets are applied exactly once and the logical viewport stays a fixed 360×640.
+- Scale with `FIT` and `CENTER_BOTH`: letterbox rather than crop, so no required control can leave the host viewport.
+- Clip scrollable screen regions with a dedicated camera viewport, not a geometry mask; Phaser 4 removed WebGL geometry masks, and camera scroll gives later input steps a single value to drive.
+- Keep fixed and scrolling layers in separate containers and cross-ignore them between cameras so the HUD cannot scroll with the mine.
+- Publish layout geometry as canvas dataset diagnostics so browser tests assert real on-screen rectangles instead of screenshots, but never let diagnostics be the only renderer evidence: they report intended geometry and stay green while the render is broken.
+- Assert renderer correctness with pixel probes at fixed logical coordinates, sampling colors from the shared pure palette. Force `preserveDrawingBuffer` in the test browser context only; production keeps it disabled.
+- Probe a point where the layer under test is the topmost drawn thing. A probe hidden behind a later-drawn panel proves nothing, so the mine gutter, not a floor panel, guards the mine camera's ignore list.
+- Enforce every documented purity boundary with a lint rule plus an `architecture.test.ts` probe, not with prose alone.
 - Add seeded randomness only when later probabilistic systems are introduced.
 
 ## Critical Flow

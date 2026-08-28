@@ -85,4 +85,43 @@ export default defineConfig(
       ],
     },
   },
+  {
+    files: ['src/game/layout/**/*.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'document',
+          message: 'Layout geometry must not depend on DOM APIs.',
+        },
+        {
+          name: 'navigator',
+          message: 'Layout geometry must not depend on browser APIs.',
+        },
+        {
+          name: 'window',
+          message: 'Layout geometry must not depend on DOM APIs.',
+        },
+      ],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'phaser',
+              message:
+                'Layout geometry must stay renderer-free so Node tests can import it.',
+            },
+          ],
+          patterns: [
+            {
+              regex: '^phaser/',
+              message:
+                'Layout geometry must stay renderer-free so Node tests can import it.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

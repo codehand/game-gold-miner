@@ -2,20 +2,21 @@
 
 ## Current Status
 
-Steps 1 through 23 are complete. Step 24's offline-reward presentation, exact-once claim command, and claimed-state persistence are implemented with passing automated checks and are awaiting user validation. Step 25 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
+Steps 1 through 24 are complete. Step 25's responsive portrait layout — a fixed top HUD, a shared surface strip, and a camera-clipped scrollable mine area inside a safe-area-aware host — is implemented with passing automated checks and is awaiting user validation. Step 26 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
 
 ## Implemented Foundation
 
 | Path | Responsibility |
 |---|---|
-| `index.html`, `src/main.ts`, `src/style.css` | Browser entry point, Phaser game startup, hot-reload cleanup, and full-viewport canvas host styling. |
+| `index.html`, `src/main.ts`, `src/style.css` | Browser entry point, `viewport-fit=cover` opt-in, safe-area-inset host padding around the `#game-viewport` Phaser parent, Phaser game startup, and hot-reload cleanup. |
+| `src/game/layout/mineLayout.ts`, `src/game/layout/palette.ts`, `src/game/layout/index.ts` | Pure Phaser-free portrait geometry and palette: logical viewport constants, HUD/surface/mine regions, scrollable mine content height, floor-slot regions, diagnostic region serialization, and the `#rrggbb` colors both the scene and the browser pixel probes read. |
 | `package.json`, `package-lock.json`, `tsconfig.json` | Locked dependencies, strict compiler settings, and verified development/build/test scripts. |
 | `eslint.config.mjs` | Flat lint configuration for TypeScript, configuration files, and the Node simulator script. |
 | `vitest.config.ts`, `tests/unit/` | Node-based unit-test configuration and scaffold baseline coverage. |
 | `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, and browser smoke coverage. |
-| `tests/unit/architecture.test.ts` | Regression coverage proving the core boundary accepts pure TypeScript and rejects renderer, adapter, and browser dependencies. |
+| `tests/unit/architecture.test.ts` | Regression coverage proving the core and layout boundaries accept pure TypeScript and reject renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
-| `src/game/scenes/BootScene.ts` | Single neutral boot scene that records startup and renderer diagnostics on the game canvas for browser validation. |
+| `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer, and the mine content layer, clips the mine through a dedicated camera viewport, and records startup, renderer, and layout diagnostics on the game canvas. |
 | `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional four-floor/shared-stage data, its public types, and fail-fast startup validation. |
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
@@ -59,7 +60,7 @@ Steps 1 through 23 are complete. Step 24's offline-reward presentation, exact-on
 |---|---|
 | `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, and pending-reward claim transitions. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
-| `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
+| `src/game/` | Owns the Phaser game configuration, the pure portrait-layout geometry, and the single scene that renders the HUD, surface, and camera-clipped mine regions; floor views, production visuals, input, and animation remain deferred. |
 | `src/ui/` | Owns the implemented offline-reward DOM modal; the mine HUD and later overlays remain deferred. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding; broader browser lifecycle translation remains future work. |
@@ -178,6 +179,22 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. `calculateOfflineIncome` computes non-negative elapsed time from the validated save timestamp to an injected current timestamp, clamps credited time to the cap, and returns `savedEffectiveRate × creditedSeconds × efficiency` as a `GameNumber`. A future save timestamp produces zero elapsed time and zero reward. The calculation never changes spendable gold or other production state; it immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
 
 The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration caches one claim candidate, force-persists it before dismissing the modal, and reuses that candidate after a failed write so retry cannot add gold twice. The version-1 save and IndexedDB schemas remain unchanged because only the post-claim authoritative gold snapshot is stored.
+
+## Portrait Layout Contract
+
+The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inset-*)` as padding so the `#game-viewport` Phaser parent is already the safe box when the scale manager measures it; `index.html` opts in with `viewport-fit=cover`. The scale manager uses `FIT` with `CENTER_BOTH`, which preserves aspect ratio and letterboxes rather than cropping, so no required control can leave the host viewport at any size.
+
+`calculateMineLayout(width, height)` is pure and Phaser-free. It tiles three full-width regions top to bottom with no gaps, overlaps, or reserved bottom navigation:
+
+| Region | Logical rect (360×640) | Role |
+|---|---|---|
+| `hud` | `0,0,360,72` | Fixed top HUD; English `Gold` and `Income /s` labels. |
+| `surface` | `0,72,360,140` | Shared elevator and warehouse panels. |
+| `mine` | `0,212,360,428` | Clipped viewport the mine content scrolls behind; runs to the bottom edge. |
+
+The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT` (412). `calculateMineContentHeight()` returns 514 logical pixels for four floor slots — taller than the 428-pixel mine region — so the area must scroll. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin.
+
+Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD and surface never scroll and Step 31 only needs to drive the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
 
 ## Provisional Balance Snapshot
 
