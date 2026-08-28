@@ -7,15 +7,19 @@ import {
   ACTIVE_SAVE_DATABASE_VERSION,
   ACTIVE_SAVE_RECORD_ID,
   ACTIVE_SAVE_STORE_NAME,
+  CORRUPT_SAVE_WARNING_MESSAGE,
   DexieActiveSaveRepository,
+  INCOMPATIBLE_SAVE_WARNING_MESSAGE,
   LOAD_FAILURE_MESSAGE,
   SAVE_FAILURE_MESSAGE,
   SavePersistenceCoordinator,
   createSaveDocument,
   deserializeSaveDocument,
+  loadActiveGame,
   type ActiveSaveRepository,
   type PersistenceDiagnostic,
   type SaveDocumentV1,
+  type SaveRecoveryWarning,
 } from '../../src/persistence';
 import { bindSaveLifecycle } from '../../src/platform/web';
 
@@ -191,6 +195,24 @@ describe('save persistence coordination', () => {
     expect(coordinator.lastDiagnostic).toBeNull();
   });
 
+  it('keeps persistence failures recoverable when a diagnostic callback throws', async () => {
+    const repository = new MemoryActiveSaveRepository();
+    repository.failLoads = true;
+    repository.failWrites = true;
+    const coordinator = new SavePersistenceCoordinator(repository, {
+      onDiagnostic: () => {
+        throw new Error('Simulated presentation failure.');
+      },
+    });
+
+    await expect(coordinator.loadActiveSave()).resolves.toBeNull();
+    coordinator.queueSave(createProgressedDocument());
+    await expect(coordinator.flush()).resolves.toBe(false);
+
+    repository.failWrites = false;
+    await expect(coordinator.flush()).resolves.toBe(true);
+  });
+
   it('rejects invalid debounce durations', () => {
     const repository = new MemoryActiveSaveRepository();
 
@@ -203,17 +225,153 @@ describe('save persistence coordination', () => {
   });
 });
 
+describe('corrupt and incompatible save recovery', () => {
+  it('restores a valid save without a recovery warning', async () => {
+    const document = createProgressedDocument();
+    const repository = new MemoryActiveSaveRepository();
+    repository.storedDocuments.push(document);
+    const coordinator = new SavePersistenceCoordinator(repository);
+    const result = await loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS + 999_999,
+    );
+
+    expect(result.source).toBe('saved');
+    expect(result.warning).toBeNull();
+    expect(result.loadedSave?.savedAtTimestampMs).toBe(
+      document.savedAtTimestampMs,
+    );
+    expect(JSON.stringify(result.state)).toBe(
+      JSON.stringify(result.loadedSave?.state),
+    );
+  });
+
+  it('starts a playable fresh game and preserves malformed data for diagnostics', async () => {
+    const malformedPayload = {
+      schemaVersion: 1,
+      state: { gold: 'not-a-number' },
+    };
+    const repository = new MemoryActiveSaveRepository();
+    repository.loadedValue = malformedPayload;
+    const coordinator = new SavePersistenceCoordinator(repository);
+    const warnings: SaveRecoveryWarning[] = [];
+    const result = await loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+      { onWarning: (warning) => warnings.push(warning) },
+    );
+
+    expect(result.source).toBe('fresh');
+    expect(result.loadedSave).toBeNull();
+    expect(result.warning).toMatchObject({
+      code: 'corrupt-save',
+      message: CORRUPT_SAVE_WARNING_MESSAGE,
+      preservedPayload: malformedPayload,
+    });
+    expect(warnings).toEqual([result.warning]);
+    expect(result.state.lastUpdateTimestampMs).toBe(TIMESTAMP_MS);
+    expect(result.state.gold.serialize()).toBe(
+      String(BASE_GAME_BALANCE.startingGold),
+    );
+    expect(result.state.floors[0].isUnlocked).toBe(true);
+    expect(result.state.floors.slice(1).every((floor) => !floor.isUnlocked))
+      .toBe(true);
+    expect(result.warning?.preservedPayload).not.toBe(malformedPayload);
+  });
+
+  it('starts fresh and records an incompatible-version warning', async () => {
+    const unsupportedPayload = {
+      ...createProgressedDocument(),
+      schemaVersion: 2,
+    };
+    const repository = new MemoryActiveSaveRepository();
+    repository.loadedValue = unsupportedPayload;
+    const coordinator = new SavePersistenceCoordinator(repository);
+    const result = await loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+
+    expect(result.source).toBe('fresh');
+    expect(result.warning).toMatchObject({
+      code: 'incompatible-save',
+      message: INCOMPATIBLE_SAVE_WARNING_MESSAGE,
+      preservedPayload: unsupportedPayload,
+    });
+    expect(result.state.lastUpdateTimestampMs).toBe(TIMESTAMP_MS);
+  });
+
+  it('returns fresh state without warning when no active save exists', async () => {
+    const repository = new MemoryActiveSaveRepository();
+    const coordinator = new SavePersistenceCoordinator(repository);
+    const result = await loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+
+    expect(result.source).toBe('fresh');
+    expect(result.warning).toBeNull();
+    expect(result.state.lastUpdateTimestampMs).toBe(TIMESTAMP_MS);
+  });
+
+  it('does not let a warning callback block corrupt-save recovery', async () => {
+    const repository = new MemoryActiveSaveRepository();
+    repository.loadedValue = { schemaVersion: 1 };
+    const coordinator = new SavePersistenceCoordinator(repository);
+
+    await expect(loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+      {
+        onWarning: () => {
+          throw new Error('Simulated warning presentation failure.');
+        },
+      },
+    )).resolves.toMatchObject({
+      source: 'fresh',
+      warning: { code: 'corrupt-save' },
+    });
+  });
+
+  it('omits an unsafe payload from diagnostics while still starting fresh', async () => {
+    const repository = new MemoryActiveSaveRepository();
+    repository.loadedValue = {
+      schemaVersion: 1,
+      unsafeValue: () => undefined,
+    };
+    const coordinator = new SavePersistenceCoordinator(repository);
+    const result = await loadActiveGame(
+      coordinator,
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+
+    expect(result.source).toBe('fresh');
+    expect(result.warning?.code).toBe('corrupt-save');
+    expect(result.warning?.preservedPayload).toBeNull();
+    expect(result.state.floors[0].isUnlocked).toBe(true);
+  });
+});
+
 class MemoryActiveSaveRepository implements ActiveSaveRepository {
   public readonly storedDocuments: SaveDocumentV1[] = [];
   public failLoads = false;
   public failWrites = false;
+  public loadedValue: unknown | null | undefined;
 
   public async loadActiveSave(): Promise<unknown | null> {
     if (this.failLoads) {
       throw new Error('Simulated read failure.');
     }
 
-    return this.storedDocuments.at(-1) ?? null;
+    return this.loadedValue === undefined
+      ? this.storedDocuments.at(-1) ?? null
+      : this.loadedValue;
   }
 
   public async storeActiveSave(document: SaveDocumentV1): Promise<void> {

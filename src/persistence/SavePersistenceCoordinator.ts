@@ -128,7 +128,12 @@ export class SavePersistenceCoordinator {
 
   #reportDiagnostic(diagnostic: PersistenceDiagnostic): void {
     this.#lastDiagnostic = diagnostic;
-    this.#onDiagnostic?.(diagnostic);
+
+    try {
+      this.#onDiagnostic?.(diagnostic);
+    } catch {
+      // Diagnostics are best-effort and must never interrupt persistence.
+    }
   }
 
   #clearScheduledSave(): void {

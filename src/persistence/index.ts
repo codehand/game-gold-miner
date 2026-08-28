@@ -17,6 +17,15 @@ export {
   type SavePersistenceCoordinatorOptions,
 } from './SavePersistenceCoordinator';
 export {
+  CORRUPT_SAVE_WARNING_MESSAGE,
+  INCOMPATIBLE_SAVE_WARNING_MESSAGE,
+  loadActiveGame,
+  type ActiveGameLoadResult,
+  type LoadActiveGameOptions,
+  type SaveRecoveryWarning,
+  type SaveRecoveryWarningCode,
+} from './loadActiveGame';
+export {
   CURRENT_SAVE_SCHEMA_VERSION,
   SaveDocumentError,
   createSaveDocument,

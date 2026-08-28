@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 21 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates IndexedDB persistence; Step 22 must not begin without explicit authorization.
+Implementation Plan Step 22 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates corrupt/incompatible-save recovery; Step 23 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -75,6 +75,9 @@ Implementation Plan Step 21 is implemented and its automated validation passes. 
 - The user validated Step 20 and authorized Step 21.
 - Added a Dexie-backed repository with one fixed `active` save record, a debounced persistence coordinator, non-throwing load/save diagnostics, and web `visibilitychange`/`pagehide` forced flushes.
 - Added exact close/reopen restoration coverage plus a regression fix that compares level-derived capacities at their canonical serialized boundary.
+- The user validated Step 21 and authorized Step 22 on 2026-08-28.
+- Added a recovery-aware active-game loader that restores valid saves, creates a fresh playable state for empty storage, and converts malformed or unsupported payloads into typed visible warnings plus fresh state without partial application.
+- Preserved invalid payloads as detached diagnostic snapshots when structured cloning is safe, and isolated persistence/recovery callbacks so presentation failures cannot escape into the running session.
 
 ## Active Decisions
 
@@ -109,11 +112,12 @@ Implementation Plan Step 21 is implemented and its automated validation passes. 
 - Use the Step 19 automated policy only as a reproducible balance-analysis harness; it does not issue player-runtime purchases or replace later playtesting.
 - Persist every `GameNumber` as a finite decimal/scientific string, validate exact version-1 structure and authoritative invariants before deserialization, and keep migration dispatch separate from IndexedDB storage.
 - Store one active document under the fixed `active` key, debounce routine writes by 500 ms, force the newest snapshot on supported lifecycle events, and surface storage failures without terminating the running session.
+- Treat unsupported schema versions separately from malformed current-version saves, preserve a cloneable invalid payload in the recovery warning, and initialize a fully fresh state at the caller-provided current timestamp.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 21 test results.
-2. Begin Step 22 only after explicit user authorization.
+1. Wait for the user to validate the Step 22 test results.
+2. Begin Step 23 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

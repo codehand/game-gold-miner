@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 21 is implemented with passing automated checks and is awaiting user validation. Step 22 has not started and remains blocked.
+**Phase:** Implementation Plan Step 22 is implemented with passing automated checks and is awaiting user validation. Step 23 has not started and remains blocked.
 
 ## Completed
 
@@ -75,6 +75,9 @@
 - Step 20 was validated by the user through explicit authorization to proceed with Step 21.
 - Step 21 implemented: Dexie 4.4.5 now stores one active version-1 document behind a storage interface; routine writes debounce to the newest snapshot, supported web lifecycle events force a flush, and load/save failures resolve safely while exposing user-facing diagnostics and retaining failed writes for retry.
 - Step 21 automated evidence: one hundred three unit tests pass. Ten new persistence/regression tests cover the IndexedDB schema constants, exact full-state restoration after database close/reopen, one-record replacement, empty loads, latest-only debouncing, hidden/page-hide forced saves and unbinding, non-throwing save failure plus retry, non-throwing load failure plus visible diagnostic, invalid debounce rejection, and canonical serialized capacity restoration at upgraded levels. Lint and production build pass.
+- Step 21 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 22.
+- Step 22 implemented on 2026-08-28: the active-game load boundary now fully restores valid saves, creates an ordinary fresh game for empty storage, and automatically replaces malformed or unsupported load candidates with a complete fresh runtime state plus a typed visible warning. Invalid payloads are detached for diagnostics when structured cloning is safe, no corrupt field is partially applied, and diagnostic listeners cannot crash recovery or leave persistence flushes permanently rejected.
+- Step 22 automated evidence: one hundred ten unit tests pass. Seven new recovery/regression tests cover valid restoration, empty-save startup, malformed current-version recovery, unsupported-version recovery, safe and unsafe payload preservation, playable fresh-state invariants, throwing warning callbacks, and throwing persistence diagnostic callbacks with successful later retry. Lint and production build pass.
 
 ## Implementation Step Status
 
@@ -100,16 +103,17 @@
 | 18 — Implement sequential floor unlocks | Complete | User validated the passing Step 18 checks and authorized Step 19. |
 | 19 — Add an economy progression simulation | Complete | User validated the passing Step 19 checks and authorized Step 20. |
 | 20 — Define the versioned save format | Complete | User validated the passing Step 20 checks and authorized Step 21. |
-| 21 — Add IndexedDB persistence | Implemented / awaiting user validation | One hundred three unit tests pass; exact database reopen restoration, overwrite/debounce/lifecycle behavior, and non-throwing failure diagnostics are covered. |
-| 22 — Handle corrupt or incompatible saves | Not started / blocked | Must not begin until the user validates Step 21. |
+| 21 — Add IndexedDB persistence | Complete | User validated the passing Step 21 checks and authorized Step 22. |
+| 22 — Handle corrupt or incompatible saves | Implemented / awaiting user validation | One hundred ten unit tests pass; valid restoration, malformed/unsupported recovery, safe diagnostic payload handling, fresh-state playability, and non-throwing callbacks are covered. |
+| 23 — Calculate capped offline income | Not started / blocked | Must not begin until the user validates Step 22. |
 
 ## Not Started
 
-- Corrupt-save recovery, offline income, and later phases.
+- Offline income and later phases.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Player-facing shaft/elevator/warehouse upgrade controls and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.
-- Save schema, migrations, IndexedDB persistence, and offline income.
+- Offline-income calculation and claiming.
 - Original art, sprite atlases, audio, and visual polish.
 - Mobile performance, responsive layout, and Telegram integration testing.
 - Deployment pipeline.

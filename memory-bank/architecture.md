@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 20 are complete. Step 21's one-record IndexedDB persistence, debounce/failure coordination, and web lifecycle flushes are implemented with passing automated checks and are awaiting user validation. Step 22 and all later work remain blocked. IndexedDB schema version 1 is documented below; there is no relational or server database.
+Steps 1 through 21 are complete. Step 22's corrupt/incompatible-save recovery is implemented with passing automated checks and is awaiting user validation. Step 23 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -27,10 +27,11 @@ Steps 1 through 20 are complete. Step 21's one-record IndexedDB persistence, deb
 | `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited round-robin pickup, timed in-transit state, and delivery to the warehouse input queue. |
 | `src/core/simulation/advanceWarehouse.ts` | Timed capacity-limited warehouse conversion from input material into spendable and cumulative delivered gold. |
-| `src/persistence/saveSchema.ts`, `src/persistence/index.ts` | Version-1 plain-JSON save schema, serializer, strict validator, migration dispatcher, and runtime deserializer; storage remains deferred. |
+| `src/persistence/saveSchema.ts`, `src/persistence/index.ts` | Version-1 plain-JSON save schema, serializer, strict validator, migration dispatcher, runtime deserializer, and persistence exports. |
 | `src/persistence/ActiveSaveRepository.ts` | Storage-agnostic interface for loading and replacing the one active save document. |
 | `src/persistence/DexieActiveSaveRepository.ts` | Dexie 4.4.5 adapter for the version-1 `cat-mine-idle` IndexedDB database and fixed `active` record. |
 | `src/persistence/SavePersistenceCoordinator.ts` | Debounced writes, forced flushing, retry retention, and non-throwing load/save diagnostics. |
+| `src/persistence/loadActiveGame.ts` | Valid-save restoration plus typed malformed/incompatible-save recovery into a fresh state with a safe diagnostic payload snapshot. |
 | `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document and forces a flush when supported. |
 
 ## Current File Responsibilities
@@ -57,7 +58,7 @@ Steps 1 through 20 are complete. Step 21's one-record IndexedDB persistence, deb
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
-| `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, and runtime deserialization. |
+| `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding; broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Implemented tracked directory for future original placeholder assets. |
 | `tests/unit/` | Deterministic core, economy, save, migration, and offline-income tests. |
@@ -75,7 +76,7 @@ Steps 1 through 20 are complete. Step 21's one-record IndexedDB persistence, deb
 
 ## Planned Data Flow
 
-Load and validate save → migrate if required → calculate capped offline reward → initialize pure core state → advance deterministic simulation → publish read-only snapshot → render Phaser/UI → translate player input into core commands → persist debounced authoritative snapshots.
+Load active payload → migrate and validate → restore valid state or warn and create a fully fresh state → calculate capped offline reward → advance deterministic simulation → publish read-only snapshot → render Phaser/UI → translate player input into core commands → persist debounced authoritative snapshots.
 
 The production pipeline is four independent mine shafts → one shared round-robin elevator → one shared warehouse → spendable gold.
 
@@ -164,6 +165,10 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 | `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`. |
 
 `createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point, `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
+
+## Save Recovery Contract
+
+`loadActiveGame` is the application load boundary above raw persistence. Empty storage creates a normal fresh state without a warning. A valid document is fully migrated, validated, and deserialized before any authoritative state is returned. If migration or validation fails, no field from the candidate enters runtime state: the loader classifies unsupported schema versions as incompatible and all other invalid candidates as corrupt, records a stable warning with a detached structured-clone snapshot when safe, and creates a complete fresh state at the caller-provided timestamp. Diagnostic callbacks are best-effort and cannot turn a recoverable persistence or save-format failure into an uncaught exception. The invalid IndexedDB record is not mutated during recovery, and offline reward calculation remains deferred to Step 23.
 
 ## Provisional Balance Snapshot
 
