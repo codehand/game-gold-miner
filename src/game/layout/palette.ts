@@ -11,11 +11,21 @@ export const HUD_BACKGROUND = '#0f172a';
 export const SURFACE_BACKGROUND = '#1b2735';
 export const MINE_BACKGROUND = '#111827';
 export const PANEL_BACKGROUND = '#27364b';
+/** Locked mine floors are drawn distinctly, not merely dimmed by alpha. */
+export const LOCKED_PANEL_BACKGROUND = '#1a2333';
 export const DIVIDER = '#fbbf24';
+
+export const BADGE_BACKGROUND = '#0b1220';
+export const CONTROL_BACKGROUND = '#3d5578';
+export const PROGRESS_TRACK = '#131c2c';
+export const PROGRESS_FILL = '#34d399';
+export const MATERIAL_FILL = '#fbbf24';
+export const MINER_FILL = '#e5e7eb';
 
 export const TEXT_PRIMARY = '#f9fafb';
 export const TEXT_MUTED = '#9ca3af';
 export const TEXT_ACCENT = '#fbbf24';
+export const TEXT_DISABLED = '#6b7280';
 
 export const FONT_FAMILY = 'Arial, sans-serif';
 

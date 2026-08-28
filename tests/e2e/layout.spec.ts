@@ -41,9 +41,12 @@ const CANVAS_SELECTOR = '#game-viewport canvas';
  * camera's own background shows. A floor panel would hide a duplicated fixed
  * layer drawn beneath it, so probing a panel alone cannot prove the mine
  * camera ignores the HUD and surface.
+ *
+ * `SURFACE_PROBE` sits in the strip above the elevator and warehouse panels,
+ * which is the only part of the surface region its own background still owns.
  */
 const HUD_PROBE: readonly [number, number] = [180, 30];
-const SURFACE_PROBE: readonly [number, number] = [300, 100];
+const SURFACE_PROBE: readonly [number, number] = [300, 85];
 const MINE_GUTTER_PROBE: readonly [number, number] = [6, 230];
 const MINE_PANEL_PROBE: readonly [number, number] = [180, 230];
 

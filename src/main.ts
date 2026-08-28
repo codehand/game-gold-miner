@@ -6,7 +6,7 @@ import {
   createPendingOfflineReward,
   type GameState,
 } from './core';
-import { createGame } from './game';
+import { createGame, createMineViewModel } from './game';
 import {
   createSaveDocument,
   DexieActiveSaveRepository,
@@ -45,7 +45,7 @@ async function startApplication(): Promise<void> {
   let pendingReward = createPendingOfflineReward(loadResult.offlineIncome);
   let claimCandidate: GameState | null = null;
 
-  game = createGame(gameViewport);
+  game = createGame(gameViewport, createMineViewModel(currentState));
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
     () => createSaveDocument(currentState, BASE_GAME_BALANCE, Date.now()),

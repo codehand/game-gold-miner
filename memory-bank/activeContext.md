@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 25 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the responsive portrait layout; Step 26 must not begin without explicit authorization.
+Implementation Plan Step 26 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the four rendered mine floors and the shared elevator/warehouse views; Step 27 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -94,6 +94,25 @@ Implementation Plan Step 25 is implemented and its automated validation passes. 
 - Review of the first Step 25 implementation found the browser suite could not detect a broken render: deleting either camera-ignore call left all four viewport tests green while the HUD was visibly destroyed. Added pixel probes that sample the real canvas, extracted the palette into a pure module so scene and test read one source of truth, replaced a hardcoded `428` with the published mine height, threaded `layout.width` into the floor slots, and put the `src/game/layout` purity claim behind a lint rule with an `architecture.test.ts` probe.
 - Verified the new probes by mutation: removing either ignore call, or misplacing the mine camera viewport, now fails with a named assertion. A first attempt probing a floor panel missed one mutation because a later-drawn panel hid the duplicated layer; the probe moved to the mine gutter.
 - One hundred forty-four unit tests, six Chromium E2E tests, lint, and production build pass.
+- The user authorized Step 26 on 2026-08-28, which validated Step 25.
+- Added `src/game/view-model/mineViewModel.ts`, a pure Phaser-free module that turns a read-only `GameState` into the exact strings, ratios, and pile heights the screen shows, so every displayed value is unit-testable in Node.
+- Added reusable `MineFloorView` and `SharedStageView` entities in `src/game/entities/`. Each owns its game objects, changes only through `applySnapshot`, and reports what it actually shows through `describeRenderedState`.
+- `BootScene` now takes the loaded snapshot at construction, builds four floor views into the scrollable mine slots and two stage views into the surface strip, and exposes `applySnapshot` for the live snapshots Step 27 will push.
+- Locked floors are drawn in their own `#1a2333` panel colour with a `Locked` badge, muted text, no placeholder miner, and no upgrade control; unlocked floors keep the `#27364b` panel.
+- The material pile is a discrete four-step stack measured against one elevator trip, so a full pile is the visible signal that the shared elevator has become the bottleneck.
+- Amount display is deliberately provisional (`formatAmount` rounds to one decimal and leaves very large values serialized); Step 28 replaces it with the shared abbreviated K/M/B/T formatter.
+- The browser test seeds a known version-1 save whose four floors differ in lock state, level, progress, and queued material, then compares the rendered values read back from the view objects against that snapshot, backed by eight pixel probes.
+- Six deliberate mutations were confirmed to fail with named assertions, including one where the views hold correct values but never reach the framebuffer — which only the pixel probes catch.
+- The Step 25 surface pixel probe moved from `300,100` to `300,85` because the new stage panels now occupy the lower part of the surface strip; the probe again samples a point the surface background itself owns.
+- Review of the first Step 26 implementation found two defects that only bite later. The rendered-state diagnostic was published once at the end of `create` and never again, so from Step 27 onward a live snapshot that never reached the views would still report a healthy first frame — defeating the read-back's whole purpose. `applySnapshot` also skipped a floor whose snapshot entry was missing, which would leave surplus views showing blank panels that look like real unlocked floors.
+- Fixed both: `#publishViewDiagnostics` is now called on every rebind as well as at boot, a mismatched floor count throws through the pure `assertRenderableMineViewModel` guard, and a snapshot arriving before `create` is kept and bound by `create` rather than dropped.
+- Both fixes were mutation-verified: freezing the diagnostic at boot fails the new rebind browser test with a named assertion, and disabling the guard fails its unit test.
+- Two review cleanups followed: `MineFloorView` now derives its progress-track width from the floor slot exactly as `SharedStageView` does, instead of hardcoding `196` while its neighbouring label and upgrade control tracked `region.width`; and the browser test imports the views' own `RenderedFloorState`/`RenderedSharedStageState` types rather than restating them, so a renamed read-back field now fails type-check instead of silently reading `undefined`.
+- Both cleanups were mutation-verified: an overflowing track fails the new containment assertion by name, and renaming a field on `describeRenderedState` fails `tsc`.
+- Two more cleanups: `MineFloorView` derives its `Locked` badge and upgrade control from one anchor each instead of three hand-synchronised offsets, and the browser test stopped asserting a constant. `SharedStageView` never hides its upgrade control, so reporting its visibility was an assertion that could not fail; the read-back now reports the bound `upgradeControlLabel`, which does catch a broken binding.
+- The floor pile expectation is derived through `calculateMaterialPileSteps` rather than hardcoded, so tuning the elevator capacity cannot fail the test with an opaque number, and a named guard keeps the empty-pile pixel probe meaningful if a tuning change ever fills the stack.
+- Mutation-verified: dropping the shared-stage label binding and binding every floor view to floor one both fail by name. The badge-anchor extraction is a behaviour-preserving refactor with no new assertion; the existing pixel probes and read-back values are unchanged by it.
+- One hundred sixty-one unit tests, eight Chromium E2E tests, lint, and the production build pass.
 
 ## Active Decisions
 
@@ -138,11 +157,21 @@ Implementation Plan Step 25 is implemented and its automated validation passes. 
 - Render no bottom navigation and reserve no space for it; the mine region runs to the bottom edge.
 - Treat canvas dataset diagnostics as geometry reporting only, never as renderer evidence; every rendering guarantee needs a pixel probe sampling the shared palette.
 - Keep colors in the pure layout palette rather than private scene constants, so browser tests assert the same values the scene draws.
+- Derive every on-screen string, ratio, and discrete step in a pure view model, and let Phaser entities only position and paint what that model already decided.
+- Give each view an `applySnapshot` rebinding method and a `describeRenderedState` read-back, so views hold no authoritative state and browser tests compare rendered output rather than scene intentions.
+- Draw locked floors with their own panel colour and badge instead of an alpha dim, so a pixel probe can prove the distinction.
+- Keep Step 26 controls presentational: costs, affordability, commands, and feedback belong to Steps 29 and 30.
+- Republish the rendered-state diagnostic on every rebind, never only at boot: a diagnostic frozen at the first frame reports success for a rendering path that has since broken.
+- Hold structural render invariants in the pure view model (`assertRenderableMineViewModel`) so they are unit-testable in Node, and throw on violation rather than skipping the affected view.
+- Derive every view's internal geometry from the `LayoutRegion` it is given; a hardcoded dimension beside region-relative neighbours drifts apart the moment the region changes.
+- Let browser tests import the read-back types from the views themselves, never restate them, so the diagnostic contract cannot drift unnoticed.
+- Never report a constant through the rendered-state read-back; report a bound value instead, so the assertion can actually fail.
+- Derive test expectations that depend on balance data through the same pure function the code uses, and keep hardcoded values only for fixture-owned amounts.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 25 layout results.
-2. Begin Step 26 only after explicit user authorization.
+1. Wait for the user to validate the Step 26 floor and shared-stage views.
+2. Begin Step 27 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

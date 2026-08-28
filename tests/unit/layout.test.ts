@@ -16,7 +16,11 @@ import {
   MINE_CONTENT_PADDING,
   MINE_FLOOR_COUNT,
   MINE_MIN_HEIGHT,
+  LOCKED_PANEL_BACKGROUND,
+  MATERIAL_FILL,
   PANEL_BACKGROUND,
+  PROGRESS_FILL,
+  PROGRESS_TRACK,
   SURFACE_BACKGROUND,
   SURFACE_HEIGHT,
 } from '../../src/game/layout';
@@ -170,9 +174,24 @@ describe('region serialization', () => {
 
 describe('palette', () => {
   it('keeps region colors distinguishable so pixel probes are meaningful', () => {
-    const colors = [HUD_BACKGROUND, SURFACE_BACKGROUND, PANEL_BACKGROUND];
+    const colors = [
+      HUD_BACKGROUND,
+      SURFACE_BACKGROUND,
+      PANEL_BACKGROUND,
+      LOCKED_PANEL_BACKGROUND,
+      PROGRESS_TRACK,
+      PROGRESS_FILL,
+      MATERIAL_FILL,
+    ];
 
     expect(new Set(colors).size).toBe(colors.length);
+  });
+
+  it('draws locked floors in their own colour, not a dimmed panel', () => {
+    expect(LOCKED_PANEL_BACKGROUND).not.toBe(PANEL_BACKGROUND);
+    expect(toFillColor(LOCKED_PANEL_BACKGROUND)).toBeLessThan(
+      toFillColor(PANEL_BACKGROUND),
+    );
   });
 
   it('derives the numeric fill Phaser needs from the hex source of truth', () => {

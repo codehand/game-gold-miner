@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 24 are complete. Step 25's responsive portrait layout — a fixed top HUD, a shared surface strip, and a camera-clipped scrollable mine area inside a safe-area-aware host — is implemented with passing automated checks and is awaiting user validation. Step 26 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
+Steps 1 through 25 are complete. Step 26's bound mine views — four reusable floor views inside the scrollable mine area plus the shared elevator and warehouse in the surface strip, all driven by a pure view model over a read-only core snapshot — are implemented with passing automated checks and are awaiting user validation. Step 27 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -10,13 +10,15 @@ Steps 1 through 24 are complete. Step 25's responsive portrait layout — a fixe
 |---|---|
 | `index.html`, `src/main.ts`, `src/style.css` | Browser entry point, `viewport-fit=cover` opt-in, safe-area-inset host padding around the `#game-viewport` Phaser parent, Phaser game startup, and hot-reload cleanup. |
 | `src/game/layout/mineLayout.ts`, `src/game/layout/palette.ts`, `src/game/layout/index.ts` | Pure Phaser-free portrait geometry and palette: logical viewport constants, HUD/surface/mine regions, scrollable mine content height, floor-slot regions, diagnostic region serialization, and the `#rrggbb` colors both the scene and the browser pixel probes read. |
+| `src/game/view-model/mineViewModel.ts`, `src/game/view-model/index.ts` | Pure Phaser-free presentation snapshot: per-floor heading, level, lock status, progress ratio and label, queued-amount label and discrete pile height, plus the shared elevator/warehouse level, capacity, held amount, and cycle progress. Provisional amount formatting lives here until Step 28. |
+| `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, and report what they actually display through `describeRenderedState`. |
 | `package.json`, `package-lock.json`, `tsconfig.json` | Locked dependencies, strict compiler settings, and verified development/build/test scripts. |
 | `eslint.config.mjs` | Flat lint configuration for TypeScript, configuration files, and the Node simulator script. |
 | `vitest.config.ts`, `tests/unit/` | Node-based unit-test configuration and scaffold baseline coverage. |
 | `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, and browser smoke coverage. |
-| `tests/unit/architecture.test.ts` | Regression coverage proving the core and layout boundaries accept pure TypeScript and reject renderer, adapter, and browser dependencies. |
+| `tests/unit/architecture.test.ts` | Regression coverage proving the core, layout, and view-model boundaries accept pure TypeScript and reject renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
-| `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer, and the mine content layer, clips the mine through a dedicated camera viewport, and records startup, renderer, and layout diagnostics on the game canvas. |
+| `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer with both stage views, and the mine content layer with four floor views, binds them to the snapshot supplied at construction, clips the mine through a dedicated camera viewport, and records startup, renderer, layout, and rendered-view diagnostics on the game canvas. |
 | `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional four-floor/shared-stage data, its public types, and fail-fast startup validation. |
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
@@ -60,7 +62,7 @@ Steps 1 through 24 are complete. Step 25's responsive portrait layout — a fixe
 |---|---|
 | `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, and pending-reward claim transitions. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
-| `src/game/` | Owns the Phaser game configuration, the pure portrait-layout geometry, and the single scene that renders the HUD, surface, and camera-clipped mine regions; floor views, production visuals, input, and animation remain deferred. |
+| `src/game/` | Owns the Phaser game configuration, the pure portrait-layout geometry, the pure presentation view model, the reusable floor and shared-stage views, and the single scene that binds them to a core snapshot; production animation, live HUD values, interactive controls, and scroll input remain deferred. |
 | `src/ui/` | Owns the implemented offline-reward DOM modal; the mine HUD and later overlays remain deferred. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding; broader browser lifecycle translation remains future work. |
@@ -72,7 +74,7 @@ Steps 1 through 24 are complete. Step 25's responsive portrait layout — a fixe
 
 - `src/core/` must not import Phaser, DOM/browser APIs, persistence implementations, or platform adapters; scoped ESLint rules enforce this for direct, subpath, and type-only imports plus restricted browser globals.
 - `src/config/` is declarative input to the core and must not contain renderer behavior.
-- `src/game/` and `src/ui/` may read core snapshots and issue commands; they must not become authoritative stores.
+- `src/game/` and `src/ui/` may read core snapshots and issue commands; they must not become authoritative stores. `src/game/layout/**` and `src/game/view-model/**` must additionally stay renderer-free and browser-free, enforced by scoped ESLint rules probed in `tests/unit/architecture.test.ts`.
 - `src/persistence/` serializes authoritative state but must not own economy or simulation rules.
 - `src/platform/` translates host lifecycle events and must not contain game balance logic.
 - Presentation animation timing must never determine production output.
@@ -80,7 +82,7 @@ Steps 1 through 24 are complete. Step 25's responsive portrait layout — a fixe
 
 ## Planned Data Flow
 
-Load active payload → migrate and validate → restore valid state or warn and create a fully fresh state → calculate capped offline reward from the saved rate → persist the consumed timestamp interval → expose a positive pending reward in the modal → claim into an immutable authoritative candidate → force-persist the candidate → dismiss the modal → advance deterministic simulation → publish read-only snapshot → render Phaser/UI → translate player input into core commands → persist debounced authoritative snapshots.
+Load active payload → migrate and validate → restore valid state or warn and create a fully fresh state → calculate capped offline reward from the saved rate → persist the consumed timestamp interval → expose a positive pending reward in the modal → claim into an immutable authoritative candidate → force-persist the candidate → dismiss the modal → advance deterministic simulation → publish read-only snapshot → derive the pure mine view model → rebind the floor and shared-stage views → translate player input into core commands → persist debounced authoritative snapshots.
 
 The production pipeline is four independent mine shafts → one shared round-robin elevator → one shared warehouse → spendable gold.
 
@@ -195,6 +197,18 @@ The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inse
 The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT` (412). `calculateMineContentHeight()` returns 514 logical pixels for four floor slots — taller than the 428-pixel mine region — so the area must scroll. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin.
 
 Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD and surface never scroll and Step 31 only needs to drive the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
+
+## Mine View Contract
+
+Presentation is a two-layer read of authoritative state. `createMineViewModel(state)` is pure and Phaser-free: it derives each floor's `Floor N` heading, `Lv N` level label, `Locked` status or `null`, normalized extraction progress plus its percentage label, queued-amount label, and discrete material-pile height, and the shared elevator/warehouse title, level, capacity, held amount, cycle progress, and control labels. It rejects progress outside `[0, 1)` and non-positive levels, and never mutates the state it reads.
+
+`MineFloorView` and `SharedStageView` build their game objects once inside a supplied `LayoutRegion` and change only through `applySnapshot`. A floor shows its number badge, heading, mine-shaft level, placeholder miner, material pile, extraction progress bar with percentage, and a shaft-upgrade control. Locked floors use the `LOCKED_PANEL_BACKGROUND` panel with a `Locked` badge, muted text, no miner, and no upgrade control. The elevator and warehouse render side by side in the surface strip with their own level, capacity, held amount, cycle-progress bar, and upgrade control. Every control is presentational at this step; Step 29 adds costs, affordability, commands, and feedback, and Step 30 adds unlock controls.
+
+The material pile is four discrete steps measured against one elevator trip — a positive queue shows one block and each of the 25%, 50%, and 75% capacity thresholds adds another — so a full pile is the visible signal that the shared elevator is the bottleneck.
+
+`describeRenderedState` reads values back from the view's own game objects, and `BootScene` publishes them as `data-floor-views` and `data-surface-views`. Browser tests therefore compare rendered output rather than the scene's intentions, and pixel probes still guard the case where correct values never reach the framebuffer.
+
+`BootScene` receives the loaded snapshot through its constructor, so the mine boots already bound rather than showing placeholder values first, and exposes `applySnapshot` for the live simulation snapshots Step 27 will push.
 
 ## Provisional Balance Snapshot
 

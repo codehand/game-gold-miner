@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 
+import { MineFloorView, SharedStageView } from '../entities';
 import {
   calculateFloorSlotRegion,
   calculateMineContentHeight,
@@ -10,30 +11,54 @@ import {
   HUD_BACKGROUND,
   MINE_BACKGROUND,
   MINE_FLOOR_COUNT,
-  PANEL_BACKGROUND,
   serializeRegion,
   SURFACE_BACKGROUND,
   TEXT_ACCENT,
   TEXT_MUTED,
-  TEXT_PRIMARY,
   type LayoutRegion,
   type MineLayout,
 } from '../layout';
+import {
+  assertRenderableMineViewModel,
+  type MineViewModel,
+} from '../view-model';
 
 export const BOOT_SCENE_KEY = 'BootScene';
 
 /** Internal camera name; nothing outside this scene addresses the camera. */
 const MINE_CAMERA_KEY = 'MineCamera';
 
+const SURFACE_TITLE_HEIGHT = 28;
+const SURFACE_PANEL_INSET = 12;
+const SURFACE_PANEL_GAP = 10;
+const SURFACE_PANEL_BOTTOM_INSET = 10;
+
 const COLOR_HUD_BACKGROUND = toFillColor(HUD_BACKGROUND);
 const COLOR_SURFACE_BACKGROUND = toFillColor(SURFACE_BACKGROUND);
 const COLOR_MINE_BACKGROUND = toFillColor(MINE_BACKGROUND);
-const COLOR_PANEL = toFillColor(PANEL_BACKGROUND);
 const COLOR_DIVIDER = toFillColor(DIVIDER);
 
+/**
+ * The single mine scene.
+ *
+ * It renders one reusable view per mine floor plus the shared elevator and
+ * warehouse, all bound to the latest read-only snapshot it has been given —
+ * the one handed in at construction until `applySnapshot` supplies a newer one.
+ * The scene never mutates authoritative state; Step 27 drives these same views
+ * from live simulation snapshots through `applySnapshot`.
+ */
 export class BootScene extends Phaser.Scene {
-  public constructor() {
+  /** The latest snapshot, held so `create` binds current values, not boot ones. */
+  #viewModel: MineViewModel;
+  #floorViews: readonly MineFloorView[] = [];
+  #elevatorView: SharedStageView | null = null;
+  #warehouseView: SharedStageView | null = null;
+
+  public constructor(viewModel: MineViewModel) {
     super({ key: BOOT_SCENE_KEY });
+
+    assertRenderableMineViewModel(viewModel, MINE_FLOOR_COUNT);
+    this.#viewModel = viewModel;
   }
 
   public create(): void {
@@ -44,6 +69,8 @@ export class BootScene extends Phaser.Scene {
       this.#createSurface(layout.surface),
     ];
     const mineContent = this.#createMineContent(layout.width);
+
+    this.applySnapshot(this.#viewModel);
 
     // A dedicated camera viewport clips the mine area in both WebGL and Canvas
     // and gives Step 31 a single `scrollY` value to drive.
@@ -61,6 +88,33 @@ export class BootScene extends Phaser.Scene {
     this.cameras.main.ignore(mineContent);
 
     this.#publishDiagnostics(layout);
+  }
+
+  /**
+   * Rebinds every floor and shared-stage view to a newer core snapshot.
+   *
+   * A snapshot arriving before `create` runs is kept rather than dropped, so a
+   * caller that starts pushing snapshots early cannot leave the scene showing
+   * boot values. A snapshot with the wrong number of floors is a caller bug and
+   * throws instead of leaving views bound to nothing.
+   */
+  public applySnapshot(viewModel: MineViewModel): void {
+    assertRenderableMineViewModel(viewModel, MINE_FLOOR_COUNT);
+    this.#viewModel = viewModel;
+
+    if (this.#elevatorView === null || this.#warehouseView === null) {
+      return;
+    }
+
+    this.#floorViews.forEach((view, index) => {
+      view.applySnapshot(viewModel.floors[index]);
+    });
+    this.#elevatorView.applySnapshot(viewModel.elevator);
+    this.#warehouseView.applySnapshot(viewModel.warehouse);
+    // Republished on every rebind: a diagnostic frozen at boot would report a
+    // healthy first frame while live snapshots silently failed to reach the
+    // views, which is exactly the failure this read-back exists to catch.
+    this.#publishViewDiagnostics();
   }
 
   #createHud(region: LayoutRegion): Phaser.GameObjects.Container {
@@ -86,11 +140,10 @@ export class BootScene extends Phaser.Scene {
 
   #createSurface(region: LayoutRegion): Phaser.GameObjects.Container {
     const layer = this.add.container(region.x, region.y);
-    const titleHeight = 36;
-    const panelGap = 12;
-    const panelInset = 16;
-    const panelWidth = (region.width - panelInset * 2 - panelGap) / 2;
-    const panelHeight = region.height - titleHeight - panelInset;
+    const panelWidth =
+      (region.width - SURFACE_PANEL_INSET * 2 - SURFACE_PANEL_GAP) / 2;
+    const panelHeight =
+      region.height - SURFACE_TITLE_HEIGHT - SURFACE_PANEL_BOTTOM_INSET;
 
     layer.add(
       this.add
@@ -99,96 +152,42 @@ export class BootScene extends Phaser.Scene {
     );
     layer.add(
       this.add
-        .text(panelInset, 12, 'Surface', {
+        .text(SURFACE_PANEL_INSET, 8, 'Surface', {
           color: TEXT_MUTED,
           fontFamily: FONT_FAMILY,
           fontSize: '12px',
         })
         .setOrigin(0, 0),
     );
-    layer.add(
-      this.#createStagePanel(
-        { x: panelInset, y: titleHeight, width: panelWidth, height: panelHeight },
-        'Elevator',
-      ),
-    );
-    layer.add(
-      this.#createStagePanel(
-        {
-          x: panelInset + panelWidth + panelGap,
-          y: titleHeight,
-          width: panelWidth,
-          height: panelHeight,
-        },
-        'Warehouse',
-      ),
-    );
+
+    this.#elevatorView = new SharedStageView(this, {
+      x: SURFACE_PANEL_INSET,
+      y: SURFACE_TITLE_HEIGHT,
+      width: panelWidth,
+      height: panelHeight,
+    });
+    this.#warehouseView = new SharedStageView(this, {
+      x: SURFACE_PANEL_INSET + panelWidth + SURFACE_PANEL_GAP,
+      y: SURFACE_TITLE_HEIGHT,
+      width: panelWidth,
+      height: panelHeight,
+    });
+
+    layer.add([this.#elevatorView.root, this.#warehouseView.root]);
 
     return layer;
   }
 
-  /**
-   * Placeholder mine content taller than its camera viewport. Step 26 replaces
-   * these slots with floor views bound to core snapshots.
-   */
+  /** Mine content taller than its camera viewport, so the area must scroll. */
   #createMineContent(width: number): Phaser.GameObjects.Container {
     const content = this.add.container(0, 0);
 
-    for (let floorIndex = 0; floorIndex < MINE_FLOOR_COUNT; floorIndex += 1) {
-      const slot = calculateFloorSlotRegion(floorIndex, width);
-
-      content.add(
-        this.add
-          .rectangle(slot.x, slot.y, slot.width, slot.height, COLOR_PANEL)
-          .setOrigin(0, 0),
-      );
-      content.add(
-        this.add
-          .text(slot.x + 12, slot.y + 12, `Floor ${floorIndex + 1}`, {
-            color: TEXT_PRIMARY,
-            fontFamily: FONT_FAMILY,
-            fontSize: '16px',
-            fontStyle: 'bold',
-          })
-          .setOrigin(0, 0),
-      );
-    }
+    this.#floorViews = Array.from({ length: MINE_FLOOR_COUNT }, (_, index) => {
+      return new MineFloorView(this, calculateFloorSlotRegion(index, width));
+    });
+    content.add(this.#floorViews.map((view) => view.root));
 
     return content;
-  }
-
-  #createStagePanel(
-    region: LayoutRegion,
-    title: string,
-  ): Phaser.GameObjects.Container {
-    const panel = this.add.container(region.x, region.y);
-
-    panel.add(
-      this.add
-        .rectangle(0, 0, region.width, region.height, COLOR_PANEL)
-        .setOrigin(0, 0),
-    );
-    panel.add(
-      this.add
-        .text(10, 10, title, {
-          color: TEXT_PRIMARY,
-          fontFamily: FONT_FAMILY,
-          fontSize: '14px',
-          fontStyle: 'bold',
-        })
-        .setOrigin(0, 0),
-    );
-    panel.add(
-      this.add
-        .text(10, 30, 'Level —', {
-          color: TEXT_MUTED,
-          fontFamily: FONT_FAMILY,
-          fontSize: '12px',
-        })
-        .setOrigin(0, 0),
-    );
-
-    return panel;
   }
 
   #createLabelledValue(
@@ -242,5 +241,23 @@ export class BootScene extends Phaser.Scene {
     canvas.dataset.layoutBottomNavigation = 'none';
     canvas.setAttribute('aria-label', 'Cat Mine Idle game canvas');
     canvas.setAttribute('role', 'img');
+
+    this.#publishViewDiagnostics();
+  }
+
+  /**
+   * Rendered values are read back from the view objects themselves, so a broken
+   * binding cannot be hidden behind the scene's intentions.
+   */
+  #publishViewDiagnostics(): void {
+    const canvas = this.game.canvas;
+
+    canvas.dataset.floorViews = JSON.stringify(
+      this.#floorViews.map((view) => view.describeRenderedState()),
+    );
+    canvas.dataset.surfaceViews = JSON.stringify([
+      this.#elevatorView?.describeRenderedState() ?? null,
+      this.#warehouseView?.describeRenderedState() ?? null,
+    ]);
   }
 }

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 const PROJECT_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CORE_PROBE_PATH = 'src/core/architecture-probe.ts';
 const LAYOUT_PROBE_PATH = 'src/game/layout/architecture-probe.ts';
+const VIEW_MODEL_PROBE_PATH = 'src/game/view-model/architecture-probe.ts';
 
 async function lintProbe(source: string, filePath: string) {
   const eslint = new ESLint({ cwd: PROJECT_ROOT });
@@ -20,6 +21,10 @@ async function lintCore(source: string) {
 
 async function lintLayout(source: string) {
   return lintProbe(source, LAYOUT_PROBE_PATH);
+}
+
+async function lintViewModel(source: string) {
+  return lintProbe(source, VIEW_MODEL_PROBE_PATH);
 }
 
 describe('core architecture boundary', () => {
@@ -80,6 +85,37 @@ describe('layout geometry boundary', () => {
     );
 
     expect(restrictedImportMessages).toHaveLength(1);
+    expect(restrictedGlobalMessages).toHaveLength(3);
+  });
+});
+
+describe('view model boundary', () => {
+  it('accepts pure TypeScript modules', async () => {
+    const messages = await lintViewModel(`
+      export function percent(value: number): string {
+        return \`\${Math.round(value * 100)}%\`;
+      }
+    `);
+
+    expect(messages).toEqual([]);
+  });
+
+  it('rejects renderer, adapter, and browser dependencies', async () => {
+    const messages = await lintViewModel(`
+      import Phaser from 'phaser';
+      import { load } from '../../persistence/index.ts';
+
+      document.title = Phaser.VERSION;
+      window.postMessage(navigator.userAgent, load);
+    `);
+    const restrictedImportMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-imports',
+    );
+    const restrictedGlobalMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-globals',
+    );
+
+    expect(restrictedImportMessages).toHaveLength(2);
     expect(restrictedGlobalMessages).toHaveLength(3);
   });
 });

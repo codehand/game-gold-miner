@@ -86,6 +86,50 @@ export default defineConfig(
     },
   },
   {
+    files: ['src/game/view-model/**/*.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'document',
+          message: 'View models must not depend on DOM APIs.',
+        },
+        {
+          name: 'navigator',
+          message: 'View models must not depend on browser APIs.',
+        },
+        {
+          name: 'window',
+          message: 'View models must not depend on DOM APIs.',
+        },
+      ],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'phaser',
+              message:
+                'View models must stay renderer-free so Node tests can import them.',
+            },
+          ],
+          patterns: [
+            {
+              regex: '^phaser/',
+              message:
+                'View models must stay renderer-free so Node tests can import them.',
+            },
+            {
+              regex: '(^|/)(persistence|platform)(/|$)',
+              message:
+                'View models must not import persistence or platform adapters.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/game/layout/**/*.ts'],
     rules: {
       'no-restricted-globals': [
