@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 14 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates production-rate calculations; Step 15 must not begin without explicit authorization.
+Implementation Plan Step 15 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates upgrade pricing and purchase commands; Step 16 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -53,6 +53,10 @@ Implementation Plan Step 14 is implemented and its automated validation passes. 
 - The user validated Step 13 and authorized Step 14 on 2026-08-27.
 - Added pure theoretical per-floor extraction rates and a mine-wide effective production estimate based on the slowest of aggregate unlocked extraction, shared elevator throughput, and shared warehouse throughput.
 - Added rate coverage for current floor levels, locked-floor exclusion from the mine aggregate, extraction/elevator/warehouse bottlenecks, and authoritative-state immutability.
+- The user validated Step 14 and authorized Step 15 on 2026-08-27.
+- Added deterministic next-upgrade prices for mine shafts, the elevator, and the warehouse using `baseCost × costGrowthRate^currentLevel` through `GameNumber` arithmetic.
+- Added three immutable purchase commands with explicit insufficient-funds, missing-floor, and locked-floor results; successful purchases deduct the exact cost and increment only the selected level.
+- Added upgrade coverage for starting and representative costs, exact-balance purchases, all three success paths, expected failures, invalid levels, and preservation of unrelated authoritative state.
 
 ## Active Decisions
 
@@ -78,11 +82,13 @@ Implementation Plan Step 14 is implemented and its automated validation passes. 
 - Convert warehouse material to gold at a 1:1 ratio only on a completed configured cycle; leave excess input queued for later cycles and reset progress when no input remains.
 - Keep locked floors fully inert while all unlocked production stages run automatically without managers or player taps.
 - Treat production rates as derived read-only values: expose every floor's theoretical rate, sum only unlocked floors for the mine estimate, and cap that estimate at the slower shared-stage throughput.
+- Calculate an upgrade's next price from the stage's current level without rounding; expected player-action failures return the original state, while invalid/non-incrementable levels are invariant errors.
+- Step 15 changes only gold and the purchased stage level. Capacity recalculation, new effect logic, milestones, bulk purchases, unlocks, and UI controls remain deferred.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 14 test results.
-2. Begin Step 15 only after explicit user authorization.
+1. Wait for the user to validate the Step 15 test results.
+2. Begin Step 16 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

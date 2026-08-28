@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 13 are complete. Step 14's production-rate calculations are implemented with passing automated checks and are awaiting user validation. Step 15 and all later work remain blocked; there is no database, migration, or persistence schema.
+Steps 1 through 14 are complete. Step 15's upgrade prices and purchase commands are implemented with passing automated checks and are awaiting user validation. Step 16 and all later work remain blocked; there is no database, migration, or persistence schema.
 
 ## Implemented Foundation
 
@@ -20,6 +20,7 @@ Steps 1 through 13 are complete. Step 14's production-rate calculations are impl
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, and string serialization. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
 | `src/core/economy/calculateProductionRates.ts` | Pure theoretical floor throughput, aggregate unlocked extraction, shared-stage throughput, effective mine-rate, and bottleneck calculations. |
+| `src/core/progression/upgrades.ts` | Pure next-upgrade pricing plus immutable mine-shaft, elevator, and warehouse purchase commands with explicit results. |
 | `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited round-robin pickup, timed in-transit state, and delivery to the warehouse input queue. |
 | `src/core/simulation/advanceWarehouse.ts` | Timed capacity-limited warehouse conversion from input material into spendable and cumulative delivered gold. |
@@ -44,7 +45,7 @@ Steps 1 through 13 are complete. Step 14's production-rate calculations are impl
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, mine-floor extraction, shared-elevator transport, warehouse conversion, and derived production rates; progression, upgrades, and offline-income logic remain future work. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, and upgrade pricing/purchases; stage-specific upgrade effects, later progression, and offline-income logic remain future work. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
@@ -102,6 +103,10 @@ The warehouse idles with no input. While input exists, it advances normalized co
 ## Production Rate Contract
 
 Production rates are pure derived values and are not stored in authoritative state. Each floor's theoretical extraction per second is `baseYield × outputGrowthRate^(level - 1) × 1,000 / cycleDurationMs`, including a theoretical value for locked floors. Aggregate mine extraction sums only unlocked floors. Elevator and warehouse throughput use their current authoritative capacity multiplied by `1,000 / cycleDurationMs`; effective mine production is the minimum of aggregate extraction and those two shared-stage rates. The result also identifies the limiting stage, with deterministic extraction → elevator → warehouse precedence for exact ties. Milestone effects remain excluded until Step 17.
+
+## Upgrade Purchase Contract
+
+The next price for every upgradeable stage is `baseCost × costGrowthRate^currentLevel`, calculated without rounding through `GameNumber`. Mine-shaft, elevator, and warehouse purchases are distinct immutable commands. A successful command deducts exactly one price and increments only the selected level; all queues, progress, totals, capacities, timestamps, and unrelated stages remain unchanged. Insufficient funds, a missing floor, or a locked floor returns an explicit failure with the original state object. Invalid or non-incrementable levels are invariant errors. Step 16 owns capacity and other stage-effect changes; milestone multipliers remain deferred to Step 17.
 
 ## Provisional Balance Snapshot
 

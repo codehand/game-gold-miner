@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 14 is implemented with passing automated checks and is awaiting user validation. Step 15 has not started and remains blocked.
+**Phase:** Implementation Plan Step 15 is implemented with passing automated checks and is awaiting user validation. Step 16 has not started and remains blocked.
 
 ## Completed
 
@@ -54,6 +54,9 @@
 - Step 13 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 14.
 - Step 14 implemented on 2026-08-27: pure calculations expose theoretical extraction per second for every floor and derive effective mine production from the minimum of aggregate unlocked extraction, elevator capacity per second, and warehouse capacity per second.
 - Step 14 automated evidence: tests cover current-level floor rates, locked-floor exclusion from aggregate extraction, extraction/transport/warehouse bottlenecks, correct effective rates, and no mutation of authoritative state.
+- Step 14 was validated by the user on 2026-08-27 through explicit authorization to proceed with Step 15.
+- Step 15 implemented on 2026-08-27: separate `GameNumber` prices and immutable purchase commands now support mine shafts, the elevator, and the warehouse, deducting the exact price and incrementing only the selected level.
+- Step 15 automated evidence: tests cover exact starting and representative prices, exact-balance success, independent stage purchases, insufficient funds, locked/missing floors, invalid levels, original-state failures, and preservation of queues, progress, capacities, totals, and unrelated stages.
 
 ## Implementation Step Status
 
@@ -72,12 +75,13 @@
 | 11 — Implement the shared elevator | Complete | User validated the passing Step 11 checks and authorized Step 12. |
 | 12 — Implement warehouse conversion | Complete | User validated the passing Step 12 checks and authorized Step 13. |
 | 13 — Run four floors concurrently | Complete | User validated the passing Step 13 checks and authorized Step 14. |
-| 14 — Add production-rate calculations | Implemented / awaiting user validation | Forty-eight unit tests pass; theoretical floor rates and extraction/elevator/warehouse bottleneck estimates are covered. |
-| 15 — Implement upgrade costs for all three stages | Not started / blocked | Must not begin until the user validates Step 14. |
+| 14 — Add production-rate calculations | Complete | User validated the passing Step 14 checks and authorized Step 15. |
+| 15 — Implement upgrade costs for all three stages | Implemented / awaiting user validation | Fifty-four unit tests pass; exact costs, all purchase paths, explicit failures, immutability, and state preservation are covered. |
+| 16 — Apply stage-specific upgrade effects | Not started / blocked | Must not begin until the user validates Step 15. |
 
 ## Not Started
 
-- Upgrade costs, commands, stage effects, and later economy simulation.
+- Stage-specific capacity/effect updates, milestones, unlocks, and later economy simulation.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Base-game shaft/elevator/warehouse upgrades and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

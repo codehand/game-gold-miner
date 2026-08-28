@@ -11,6 +11,16 @@ export {
   type SerializedGameNumber,
 } from './numbers/GameNumber';
 export {
+  calculateElevatorUpgradeCost,
+  calculateMineShaftUpgradeCost,
+  calculateWarehouseUpgradeCost,
+  purchaseElevatorUpgrade,
+  purchaseMineShaftUpgrade,
+  purchaseWarehouseUpgrade,
+  type UpgradePurchaseFailureReason,
+  type UpgradePurchaseResult,
+} from './progression/upgrades';
+export {
   advanceSimulation,
   MAX_FOREGROUND_DELTA_MS,
   SIMULATION_STEP_MS,
