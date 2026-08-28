@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 20 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the versioned save format; Step 21 must not begin without explicit authorization.
+Implementation Plan Step 21 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates IndexedDB persistence; Step 22 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -72,6 +72,9 @@ Implementation Plan Step 20 is implemented and its automated validation passes. 
 - The user validated Step 19 and authorized Step 20 on 2026-08-28.
 - Added a plain-JSON version-1 save document containing its schema version, save timestamp, effective production-rate snapshot, and the complete serialized authoritative game state.
 - Added strict config-aware validation, runtime deserialization, and a migration entry point that accepts version 1 unchanged while rejecting missing or unsupported versions; no storage adapter exists yet.
+- The user validated Step 20 and authorized Step 21.
+- Added a Dexie-backed repository with one fixed `active` save record, a debounced persistence coordinator, non-throwing load/save diagnostics, and web `visibilitychange`/`pagehide` forced flushes.
+- Added exact close/reopen restoration coverage plus a regression fix that compares level-derived capacities at their canonical serialized boundary.
 
 ## Active Decisions
 
@@ -105,11 +108,12 @@ Implementation Plan Step 20 is implemented and its automated validation passes. 
 - Bulk purchases and UI controls remain deferred.
 - Use the Step 19 automated policy only as a reproducible balance-analysis harness; it does not issue player-runtime purchases or replace later playtesting.
 - Persist every `GameNumber` as a finite decimal/scientific string, validate exact version-1 structure and authoritative invariants before deserialization, and keep migration dispatch separate from IndexedDB storage.
+- Store one active document under the fixed `active` key, debounce routine writes by 500 ms, force the newest snapshot on supported lifecycle events, and surface storage failures without terminating the running session.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 20 test results.
-2. Begin Step 21 only after explicit user authorization.
+1. Wait for the user to validate the Step 21 test results.
+2. Begin Step 22 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

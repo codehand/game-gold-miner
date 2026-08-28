@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 19 are complete. Step 20's versioned save format, validation, deserialization, and migration entry point are implemented with passing automated checks and are awaiting user validation. Step 21 and all later work remain blocked; there is no database or IndexedDB object-store schema.
+Steps 1 through 20 are complete. Step 21's one-record IndexedDB persistence, debounce/failure coordination, and web lifecycle flushes are implemented with passing automated checks and are awaiting user validation. Step 22 and all later work remain blocked. IndexedDB schema version 1 is documented below; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -28,6 +28,10 @@ Steps 1 through 19 are complete. Step 20's versioned save format, validation, de
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited round-robin pickup, timed in-transit state, and delivery to the warehouse input queue. |
 | `src/core/simulation/advanceWarehouse.ts` | Timed capacity-limited warehouse conversion from input material into spendable and cumulative delivered gold. |
 | `src/persistence/saveSchema.ts`, `src/persistence/index.ts` | Version-1 plain-JSON save schema, serializer, strict validator, migration dispatcher, and runtime deserializer; storage remains deferred. |
+| `src/persistence/ActiveSaveRepository.ts` | Storage-agnostic interface for loading and replacing the one active save document. |
+| `src/persistence/DexieActiveSaveRepository.ts` | Dexie 4.4.5 adapter for the version-1 `cat-mine-idle` IndexedDB database and fixed `active` record. |
+| `src/persistence/SavePersistenceCoordinator.ts` | Debounced writes, forced flushing, retry retention, and non-throwing load/save diagnostics. |
+| `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document and forces a flush when supported. |
 
 ## Current File Responsibilities
 
@@ -53,8 +57,8 @@ Steps 1 through 19 are complete. Step 20's versioned save format, validation, de
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
-| `src/persistence/` | Owns the implemented save-document schema, validation, migration dispatch, serialization, and deserialization; IndexedDB/Dexie adapters remain future work. |
-| `src/platform/web/` | Implemented empty boundary for the future browser lifecycle adapter. |
+| `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, and runtime deserialization. |
+| `src/platform/web/` | Owns the implemented save lifecycle binding; broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Implemented tracked directory for future original placeholder assets. |
 | `tests/unit/` | Deterministic core, economy, save, migration, and offline-income tests. |
 | `tests/e2e/` | Browser-level player journeys, responsive layout, persistence, and production-bundle smoke tests. |
@@ -159,7 +163,7 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 | `state.warehouse.conversionProgress` | number | Finite value in `[0, 1)`; zero when input is zero. |
 | `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`. |
 
-`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point, `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation.
+`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point, `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
 
 ## Provisional Balance Snapshot
 
@@ -176,4 +180,13 @@ Starting gold is 100. Every upgradeable stage uses milestones at levels 10/25/50
 
 ## Complete Database Schema
 
-**Current database schema: none.** The base game is client-only and has no relational/server database or IndexedDB object store. The version-1 JSON save document above is an application data contract, not a database schema. IndexedDB storage begins only after Step 20 validation. When any database or IndexedDB schema is introduced, document every store/table, field/column, type, default, nullable rule, key, constraint, index, relationship, and migration here and in `memory-bank/techContext.md` in the same change.
+**Relational/server database schema: none.** The base game remains client-only.
+
+**IndexedDB database:** `cat-mine-idle`, schema version `1`.
+
+| Object store | Field | Type | Required / nullable | Key / constraint |
+|---|---|---|---|---|
+| `saves` | `id` | string | Required, non-null | Primary key via key path `id`; application writes only the literal `active`. |
+| `saves` | `document` | structured-clone-compatible `SaveDocumentV1` object | Required, non-null | Must pass version-1 migration and validation before runtime deserialization. |
+
+The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no prior IndexedDB version or data migration exists.

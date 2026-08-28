@@ -387,7 +387,7 @@ function validateElevator(
     config.elevator.upgrade,
   );
 
-  if (!capacity.equals(expectedCapacity)) {
+  if (capacity.serialize() !== expectedCapacity.serialize()) {
     throw new SaveDocumentError(
       `${path}.capacity does not match its configured level effect.`,
     );
@@ -441,7 +441,7 @@ function validateWarehouse(
     config.warehouse.upgrade,
   );
 
-  if (!capacity.equals(expectedCapacity)) {
+  if (capacity.serialize() !== expectedCapacity.serialize()) {
     throw new SaveDocumentError(
       `${path}.capacity does not match its configured level effect.`,
     );

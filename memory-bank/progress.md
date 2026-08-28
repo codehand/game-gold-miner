@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 20 is implemented with passing automated checks and is awaiting user validation. Step 21 has not started and remains blocked.
+**Phase:** Implementation Plan Step 21 is implemented with passing automated checks and is awaiting user validation. Step 22 has not started and remains blocked.
 
 ## Completed
 
@@ -72,6 +72,9 @@
 - Step 19 was validated by the user through explicit authorization to proceed with Step 20.
 - Step 20 implemented on 2026-08-28: version-1 save creation now serializes the complete authoritative state and effective production-rate snapshot into strict plain JSON; migration dispatch, config-aware validation, and runtime deserialization are defined before any storage adapter.
 - Step 20 automated evidence: ninety-three unit tests pass. Nineteen save-schema tests cover valid creation and exact JSON/runtime round trips, current-version migration dispatch, missing/unsupported versions, malformed/non-string numeric values, unknown/reordered/missing floor identifiers, negative floor/elevator/warehouse queues, unsafe/inconsistent timestamps, invalid progress/counters/capacities, locked-floor production, broken unlock order/gates, and transient unknown properties. Lint and production build pass.
+- Step 20 was validated by the user through explicit authorization to proceed with Step 21.
+- Step 21 implemented: Dexie 4.4.5 now stores one active version-1 document behind a storage interface; routine writes debounce to the newest snapshot, supported web lifecycle events force a flush, and load/save failures resolve safely while exposing user-facing diagnostics and retaining failed writes for retry.
+- Step 21 automated evidence: one hundred three unit tests pass. Ten new persistence/regression tests cover the IndexedDB schema constants, exact full-state restoration after database close/reopen, one-record replacement, empty loads, latest-only debouncing, hidden/page-hide forced saves and unbinding, non-throwing save failure plus retry, non-throwing load failure plus visible diagnostic, invalid debounce rejection, and canonical serialized capacity restoration at upgraded levels. Lint and production build pass.
 
 ## Implementation Step Status
 
@@ -96,12 +99,13 @@
 | 17 — Add milestone multipliers | Complete | User validated the passing Step 17 checks and authorized Step 18. |
 | 18 — Implement sequential floor unlocks | Complete | User validated the passing Step 18 checks and authorized Step 19. |
 | 19 — Add an economy progression simulation | Complete | User validated the passing Step 19 checks and authorized Step 20. |
-| 20 — Define the versioned save format | Implemented / awaiting user validation | Ninety-three unit tests pass; strict versioned creation, migration dispatch, validation, and exact runtime deserialization are covered. |
-| 21 — Add IndexedDB persistence | Not started / blocked | Must not begin until the user validates Step 20. |
+| 20 — Define the versioned save format | Complete | User validated the passing Step 20 checks and authorized Step 21. |
+| 21 — Add IndexedDB persistence | Implemented / awaiting user validation | One hundred three unit tests pass; exact database reopen restoration, overwrite/debounce/lifecycle behavior, and non-throwing failure diagnostics are covered. |
+| 22 — Handle corrupt or incompatible saves | Not started / blocked | Must not begin until the user validates Step 21. |
 
 ## Not Started
 
-- IndexedDB persistence, corrupt-save recovery, offline income, and later phases.
+- Corrupt-save recovery, offline income, and later phases.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Player-facing shaft/elevator/warehouse upgrade controls and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

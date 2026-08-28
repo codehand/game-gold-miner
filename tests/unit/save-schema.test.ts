@@ -5,6 +5,7 @@ import {
   advanceSimulation,
   calculateMineProductionRates,
   createInitialGameState,
+  simulateEconomyProgression,
   type GameState,
 } from '../../src/core';
 import {
@@ -65,6 +66,28 @@ describe('versioned save schema', () => {
       document.effectiveProductionRatePerSecond,
     )).toBe(true);
     expect(JSON.stringify(loaded.state)).toBe(JSON.stringify(state));
+  });
+
+  it('round-trips upgraded capacities through their serialized boundary', () => {
+    const state = simulateEconomyProgression(60_000, TIMESTAMP_MS).state;
+    const document = createSaveDocument(
+      state,
+      BASE_GAME_BALANCE,
+      state.lastUpdateTimestampMs,
+    );
+    const loaded = deserializeSaveDocument(
+      JSON.parse(JSON.stringify(document)),
+      BASE_GAME_BALANCE,
+    );
+
+    expect(loaded.state.elevator.level).toBe(state.elevator.level);
+    expect(loaded.state.elevator.capacity.serialize()).toBe(
+      state.elevator.capacity.serialize(),
+    );
+    expect(loaded.state.warehouse.level).toBe(state.warehouse.level);
+    expect(loaded.state.warehouse.capacity.serialize()).toBe(
+      state.warehouse.capacity.serialize(),
+    );
   });
 
   it('routes the current version through the migration entry point unchanged', () => {

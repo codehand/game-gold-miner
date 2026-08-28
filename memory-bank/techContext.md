@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 19 are complete. Step 20 is implemented with passing automated checks and is awaiting user validation; Step 21 has not started. The repository now includes a strict version-1 JSON save contract around the complete authoritative state and effective-rate snapshot, but no storage adapter or IndexedDB object-store schema. No physics system exists yet.
+Steps 1 through 20 are complete. Step 21 is implemented with passing automated checks and is awaiting user validation; Step 22 has not started. The repository now persists one strict version-1 save document through a Dexie-backed IndexedDB adapter with debouncing, lifecycle flushes, and non-throwing diagnostics. No relational/server database or physics system exists.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -25,6 +25,7 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - TypeScript 6.0.3 is selected because the Step 2 TypeScript 7 scaffold version was outside the supported peer range of typescript-eslint 8.68.0.
 - ESLint 10.9.1 uses a flat configuration with `@eslint/js` and `typescript-eslint` recommended correctness rules.
 - Vitest 4.1.11 runs Node-based unit tests from `tests/unit/`.
+- Dexie 4.4.5 implements the browser IndexedDB adapter; `fake-indexeddb` 6.2.5 provides deterministic close/reopen and failure-independent unit coverage without changing production runtime behavior.
 - Playwright 1.62.1 runs Chromium E2E tests from `tests/e2e/` and starts a fixed-port Vite test server automatically.
 - ESLint applies additional rules to `src/core/**/*.ts` that reject Phaser, persistence/platform imports, and browser globals; the Vitest suite probes these rules through the repository's real flat configuration.
 - Phaser is configured without a physics property. Its E2E diagnostics identify the selected renderer and count boot-scene starts without making presentation state authoritative.
@@ -41,6 +42,7 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - The floor-unlock command requires an existing locked target, an unlocked immediately previous floor at the configured shaft level, and sufficient `GameNumber` gold. Success deducts the configured cost once and initializes the target from balance data with its starting level and zero progress, queues, and totals. Expected failures preserve the original state object.
 - The economy progression harness advances a fresh base-game state in one-second decisions for ten minutes. It unlocks an eligible next floor first, reserves gold when that unlock prerequisite is met, and otherwise selects the affordable upgrade with the largest hypothetical improvement to effective production per second. Deterministic ties favor the next unlock prerequisite and then configured order. Its report records exact action timing, target, cost, modeled improvement, final state, unlocked-floor count, highest level, and milestone status; it is analysis-only and does not automate player runtime.
 - Save schema version 1 is a strict plain-JSON document with exactly `schemaVersion`, `savedAtTimestampMs`, `effectiveProductionRatePerSecond`, and `state`. `state` contains version/timing counters, serialized gold, exactly four configured floor records, elevator state, and warehouse state. Every `GameNumber` is a finite decimal/scientific string. Validation rejects unknown properties, missing/unsupported versions, unsafe or inconsistent timestamps, invalid counters/progress, non-positive levels/capacities, unknown/reordered/missing floors, broken unlock order/gates, locked-floor production, negative quantities, transported totals above extracted totals, mismatched level-derived capacities, and active progress without corresponding material. Migration dispatch precedes validation; runtime deserialization follows it. IndexedDB storage remains unimplemented.
+- `ActiveSaveRepository` keeps storage replaceable. `DexieActiveSaveRepository` stores only `{ id: 'active', document }`, and reopening the same database restores the full serialized snapshot. `SavePersistenceCoordinator` keeps only the newest pending document, debounces routine writes by 500 ms, retains a failed write for retry, resolves load/save failures without throwing into the session, and exposes stable diagnostic messages/callbacks. The web adapter forces the latest document on hidden visibility and page-hide events when those targets exist.
 
 ## Complete Save Document Schema
 
@@ -68,7 +70,16 @@ Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and o
 
 ## Complete Database Schema
 
-**Current database schema: none.** The repository has no relational/server database, tables, indexes, or IndexedDB object stores. The JSON save contract above is not a database schema. The MVP remains client-only and plans to introduce its IndexedDB storage schema only in Step 21.
+**Relational/server database schema: none.** The MVP remains client-only.
+
+**IndexedDB schema:** database `cat-mine-idle`, version `1`.
+
+| Store | Field | Type | Nullability/default | Key, index, relationship |
+|---|---|---|---|---|
+| `saves` | `id` | string | Required; no default | Primary key/key path; fixed application value `active`; not auto-incremented. |
+| `saves` | `document` | `SaveDocumentV1` structured object | Required; no default | No index; validated/migrated application payload. |
+
+There are no secondary indexes, foreign keys, relationships, or other object stores. One logical record is maintained by `put` at the fixed key. Dexie version 1 creates the store with schema `id`; no earlier IndexedDB schema or migration exists.
 
 If a database is introduced, replace this statement with the complete authoritative schema: every table, column, data type, default, nullable rule, primary/foreign key, unique/check constraint, index, and relationship. Update this section in the same change as each migration; do not leave schema details only in migration files.
 
@@ -76,7 +87,7 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: ninety-three tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, simulation pipeline, production-rate, upgrade, milestone, unlock, economy-progression, and save-schema suites pass.
+- `npm run test`: one hundred three tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, simulation pipeline, production-rate, upgrade, milestone, unlock, economy-progression, save-schema, and persistence suites pass.
 - `npm run test:e2e`: one Chromium boot-scene test passes before and after reload, with one canvas, one scene start per load, valid logical dimensions and renderer, and no console or page errors.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 
