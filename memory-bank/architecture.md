@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 18 are complete. Step 19's deterministic economy progression simulation is implemented with passing automated checks and is awaiting user validation. Step 20 and all later work remain blocked; there is no database, migration, or persistence schema.
+Steps 1 through 19 are complete. Step 20's versioned save format, validation, deserialization, and migration entry point are implemented with passing automated checks and are awaiting user validation. Step 21 and all later work remain blocked; there is no database or IndexedDB object-store schema.
 
 ## Implemented Foundation
 
@@ -27,6 +27,7 @@ Steps 1 through 18 are complete. Step 19's deterministic economy progression sim
 | `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited round-robin pickup, timed in-transit state, and delivery to the warehouse input queue. |
 | `src/core/simulation/advanceWarehouse.ts` | Timed capacity-limited warehouse conversion from input material into spendable and cumulative delivered gold. |
+| `src/persistence/saveSchema.ts`, `src/persistence/index.ts` | Version-1 plain-JSON save schema, serializer, strict validator, migration dispatcher, and runtime deserializer; storage remains deferred. |
 
 ## Current File Responsibilities
 
@@ -52,7 +53,7 @@ Steps 1 through 18 are complete. Step 19's deterministic economy progression sim
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration and boot scene; future scenes, game objects, animation, input, camera, and rendering remain deferred. |
 | `src/ui/` | Implemented empty boundary for future HUD and overlays. |
-| `src/persistence/` | Implemented empty boundary for future save validation, migration, serialization, and IndexedDB/Dexie adapters. |
+| `src/persistence/` | Owns the implemented save-document schema, validation, migration dispatch, serialization, and deserialization; IndexedDB/Dexie adapters remain future work. |
 | `src/platform/web/` | Implemented empty boundary for the future browser lifecycle adapter. |
 | `public/assets/placeholder/` | Implemented tracked directory for future original placeholder assets. |
 | `tests/unit/` | Deterministic core, economy, save, migration, and offline-income tests. |
@@ -123,6 +124,43 @@ Floors 2–4 unlock only through an immutable purchase command. The target must 
 
 The pure Step 19 balance harness starts from fresh authoritative state and advances production in deterministic one-second decisions for a default ten-minute session. An eligible affordable next floor unlock takes priority; once a prerequisite is reached but its unlock is not yet affordable, the policy preserves gold until it can pay the cost. Otherwise it evaluates every currently affordable stage upgrade by recalculating effective production per second after the hypothetical purchase and selects the greatest improvement. Exact ties prefer the shaft needed for the next unlock, then configured floor/elevator/warehouse order. The report returns the final state and an immutable action trace with elapsed time, target, exact cost, and modeled rate improvement. This harness does not run in the player-facing update loop.
 
+## Save Document Schema — Version 1
+
+Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation.
+
+| Path | JSON type | Constraints / relationship |
+|---|---|---|
+| `schemaVersion` | integer | Required; exactly `1`. Missing and unsupported versions fail through the migration dispatcher. |
+| `savedAtTimestampMs` | number | Non-negative safe integer; cannot precede `state.lastUpdateTimestampMs`. |
+| `effectiveProductionRatePerSecond` | string | Finite non-negative serialized `GameNumber`; snapshot used by later offline-income logic. |
+| `state` | object | Exact serialized authoritative state described below. |
+| `state.saveVersion` | integer | Required; exactly authoritative state version `1`. |
+| `state.lastUpdateTimestampMs` | number | Non-negative safe integer. |
+| `state.simulationTick` | integer | Non-negative safe integer. |
+| `state.simulationRemainderMs` | number | Finite value in `[0, 100)`. |
+| `state.gold` | string | Finite non-negative serialized `GameNumber`. |
+| `state.floors` | array | Exactly four entries in configured order with the exact configured identifiers and floor numbers. |
+| `state.floors[].id` | string | Must equal the configured identifier at that array position. |
+| `state.floors[].floorNumber` | integer | Must equal the configured sequential floor number. |
+| `state.floors[].isUnlocked` | boolean | Floor one must be unlocked; unlocked floors must be sequential and satisfy the preceding configured level gate. |
+| `state.floors[].mineShaftLevel` | integer | Positive safe integer; locked floors remain at configured starting level. |
+| `state.floors[].extractionProgress` | number | Finite value in `[0, 1)`; zero while locked. |
+| `state.floors[].materialQueue` | string | Finite non-negative serialized `GameNumber`; zero while locked. |
+| `state.floors[].totalExtracted` | string | Finite non-negative serialized `GameNumber`; zero while locked. |
+| `state.floors[].totalTransported` | string | Finite non-negative serialized `GameNumber`, not greater than total extracted; zero while locked. |
+| `state.elevator.level` | integer | Positive safe integer. |
+| `state.elevator.capacity` | string | Positive serialized `GameNumber`; must equal the configured level effect. |
+| `state.elevator.roundRobinCursor` | integer | In `[0, 4)`. |
+| `state.elevator.transitProgress` | number | Finite value in `[0, 1)`; zero when carried material is zero. |
+| `state.elevator.carriedMaterial` | string | Finite non-negative serialized `GameNumber`. |
+| `state.warehouse.level` | integer | Positive safe integer. |
+| `state.warehouse.capacity` | string | Positive serialized `GameNumber`; must equal the configured level effect. |
+| `state.warehouse.inputQueue` | string | Finite non-negative serialized `GameNumber`. |
+| `state.warehouse.conversionProgress` | number | Finite value in `[0, 1)`; zero when input is zero. |
+| `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`. |
+
+`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point, `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation.
+
 ## Provisional Balance Snapshot
 
 | Stage | Starting values | Upgrade values | Unlock |
@@ -138,4 +176,4 @@ Starting gold is 100. Every upgradeable stage uses milestones at levels 10/25/50
 
 ## Complete Database Schema
 
-**Current schema: none.** The base game is client-only and has no relational or server database. IndexedDB is planned for local save persistence but has not been implemented, so no object-store schema exists yet. When any database or IndexedDB schema is introduced, document every store/table, field/column, type, default, nullable rule, key, constraint, index, relationship, and migration here and in `memory-bank/techContext.md` in the same change.
+**Current database schema: none.** The base game is client-only and has no relational/server database or IndexedDB object store. The version-1 JSON save document above is an application data contract, not a database schema. IndexedDB storage begins only after Step 20 validation. When any database or IndexedDB schema is introduced, document every store/table, field/column, type, default, nullable rule, key, constraint, index, relationship, and migration here and in `memory-bank/techContext.md` in the same change.

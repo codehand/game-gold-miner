@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 18 are complete. Step 19 is implemented with passing automated checks and is awaiting user validation; Step 20 has not started. The pure core now exports immutable large numbers, authoritative state contracts, deterministic production and rate estimates, upgrades, cumulative milestones, sequential floor unlocks, and a reproducible economy-analysis simulation. No physics system or persistence schema exists yet.
+Steps 1 through 19 are complete. Step 20 is implemented with passing automated checks and is awaiting user validation; Step 21 has not started. The repository now includes a strict version-1 JSON save contract around the complete authoritative state and effective-rate snapshot, but no storage adapter or IndexedDB object-store schema. No physics system exists yet.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -40,12 +40,35 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Upgrade prices use `baseCost × costGrowthRate^currentLevel` with `GameNumber` exponentiation and no rounding. Separate mine-shaft, elevator, and warehouse commands return discriminated success/failure results and preserve the original state on expected failures. Success deducts gold and increments the selected level; the shared level-effect calculation applies growth plus every reached milestone to shaft yield and shared-stage capacity. Milestone effects are derived from level, not stored as grant state, so reloads cannot apply them twice. Cycle durations, queues, carried material, totals, cursors, timestamps, and normalized progress remain unchanged.
 - The floor-unlock command requires an existing locked target, an unlocked immediately previous floor at the configured shaft level, and sufficient `GameNumber` gold. Success deducts the configured cost once and initializes the target from balance data with its starting level and zero progress, queues, and totals. Expected failures preserve the original state object.
 - The economy progression harness advances a fresh base-game state in one-second decisions for ten minutes. It unlocks an eligible next floor first, reserves gold when that unlock prerequisite is met, and otherwise selects the affordable upgrade with the largest hypothetical improvement to effective production per second. Deterministic ties favor the next unlock prerequisite and then configured order. Its report records exact action timing, target, cost, modeled improvement, final state, unlocked-floor count, highest level, and milestone status; it is analysis-only and does not automate player runtime.
+- Save schema version 1 is a strict plain-JSON document with exactly `schemaVersion`, `savedAtTimestampMs`, `effectiveProductionRatePerSecond`, and `state`. `state` contains version/timing counters, serialized gold, exactly four configured floor records, elevator state, and warehouse state. Every `GameNumber` is a finite decimal/scientific string. Validation rejects unknown properties, missing/unsupported versions, unsafe or inconsistent timestamps, invalid counters/progress, non-positive levels/capacities, unknown/reordered/missing floors, broken unlock order/gates, locked-floor production, negative quantities, transported totals above extracted totals, mismatched level-derived capacities, and active progress without corresponding material. Migration dispatch precedes validation; runtime deserialization follows it. IndexedDB storage remains unimplemented.
+
+## Complete Save Document Schema
+
+| Path | Type and constraint |
+|---|---|
+| `schemaVersion` | Integer exactly `1`. |
+| `savedAtTimestampMs` | Non-negative safe integer, at least `state.lastUpdateTimestampMs`. |
+| `effectiveProductionRatePerSecond` | Non-negative finite numeric string. |
+| `state.saveVersion` | Integer exactly `1`. |
+| `state.lastUpdateTimestampMs` | Non-negative safe integer. |
+| `state.simulationTick` | Non-negative safe integer. |
+| `state.simulationRemainderMs` | Finite number in `[0, 100)`. |
+| `state.gold` | Non-negative finite numeric string. |
+| `state.floors` | Exactly four configured, ordered floor objects. |
+| `state.floors[].id`, `floorNumber` | Exact configured identifier and sequential integer. |
+| `state.floors[].isUnlocked`, `mineShaftLevel` | Boolean plus positive safe integer; floor one stays open and deeper unlocks are sequential/gated. |
+| `state.floors[].extractionProgress` | Finite number in `[0, 1)`; zero while locked. |
+| `state.floors[].materialQueue`, `totalExtracted`, `totalTransported` | Non-negative finite numeric strings; locked values are zero and transported cannot exceed extracted. |
+| `state.elevator.level`, `capacity` | Positive safe integer plus positive finite numeric string matching the configured level effect. |
+| `state.elevator.roundRobinCursor`, `transitProgress`, `carriedMaterial` | Cursor integer in `[0, 4)`, progress in `[0, 1)`, non-negative finite numeric string; empty carried material requires zero progress. |
+| `state.warehouse.level`, `capacity` | Positive safe integer plus positive finite numeric string matching the configured level effect. |
+| `state.warehouse.inputQueue`, `conversionProgress`, `totalGoldDelivered` | Non-negative finite numeric strings around progress in `[0, 1)`; empty input requires zero progress. |
 
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
 ## Complete Database Schema
 
-**Current schema: none.** The repository has no database, migrations, tables, indexes, object stores, or relationships. The MVP is intentionally client-only and plans to use IndexedDB for local saves.
+**Current database schema: none.** The repository has no relational/server database, tables, indexes, or IndexedDB object stores. The JSON save contract above is not a database schema. The MVP remains client-only and plans to introduce its IndexedDB storage schema only in Step 21.
 
 If a database is introduced, replace this statement with the complete authoritative schema: every table, column, data type, default, nullable rule, primary/foreign key, unique/check constraint, index, and relationship. Update this section in the same change as each migration; do not leave schema details only in migration files.
 
@@ -53,7 +76,7 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: seventy-four tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, simulation pipeline, production-rate, upgrade, milestone, unlock, and economy-progression suites pass.
+- `npm run test`: ninety-three tests across the scaffold, architecture, balance-configuration, large-number, authoritative-state, simulation pipeline, production-rate, upgrade, milestone, unlock, economy-progression, and save-schema suites pass.
 - `npm run test:e2e`: one Chromium boot-scene test passes before and after reload, with one canvas, one scene start per load, valid logical dimensions and renderer, and no console or page errors.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 

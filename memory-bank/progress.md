@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 19 is implemented with passing automated checks and is awaiting user validation. Step 20 has not started and remains blocked.
+**Phase:** Implementation Plan Step 20 is implemented with passing automated checks and is awaiting user validation. Step 21 has not started and remains blocked.
 
 ## Completed
 
@@ -69,6 +69,9 @@
 - Step 18 was validated by the user on 2026-08-28 through explicit authorization to proceed with Step 19.
 - Step 19 implemented on 2026-08-28: a pure deterministic economy harness advances a fresh session in one-second decisions, unlocks eligible floors, reserves unlock funds after prerequisites are met, and otherwise buys the affordable upgrade with the best modeled bottleneck improvement using deterministic progression-aware tie-breaking.
 - Step 19 automated evidence: seventy-four unit tests pass. The ten-minute session deterministically opens floors 2, 3, and 4 at 45, 139, and 317 simulated seconds, reaches a level-10 milestone without runaway level-100 growth, keeps every balance and progress value finite and non-negative, retains a positive effective production rate, and records only positive-cost actions with non-negative modeled improvements. Focused tests also prove elevator-bottleneck selection, next-unlock tie-breaking, deterministic replay, and invalid-duration rejection. Lint and production build pass without changing the provisional balance.
+- Step 19 was validated by the user through explicit authorization to proceed with Step 20.
+- Step 20 implemented on 2026-08-28: version-1 save creation now serializes the complete authoritative state and effective production-rate snapshot into strict plain JSON; migration dispatch, config-aware validation, and runtime deserialization are defined before any storage adapter.
+- Step 20 automated evidence: ninety-three unit tests pass. Nineteen save-schema tests cover valid creation and exact JSON/runtime round trips, current-version migration dispatch, missing/unsupported versions, malformed/non-string numeric values, unknown/reordered/missing floor identifiers, negative floor/elevator/warehouse queues, unsafe/inconsistent timestamps, invalid progress/counters/capacities, locked-floor production, broken unlock order/gates, and transient unknown properties. Lint and production build pass.
 
 ## Implementation Step Status
 
@@ -92,12 +95,13 @@
 | 16 — Apply stage-specific upgrade effects | Complete | User validated the passing Step 16 checks and authorized Step 17. |
 | 17 — Add milestone multipliers | Complete | User validated the passing Step 17 checks and authorized Step 18. |
 | 18 — Implement sequential floor unlocks | Complete | User validated the passing Step 18 checks and authorized Step 19. |
-| 19 — Add an economy progression simulation | Implemented / awaiting user validation | Seventy-four unit tests pass; the deterministic ten-minute playthrough opens all four floors, reaches milestones without level-100 runaway growth, retains finite non-negative state, and does not stall. |
-| 20 — Define the versioned save format | Not started / blocked | Must not begin until the user validates Step 19. |
+| 19 — Add an economy progression simulation | Complete | User validated the passing Step 19 checks and authorized Step 20. |
+| 20 — Define the versioned save format | Implemented / awaiting user validation | Ninety-three unit tests pass; strict versioned creation, migration dispatch, validation, and exact runtime deserialization are covered. |
+| 21 — Add IndexedDB persistence | Not started / blocked | Must not begin until the user validates Step 20. |
 
 ## Not Started
 
-- Versioned save format, validation, migrations, persistence, and later phases.
+- IndexedDB persistence, corrupt-save recovery, offline income, and later phases.
 - Phaser mine scene, four floors, miners, transport, warehouse, and UI.
 - Player-facing shaft/elevator/warehouse upgrade controls and floor unlocks.
 - Expanded manager, boost, and gift-drop systems after the base milestone.

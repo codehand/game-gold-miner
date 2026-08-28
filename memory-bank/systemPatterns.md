@@ -42,6 +42,7 @@ Persistence and Platform Adapters
 - Serialize only authoritative game state, never transient animation state.
 - Construct fresh state from validated balance data and an injected timestamp; never read the wall clock inside deterministic state creation.
 - Version every save and test migrations.
+- Route every save candidate through migration dispatch and strict schema/config validation before reconstructing runtime `GameNumber` values; keep this pure document boundary independent of the later IndexedDB adapter.
 - Add seeded randomness only when later probabilistic systems are introduced.
 
 ## Critical Flow
