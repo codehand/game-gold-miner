@@ -6,6 +6,7 @@ import {
   CONTROL_BACKGROUND,
   FONT_FAMILY,
   LOCKED_PANEL_BACKGROUND,
+  MATERIAL_BACKLOG_FILL,
   MATERIAL_FILL,
   MINER_FILL,
   PANEL_BACKGROUND,
@@ -15,9 +16,11 @@ import {
   TEXT_DISABLED,
   TEXT_MUTED,
   TEXT_PRIMARY,
+  TEXT_WARNING,
   type LayoutRegion,
 } from '../layout';
 import {
+  calculateMinerSwingOffsetPx,
   MAX_MATERIAL_PILE_STEPS,
   type MineFloorViewModel,
 } from '../view-model';
@@ -33,6 +36,16 @@ export interface RenderedFloorState {
   readonly progressTrackWidth: number;
   readonly materialQueueLabel: string;
   readonly materialPileSteps: number;
+  /** `Backed up` while a whole elevator trip of material is waiting. */
+  readonly backlogLabel: string | null;
+  /** True when the pile is drawn in the backlog colour rather than the normal one. */
+  readonly isPileBackedUp: boolean;
+  readonly showsMiner: boolean;
+  /**
+   * Signed offset of the placeholder pick from its rest position. Cosmetic
+   * only: it is derived from the animation clock and never from production.
+   */
+  readonly minerSwingOffsetPx: number;
   readonly showsUpgradeControl: boolean;
   readonly isLockedAppearance: boolean;
 }
@@ -44,6 +57,7 @@ const COLOR_CONTROL = toFillColor(CONTROL_BACKGROUND);
 const COLOR_PROGRESS_TRACK = toFillColor(PROGRESS_TRACK);
 const COLOR_PROGRESS_FILL = toFillColor(PROGRESS_FILL);
 const COLOR_MATERIAL = toFillColor(MATERIAL_FILL);
+const COLOR_MATERIAL_BACKLOG = toFillColor(MATERIAL_BACKLOG_FILL);
 const COLOR_MINER = toFillColor(MINER_FILL);
 
 const BADGE_SIZE = 32;
@@ -61,6 +75,12 @@ const PILE_BLOCK_WIDTH = 26;
 const PILE_BLOCK_HEIGHT = 7;
 const PILE_BLOCK_GAP = 2;
 const PILE_BASELINE_Y = 92;
+const PICK_WIDTH = 12;
+const PICK_HEIGHT = 5;
+const PICK_X = 40;
+/** Rest position of the pick; the swing moves it symmetrically around this. */
+const PICK_REST_Y = 70;
+const PICK_SWING_AMPLITUDE_PX = 6;
 const UPGRADE_WIDTH = 92;
 const UPGRADE_HEIGHT = 32;
 const UPGRADE_INSET_X = 12;
@@ -73,6 +93,10 @@ const UPGRADE_Y = 56;
  * displayed values change, and `describeRenderedState` reports what its own
  * game objects currently show so browser tests compare rendered output rather
  * than the scene's intentions.
+ *
+ * It renders the extraction stage of the production chain: the progress bar and
+ * pile follow authoritative values, while `applyAnimation` moves the pick from
+ * the cosmetic clock alone.
  */
 export class MineFloorView {
   readonly #root: Phaser.GameObjects.Container;
@@ -83,8 +107,10 @@ export class MineFloorView {
   readonly #status: Phaser.GameObjects.Text;
   readonly #statusBackground: Phaser.GameObjects.Rectangle;
   readonly #miner: readonly Phaser.GameObjects.Shape[];
+  readonly #pick: Phaser.GameObjects.Rectangle;
   readonly #pileBlocks: readonly Phaser.GameObjects.Rectangle[];
   readonly #materialQueue: Phaser.GameObjects.Text;
+  readonly #backlog: Phaser.GameObjects.Text;
   readonly #progressTrack: Phaser.GameObjects.Rectangle;
   readonly #progressFill: Phaser.GameObjects.Rectangle;
   readonly #progressLabel: Phaser.GameObjects.Text;
@@ -157,12 +183,15 @@ export class MineFloorView {
       )
       .setOrigin(0.5, 0.5);
 
-    // Placeholder miner: an original two-shape silhouette, replaced by real
-    // artwork in Step 32.
+    // Placeholder miner: an original two-shape silhouette plus a swinging pick,
+    // all replaced by real artwork in Step 32.
     this.#miner = [
       scene.add.rectangle(16, 66, 22, 26, COLOR_MINER).setOrigin(0, 0),
       scene.add.ellipse(27, 60, 20, 18, COLOR_MINER),
     ];
+    this.#pick = scene.add
+      .rectangle(PICK_X, PICK_REST_Y, PICK_WIDTH, PICK_HEIGHT, COLOR_MINER)
+      .setOrigin(0, 0.5);
 
     this.#pileBlocks = Array.from({ length: MAX_MATERIAL_PILE_STEPS }, (_, step) => {
       return scene.add
@@ -180,6 +209,14 @@ export class MineFloorView {
         color: TEXT_ACCENT,
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0, 0);
+    this.#backlog = scene.add
+      .text(88, PILE_BASELINE_Y - 32, '', {
+        color: TEXT_WARNING,
+        fontFamily: FONT_FAMILY,
+        fontSize: '11px',
         fontStyle: 'bold',
       })
       .setOrigin(0, 0);
@@ -249,8 +286,10 @@ export class MineFloorView {
       this.#statusBackground,
       this.#status,
       ...this.#miner,
+      this.#pick,
       ...this.#pileBlocks,
       this.#materialQueue,
+      this.#backlog,
       this.#progressTrack,
       this.#progressFill,
       this.#progressLabel,
@@ -282,12 +321,24 @@ export class MineFloorView {
       part.setVisible(floor.isUnlocked);
     }
 
+    this.#pick.setVisible(floor.isUnlocked);
+
+    // A full pile changes colour as well as height, so the moment transport
+    // becomes the bottleneck is visible without reading the amount.
+    const pileColor = floor.isMaterialBackedUp
+      ? COLOR_MATERIAL_BACKLOG
+      : COLOR_MATERIAL;
+
     this.#pileBlocks.forEach((block, index) => {
       block.setVisible(index < floor.materialPileSteps);
+      block.setFillStyle(pileColor);
     });
     this.#materialQueue
       .setText(floor.materialQueueLabel)
       .setVisible(floor.isUnlocked);
+    this.#backlog
+      .setText(floor.backlogLabel ?? '')
+      .setVisible(floor.backlogLabel !== null);
 
     this.#progressFill.setSize(
       this.#trackWidth * floor.extractionProgress,
@@ -301,6 +352,17 @@ export class MineFloorView {
       .setVisible(floor.showsUpgradeControl);
   }
 
+  /**
+   * Moves the cosmetic pick. This is the only thing the animation clock drives
+   * on a floor: extraction still completes exactly when the core says so.
+   */
+  public applyAnimation(animationTimeMs: number): void {
+    this.#pick.setY(
+      PICK_REST_Y +
+        calculateMinerSwingOffsetPx(animationTimeMs, PICK_SWING_AMPLITUDE_PX),
+    );
+  }
+
   public describeRenderedState(): RenderedFloorState {
     return {
       floorLabel: this.#title.text,
@@ -312,6 +374,12 @@ export class MineFloorView {
       progressTrackWidth: this.#progressTrack.width,
       materialQueueLabel: this.#materialQueue.text,
       materialPileSteps: this.#pileBlocks.filter((block) => block.visible).length,
+      backlogLabel: this.#backlog.visible ? this.#backlog.text : null,
+      isPileBackedUp: this.#pileBlocks.every((block) => {
+        return block.fillColor === COLOR_MATERIAL_BACKLOG;
+      }),
+      showsMiner: this.#pick.visible,
+      minerSwingOffsetPx: this.#pick.y - PICK_REST_Y,
       showsUpgradeControl: this.#upgradeBackground.visible,
       isLockedAppearance:
         this.#background.fillColor === COLOR_LOCKED_PANEL,

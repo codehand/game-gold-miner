@@ -21,7 +21,7 @@ import type {
 /** Discrete pile heights, so a growing bottleneck is visible at a glance. */
 export const MAX_MATERIAL_PILE_STEPS = 4;
 
-/** Fractions of the elevator's capacity that add one more pile step. */
+/** Fractions of the measuring capacity that add one more pile step. */
 const MATERIAL_PILE_THRESHOLDS = [0.25, 0.5, 0.75] as const;
 
 export type SharedStageId = 'elevator' | 'warehouse';
@@ -43,6 +43,13 @@ export interface MineFloorViewModel {
   readonly materialQueueLabel: string;
   /** Pile height in `[0, MAX_MATERIAL_PILE_STEPS]`. */
   readonly materialPileSteps: number;
+  /**
+   * A full pile means at least one elevator trip of material is waiting, so
+   * this floor's output is held up by transport rather than by extraction.
+   */
+  readonly isMaterialBackedUp: boolean;
+  /** `Backed up` while the pile is full, otherwise `null`. */
+  readonly backlogLabel: string | null;
   /** Step 29 turns this into an affordable/unaffordable interactive control. */
   readonly showsUpgradeControl: boolean;
   readonly upgradeControlLabel: string;
@@ -56,6 +63,14 @@ export interface SharedStageViewModel {
   readonly capacityLabel: string;
   /** English amount currently held by this stage, e.g. `Carrying 20`. */
   readonly queueLabel: string;
+  /** Held amount as discrete blocks, measured against this stage's capacity. */
+  readonly queueSteps: number;
+  /** True while the stage holds material, which is what its motion signals. */
+  readonly isRunning: boolean;
+  /** True once a full cycle of input is waiting; the elevator never backs up. */
+  readonly isBackedUp: boolean;
+  /** `Idle`, `In transit`, `Converting`, or `Backed up`. */
+  readonly statusLabel: string;
   /** Normalized transit or conversion progress in `[0, 1)`. */
   readonly progress: number;
   readonly progressLabel: string;
@@ -85,6 +100,12 @@ export function createMineFloorViewModel(
   assertNormalizedProgress(floor.extractionProgress, `floor ${floor.id} extraction`);
   assertDisplayableLevel(floor.mineShaftLevel, `floor ${floor.id}`);
 
+  const pileSteps = calculateMaterialPileSteps(
+    floor.materialQueue,
+    elevatorCapacity,
+  );
+  const backedUp = pileSteps >= MAX_MATERIAL_PILE_STEPS;
+
   return {
     id: floor.id,
     floorNumber: floor.floorNumber,
@@ -96,10 +117,9 @@ export function createMineFloorViewModel(
     extractionProgress: floor.extractionProgress,
     extractionProgressLabel: formatProgress(floor.extractionProgress),
     materialQueueLabel: formatAmount(floor.materialQueue),
-    materialPileSteps: calculateMaterialPileSteps(
-      floor.materialQueue,
-      elevatorCapacity,
-    ),
+    materialPileSteps: pileSteps,
+    isMaterialBackedUp: backedUp,
+    backlogLabel: backedUp ? 'Backed up' : null,
     showsUpgradeControl: floor.isUnlocked,
     upgradeControlLabel: 'Upgrade',
   };
@@ -111,6 +131,10 @@ export function createElevatorViewModel(
   assertNormalizedProgress(elevator.transitProgress, 'elevator transit');
   assertDisplayableLevel(elevator.level, 'elevator');
 
+  // A full car is a full trip, not a backlog: the elevator's own queue never
+  // grows past one load. Transport pressure shows up as full floor piles.
+  const isRunning = elevator.carriedMaterial.greaterThan(0);
+
   return {
     id: 'elevator',
     title: 'Elevator',
@@ -118,6 +142,13 @@ export function createElevatorViewModel(
     levelLabel: formatLevel(elevator.level),
     capacityLabel: `Cap ${formatAmount(elevator.capacity)}`,
     queueLabel: `Carrying ${formatAmount(elevator.carriedMaterial)}`,
+    queueSteps: calculateMaterialPileSteps(
+      elevator.carriedMaterial,
+      elevator.capacity,
+    ),
+    isRunning,
+    isBackedUp: false,
+    statusLabel: isRunning ? 'In transit' : 'Idle',
     progress: elevator.transitProgress,
     progressLabel: formatProgress(elevator.transitProgress),
     upgradeControlLabel: 'Upgrade',
@@ -130,6 +161,13 @@ export function createWarehouseViewModel(
   assertNormalizedProgress(warehouse.conversionProgress, 'warehouse conversion');
   assertDisplayableLevel(warehouse.level, 'warehouse');
 
+  const queueSteps = calculateMaterialPileSteps(
+    warehouse.inputQueue,
+    warehouse.capacity,
+  );
+  const isRunning = warehouse.inputQueue.greaterThan(0);
+  const isBackedUp = queueSteps >= MAX_MATERIAL_PILE_STEPS;
+
   return {
     id: 'warehouse',
     title: 'Warehouse',
@@ -137,6 +175,10 @@ export function createWarehouseViewModel(
     levelLabel: formatLevel(warehouse.level),
     capacityLabel: `Cap ${formatAmount(warehouse.capacity)}`,
     queueLabel: `Queued ${formatAmount(warehouse.inputQueue)}`,
+    queueSteps,
+    isRunning,
+    isBackedUp,
+    statusLabel: describeWarehouseStatus(isRunning, isBackedUp),
     progress: warehouse.conversionProgress,
     progressLabel: formatProgress(warehouse.conversionProgress),
     upgradeControlLabel: 'Upgrade',
@@ -144,26 +186,37 @@ export function createWarehouseViewModel(
 }
 
 /**
- * Pile height relative to what the shared elevator can remove in one trip, so
- * a full pile means the elevator has become the bottleneck.
+ * Discrete height of one waiting pile, measured against the capacity of the
+ * stage that removes it in a single cycle. A full pile therefore means a whole
+ * cycle of material is already waiting, which is the visible bottleneck signal:
+ * floor piles measure against the shared elevator, and the warehouse input
+ * queue measures against the warehouse.
  */
 export function calculateMaterialPileSteps(
   materialQueue: GameNumber,
-  elevatorCapacity: GameNumber,
+  removalCapacity: GameNumber,
 ): number {
   if (!materialQueue.greaterThan(0)) {
     return 0;
   }
 
-  if (!elevatorCapacity.greaterThan(0)) {
+  if (!removalCapacity.greaterThan(0)) {
     return MAX_MATERIAL_PILE_STEPS;
   }
 
   const passed = MATERIAL_PILE_THRESHOLDS.filter((threshold) => {
-    return materialQueue.greaterThanOrEqualTo(elevatorCapacity.multiply(threshold));
+    return materialQueue.greaterThanOrEqualTo(removalCapacity.multiply(threshold));
   }).length;
 
   return Math.min(1 + passed, MAX_MATERIAL_PILE_STEPS);
+}
+
+function describeWarehouseStatus(isRunning: boolean, isBackedUp: boolean): string {
+  if (!isRunning) {
+    return 'Idle';
+  }
+
+  return isBackedUp ? 'Backed up' : 'Converting';
 }
 
 export function formatLevel(level: number): string {

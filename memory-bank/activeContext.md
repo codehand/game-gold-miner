@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 26 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the four rendered mine floors and the shared elevator/warehouse views; Step 27 must not begin without explicit authorization.
+Implementation Plan Step 27 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the three visualised production stages, their queued material, and the live mine; Step 28 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -113,6 +113,28 @@ Implementation Plan Step 26 is implemented and its automated validation passes. 
 - The floor pile expectation is derived through `calculateMaterialPileSteps` rather than hardcoded, so tuning the elevator capacity cannot fail the test with an opaque number, and a named guard keeps the empty-pile pixel probe meaningful if a tuning change ever fills the stack.
 - Mutation-verified: dropping the shared-stage label binding and binding every floor view to floor one both fail by name. The badge-anchor extraction is a behaviour-preserving refactor with no new assertion; the existing pixel probes and read-back values are unchanged by it.
 - One hundred sixty-one unit tests, eight Chromium E2E tests, lint, and the production build pass.
+- The user authorized Step 27 on 2026-08-28, which validated Step 26.
+- Added `src/game/runtime/MineSimulationDriver.ts`, the live bridge the mine screen pulls from. It holds authoritative state, advances it to an injected wall clock through `advanceSimulation`, memoizes the derived view model, and accepts state replaced by a command. `Date.now` is injected from `src/main.ts`, so the clock stays in one place and Node tests advance time exactly.
+- Reversed the direction of the render loop from Step 26's push to a pull. `BootScene.update` asks the source for the newest snapshot every frame; the public `applySnapshot` is gone, because a pushed snapshot would be overwritten by the next frame anyway.
+- Added `src/game/view-model/stageAnimation.ts`, the cosmetic clock: frame accumulation capped at 250 ms and scaled by a validated `animationSpeedMultiplier`, wrapping at a whole multiple of both the 800 ms miner swing and the 900 ms conveyor cycle, plus the progress-driven cycle-marker offset.
+- Gave each production stage its own indicator and its own queued material. Floors gained a swinging pick and a `Backed up` label; both shared stages gained discrete queue blocks, an `Idle` / `In transit` / `Converting` / `Backed up` status, a marker travelling the cycle track, and conveyor dashes that run only while the stage holds material.
+- A full pile switches to `MATERIAL_BACKLOG_FILL`, so where the chain is waiting is readable without reading a number. The elevator deliberately never reports a backlog: a full car is one full trip, and transport pressure belongs on the floor piles.
+- Each pile measures against the capacity of whichever stage removes it — floor piles against the elevator, the warehouse queue against the warehouse — so the same amount reads differently in the two places, correctly.
+- Reworked the offline-claim retry. It used to cache a post-claim state candidate; with the mine now producing while the modal is open, that candidate would discard whatever was mined between a failed write and the retry. A consumed-once flag replaces it, so the retry saves current state and still adds the reward exactly once.
+- Browser diagnostics are now published on a 100 ms cadence rather than on every rebind, because displayed progress changes every frame and an unthrottled read-back would serialize the whole screen 60 times a second purely for tests.
+- Playwright's clock turned out to give exactly the two controls Step 27's validation needs: `install` plus `setFixedTime` pins `Date.now` while rAF keeps running, which pauses the core and leaves the renderer live; `install` plus `pauseAt` then `runFor` advances both deterministically. The bottleneck fixtures use the first, the animation-speed trial the second.
+- The animation-speed trial settles the core explicitly at the end of each run, so gold depends on total elapsed time rather than on where frames happened to land, and the two runs compare byte-identical serialized gold.
+- Nine mutations were confirmed to fail with named assertions: a speed multiplier wired to nothing, a scene that never advances the core, a pile that ignores the backlog colour, shared-stage queue blocks that ignore the amount, a cycle marker parked at the start of its track, a conveyor that never stops, a cosmetic clock allowed to drive the authoritative progress bar, a diagnostic frozen at boot, and a floor pick that never moves.
+- A latent pixel-probe race surfaced once a third probing spec joined the suite: diagnostics are published inside `create`, before the first frame is presented, and a canvas that has not presented reads back as opaque black — so under parallel load a probe could sample an empty buffer and fail on a correct render. Both browser specs now poll an always-painted HUD point before any probe, and the full suite passed five consecutive runs.
+- Fixed a time-loss bug found while reviewing Step 27: the driver handed the whole wall-clock gap to `advanceSimulation`, which credits at most one second but consumes the entire delta. A hidden tab is not a slow frame — the browser stops the render loop, so the absence arrived as one delta and everything past its first second was consumed unsimulated. Reproduced at sixty seconds: 380 gold when frames ran throughout, 100 (the starting balance) when the same minute arrived as one frame. No reload happens in that scenario, so offline income never saw the interval either.
+- Added `src/core/simulation/catchUpSimulation.ts`, which walks a gap in credited-size slices. Slicing is exact rather than approximate because `advanceSimulation` carries its sub-tick remainder in authoritative state, so a run of slices is indistinguishable from continuous time. The catch-up lives in the core, not the driver: how much wall-clock time is credited is simulation semantics, and the driver stays a thin bridge.
+- Bounded catch-up at `MAX_CATCH_UP_MS` (two hours), because it runs inside the frame that discovers the gap. Measured worst case is roughly thirty milliseconds for the full seventy-two thousand ticks. The bound matches the horizon `offlineIncome.capDurationMs` already applies to away time, so leaving the tab open and closing it are capped alike, and time past the cap is still consumed by `lastUpdateTimestampMs` — a timestamp left behind real time would hand the same interval to offline income on the next load.
+- Three mutations were confirmed to fail with named assertions: the driver reverted to a single bounded advance, catch-up dropping uncredited time instead of consuming it, and catch-up left unbounded.
+- Fixed the two remaining review findings. The driver now re-derives its snapshot only when a fixed tick completed: a sixty-frame second completes ten ticks, so most frames left a state differing solely in timestamp and sub-tick remainder, and re-deriving rebuilt an identical view model while handing the scene a new object to rebind. The tick counter is the exact condition, not a heuristic, because `advanceSimulation` increments it once per tick and nothing else touches production state. `replaceState` still always re-derives, since a command changes displayed values without completing a tick.
+- With that in place `BootScene.#bindSnapshot`'s identity check finally fires on most frames, so the renderable guard moved behind it. Every distinct snapshot is still checked once, on the frame it first arrives.
+- Gated the rendered-state read-back behind `import.meta.env.DEV`. Nothing in the game reads those attributes, and a shipped build was serializing the whole screen ten times a second for an audience that does not exist. Playwright runs against the dev server, so browser tests are unaffected; the production bundle no longer contains the `floorViews` or `surfaceViews` dataset writes at all, though the unreferenced `describeRenderedState` bodies still ride along as dead code. The boot and layout diagnostics are untouched, as are the canvas accessibility attributes.
+- Three more mutations fail by name: a driver that never memoizes, a driver that never re-derives, and a `replaceState` that reuses the snapshot.
+- One hundred ninety-eight unit tests, twelve Chromium E2E tests, lint, strict production build, and `git diff --check` pass.
 
 ## Active Decisions
 
@@ -167,11 +189,20 @@ Implementation Plan Step 26 is implemented and its automated validation passes. 
 - Let browser tests import the read-back types from the views themselves, never restate them, so the diagnostic contract cannot drift unnoticed.
 - Never report a constant through the rendered-state read-back; report a bound value instead, so the assertion can actually fail.
 - Derive test expectations that depend on balance data through the same pure function the code uses, and keep hardcoded values only for fixture-owned amounts.
+- Let the renderer pull snapshots from a driver each frame; never let a frame delta, frame rate, or animation speed reach the core. Production is a function of injected wall-clock time alone.
+- Treat a frozen host clock as a paused mine that still renders, and a backwards clock as crediting nothing until real time catches up.
+- Treat a gap in the render loop as elapsed time to be simulated, never as one oversized frame: walk it in credited-size slices, bound the walk so resuming cannot freeze the tab, and consume the timestamp in full whether or not the time was credited.
+- Drive every stage indicator from authoritative progress and every decoration from a separate validated cosmetic clock, gated on whether the stage holds material.
+- Render queued material wherever it can accumulate, measured against the capacity of the stage that removes it, and colour a full pile as a backlog.
+- Never report a bottleneck a stage cannot observe from its own state.
+- Guard a one-time claim with a consumed-once flag rather than a cached state candidate once the world keeps changing behind the modal.
+- Publish read-back diagnostics on a 100 ms cadence rather than every frame, and keep the forced publish at boot and on external binds.
+- Never sample a pixel probe on the strength of a dataset diagnostic alone: diagnostics are published inside `create`, before a frame exists, so wait for an always-painted point first.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 26 floor and shared-stage views.
-2. Begin Step 27 only after explicit user authorization.
+1. Wait for the user to validate the Step 27 production-stage visualisation.
+2. Begin Step 28 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

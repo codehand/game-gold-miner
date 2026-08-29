@@ -55,6 +55,10 @@ export {
   SIMULATION_STEP_MS,
 } from './simulation/advanceSimulation';
 export {
+  catchUpSimulation,
+  MAX_CATCH_UP_MS,
+} from './simulation/catchUpSimulation';
+export {
   createMineFloorState,
   createInitialGameState,
   INITIAL_SAVE_VERSION,

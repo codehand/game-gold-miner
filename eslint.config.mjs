@@ -130,6 +130,50 @@ export default defineConfig(
     },
   },
   {
+    files: ['src/game/runtime/**/*.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'document',
+          message: 'The simulation driver must not depend on DOM APIs.',
+        },
+        {
+          name: 'navigator',
+          message: 'The simulation driver must not depend on browser APIs.',
+        },
+        {
+          name: 'window',
+          message: 'The simulation driver must not depend on DOM APIs.',
+        },
+      ],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'phaser',
+              message:
+                'The simulation driver must stay renderer-free so Node tests can advance it.',
+            },
+          ],
+          patterns: [
+            {
+              regex: '^phaser/',
+              message:
+                'The simulation driver must stay renderer-free so Node tests can advance it.',
+            },
+            {
+              regex: '(^|/)(persistence|platform)(/|$)',
+              message:
+                'The simulation driver must not import persistence or platform adapters.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/game/layout/**/*.ts'],
     rules: {
       'no-restricted-globals': [

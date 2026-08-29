@@ -1,20 +1,32 @@
 import Phaser from 'phaser';
 
 import { GAME_HEIGHT, GAME_WIDTH, MINE_BACKGROUND } from './layout';
+import type { MineSnapshotSource } from './runtime';
 import { BootScene } from './scenes/BootScene';
-import type { MineViewModel } from './view-model';
 
 export { GAME_HEIGHT, GAME_WIDTH };
 export {
+  MineSimulationDriver,
+  type MineSimulationDriverOptions,
+  type MineSnapshotSource,
+} from './runtime';
+export {
   createMineViewModel,
+  DEFAULT_ANIMATION_SPEED_MULTIPLIER,
   type MineFloorViewModel,
   type MineViewModel,
   type SharedStageViewModel,
 } from './view-model';
 
+export interface CreateGameOptions {
+  /** Scales cosmetic motion only; production is never derived from it. */
+  readonly animationSpeedMultiplier?: number;
+}
+
 export function createGame(
   parent: HTMLElement,
-  viewModel: MineViewModel,
+  source: MineSnapshotSource,
+  options: CreateGameOptions = {},
 ): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO,
@@ -26,8 +38,14 @@ export function createGame(
     // background in `src/style.css`, not this fill.
     backgroundColor: MINE_BACKGROUND,
     // The scene is constructed here so it boots already bound to the loaded
-    // core snapshot instead of rendering placeholder values first.
-    scene: [new BootScene(viewModel)],
+    // core snapshot instead of rendering placeholder values first, and then
+    // pulls every later snapshot from the same source.
+    scene: [
+      new BootScene({
+        source,
+        animationSpeedMultiplier: options.animationSpeedMultiplier,
+      }),
+    ],
     scale: {
       // FIT never crops, so every control stays inside the host viewport.
       mode: Phaser.Scale.FIT,

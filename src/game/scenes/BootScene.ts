@@ -18,8 +18,12 @@ import {
   type LayoutRegion,
   type MineLayout,
 } from '../layout';
+import type { MineSnapshotSource } from '../runtime';
 import {
+  advanceAnimationTimeMs,
+  assertAnimationSpeedMultiplier,
   assertRenderableMineViewModel,
+  DEFAULT_ANIMATION_SPEED_MULTIPLIER,
   type MineViewModel,
 } from '../view-model';
 
@@ -27,6 +31,21 @@ export const BOOT_SCENE_KEY = 'BootScene';
 
 /** Internal camera name; nothing outside this scene addresses the camera. */
 const MINE_CAMERA_KEY = 'MineCamera';
+
+/**
+ * Rendered values are republished at most this often. Displayed progress
+ * changes on every frame, so an unthrottled read-back would serialize the whole
+ * screen 60 times a second purely for diagnostics.
+ */
+const VIEW_DIAGNOSTIC_INTERVAL_MS = 100;
+
+/**
+ * The rendered-state read-back exists for browser tests, which run against the
+ * dev server, so a shipped build must not pay for it. Vite substitutes this
+ * statically, letting the read-back and its serialization drop out of the
+ * bundle entirely rather than merely going unread.
+ */
+const PUBLISHES_VIEW_DIAGNOSTICS = import.meta.env.DEV;
 
 const SURFACE_TITLE_HEIGHT = 28;
 const SURFACE_PANEL_INSET = 12;
@@ -38,27 +57,49 @@ const COLOR_SURFACE_BACKGROUND = toFillColor(SURFACE_BACKGROUND);
 const COLOR_MINE_BACKGROUND = toFillColor(MINE_BACKGROUND);
 const COLOR_DIVIDER = toFillColor(DIVIDER);
 
+export interface BootSceneOptions {
+  readonly source: MineSnapshotSource;
+  /** Scales cosmetic motion only; production is never derived from it. */
+  readonly animationSpeedMultiplier?: number;
+}
+
 /**
  * The single mine scene.
  *
- * It renders one reusable view per mine floor plus the shared elevator and
- * warehouse, all bound to the latest read-only snapshot it has been given —
- * the one handed in at construction until `applySnapshot` supplies a newer one.
- * The scene never mutates authoritative state; Step 27 drives these same views
- * from live simulation snapshots through `applySnapshot`.
+ * Every frame it pulls the newest snapshot from its source and rebinds one
+ * reusable view per mine floor plus the shared elevator and warehouse. The
+ * scene never mutates authoritative state and never decides when a production
+ * cycle completes: it renders whatever the core has already produced.
+ *
+ * The cosmetic animation clock is deliberately separate from that pull. It is
+ * advanced from the rendered frame delta and scaled by
+ * `animationSpeedMultiplier`, and it drives only decoration — the miners' picks
+ * and the shared-stage conveyors. Progress bars and cycle markers stay tied to
+ * authoritative progress, so changing the animation speed cannot change output.
  */
 export class BootScene extends Phaser.Scene {
-  /** The latest snapshot, held so `create` binds current values, not boot ones. */
+  readonly #source: MineSnapshotSource;
+  /** The snapshot currently bound to the views, compared by identity. */
   #viewModel: MineViewModel;
   #floorViews: readonly MineFloorView[] = [];
   #elevatorView: SharedStageView | null = null;
   #warehouseView: SharedStageView | null = null;
+  #animationSpeedMultiplier: number;
+  #animationTimeMs = 0;
+  #lastViewDiagnosticMs = Number.NEGATIVE_INFINITY;
 
-  public constructor(viewModel: MineViewModel) {
+  public constructor(options: BootSceneOptions) {
     super({ key: BOOT_SCENE_KEY });
 
-    assertRenderableMineViewModel(viewModel, MINE_FLOOR_COUNT);
-    this.#viewModel = viewModel;
+    assertRenderableMineViewModel(options.source.snapshot, MINE_FLOOR_COUNT);
+    assertAnimationSpeedMultiplier(
+      options.animationSpeedMultiplier ?? DEFAULT_ANIMATION_SPEED_MULTIPLIER,
+    );
+
+    this.#source = options.source;
+    this.#viewModel = options.source.snapshot;
+    this.#animationSpeedMultiplier =
+      options.animationSpeedMultiplier ?? DEFAULT_ANIMATION_SPEED_MULTIPLIER;
   }
 
   public create(): void {
@@ -70,7 +111,8 @@ export class BootScene extends Phaser.Scene {
     ];
     const mineContent = this.#createMineContent(layout.width);
 
-    this.applySnapshot(this.#viewModel);
+    this.#bindSnapshot(this.#source.snapshot, true);
+    this.#applyAnimation();
 
     // A dedicated camera viewport clips the mine area in both WebGL and Canvas
     // and gives Step 31 a single `scrollY` value to drive.
@@ -91,15 +133,46 @@ export class BootScene extends Phaser.Scene {
   }
 
   /**
+   * Pulls the newest snapshot and advances the cosmetic clock.
+   *
+   * The two are independent on purpose: the snapshot comes from the core's own
+   * wall-clock advance, while `delta` — how long this frame happened to take —
+   * only ever reaches decoration.
+   */
+  public override update(_time: number, delta: number): void {
+    this.#bindSnapshot(this.#source.advance(), false);
+    this.#animationTimeMs = advanceAnimationTimeMs(
+      this.#animationTimeMs,
+      delta,
+      this.#animationSpeedMultiplier,
+    );
+    this.#applyAnimation();
+    this.#publishViewDiagnostics(false);
+  }
+
+  /** Scales cosmetic motion. Rejects non-finite or negative multipliers. */
+  public setAnimationSpeedMultiplier(multiplier: number): void {
+    assertAnimationSpeedMultiplier(multiplier);
+    this.#animationSpeedMultiplier = multiplier;
+  }
+
+  /**
    * Rebinds every floor and shared-stage view to a newer core snapshot.
    *
-   * A snapshot arriving before `create` runs is kept rather than dropped, so a
-   * caller that starts pushing snapshots early cannot leave the scene showing
-   * boot values. A snapshot with the wrong number of floors is a caller bug and
-   * throws instead of leaving views bound to nothing.
+   * A snapshot with the wrong number of floors is a caller bug and throws
+   * instead of leaving views bound to nothing. An unchanged snapshot — no fixed
+   * tick completed since the last frame, which at sixty frames a second is most
+   * of them — is skipped by identity before the guard runs, so the frames that
+   * change nothing cost nothing. Every distinct snapshot is still checked once,
+   * on the frame it first arrives.
    */
-  public applySnapshot(viewModel: MineViewModel): void {
+  #bindSnapshot(viewModel: MineViewModel, force: boolean): void {
+    if (!force && viewModel === this.#viewModel) {
+      return;
+    }
+
     assertRenderableMineViewModel(viewModel, MINE_FLOOR_COUNT);
+
     this.#viewModel = viewModel;
 
     if (this.#elevatorView === null || this.#warehouseView === null) {
@@ -111,10 +184,15 @@ export class BootScene extends Phaser.Scene {
     });
     this.#elevatorView.applySnapshot(viewModel.elevator);
     this.#warehouseView.applySnapshot(viewModel.warehouse);
-    // Republished on every rebind: a diagnostic frozen at boot would report a
-    // healthy first frame while live snapshots silently failed to reach the
-    // views, which is exactly the failure this read-back exists to catch.
-    this.#publishViewDiagnostics();
+  }
+
+  #applyAnimation(): void {
+    for (const view of this.#floorViews) {
+      view.applyAnimation(this.#animationTimeMs);
+    }
+
+    this.#elevatorView?.applyAnimation(this.#animationTimeMs);
+    this.#warehouseView?.applyAnimation(this.#animationTimeMs);
   }
 
   #createHud(region: LayoutRegion): Phaser.GameObjects.Container {
@@ -242,14 +320,34 @@ export class BootScene extends Phaser.Scene {
     canvas.setAttribute('aria-label', 'Cat Mine Idle game canvas');
     canvas.setAttribute('role', 'img');
 
-    this.#publishViewDiagnostics();
+    this.#publishViewDiagnostics(true);
   }
 
   /**
    * Rendered values are read back from the view objects themselves, so a broken
-   * binding cannot be hidden behind the scene's intentions.
+   * binding cannot be hidden behind the scene's intentions. Published on a
+   * cadence rather than once at boot: a diagnostic frozen at the first frame
+   * would report a healthy screen while live snapshots silently failed to reach
+   * the views, which is exactly the failure this read-back exists to catch.
+   *
+   * Development and test builds only. Nothing in the game reads these
+   * attributes, so a shipped build would be serializing the whole screen ten
+   * times a second for an audience that does not exist.
    */
-  #publishViewDiagnostics(): void {
+  #publishViewDiagnostics(force: boolean): void {
+    if (!PUBLISHES_VIEW_DIAGNOSTICS) {
+      return;
+    }
+
+    if (
+      !force &&
+      this.time.now - this.#lastViewDiagnosticMs < VIEW_DIAGNOSTIC_INTERVAL_MS
+    ) {
+      return;
+    }
+
+    this.#lastViewDiagnosticMs = this.time.now;
+
     const canvas = this.game.canvas;
 
     canvas.dataset.floorViews = JSON.stringify(
@@ -259,5 +357,9 @@ export class BootScene extends Phaser.Scene {
       this.#elevatorView?.describeRenderedState() ?? null,
       this.#warehouseView?.describeRenderedState() ?? null,
     ]);
+    canvas.dataset.animation = JSON.stringify({
+      speedMultiplier: this.#animationSpeedMultiplier,
+      animationTimeMs: this.#animationTimeMs,
+    });
   }
 }

@@ -38,7 +38,7 @@ Persistence and Platform Adapters
 - Derive each floor's theoretical extraction rate from its current level and configuration; derive mine-wide effective production as the minimum of unlocked aggregate extraction, shared elevator throughput, and shared warehouse throughput without storing the estimate in authoritative state.
 - Calculate next-upgrade prices through `GameNumber` from base cost, growth rate, and current level; route each production stage through a distinct immutable purchase command that returns an explicit result, applies its level-derived growth and milestones, and never partially mutates state.
 - Calculate offline rewards purely from the saved rate snapshot, injected current time, and configured cap/efficiency; settle the load timestamp before exposing a positive pending reward, award zero for future clocks or failed settlement writes, and keep spendable gold unchanged until the claim command.
-- Create a pending-reward view only for positive income. Claim immutably into one cached authoritative candidate, force-persist it before dismissing the modal, and reuse the candidate on save retry so repeated input cannot add gold twice.
+- Create a pending-reward view only for positive income. Claim immutably into the driver's authoritative state, force-persist it before dismissing the modal, and guard the claim itself with a consumed-once flag rather than a cached state candidate, so a retry after a failed write persists the mine as it is now without adding the reward twice.
 - Represent very large values through the immutable `GameNumber` abstraction; keep break_infinity.js private, serialize as strings, and implement abbreviated display formatting separately.
 - Serialize only authoritative game state, never transient animation state.
 - Construct fresh state from validated balance data and an injected timestamp; never read the wall clock inside deterministic state creation.
@@ -50,6 +50,16 @@ Persistence and Platform Adapters
 - Derive every displayed string, ratio, and discrete step in a pure Phaser-free view model over a read-only core snapshot; Phaser entities only position and paint what that model already decided, and never mutate authoritative state.
 - Build each reusable view's game objects once inside a supplied layout region, change it only through an `applySnapshot` rebinding method, and expose a `describeRenderedState` read-back so browser tests compare rendered output instead of scene intentions.
 - Hand the loaded snapshot to the scene at construction so the screen boots already bound rather than showing placeholder values first.
+- Let the renderer pull, never let the core push: the scene asks a driver for the newest snapshot each frame, and the driver advances the core from an injected wall clock. Frame rate, frame delta, and animation speed must never reach that calculation, so a frozen clock pauses production while the screen keeps drawing.
+- Memoize the derived snapshot in the driver and re-derive it only when a fixed tick completed, so the frames that change no displayed value hand back the same object and the scene skips rebinding by identity. State replaced by a command always re-derives, because a command changes displayed values without completing a tick.
+- Order a renderable guard behind the identity check it protects, so a per-frame path that changes nothing costs nothing while every distinct snapshot is still checked once.
+- Keep read-back diagnostics out of shipped builds behind a statically substituted flag, so the serialization drops out of the bundle rather than merely going unread.
+- Credit nothing when the host clock moves backwards, and leave the authoritative timestamp ahead until real time catches up; the safe direction is never paying out time that did not pass.
+- Treat a gap in the render loop as elapsed time to be simulated, not as one oversized frame. The per-call foreground bound guards against a slow frame paying out a burst; a hidden tab returns the whole absence at once, so walk it in credited-size slices, bound the walk so resuming cannot freeze the tab, and consume the authoritative timestamp in full whether or not the time was credited.
+- Give every production stage its own indicator driven by authoritative progress, and render waiting material wherever it can accumulate as discrete blocks measured against the capacity of the stage that removes it.
+- Keep the cosmetic clock strictly separate from the simulation clock: scale it with a validated multiplier, drive only decoration with it, and gate that decoration on state so idle machinery visibly stops.
+- Never report a bottleneck a stage cannot observe from its own state; a full elevator car is one full trip, so transport pressure belongs on the floor piles instead.
+- Publish read-back diagnostics on a cadence, not on every frame: values that change continuously would otherwise serialize the whole screen 60 times a second for diagnostics alone.
 - Signal a locked or disabled element with its own palette colour and badge rather than an alpha dim, so a pixel probe can prove the distinction.
 - Show a bottleneck as a discrete pile measured against what the next stage removes in one cycle, so a full pile is a readable signal rather than an unbounded number.
 - Keep rendering steps free of interaction: a step that renders a control renders it inert, and the later ordered step adds costs, affordability, commands, and feedback.
@@ -59,13 +69,14 @@ Persistence and Platform Adapters
 - Keep fixed and scrolling layers in separate containers and cross-ignore them between cameras so the HUD cannot scroll with the mine.
 - Publish layout geometry as canvas dataset diagnostics so browser tests assert real on-screen rectangles instead of screenshots, but never let diagnostics be the only renderer evidence: they report intended geometry and stay green while the render is broken.
 - Assert renderer correctness with pixel probes at fixed logical coordinates, sampling colors from the shared pure palette. Force `preserveDrawingBuffer` in the test browser context only; production keeps it disabled.
+- Wait for an always-painted reference point before any pixel probe: canvas diagnostics are published inside `create`, before the first frame is presented, and an unpresented canvas reads back as opaque black.
 - Probe a point where the layer under test is the topmost drawn thing. A probe hidden behind a later-drawn panel proves nothing, so the mine gutter, not a floor panel, guards the mine camera's ignore list.
 - Enforce every documented purity boundary with a lint rule plus an `architecture.test.ts` probe, not with prose alone.
 - Add seeded randomness only when later probabilistic systems are introduced.
 
 ## Critical Flow
 
-Load save → migrate and validate → recover fresh state if invalid → calculate capped offline reward → persist consumed timestamp interval → show positive pending reward → claim into one state candidate → force-persist claim → dismiss modal → initialize simulation snapshot → render Phaser scene → send player commands to core → persist debounced snapshots.
+Load save → migrate and validate → recover fresh state if invalid → calculate capped offline reward → persist consumed timestamp interval → show positive pending reward → claim once into the driver's state → force-persist claim → dismiss modal → pull an advanced snapshot each frame → rebind the mine views → advance the separate cosmetic clock → send player commands to core → persist debounced snapshots.
 
 ## Performance
 

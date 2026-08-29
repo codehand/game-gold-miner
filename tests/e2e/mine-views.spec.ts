@@ -18,6 +18,7 @@ import type {
 } from '../../src/game/entities';
 import {
   calculateFloorSlotRegion,
+  HUD_BACKGROUND,
   LOCKED_PANEL_BACKGROUND,
   MATERIAL_FILL,
   PANEL_BACKGROUND,
@@ -52,6 +53,13 @@ const FILLED_PILE_BLOCK_PROBE: readonly [number, number] = [78, 308];
 const EMPTY_PILE_BLOCK_PROBE: readonly [number, number] = [78, 281];
 const ELEVATOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 165];
 const ELEVATOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [100, 165];
+/**
+ * Empty HUD background, painted on the very first frame. The canvas reads back
+ * as opaque black until a frame has actually been presented, and the scene
+ * publishes its diagnostics inside `create` before that happens, so the probes
+ * below wait on this one first.
+ */
+const RENDERED_FRAME_PROBE: readonly [number, number] = [180, 8];
 
 /**
  * A known core snapshot whose floors differ in lock state, mine-shaft level,
@@ -279,6 +287,12 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     'empty-pile probe needs floor 1 below a full pile',
   ).toBeLessThan(MAX_MATERIAL_PILE_STEPS);
 
+  await expect
+    .poll(async () => (await readLogicalPixels(page, [RENDERED_FRAME_PROBE]))[0], {
+      message: 'the canvas never presented a frame',
+    })
+    .toBe(HUD_BACKGROUND);
+
   const [
     unlockedPanel,
     lockedPanel,
@@ -329,9 +343,9 @@ test('binds four floor views and both shared stages to a known core snapshot', a
  * The rendered-state diagnostic is only trustworthy if it follows every rebind.
  * Published once at boot it would report a healthy first frame forever, so a
  * live snapshot that never reached the views would still look correct — the
- * exact failure this read-back exists to catch. Step 27 supplies the real
- * driver; until then this test replaces the application entry with a harness
- * that pushes a second snapshot through the same public `applySnapshot` path.
+ * exact failure this read-back exists to catch. The harness below stands in a
+ * snapshot source whose next `advance` returns different values, which is
+ * exactly how the real driver feeds the scene.
  */
 test('republishes rendered values whenever a newer snapshot is applied', async ({
   page,
@@ -357,27 +371,28 @@ test('republishes rendered values whenever a newer snapshot is applied', async (
         const initial = createMineViewModel(
           createInitialGameState(BASE_GAME_BALANCE, ${FIXTURE_TIMESTAMP_MS}),
         );
-        const game = createGame(
-          document.querySelector('#game-viewport'),
-          initial,
-        );
+        const [first, ...rest] = initial.floors;
+        const next = {
+          ...initial,
+          floors: [
+            {
+              ...first,
+              levelLabel: 'Lv 9',
+              extractionProgress: 0.6,
+              extractionProgressLabel: '60%',
+            },
+            ...rest,
+          ],
+          elevator: { ...initial.elevator, queueLabel: 'Carrying 7' },
+        };
+        // A stand-in snapshot source: the scene pulls it every frame exactly as
+        // it pulls the real simulation driver.
+        const source = { snapshot: initial, advance: () => source.snapshot };
+
+        createGame(document.querySelector('#game-viewport'), source);
 
         window.applyNextSnapshot = () => {
-          const [first, ...rest] = initial.floors;
-
-          game.scene.getScene('BootScene').applySnapshot({
-            ...initial,
-            floors: [
-              {
-                ...first,
-                levelLabel: 'Lv 9',
-                extractionProgress: 0.6,
-                extractionProgressLabel: '60%',
-              },
-              ...rest,
-            ],
-            elevator: { ...initial.elevator, queueLabel: 'Carrying 7' },
-          });
+          source.snapshot = next;
         };
       `,
       contentType: 'application/javascript',
@@ -397,6 +412,10 @@ test('republishes rendered values whenever a newer snapshot is applied', async (
   await page.evaluate(() => {
     (window as unknown as { applyNextSnapshot(): void }).applyNextSnapshot();
   });
+
+  // Rendered values are republished on a cadence rather than every frame, so
+  // the diagnostic is polled until the newer snapshot has been drawn.
+  await expect(canvas).toHaveAttribute('data-floor-views', /Lv 9/);
 
   const [rebound] = await readRenderedFloors(page);
   const [elevator] = await readRenderedSharedStages(page);

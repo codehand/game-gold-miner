@@ -14,3 +14,15 @@ export {
   type SharedStageId,
   type SharedStageViewModel,
 } from './mineViewModel';
+export {
+  advanceAnimationTimeMs,
+  assertAnimationSpeedMultiplier,
+  calculateConveyorOffsetPx,
+  calculateCycleMarkerOffsetPx,
+  calculateMinerSwingOffsetPx,
+  ANIMATION_TIME_WRAP_MS,
+  CONVEYOR_CYCLE_MS,
+  DEFAULT_ANIMATION_SPEED_MULTIPLIER,
+  MAX_ANIMATION_FRAME_MS,
+  MINER_SWING_PERIOD_MS,
+} from './stageAnimation';

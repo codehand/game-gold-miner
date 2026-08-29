@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   advanceSimulation,
+  catchUpSimulation,
   createInitialGameState,
+  MAX_CATCH_UP_MS,
   MAX_FOREGROUND_DELTA_MS,
   SIMULATION_STEP_MS,
   type GameState,
@@ -72,6 +74,83 @@ describe('fixed-step simulation time', () => {
       const before = serialize(initialState);
 
       expect(() => advanceSimulation(initialState, elapsedMs)).toThrow(
+        /elapsed time/i,
+      );
+      expect(serialize(initialState)).toEqual(before);
+    },
+  );
+});
+
+/**
+ * A hidden tab stops the render loop, so the whole absence returns as a single
+ * delta. The per-call foreground bound is meant for one slow frame and would
+ * consume that absence having simulated only its first second, so catch-up
+ * walks the gap instead.
+ */
+describe('catch-up across a render-loop gap', () => {
+  it('credits a gap arriving as one delta exactly as continuous time', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const gapMs = 60_000;
+    const resumed = catchUpSimulation(initialState, gapMs);
+    const continuous = advanceMany(
+      initialState,
+      Array<number>(gapMs / 100).fill(100),
+    );
+
+    expect(serialize(resumed)).toEqual(serialize(continuous));
+    // The bug this replaces: a single bounded advance simulated one second of
+    // the minute and consumed the other fifty-nine.
+    expect(resumed.simulationTick).toBe(gapMs / SIMULATION_STEP_MS);
+    expect(advanceSimulation(initialState, gapMs).simulationTick).toBe(
+      MAX_FOREGROUND_DELTA_MS / SIMULATION_STEP_MS,
+    );
+  });
+
+  it('leaves a within-frame delta identical to a single advance', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+
+    expect(serialize(catchUpSimulation(initialState, 17))).toEqual(
+      serialize(advanceSimulation(initialState, 17)),
+    );
+    expect(catchUpSimulation(initialState, 0)).toBe(initialState);
+  });
+
+  it('bounds the walk while still consuming the whole gap', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const gapMs = MAX_CATCH_UP_MS + 90_000;
+    const state = catchUpSimulation(initialState, gapMs);
+
+    expect(state.simulationTick).toBe(MAX_CATCH_UP_MS / SIMULATION_STEP_MS);
+    expect(serialize(state)).toEqual(
+      serialize({
+        ...catchUpSimulation(initialState, MAX_CATCH_UP_MS),
+        lastUpdateTimestampMs: TIMESTAMP_MS + gapMs,
+      }),
+    );
+    // Uncredited time is still consumed: an authoritative timestamp left
+    // behind real time would hand the same interval to offline income.
+    expect(state.lastUpdateTimestampMs).toBe(TIMESTAMP_MS + gapMs);
+  });
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects invalid elapsed time %s without changing the input state',
+    (elapsedMs) => {
+      const initialState = createInitialGameState(
+        BASE_GAME_BALANCE,
+        TIMESTAMP_MS,
+      );
+      const before = serialize(initialState);
+
+      expect(() => catchUpSimulation(initialState, elapsedMs)).toThrow(
         /elapsed time/i,
       );
       expect(serialize(initialState)).toEqual(before);

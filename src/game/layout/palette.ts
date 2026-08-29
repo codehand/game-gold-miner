@@ -20,12 +20,19 @@ export const CONTROL_BACKGROUND = '#3d5578';
 export const PROGRESS_TRACK = '#131c2c';
 export const PROGRESS_FILL = '#34d399';
 export const MATERIAL_FILL = '#fbbf24';
+/** A full pile is drawn in its own colour, so a backlog reads at a glance. */
+export const MATERIAL_BACKLOG_FILL = '#f87171';
 export const MINER_FILL = '#e5e7eb';
+/** Marker that travels a stage's track in step with authoritative progress. */
+export const CYCLE_MARKER_FILL = '#f9fafb';
+/** Cosmetic conveyor dashes; motion only, never a production signal. */
+export const CONVEYOR_FILL = '#4b6488';
 
 export const TEXT_PRIMARY = '#f9fafb';
 export const TEXT_MUTED = '#9ca3af';
 export const TEXT_ACCENT = '#fbbf24';
 export const TEXT_DISABLED = '#6b7280';
+export const TEXT_WARNING = '#f87171';
 
 export const FONT_FAMILY = 'Arial, sans-serif';
 

@@ -1,12 +1,8 @@
 import './style.css';
 
 import { BASE_GAME_BALANCE, validateBaseGameBalance } from './config';
-import {
-  claimOfflineReward,
-  createPendingOfflineReward,
-  type GameState,
-} from './core';
-import { createGame, createMineViewModel } from './game';
+import { claimOfflineReward, createPendingOfflineReward } from './core';
+import { createGame, MineSimulationDriver } from './game';
 import {
   createSaveDocument,
   DexieActiveSaveRepository,
@@ -41,14 +37,20 @@ async function startApplication(): Promise<void> {
     return;
   }
 
-  let currentState: GameState = loadResult.state;
+  // The driver owns authoritative state from here on. `Date.now` is injected so
+  // it stays the only wall clock in the application, and the renderer pulls
+  // snapshots from the driver rather than pushing frames into the core.
+  const driver = new MineSimulationDriver({
+    state: loadResult.state,
+    now: () => Date.now(),
+  });
   let pendingReward = createPendingOfflineReward(loadResult.offlineIncome);
-  let claimCandidate: GameState | null = null;
+  let rewardClaimed = false;
 
-  game = createGame(gameViewport, createMineViewModel(currentState));
+  game = createGame(gameViewport, driver);
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
-    () => createSaveDocument(currentState, BASE_GAME_BALANCE, Date.now()),
+    () => createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now()),
   );
 
   if (pendingReward !== null) {
@@ -56,20 +58,24 @@ async function startApplication(): Promise<void> {
       parent: app,
       pendingReward,
       onClaim: async () => {
-        if (claimCandidate === null) {
-          const claimResult = claimOfflineReward(currentState, pendingReward);
+        // Guarded by `rewardClaimed`, not by a cached state candidate: the mine
+        // keeps producing while the modal is open, so a retry after a failed
+        // write must persist the state as it is now, having still added the
+        // reward exactly once.
+        if (!rewardClaimed) {
+          const claimResult = claimOfflineReward(driver.state, pendingReward);
 
           if (claimResult.status !== 'claimed') {
             return false;
           }
 
-          claimCandidate = claimResult.state;
-          currentState = claimCandidate;
+          driver.replaceState(claimResult.state);
           pendingReward = claimResult.pendingReward;
+          rewardClaimed = true;
         }
 
         persistence.queueSave(createSaveDocument(
-          claimCandidate,
+          driver.state,
           BASE_GAME_BALANCE,
           Date.now(),
         ));

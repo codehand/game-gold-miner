@@ -7,6 +7,7 @@ const PROJECT_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CORE_PROBE_PATH = 'src/core/architecture-probe.ts';
 const LAYOUT_PROBE_PATH = 'src/game/layout/architecture-probe.ts';
 const VIEW_MODEL_PROBE_PATH = 'src/game/view-model/architecture-probe.ts';
+const RUNTIME_PROBE_PATH = 'src/game/runtime/architecture-probe.ts';
 
 async function lintProbe(source: string, filePath: string) {
   const eslint = new ESLint({ cwd: PROJECT_ROOT });
@@ -25,6 +26,10 @@ async function lintLayout(source: string) {
 
 async function lintViewModel(source: string) {
   return lintProbe(source, VIEW_MODEL_PROBE_PATH);
+}
+
+async function lintRuntime(source: string) {
+  return lintProbe(source, RUNTIME_PROBE_PATH);
 }
 
 describe('core architecture boundary', () => {
@@ -102,6 +107,37 @@ describe('view model boundary', () => {
 
   it('rejects renderer, adapter, and browser dependencies', async () => {
     const messages = await lintViewModel(`
+      import Phaser from 'phaser';
+      import { load } from '../../persistence/index.ts';
+
+      document.title = Phaser.VERSION;
+      window.postMessage(navigator.userAgent, load);
+    `);
+    const restrictedImportMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-imports',
+    );
+    const restrictedGlobalMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-globals',
+    );
+
+    expect(restrictedImportMessages).toHaveLength(2);
+    expect(restrictedGlobalMessages).toHaveLength(3);
+  });
+});
+
+describe('simulation driver boundary', () => {
+  it('accepts pure TypeScript modules', async () => {
+    const messages = await lintRuntime(`
+      export function elapsed(now: number, since: number): number {
+        return now - since;
+      }
+    `);
+
+    expect(messages).toEqual([]);
+  });
+
+  it('rejects renderer, adapter, and browser dependencies', async () => {
+    const messages = await lintRuntime(`
       import Phaser from 'phaser';
       import { load } from '../../persistence/index.ts';
 

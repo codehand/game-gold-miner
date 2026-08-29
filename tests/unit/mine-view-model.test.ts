@@ -223,6 +223,112 @@ describe('mine view model', () => {
   });
 });
 
+describe('bottleneck signals', () => {
+  it('marks a floor backed up once a whole elevator trip is waiting', () => {
+    const state = createFixtureState();
+    const viewModel = createMineViewModel({
+      ...state,
+      floors: [
+        // 40 of a 50 capacity is a full pile; 12.5 is not.
+        state.floors[0],
+        withFloor(state.floors[1], { materialQueue: GameNumber.from(12.5) }),
+        state.floors[2],
+        state.floors[3],
+      ],
+    });
+
+    expect(
+      viewModel.floors.map(({ isMaterialBackedUp }) => isMaterialBackedUp),
+    ).toEqual([true, false, false, false]);
+    expect(viewModel.floors.map(({ backlogLabel }) => backlogLabel)).toEqual([
+      'Backed up',
+      null,
+      null,
+      null,
+    ]);
+    expect(viewModel.floors[0].materialPileSteps).toBe(MAX_MATERIAL_PILE_STEPS);
+  });
+
+  it('shows the elevator carrying a load rather than backed up', () => {
+    const state = createFixtureState();
+    const carrying = createMineViewModel(state).elevator;
+    const idle = createMineViewModel({
+      ...state,
+      elevator: {
+        ...state.elevator,
+        transitProgress: 0,
+        carriedMaterial: GameNumber.from(0),
+      },
+    }).elevator;
+
+    expect(carrying).toMatchObject({
+      // 20 of a 50 capacity: a partly loaded car.
+      queueSteps: 2,
+      isRunning: true,
+      // A full car is one full trip, not a backlog: transport pressure shows
+      // up as full floor piles, which the elevator itself cannot report.
+      isBackedUp: false,
+      statusLabel: 'In transit',
+    });
+    expect(idle).toMatchObject({
+      queueSteps: 0,
+      isRunning: false,
+      isBackedUp: false,
+      statusLabel: 'Idle',
+    });
+  });
+
+  it('shows the warehouse idle, converting, or backed up', () => {
+    const state = createFixtureState();
+    const readWarehouse = (inputQueue: number, conversionProgress: number) => {
+      return createMineViewModel({
+        ...state,
+        warehouse: {
+          ...state.warehouse,
+          inputQueue: GameNumber.from(inputQueue),
+          conversionProgress,
+        },
+      }).warehouse;
+    };
+
+    expect(readWarehouse(0, 0)).toMatchObject({
+      queueSteps: 0,
+      isRunning: false,
+      isBackedUp: false,
+      statusLabel: 'Idle',
+    });
+    expect(readWarehouse(15, 0.5)).toMatchObject({
+      queueSteps: 2,
+      isRunning: true,
+      isBackedUp: false,
+      statusLabel: 'Converting',
+    });
+    // 45 of a 60 capacity is a full cycle of input already waiting.
+    expect(readWarehouse(45, 0.5)).toMatchObject({
+      queueSteps: MAX_MATERIAL_PILE_STEPS,
+      isRunning: true,
+      isBackedUp: true,
+      statusLabel: 'Backed up',
+    });
+  });
+
+  it('measures each waiting pile against the stage that removes it', () => {
+    const state = createFixtureState();
+    const viewModel = createMineViewModel(state);
+
+    // Floor piles measure against the elevator's 50, the warehouse queue
+    // against the warehouse's own 60, so the same amount reads differently.
+    expect(viewModel.floors[0].materialQueueLabel).toBe('40');
+    expect(viewModel.floors[0].materialPileSteps).toBe(4);
+    expect(
+      createMineViewModel({
+        ...state,
+        warehouse: { ...state.warehouse, inputQueue: GameNumber.from(40) },
+      }).warehouse.queueSteps,
+    ).toBe(3);
+  });
+});
+
 describe('renderable snapshot guard', () => {
   it('accepts a snapshot with exactly the floor count the screen renders', () => {
     const viewModel = createMineViewModel(createFixtureState());
