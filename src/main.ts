@@ -42,6 +42,7 @@ async function startApplication(): Promise<void> {
   // snapshots from the driver rather than pushing frames into the core.
   const driver = new MineSimulationDriver({
     state: loadResult.state,
+    balance: BASE_GAME_BALANCE,
     now: () => Date.now(),
   });
   let pendingReward = createPendingOfflineReward(loadResult.offlineIncome);

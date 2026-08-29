@@ -12,7 +12,9 @@ export {
 } from './runtime';
 export {
   createMineViewModel,
+  formatAmount,
   DEFAULT_ANIMATION_SPEED_MULTIPLIER,
+  type HudViewModel,
   type MineFloorViewModel,
   type MineViewModel,
   type SharedStageViewModel,

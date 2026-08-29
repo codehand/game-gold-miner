@@ -1,19 +1,16 @@
 import Phaser from 'phaser';
 
-import { MineFloorView, SharedStageView } from '../entities';
+import { HudView, MineFloorView, SharedStageView } from '../entities';
 import {
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,
   toFillColor,
-  DIVIDER,
   FONT_FAMILY,
-  HUD_BACKGROUND,
   MINE_BACKGROUND,
   MINE_FLOOR_COUNT,
   serializeRegion,
   SURFACE_BACKGROUND,
-  TEXT_ACCENT,
   TEXT_MUTED,
   type LayoutRegion,
   type MineLayout,
@@ -52,10 +49,8 @@ const SURFACE_PANEL_INSET = 12;
 const SURFACE_PANEL_GAP = 10;
 const SURFACE_PANEL_BOTTOM_INSET = 10;
 
-const COLOR_HUD_BACKGROUND = toFillColor(HUD_BACKGROUND);
 const COLOR_SURFACE_BACKGROUND = toFillColor(SURFACE_BACKGROUND);
 const COLOR_MINE_BACKGROUND = toFillColor(MINE_BACKGROUND);
-const COLOR_DIVIDER = toFillColor(DIVIDER);
 
 export interface BootSceneOptions {
   readonly source: MineSnapshotSource;
@@ -81,6 +76,7 @@ export class BootScene extends Phaser.Scene {
   readonly #source: MineSnapshotSource;
   /** The snapshot currently bound to the views, compared by identity. */
   #viewModel: MineViewModel;
+  #hudView: HudView | null = null;
   #floorViews: readonly MineFloorView[] = [];
   #elevatorView: SharedStageView | null = null;
   #warehouseView: SharedStageView | null = null;
@@ -175,10 +171,15 @@ export class BootScene extends Phaser.Scene {
 
     this.#viewModel = viewModel;
 
-    if (this.#elevatorView === null || this.#warehouseView === null) {
+    if (
+      this.#hudView === null ||
+      this.#elevatorView === null ||
+      this.#warehouseView === null
+    ) {
       return;
     }
 
+    this.#hudView.applySnapshot(viewModel.hud);
     this.#floorViews.forEach((view, index) => {
       view.applySnapshot(viewModel.floors[index]);
     });
@@ -196,24 +197,9 @@ export class BootScene extends Phaser.Scene {
   }
 
   #createHud(region: LayoutRegion): Phaser.GameObjects.Container {
-    const layer = this.add.container(region.x, region.y);
+    this.#hudView = new HudView(this, region);
 
-    layer.add(
-      this.add
-        .rectangle(0, 0, region.width, region.height, COLOR_HUD_BACKGROUND)
-        .setOrigin(0, 0),
-    );
-    layer.add(
-      this.add
-        .rectangle(0, region.height - 2, region.width, 2, COLOR_DIVIDER)
-        .setOrigin(0, 0),
-    );
-    layer.add(this.#createLabelledValue(16, 16, 'Gold', 'left'));
-    layer.add(
-      this.#createLabelledValue(region.width - 16, 16, 'Income /s', 'right'),
-    );
-
-    return layer;
+    return this.#hudView.root;
   }
 
   #createSurface(region: LayoutRegion): Phaser.GameObjects.Container {
@@ -268,38 +254,6 @@ export class BootScene extends Phaser.Scene {
     return content;
   }
 
-  #createLabelledValue(
-    x: number,
-    y: number,
-    label: string,
-    align: 'left' | 'right',
-  ): Phaser.GameObjects.Container {
-    const originX = align === 'right' ? 1 : 0;
-    const group = this.add.container(x, y);
-
-    group.add(
-      this.add
-        .text(0, 0, label, {
-          color: TEXT_MUTED,
-          fontFamily: FONT_FAMILY,
-          fontSize: '12px',
-        })
-        .setOrigin(originX, 0),
-    );
-    group.add(
-      this.add
-        .text(0, 16, '—', {
-          color: TEXT_ACCENT,
-          fontFamily: FONT_FAMILY,
-          fontSize: '20px',
-          fontStyle: 'bold',
-        })
-        .setOrigin(originX, 0),
-    );
-
-    return group;
-  }
-
   #publishDiagnostics(layout: MineLayout): void {
     const canvas = this.game.canvas;
     const starts = Number(canvas.dataset.bootSceneStarts ?? '0') + 1;
@@ -349,6 +303,15 @@ export class BootScene extends Phaser.Scene {
     this.#lastViewDiagnosticMs = this.time.now;
 
     const canvas = this.game.canvas;
+
+    // Published only once the view exists, so a reader that finds the attribute
+    // can trust its shape instead of parsing a `null` and failing later, on a
+    // property access that says nothing about what actually went wrong.
+    if (this.#hudView !== null) {
+      canvas.dataset.hudView = JSON.stringify(
+        this.#hudView.describeRenderedState(),
+      );
+    }
 
     canvas.dataset.floorViews = JSON.stringify(
       this.#floorViews.map((view) => view.describeRenderedState()),

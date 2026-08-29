@@ -370,6 +370,7 @@ test('republishes rendered values whenever a newer snapshot is applied', async (
 
         const initial = createMineViewModel(
           createInitialGameState(BASE_GAME_BALANCE, ${FIXTURE_TIMESTAMP_MS}),
+          BASE_GAME_BALANCE,
         );
         const [first, ...rest] = initial.floors;
         const next = {

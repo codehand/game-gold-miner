@@ -32,6 +32,7 @@ function createClock(startMs: number) {
 function createDriver(clock: { now: () => number }) {
   return new MineSimulationDriver({
     state: createInitialGameState(BASE_GAME_BALANCE, START_TIMESTAMP_MS),
+    balance: BASE_GAME_BALANCE,
     now: clock.now,
   });
 }

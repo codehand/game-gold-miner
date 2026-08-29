@@ -67,10 +67,15 @@ function withFloor(
   return { ...floor, ...overrides };
 }
 
+/** Every view model here is derived against the shipped balance data. */
+function createViewModel(state: GameState) {
+  return createMineViewModel(state, BASE_GAME_BALANCE);
+}
+
 describe('mine view model', () => {
   it('mirrors every floor number, level, lock state, and progress value', () => {
     const state = createFixtureState();
-    const viewModel = createMineViewModel(state);
+    const viewModel = createViewModel(state);
 
     expect(viewModel.floors).toHaveLength(state.floors.length);
 
@@ -108,7 +113,7 @@ describe('mine view model', () => {
   });
 
   it('marks locked floors distinctly and hides their upgrade control', () => {
-    const viewModel = createMineViewModel(createFixtureState());
+    const viewModel = createViewModel(createFixtureState());
 
     expect(viewModel.floors.map(({ statusLabel }) => statusLabel)).toEqual([
       null,
@@ -124,7 +129,7 @@ describe('mine view model', () => {
   });
 
   it('offers an upgrade control on every unlocked floor', () => {
-    const viewModel = createMineViewModel(createFixtureState());
+    const viewModel = createViewModel(createFixtureState());
 
     for (const floor of viewModel.floors.filter(({ isUnlocked }) => isUnlocked)) {
       expect(floor.showsUpgradeControl).toBe(true);
@@ -134,7 +139,7 @@ describe('mine view model', () => {
 
   it('describes the shared elevator and warehouse from authoritative state', () => {
     const state = createFixtureState();
-    const viewModel = createMineViewModel(state);
+    const viewModel = createViewModel(state);
 
     expect(viewModel.elevator).toMatchObject({
       id: 'elevator',
@@ -162,7 +167,7 @@ describe('mine view model', () => {
 
   it('reads a fresh game exactly as the core creates it', () => {
     const state = createInitialGameState(BASE_GAME_BALANCE, FIXTURE_TIMESTAMP_MS);
-    const viewModel = createMineViewModel(state);
+    const viewModel = createViewModel(state);
 
     expect(viewModel.floors.map(({ isUnlocked }) => isUnlocked)).toEqual([
       true,
@@ -186,7 +191,7 @@ describe('mine view model', () => {
     const state = createFixtureState();
     const before = JSON.stringify(state);
 
-    createMineViewModel(state);
+    createViewModel(state);
 
     expect(JSON.stringify(state)).toBe(before);
   });
@@ -195,7 +200,7 @@ describe('mine view model', () => {
     const state = createFixtureState();
 
     expect(() =>
-      createMineViewModel({
+      createViewModel({
         ...state,
         floors: [
           withFloor(state.floors[0], { extractionProgress: 1 }),
@@ -204,7 +209,7 @@ describe('mine view model', () => {
       }),
     ).toThrow(/progress must be in \[0, 1\)/);
     expect(() =>
-      createMineViewModel({
+      createViewModel({
         ...state,
         warehouse: { ...state.warehouse, conversionProgress: Number.NaN },
       }),
@@ -215,7 +220,7 @@ describe('mine view model', () => {
     const state = createFixtureState();
 
     expect(() =>
-      createMineViewModel({
+      createViewModel({
         ...state,
         elevator: { ...state.elevator, level: 0 },
       }),
@@ -226,7 +231,7 @@ describe('mine view model', () => {
 describe('bottleneck signals', () => {
   it('marks a floor backed up once a whole elevator trip is waiting', () => {
     const state = createFixtureState();
-    const viewModel = createMineViewModel({
+    const viewModel = createViewModel({
       ...state,
       floors: [
         // 40 of a 50 capacity is a full pile; 12.5 is not.
@@ -251,8 +256,8 @@ describe('bottleneck signals', () => {
 
   it('shows the elevator carrying a load rather than backed up', () => {
     const state = createFixtureState();
-    const carrying = createMineViewModel(state).elevator;
-    const idle = createMineViewModel({
+    const carrying = createViewModel(state).elevator;
+    const idle = createViewModel({
       ...state,
       elevator: {
         ...state.elevator,
@@ -281,7 +286,7 @@ describe('bottleneck signals', () => {
   it('shows the warehouse idle, converting, or backed up', () => {
     const state = createFixtureState();
     const readWarehouse = (inputQueue: number, conversionProgress: number) => {
-      return createMineViewModel({
+      return createViewModel({
         ...state,
         warehouse: {
           ...state.warehouse,
@@ -314,14 +319,14 @@ describe('bottleneck signals', () => {
 
   it('measures each waiting pile against the stage that removes it', () => {
     const state = createFixtureState();
-    const viewModel = createMineViewModel(state);
+    const viewModel = createViewModel(state);
 
     // Floor piles measure against the elevator's 50, the warehouse queue
     // against the warehouse's own 60, so the same amount reads differently.
     expect(viewModel.floors[0].materialQueueLabel).toBe('40');
     expect(viewModel.floors[0].materialPileSteps).toBe(4);
     expect(
-      createMineViewModel({
+      createViewModel({
         ...state,
         warehouse: { ...state.warehouse, inputQueue: GameNumber.from(40) },
       }).warehouse.queueSteps,
@@ -331,7 +336,7 @@ describe('bottleneck signals', () => {
 
 describe('renderable snapshot guard', () => {
   it('accepts a snapshot with exactly the floor count the screen renders', () => {
-    const viewModel = createMineViewModel(createFixtureState());
+    const viewModel = createViewModel(createFixtureState());
 
     expect(() =>
       assertRenderableMineViewModel(viewModel, viewModel.floors.length),
@@ -339,7 +344,7 @@ describe('renderable snapshot guard', () => {
   });
 
   it('rejects a snapshot the screen would render only partially', () => {
-    const viewModel = createMineViewModel(createFixtureState());
+    const viewModel = createViewModel(createFixtureState());
 
     // Fewer floors than views would leave the surplus views showing blank
     // panels that look like real unlocked floors.
@@ -381,18 +386,5 @@ describe('material pile height', () => {
     expect(
       calculateMaterialPileSteps(GameNumber.from(5), GameNumber.from(0)),
     ).toBe(MAX_MATERIAL_PILE_STEPS);
-  });
-});
-
-describe('provisional amount display', () => {
-  it('rounds ordinary amounts to one decimal place', () => {
-    expect(formatAmount(GameNumber.from(0))).toBe('0');
-    expect(formatAmount(GameNumber.from(40))).toBe('40');
-    expect(formatAmount(GameNumber.from(12.5))).toBe('12.5');
-    expect(formatAmount(GameNumber.from(12.34))).toBe('12.3');
-  });
-
-  it('keeps very large amounts serialized until Step 28 abbreviates them', () => {
-    expect(formatAmount(GameNumber.from('1e30'))).toBe('1e+30');
   });
 });

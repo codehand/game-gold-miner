@@ -67,6 +67,10 @@ Persistence and Platform Adapters
 - Scale with `FIT` and `CENTER_BOTH`: letterbox rather than crop, so no required control can leave the host viewport.
 - Clip scrollable screen regions with a dedicated camera viewport, not a geometry mask; Phaser 4 removed WebGL geometry masks, and camera scroll gives later input steps a single value to drive.
 - Keep fixed and scrolling layers in separate containers and cross-ignore them between cameras so the HUD cannot scroll with the mine.
+- Format every displayed amount through one shared function, so a value never reads one way in the HUD and another in the mine.
+- Truncate a displayed balance rather than rounding it: a number that reads higher than it is promises a purchase the player cannot make.
+- Read a magnitude through the numeric boundary's own mantissa and exponent, never through `Number`, which collapses everything past its range to the same value.
+- Derive a displayed rate from the same calculation the core uses, never from what the renderer observed happening.
 - Publish layout geometry as canvas dataset diagnostics so browser tests assert real on-screen rectangles instead of screenshots, but never let diagnostics be the only renderer evidence: they report intended geometry and stay green while the render is broken.
 - Assert renderer correctness with pixel probes at fixed logical coordinates, sampling colors from the shared pure palette. Force `preserveDrawingBuffer` in the test browser context only; production keeps it disabled.
 - Wait for an always-painted reference point before any pixel probe: canvas diagnostics are published inside `create`, before the first frame is presented, and an unpresented canvas reads back as opaque black.

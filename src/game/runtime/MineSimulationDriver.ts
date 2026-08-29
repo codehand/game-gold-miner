@@ -13,6 +13,7 @@
  * in `src/main.ts` and Node tests can advance time exactly.
  */
 
+import type { BaseGameBalanceConfig } from '../../config';
 import { catchUpSimulation, type GameState } from '../../core';
 import { createMineViewModel, type MineViewModel } from '../view-model';
 
@@ -26,19 +27,23 @@ export interface MineSnapshotSource {
 
 export interface MineSimulationDriverOptions {
   readonly state: GameState;
+  /** Balance data the HUD's income estimate is derived from. */
+  readonly balance: BaseGameBalanceConfig;
   /** Injected wall clock in milliseconds, normally `Date.now`. */
   readonly now: () => number;
 }
 
 export class MineSimulationDriver implements MineSnapshotSource {
   readonly #now: () => number;
+  readonly #balance: BaseGameBalanceConfig;
   #state: GameState;
   #snapshot: MineViewModel;
 
   public constructor(options: MineSimulationDriverOptions) {
     this.#now = options.now;
+    this.#balance = options.balance;
     this.#state = options.state;
-    this.#snapshot = createMineViewModel(options.state);
+    this.#snapshot = createMineViewModel(options.state, options.balance);
   }
 
   public get state(): GameState {
@@ -97,6 +102,6 @@ export class MineSimulationDriver implements MineSnapshotSource {
 
   #setState(state: GameState): void {
     this.#state = state;
-    this.#snapshot = createMineViewModel(state);
+    this.#snapshot = createMineViewModel(state, this.#balance);
   }
 }

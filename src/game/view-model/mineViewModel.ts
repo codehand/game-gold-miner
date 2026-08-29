@@ -6,10 +6,11 @@
  * value, and queue amount is unit-testable in Node without Phaser or a DOM.
  * Nothing here may write to authoritative state.
  *
- * Number presentation is deliberately minimal: Step 28 introduces the shared
- * abbreviated K/M/B/T formatter and this module then adopts it.
+ * Every amount goes through the shared abbreviated formatter, so the mine and
+ * the HUD read alike as magnitudes grow.
  */
 
+import type { BaseGameBalanceConfig } from '../../config';
 import type {
   ElevatorState,
   GameNumber,
@@ -17,6 +18,8 @@ import type {
   MineFloorState,
   WarehouseState,
 } from '../../core';
+import { formatAmount } from './formatAmount';
+import { createHudViewModel, type HudViewModel } from './hudViewModel';
 
 /** Discrete pile heights, so a growing bottleneck is visible at a glance. */
 export const MAX_MATERIAL_PILE_STEPS = 4;
@@ -78,13 +81,22 @@ export interface SharedStageViewModel {
 }
 
 export interface MineViewModel {
+  readonly hud: HudViewModel;
   readonly floors: readonly MineFloorViewModel[];
   readonly elevator: SharedStageViewModel;
   readonly warehouse: SharedStageViewModel;
 }
 
-export function createMineViewModel(state: GameState): MineViewModel {
+/**
+ * Balance data is required because the HUD's income estimate is derived from
+ * the same production rates the core calculates, never from observed frames.
+ */
+export function createMineViewModel(
+  state: GameState,
+  balance: BaseGameBalanceConfig,
+): MineViewModel {
   return {
+    hud: createHudViewModel(state, balance),
     floors: state.floors.map((floor) => {
       return createMineFloorViewModel(floor, state.elevator.capacity);
     }),
@@ -225,23 +237,6 @@ export function formatLevel(level: number): string {
 
 export function formatProgress(progress: number): string {
   return `${Math.round(progress * 100)}%`;
-}
-
-/**
- * Provisional amount display. Values beyond ordinary magnitudes keep their
- * serialized scientific form until Step 28 introduces abbreviated suffixes.
- */
-export function formatAmount(value: GameNumber): string {
-  const serialized = value.serialize();
-  const numeric = Number(serialized);
-
-  if (!Number.isFinite(numeric) || Math.abs(numeric) >= 1e6) {
-    return serialized;
-  }
-
-  const rounded = Math.round(numeric * 10) / 10;
-
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
 /**

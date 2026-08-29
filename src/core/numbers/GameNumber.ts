@@ -54,6 +54,25 @@ export class GameNumber {
     return this.compare(other) >= 0;
   }
 
+  /**
+   * Significant digits of this value, as `mantissa * 10 ** exponent`: `0` for
+   * zero, and otherwise an absolute value in `[1, 10)`.
+   *
+   * Display code needs a value's magnitude, and an idle-game balance outruns
+   * `Number.MAX_VALUE` long before it stops being worth showing; `serialize()`
+   * can only express such a value as text. This pair of plain numbers gives
+   * formatting exactly what it needs without leaking the underlying numeric
+   * library across the boundary. Formatting itself stays outside this type.
+   */
+  public get mantissa(): number {
+    return this.#value.mantissa;
+  }
+
+  /** Power of ten this value's {@link mantissa} is scaled by. */
+  public get exponent(): number {
+    return this.#value.exponent;
+  }
+
   public serialize(): SerializedGameNumber {
     return this.#value.toString();
   }

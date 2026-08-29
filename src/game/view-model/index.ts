@@ -1,11 +1,17 @@
 export {
+  ABBREVIATION_TIER_SUFFIXES,
+  formatAmount,
+  SMALL_NEGATIVE_AMOUNT_LABEL,
+  SMALL_POSITIVE_AMOUNT_LABEL,
+} from './formatAmount';
+export { createHudViewModel, type HudViewModel } from './hudViewModel';
+export {
   assertRenderableMineViewModel,
   calculateMaterialPileSteps,
   createElevatorViewModel,
   createMineFloorViewModel,
   createMineViewModel,
   createWarehouseViewModel,
-  formatAmount,
   formatLevel,
   formatProgress,
   MAX_MATERIAL_PILE_STEPS,

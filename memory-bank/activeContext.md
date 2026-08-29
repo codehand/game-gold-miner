@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 27 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the three visualised production stages, their queued material, and the live mine; Step 28 must not begin without explicit authorization.
+Implementation Plan Step 28 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the live HUD — spendable gold, the estimated mine income per second, and their abbreviated formatting; Step 29 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -136,6 +136,12 @@ Implementation Plan Step 27 is implemented and its automated validation passes. 
 - Three more mutations fail by name: a driver that never memoizes, a driver that never re-derives, and a `replaceState` that reuses the snapshot.
 - One hundred ninety-eight unit tests, twelve Chromium E2E tests, lint, strict production build, and `git diff --check` pass.
 
+- Implemented Step 28 on 2026-08-29 after the user authorized it. The HUD is live: `createHudViewModel(state, balance)` derives the English `Gold` and `Income /s` captions and their values and rides on the same `MineViewModel` the mine views are bound from, so one snapshot drives the whole screen and `createMineViewModel` plus `MineSimulationDriver` now take balance data. Income is the core's `effectiveProductionPerSecond`, already capped at the chain's slowest stage. `HudView` builds its background, divider, and four text objects once and changes only through `applySnapshot`; `BootScene` publishes `data-hud-view` on the existing 100 ms cadence.
+- `src/game/view-model/formatAmount.ts` replaced the provisional display helper and is now the single formatter for every displayed amount. At most one decimal place, then no suffix below 1,000, `K`/`M`/`B`/`T`, then alphabetic suffixes `aa`, `ab`, ... `zz`, `aaa`, ... matching the GDD's `14.6aa` and `7.2ab`; past three letters the serialized scientific form is shown. Digits truncate rather than round, and a present-but-tiny amount reads `<0.1`.
+- `GameNumber` gained normalized `mantissa`/`exponent` getters. The formatter needs a magnitude, and reading one through `Number` prints the same thing for every value past 1e308; the two plain numbers give display code what it needs without leaking the numeric library's type.
+- Step 28 evidence: two hundred seventeen unit tests, fourteen Chromium E2E tests, lint, the strict production build, and `git diff --check` pass. One browser test asserts the HUD's abbreviated gold and its income against the core's own rate calculation; a second boots the real driver one conversion cycle short of a delivery, runs two seconds of fake wall clock, and asserts the displayed gold equals the authoritative balance while the scene's display-object count is unchanged. Six mutations fail with named assertions: a HUD bound once at boot and never rebound, a HUD never bound at all, a formatter that rounds instead of truncating, an alphabetic run starting one tier late, a formatter reading magnitude through `Number`, an income value taken from aggregate extraction instead of the bottleneck-capped rate, and a `HudView` that appends a text object per rebind.
+- Step 28 review fixes: four review findings were corrected without changing behaviour. `TRUNCATION_TOLERANCE` in `formatAmount.ts` claimed a displayed amount can never read high, but the tolerance that keeps floating-point scaling from dropping a digit also lifts a value within `1e-9` of the next digit onto it, so `0.9999999999` reads `1`; the tolerance is now documented as the bound on that overstatement and a unit test pins both sides of it, making the claim checkable rather than asserted. `HudView` typed its text anchor as a bare `number` after the move out of `BootScene`, losing the old `'left' | 'right'` safety, and now uses a `HorizontalOrigin = 0 | 1` alias with named constants. `BootScene` published `data-hud-view` as `"null"` before the view existed, which would have surfaced in a browser test as a property access on `null` rather than a named diagnostic failure; the attribute is now written only once the view exists. `GameNumber`'s `mantissa`/`exponent` getters moved out of the middle of the arithmetic group to sit beside `serialize()`, and `exponent` gained its own doc.
+
 ## Active Decisions
 
 - Target browser and Telegram Mini App first.
@@ -165,6 +171,10 @@ Implementation Plan Step 27 is implemented and its automated validation passes. 
 - Derive milestone effects from the current level rather than storing grant state, so each threshold activates once and reloads cannot apply it twice.
 - Unlock floors 2–4 only in sequence after the immediately previous unlocked mine shaft reaches levels 5, 5, and 7 respectively and the configured 250/1,500/7,500 gold cost can be paid.
 - Initialize a successfully opened floor at its configured starting level with zero progress, queues, and totals; preserve unrelated floors, shared stages, and simulation metadata.
+- Format every displayed amount through one shared function, so a value never reads one way in the HUD and another in the mine.
+- Truncate a displayed balance rather than rounding it: a number that reads higher than it is promises a purchase the player cannot make.
+- Read a magnitude through `GameNumber`'s own mantissa and exponent, never through `Number`, which collapses everything past its range to the same value.
+- Estimate income from the core's bottleneck-capped effective rate, never from aggregate extraction and never from what the renderer observed.
 - Bulk purchases and UI controls remain deferred.
 - Use the Step 19 automated policy only as a reproducible balance-analysis harness; it does not issue player-runtime purchases or replace later playtesting.
 - Persist every `GameNumber` as a finite decimal/scientific string, validate exact version-1 structure and authoritative invariants before deserialization, and keep migration dispatch separate from IndexedDB storage.
@@ -201,8 +211,8 @@ Implementation Plan Step 27 is implemented and its automated validation passes. 
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 27 production-stage visualisation.
-2. Begin Step 28 only after explicit user authorization.
+1. Wait for the user to validate the Step 28 HUD.
+2. Begin Step 29 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

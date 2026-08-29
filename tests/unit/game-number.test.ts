@@ -51,4 +51,23 @@ describe('GameNumber', () => {
     expect(() => GameNumber.deserialize('')).toThrow(/non-empty/);
     expect(() => GameNumber.deserialize('not-a-number')).toThrow(/finite/);
   });
+
+  it('exposes normalized decimal parts for display code', () => {
+    const parts = (source: string | number) => {
+      const value = GameNumber.from(source);
+
+      return { mantissa: value.mantissa, exponent: value.exponent };
+    };
+
+    expect(parts(0)).toEqual({ mantissa: 0, exponent: 0 });
+    expect(parts(100)).toEqual({ mantissa: 1, exponent: 2 });
+    expect(parts(0.5)).toEqual({ mantissa: 5, exponent: -1 });
+    expect(parts(-1_234)).toEqual({ mantissa: -1.234, exponent: 3 });
+    // The reason these exist: `Number` cannot carry this magnitude, so a
+    // formatter reading through it would lose the value entirely.
+    expect(Number(GameNumber.from('7.2e400').serialize())).toBe(
+      Number.POSITIVE_INFINITY,
+    );
+    expect(parts('7.2e400')).toEqual({ mantissa: 7.2, exponent: 400 });
+  });
 });

@@ -408,6 +408,7 @@ async function runAnimationSpeedTrial(
       );
       const driver = new MineSimulationDriver({
         state: createInitialGameState(BASE_GAME_BALANCE, ${FIXTURE_TIMESTAMP_MS}),
+        balance: BASE_GAME_BALANCE,
         now: () => Date.now(),
       });
 
