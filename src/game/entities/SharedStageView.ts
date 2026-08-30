@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
 
+import { PLACEHOLDER_BACKLOG_TEXTURES } from '../assets/backlogTextures';
+import { PLACEHOLDER_TEXTURES } from '../assets/placeholderAssets';
 import {
   toFillColor,
   CONVEYOR_FILL,
   CYCLE_MARKER_FILL,
   FONT_FAMILY,
-  MATERIAL_BACKLOG_FILL,
-  MATERIAL_FILL,
   MIN_TOUCH_TARGET_PX,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
@@ -61,8 +61,6 @@ export interface RenderedSharedStageState {
 const COLOR_PANEL = toFillColor(PANEL_BACKGROUND);
 const COLOR_PROGRESS_TRACK = toFillColor(PROGRESS_TRACK);
 const COLOR_PROGRESS_FILL = toFillColor(PROGRESS_FILL);
-const COLOR_MATERIAL = toFillColor(MATERIAL_FILL);
-const COLOR_MATERIAL_BACKLOG = toFillColor(MATERIAL_BACKLOG_FILL);
 const COLOR_CYCLE_MARKER = toFillColor(CYCLE_MARKER_FILL);
 const COLOR_CONVEYOR = toFillColor(CONVEYOR_FILL);
 
@@ -70,10 +68,12 @@ const PANEL_INSET_X = 10;
 const PROGRESS_TRACK_HEIGHT = 8;
 const PROGRESS_TRACK_Y = 61;
 const PROGRESS_LABEL_WIDTH = 34;
-const QUEUE_BLOCK_WIDTH = 14;
-const QUEUE_BLOCK_HEIGHT = 7;
+const QUEUE_BLOCK_SIZE = 14;
 const QUEUE_BLOCK_GAP = 3;
-const QUEUE_BLOCK_Y = 52;
+const QUEUE_BLOCK_Y = 54;
+const STAGE_SPRITE_X = 26;
+const STAGE_SPRITE_Y = 24;
+const STAGE_SPRITE_SIZE = 38;
 const CYCLE_MARKER_WIDTH = 4;
 const CYCLE_MARKER_HEIGHT = 12;
 const CONVEYOR_Y = 74;
@@ -90,6 +90,10 @@ const UPGRADE_HEIGHT = MIN_TOUCH_TARGET_PX;
 export interface SharedStageViewOptions {
   /** Called when this stage's upgrade control is pressed. */
   readonly onUpgrade: () => void;
+  /** Original placeholder artwork distinguishing the two shared stages. */
+  readonly textureKey:
+    | typeof PLACEHOLDER_TEXTURES.elevator
+    | typeof PLACEHOLDER_TEXTURES.warehouse;
 }
 
 /**
@@ -104,12 +108,13 @@ export interface SharedStageViewOptions {
  */
 export class SharedStageView {
   readonly #root: Phaser.GameObjects.Container;
+  readonly #stageSprite: Phaser.GameObjects.Image;
   readonly #title: Phaser.GameObjects.Text;
   readonly #level: Phaser.GameObjects.Text;
   readonly #capacity: Phaser.GameObjects.Text;
   readonly #queue: Phaser.GameObjects.Text;
   readonly #status: Phaser.GameObjects.Text;
-  readonly #queueBlocks: readonly Phaser.GameObjects.Rectangle[];
+  readonly #queueBlocks: readonly Phaser.GameObjects.Image[];
   readonly #progressTrack: Phaser.GameObjects.Rectangle;
   readonly #progressFill: Phaser.GameObjects.Rectangle;
   readonly #progressLabel: Phaser.GameObjects.Text;
@@ -130,11 +135,15 @@ export class SharedStageView {
       .rectangle(0, 0, region.width, region.height, COLOR_PANEL)
       .setOrigin(0, 0);
 
+    this.#stageSprite = scene.add
+      .image(STAGE_SPRITE_X, STAGE_SPRITE_Y, options.textureKey)
+      .setDisplaySize(STAGE_SPRITE_SIZE, STAGE_SPRITE_SIZE);
+
     this.#title = scene.add
-      .text(PANEL_INSET_X, 6, '', {
+      .text(50, 6, '', {
         color: TEXT_PRIMARY,
         fontFamily: FONT_FAMILY,
-        fontSize: '14px',
+        fontSize: '12px',
         fontStyle: 'bold',
       })
       .setOrigin(0, 0);
@@ -147,14 +156,14 @@ export class SharedStageView {
       })
       .setOrigin(1, 0);
     this.#capacity = scene.add
-      .text(PANEL_INSET_X, 24, '', {
+      .text(50, 24, '', {
         color: TEXT_MUTED,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
       })
       .setOrigin(0, 0);
     this.#queue = scene.add
-      .text(PANEL_INSET_X, 38, '', {
+      .text(50, 38, '', {
         color: TEXT_MUTED,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
@@ -171,14 +180,14 @@ export class SharedStageView {
 
     this.#queueBlocks = Array.from({ length: MAX_MATERIAL_PILE_STEPS }, (_, step) => {
       return scene.add
-        .rectangle(
-          PANEL_INSET_X + step * (QUEUE_BLOCK_WIDTH + QUEUE_BLOCK_GAP),
+        .image(
+          PANEL_INSET_X +
+            QUEUE_BLOCK_SIZE / 2 +
+            step * (QUEUE_BLOCK_SIZE + QUEUE_BLOCK_GAP),
           QUEUE_BLOCK_Y,
-          QUEUE_BLOCK_WIDTH,
-          QUEUE_BLOCK_HEIGHT,
-          COLOR_MATERIAL,
+          PLACEHOLDER_TEXTURES.oreCrate,
         )
-        .setOrigin(0, 0);
+        .setDisplaySize(QUEUE_BLOCK_SIZE, QUEUE_BLOCK_SIZE);
     });
 
     this.#progressTrack = scene.add
@@ -241,6 +250,7 @@ export class SharedStageView {
 
     this.#root.add([
       background,
+      this.#stageSprite,
       this.#title,
       this.#level,
       this.#capacity,
@@ -269,11 +279,22 @@ export class SharedStageView {
     this.#status.setText(stage.statusLabel);
     setTextColor(this.#status, stage.isBackedUp ? TEXT_WARNING : TEXT_MUTED);
 
-    const queueColor = stage.isBackedUp ? COLOR_MATERIAL_BACKLOG : COLOR_MATERIAL;
+    // The backlog colour is a second texture rather than a tint: Phaser tints
+    // under WebGL only, and the cue has to survive a Canvas fallback. It is
+    // also what `describeRenderedState` reads the backlog back from.
+    const blockTexture = stage.isBackedUp
+      ? PLACEHOLDER_BACKLOG_TEXTURES.oreCrate
+      : PLACEHOLDER_TEXTURES.oreCrate;
 
     this.#queueBlocks.forEach((block, index) => {
       block.setVisible(index < stage.queueSteps);
-      block.setFillStyle(queueColor);
+
+      // `setTexture` re-frames the sprite, so the size is restored with it.
+      if (block.texture.key !== blockTexture) {
+        block
+          .setTexture(blockTexture)
+          .setDisplaySize(QUEUE_BLOCK_SIZE, QUEUE_BLOCK_SIZE);
+      }
     });
 
     this.#progressFill.setSize(
@@ -325,7 +346,7 @@ export class SharedStageView {
       queueLabel: this.#queue.text,
       queueSteps: this.#queueBlocks.filter((block) => block.visible).length,
       isQueueBackedUp: this.#queueBlocks.every((block) => {
-        return block.fillColor === COLOR_MATERIAL_BACKLOG;
+        return block.texture.key === PLACEHOLDER_BACKLOG_TEXTURES.oreCrate;
       }),
       statusLabel: this.#status.text,
       progressLabel: this.#progressLabel.text,

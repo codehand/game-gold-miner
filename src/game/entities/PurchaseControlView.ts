@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 
+import { PLACEHOLDER_TEXTURES } from '../assets/placeholderAssets';
 import {
   assertTouchTargetRegion,
   toFillColor,
@@ -56,9 +57,19 @@ const COLOR_DISABLED = toFillColor(CONTROL_DISABLED_BACKGROUND);
 const COLOR_SUCCESS = toFillColor(CONTROL_SUCCESS_BACKGROUND);
 const COLOR_REFUSED = toFillColor(CONTROL_REFUSED_BACKGROUND);
 
-const INLINE_INSET_X = 8;
+const INSET_X = 8;
+const ICON_SIZE = 20;
+const ICON_GAP = 4;
+/**
+ * Where text starts once the icon column is reserved. Both layouts reserve it:
+ * the stacked one centres its two lines over what is left rather than over the
+ * whole button, which would run them back under the icon.
+ */
+const LABEL_START_X = INSET_X + ICON_SIZE + ICON_GAP;
 const STACKED_ACTION_Y_RATIO = 0.32;
 const STACKED_COST_Y_RATIO = 0.7;
+/** A control the player cannot pay for dims its icon along with its text. */
+const ICON_DISABLED_ALPHA = 0.45;
 
 /**
  * One priced button, shared by every purchase on the screen: each mine shaft's
@@ -73,6 +84,7 @@ const STACKED_COST_Y_RATIO = 0.7;
  */
 export class PurchaseControlView {
   readonly #background: Phaser.GameObjects.Rectangle;
+  readonly #icon: Phaser.GameObjects.Image;
   readonly #action: Phaser.GameObjects.Text;
   readonly #cost: Phaser.GameObjects.Text;
   readonly #feedback: Phaser.GameObjects.Text;
@@ -100,19 +112,31 @@ export class PurchaseControlView {
       .on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, options.onPress);
 
     const centerX = region.x + region.width / 2;
+    // The stacked layout centres its labels on the space left of the icon, not
+    // on the button, so a wide action word cannot overlap the icon beside it.
+    const labelCenterX =
+      region.x + (LABEL_START_X + region.width - INSET_X) / 2;
+
+    this.#icon = scene.add
+      .image(
+        region.x + INSET_X + ICON_SIZE / 2,
+        region.y + region.height / 2,
+        PLACEHOLDER_TEXTURES.upgrade,
+      )
+      .setDisplaySize(ICON_SIZE, ICON_SIZE);
 
     this.#action =
       layout === 'stacked'
         ? this.#createText(
             scene,
-            centerX,
+            labelCenterX,
             region.y + region.height * STACKED_ACTION_Y_RATIO,
             12,
             0.5,
           )
         : this.#createText(
             scene,
-            region.x + INLINE_INSET_X,
+            region.x + LABEL_START_X,
             region.y + region.height / 2,
             12,
             0,
@@ -121,14 +145,14 @@ export class PurchaseControlView {
       layout === 'stacked'
         ? this.#createText(
             scene,
-            centerX,
+            labelCenterX,
             region.y + region.height * STACKED_COST_Y_RATIO,
             11,
             0.5,
           )
         : this.#createText(
             scene,
-            region.x + region.width - INLINE_INSET_X,
+            region.x + region.width - INSET_X,
             region.y + region.height / 2,
             12,
             1,
@@ -141,7 +165,13 @@ export class PurchaseControlView {
       0.5,
     );
 
-    this.#objects = [this.#background, this.#action, this.#cost, this.#feedback];
+    this.#objects = [
+      this.#background,
+      this.#icon,
+      this.#action,
+      this.#cost,
+      this.#feedback,
+    ];
     this.#render();
   }
 
@@ -197,6 +227,7 @@ export class PurchaseControlView {
     const visible = control !== null;
 
     this.#background.setVisible(visible);
+    this.#icon.setVisible(visible && feedback === null);
     this.#feedback.setVisible(visible && feedback !== null);
     this.#action.setVisible(visible && feedback === null);
     this.#cost.setVisible(visible && feedback === null);
@@ -206,6 +237,24 @@ export class PurchaseControlView {
     }
 
     this.#background.setFillStyle(this.#backgroundColor(control, feedback));
+    // `setTexture` is not one of the writes Phaser skips: it re-resolves the
+    // texture and re-frames the sprite however many times it is called with
+    // the key already showing. Guarded, like the colours below it.
+    const iconTexture =
+      control.target.type === 'floor-unlock'
+        ? PLACEHOLDER_TEXTURES.locked
+        : PLACEHOLDER_TEXTURES.upgrade;
+
+    if (this.#icon.texture.key !== iconTexture) {
+      this.#icon.setTexture(iconTexture).setDisplaySize(ICON_SIZE, ICON_SIZE);
+    }
+
+    const iconAlpha = control.isEnabled ? 1 : ICON_DISABLED_ALPHA;
+
+    if (this.#icon.alpha !== iconAlpha) {
+      this.#icon.setAlpha(iconAlpha);
+    }
+
     this.#action.setText(control.actionLabel);
     this.#cost.setText(control.costLabel);
     this.#feedback.setText(feedback?.label ?? '');

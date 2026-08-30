@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 31 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates mine scrolling and one-thumb input — a vertical drag and a wheel scrolling the mine while the HUD and surface strip stay fixed, controls activated before and after scrolling, no accidental purchase from a scroll gesture, and thumb-sized targets; Step 32 must not begin without explicit authorization.
+Implementation Plan Step 32 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the original placeholder presentation at native and reduced mobile scale. Step 33 has not started and must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -250,11 +250,17 @@ Implementation Plan Step 31 is implemented and its automated validation passes. 
 - Step 31 mutation verification: nine mutations fail with named assertions — dropping the tap suppression (`a scroll must not spend gold`), publishing bounds that ignore the camera scroll (`a floor control moves with the content it is drawn on`, plus the reveal assertion), a zero drag threshold (`a wobbling tap must still buy one level` and two unit tests), a camera that never follows the scroll state (`the bottom of the mine must come into view`), a wheel that ignores the mine region (`a wheel over the HUD must not scroll the mine`), `isPressable` reduced to visibility (`the deepest floor starts below the mine viewport`), a 20-pixel shared-stage control (the boot-time touch-target assertion), removing `touch-action` (`the canvas must own its touch gestures`), and suppressing a tap only for gestures that began over the mine (`a swipe must not spend gold`).
 - Review of the first Step 31 implementation found one defect: only a press that began over the mine was tracked, so a swipe that started on the surface strip and lifted on a floor's button still bought a level — an accidental purchase from a gesture, which is exactly what the step forbids. Every press is now tracked; whether it scrolls and whether it stays a tap became two separate questions. A browser test drives that swipe, and the mutation above pins it.
 - A Step 31 test defect worth recording: the browser fixture routes `/src/main.ts` to its own module, which does not import `src/style.css` unless it says so. A `touch-action` assertion therefore read `auto` against a stylesheet that had never loaded. The fixture now imports the stylesheet, which also boots it closer to the real application.
+- Step 32 implemented an original clean-HD cartoon placeholder family through the `create-game-assets`, `generate2dsprite`, and built-in image-generation workflows. Nine generated 128×128 RGBA sprites distinguish the cat miner, elevator, warehouse, gold pile, padlock, upgrade arrow, gold coin, mine cart, and ore crate; their prompt, raw source, processed sheet, QC metadata, art-direction brief, and provenance manifest are retained in the repository.
+- `BootScene.preload` now loads the semantic placeholder manifest before any view is constructed. `HudView`, `MineFloorView`, `SharedStageView`, and `PurchaseControlView` use the generated family while English labels, values, progress bars, touch hit areas, affordability, and feedback remain code-native.
+- The palette now matches the generated navy/steel-blue/teal/warm-gold family. Ordinary queued gold retains its illustrated sprite, while a backed-up pile or crate swaps to a red silhouette generated once at boot from the same artwork; generated art remains cosmetic and never enters authoritative state.
+- Step 32 visual review passed at an exact 360×640 viewport and a reduced 320×568 phone viewport with all required objects distinguishable and no browser warnings or errors. Strict sprite QC reports 128×128 RGBA output with usable alpha; two visually complete source-cell contacts were explicitly accepted while output-edge contact and paste clamping remain absent.
+- Step 32 automated evidence: 278 unit tests and 27 Chromium E2E tests pass, including provenance/dimension checks for every runtime asset and real framebuffer probes updated to prove generated gold and backlog silhouettes render under both the WebGL and the Canvas renderer. Lint, strict production build, and asset alpha/size reporting pass.
+- A code review of the Step 32 change corrected six defects before the gate: the backlog cue was a WebGL-only fill tint and vanished on a Canvas fallback, so it is now a boot-generated recoloured texture; `describeRenderedState` had started echoing cached snapshot fields, so pile size and backlog state are measured back off the drawn sprite again; the stacked purchase control overlapped its icon with its action label; `PurchaseControlView.#render` called the unguarded `setTexture` every frame; a second finger stole a live scroll gesture and froze the mine mid-drag; and foreground progress was persisted only by a purchase or a lifecycle flush, so a 30-second save heartbeat now covers a webview killed without `pagehide`.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 31 mine scrolling and one-thumb input.
-2. Begin Step 32 only after explicit user authorization.
+1. Wait for the user to validate the Step 32 original placeholder presentation.
+2. Begin Step 33 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 - Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.

@@ -163,6 +163,31 @@ describe('drag scrolling', () => {
     expect(endMineScrollGesture(pressed, 1)).toBe(pressed);
   });
 
+  it('keeps following the first finger when a second one taps', () => {
+    // A second pointer used to take the gesture over: the finger still
+    // swiping had every remaining move dropped, and its lift ended nothing,
+    // so the mine froze mid-drag until it was raised and pressed again.
+    const state = createState();
+    const pressed = beginMineScrollGesture(state, pointerAt(400, 0));
+    const dragged = dragMineScroll(pressed, pointerAt(400 - LONG_DRAG_PX, 0));
+    const tapped = beginMineScrollGesture(dragged, pointerAt(300, 1));
+
+    expect(tapped).toBe(dragged);
+    expect(tapped.gesture?.pointerId).toBe(0);
+    // The live swipe keeps its tap suppression, so the second finger's
+    // release cannot buy the button it happens to be over.
+    expect(tapped.hasDragged).toBe(true);
+
+    // The first finger still owns the scroll, and still ends it.
+    const moved = dragMineScroll(
+      endMineScrollGesture(tapped, 1),
+      pointerAt(400 - LONG_DRAG_PX * 2, 0),
+    );
+
+    expect(moved.scrollY).toBe(LONG_DRAG_PX * 2);
+    expect(endMineScrollGesture(moved, 0).gesture).toBeNull();
+  });
+
   it('ignores a move with no gesture and a non-finite position', () => {
     const state = createState();
 

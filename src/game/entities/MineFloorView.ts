@@ -1,13 +1,12 @@
 import Phaser from 'phaser';
 
+import { PLACEHOLDER_BACKLOG_TEXTURES } from '../assets/backlogTextures';
+import { PLACEHOLDER_TEXTURES } from '../assets/placeholderAssets';
 import {
   toFillColor,
   BADGE_BACKGROUND,
   FONT_FAMILY,
   LOCKED_PANEL_BACKGROUND,
-  MATERIAL_BACKLOG_FILL,
-  MATERIAL_FILL,
-  MINER_FILL,
   MIN_TOUCH_TARGET_PX,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
@@ -76,9 +75,6 @@ const COLOR_LOCKED_PANEL = toFillColor(LOCKED_PANEL_BACKGROUND);
 const COLOR_BADGE = toFillColor(BADGE_BACKGROUND);
 const COLOR_PROGRESS_TRACK = toFillColor(PROGRESS_TRACK);
 const COLOR_PROGRESS_FILL = toFillColor(PROGRESS_FILL);
-const COLOR_MATERIAL = toFillColor(MATERIAL_FILL);
-const COLOR_MATERIAL_BACKLOG = toFillColor(MATERIAL_BACKLOG_FILL);
-const COLOR_MINER = toFillColor(MINER_FILL);
 
 const BADGE_SIZE = 32;
 const BADGE_INSET = 12;
@@ -91,23 +87,27 @@ const PROGRESS_INSET_X = 12;
 const PROGRESS_LABEL_GAP = 8;
 /** Room reserved to the right of the track for the percentage label. */
 const PROGRESS_LABEL_WIDTH = 120;
-const PILE_BLOCK_WIDTH = 26;
-const PILE_BLOCK_HEIGHT = 7;
-const PILE_BLOCK_GAP = 2;
-const PILE_BASELINE_Y = 92;
-const PICK_WIDTH = 12;
-const PICK_HEIGHT = 5;
-const PICK_X = 40;
-/** Rest position of the pick; the swing moves it symmetrically around this. */
-const PICK_REST_Y = 70;
-const PICK_SWING_AMPLITUDE_PX = 6;
+const MINER_X = 36;
+/** Rest position of the generated miner; the cosmetic bob moves around it. */
+const MINER_REST_Y = 72;
+const MINER_SIZE = 54;
+const MINER_SWING_AMPLITUDE_PX = 3;
+const LOCK_ICON_X = 35;
+const LOCK_ICON_Y = 75;
+const LOCK_ICON_SIZE = 44;
+const PILE_X = 66;
+const PILE_Y = 77;
+const PILE_MAX_SIZE = 42;
+/** A single queued step still has to read as a pile, not as a speck. */
+const PILE_MIN_SCALE = 0.55;
+const PILE_SCALE_RANGE = 1 - PILE_MIN_SCALE;
 const CONTROL_WIDTH = 92;
 /** A thumb-sized target, which is what sets the height of the slot. */
 const CONTROL_HEIGHT = MIN_TOUCH_TARGET_PX;
 const CONTROL_INSET_X = 12;
 /** Clear of the status badge above it and the progress bar below it. */
 const CONTROL_Y = 50;
-const REQUIREMENT_X = 54;
+const REQUIREMENT_X = 68;
 const REQUIREMENT_Y = 66;
 
 export interface MineFloorViewOptions {
@@ -139,9 +139,9 @@ export class MineFloorView {
   readonly #level: Phaser.GameObjects.Text;
   readonly #status: Phaser.GameObjects.Text;
   readonly #statusBackground: Phaser.GameObjects.Rectangle;
-  readonly #miner: readonly Phaser.GameObjects.Shape[];
-  readonly #pick: Phaser.GameObjects.Rectangle;
-  readonly #pileBlocks: readonly Phaser.GameObjects.Rectangle[];
+  readonly #miner: Phaser.GameObjects.Image;
+  readonly #lockIcon: Phaser.GameObjects.Image;
+  readonly #goldPile: Phaser.GameObjects.Image;
   readonly #materialQueue: Phaser.GameObjects.Text;
   readonly #backlog: Phaser.GameObjects.Text;
   readonly #progressTrack: Phaser.GameObjects.Rectangle;
@@ -221,29 +221,17 @@ export class MineFloorView {
       )
       .setOrigin(0.5, 0.5);
 
-    // Placeholder miner: an original two-shape silhouette plus a swinging pick,
-    // all replaced by real artwork in Step 32.
-    this.#miner = [
-      scene.add.rectangle(16, 66, 22, 26, COLOR_MINER).setOrigin(0, 0),
-      scene.add.ellipse(27, 60, 20, 18, COLOR_MINER),
-    ];
-    this.#pick = scene.add
-      .rectangle(PICK_X, PICK_REST_Y, PICK_WIDTH, PICK_HEIGHT, COLOR_MINER)
-      .setOrigin(0, 0.5);
-
-    this.#pileBlocks = Array.from({ length: MAX_MATERIAL_PILE_STEPS }, (_, step) => {
-      return scene.add
-        .rectangle(
-          54,
-          PILE_BASELINE_Y - (step + 1) * (PILE_BLOCK_HEIGHT + PILE_BLOCK_GAP),
-          PILE_BLOCK_WIDTH,
-          PILE_BLOCK_HEIGHT,
-          COLOR_MATERIAL,
-        )
-        .setOrigin(0, 0);
-    });
+    this.#miner = scene.add
+      .image(MINER_X, MINER_REST_Y, PLACEHOLDER_TEXTURES.minerCat)
+      .setDisplaySize(MINER_SIZE, MINER_SIZE);
+    this.#lockIcon = scene.add
+      .image(LOCK_ICON_X, LOCK_ICON_Y, PLACEHOLDER_TEXTURES.locked)
+      .setDisplaySize(LOCK_ICON_SIZE, LOCK_ICON_SIZE);
+    this.#goldPile = scene.add
+      .image(PILE_X, PILE_Y, PLACEHOLDER_TEXTURES.goldPile)
+      .setDisplaySize(pileDisplaySize(0), pileDisplaySize(0));
     this.#materialQueue = scene.add
-      .text(88, PILE_BASELINE_Y - 14, '', {
+      .text(104, 78, '', {
         color: TEXT_ACCENT,
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
@@ -251,7 +239,7 @@ export class MineFloorView {
       })
       .setOrigin(0, 0);
     this.#backlog = scene.add
-      .text(88, PILE_BASELINE_Y - 32, '', {
+      .text(104, 60, '', {
         color: TEXT_WARNING,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
@@ -329,9 +317,9 @@ export class MineFloorView {
       this.#level,
       this.#statusBackground,
       this.#status,
-      ...this.#miner,
-      this.#pick,
-      ...this.#pileBlocks,
+      this.#miner,
+      this.#lockIcon,
+      this.#goldPile,
       this.#materialQueue,
       this.#backlog,
       this.#progressTrack,
@@ -362,22 +350,28 @@ export class MineFloorView {
     this.#status.setText(floor.statusLabel ?? '').setVisible(locked);
     this.#statusBackground.setVisible(locked);
 
-    for (const part of this.#miner) {
-      part.setVisible(floor.isUnlocked);
-    }
-
-    this.#pick.setVisible(floor.isUnlocked);
+    this.#miner.setVisible(floor.isUnlocked);
+    this.#lockIcon.setVisible(locked);
 
     // A full pile changes colour as well as height, so the moment transport
-    // becomes the bottleneck is visible without reading the amount.
-    const pileColor = floor.isMaterialBackedUp
-      ? COLOR_MATERIAL_BACKLOG
-      : COLOR_MATERIAL;
+    // becomes the bottleneck is visible without reading the amount. The colour
+    // is a second texture rather than a tint, because Phaser tints under WebGL
+    // only and the same cue has to survive a Canvas fallback.
+    const pileTexture = floor.isMaterialBackedUp
+      ? PLACEHOLDER_BACKLOG_TEXTURES.goldPile
+      : PLACEHOLDER_TEXTURES.goldPile;
 
-    this.#pileBlocks.forEach((block, index) => {
-      block.setVisible(index < floor.materialPileSteps);
-      block.setFillStyle(pileColor);
-    });
+    // Set before the size: `setTexture` re-frames the sprite, which would
+    // discard the scale `setDisplaySize` just chose.
+    if (this.#goldPile.texture.key !== pileTexture) {
+      this.#goldPile.setTexture(pileTexture);
+    }
+
+    const pileSize = pileDisplaySize(floor.materialPileSteps);
+
+    this.#goldPile
+      .setVisible(floor.isUnlocked && floor.materialPileSteps > 0)
+      .setDisplaySize(pileSize, pileSize);
     this.#materialQueue
       .setText(floor.materialQueueLabel)
       .setVisible(floor.isUnlocked);
@@ -423,13 +417,16 @@ export class MineFloorView {
   }
 
   /**
-   * Moves the cosmetic pick. This is the only thing the animation clock drives
-   * on a floor: extraction still completes exactly when the core says so.
+   * Gives the generated miner a restrained cosmetic bob. Extraction still
+   * completes exactly when the core says so.
    */
   public applyAnimation(animationTimeMs: number): void {
-    this.#pick.setY(
-      PICK_REST_Y +
-        calculateMinerSwingOffsetPx(animationTimeMs, PICK_SWING_AMPLITUDE_PX),
+    this.#miner.setY(
+      MINER_REST_Y +
+        calculateMinerSwingOffsetPx(
+          animationTimeMs,
+          MINER_SWING_AMPLITUDE_PX,
+        ),
     );
   }
 
@@ -456,13 +453,14 @@ export class MineFloorView {
       progressFillWidth: this.#progressFill.width,
       progressTrackWidth: this.#progressTrack.width,
       materialQueueLabel: this.#materialQueue.text,
-      materialPileSteps: this.#pileBlocks.filter((block) => block.visible).length,
+      materialPileSteps: this.#goldPile.visible
+        ? pileStepsFromDisplaySize(this.#goldPile.displayWidth)
+        : 0,
       backlogLabel: this.#backlog.visible ? this.#backlog.text : null,
-      isPileBackedUp: this.#pileBlocks.every((block) => {
-        return block.fillColor === COLOR_MATERIAL_BACKLOG;
-      }),
-      showsMiner: this.#pick.visible,
-      minerSwingOffsetPx: this.#pick.y - PICK_REST_Y,
+      isPileBackedUp:
+        this.#goldPile.texture.key === PLACEHOLDER_BACKLOG_TEXTURES.goldPile,
+      showsMiner: this.#miner.visible,
+      minerSwingOffsetPx: this.#miner.y - MINER_REST_Y,
       showsUpgradeControl: upgradeControl.isVisible,
       upgradeControl,
       showsUnlockControl: unlockControl.isVisible,
@@ -475,4 +473,23 @@ export class MineFloorView {
         this.#background.fillColor === COLOR_LOCKED_PANEL,
     };
   }
+}
+
+/** How wide the pile sprite is drawn for a queue of `steps` steps. */
+function pileDisplaySize(steps: number): number {
+  return (
+    PILE_MAX_SIZE *
+    (PILE_MIN_SCALE + (steps / MAX_MATERIAL_PILE_STEPS) * PILE_SCALE_RANGE)
+  );
+}
+
+/**
+ * Inverse of `pileDisplaySize`, so the read-back measures the sprite that was
+ * actually drawn rather than echoing the snapshot back at the test.
+ */
+function pileStepsFromDisplaySize(displayWidth: number): number {
+  return Math.round(
+    ((displayWidth / PILE_MAX_SIZE - PILE_MIN_SCALE) / PILE_SCALE_RANGE) *
+      MAX_MATERIAL_PILE_STEPS,
+  );
 }

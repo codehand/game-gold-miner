@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "family": "step-32-original-placeholder-presentation",
+  "generatedAt": "2026-08-30",
+  "sourceTool": "OpenAI built-in image generation",
+  "processor": "generate2dsprite chroma-key and 3x3 slicing pipeline",
+  "sourcePrompt": "art-source/placeholder/source/prompt-used.txt",
+  "sourceImage": "art-source/placeholder/source/cat-mine-placeholder-pack-raw.png",
+  "pipelineMetadata": "art-source/placeholder/sprite-pack/pipeline-meta.json",
+  "rights": {
+    "origin": "Original project-generated placeholder artwork",
+    "thirdPartyAssets": false,
+    "externalBranding": false,
+    "attributionRequired": false
+  },
+  "assets": [
+    { "id": "miner-cat", "path": "public/assets/placeholder/miner-cat.png", "size": "128x128", "role": "unlocked floor miner", "status": "step-32-placeholder" },
+    { "id": "elevator", "path": "public/assets/placeholder/elevator.png", "size": "128x128", "role": "shared elevator", "status": "step-32-placeholder" },
+    { "id": "warehouse", "path": "public/assets/placeholder/warehouse.png", "size": "128x128", "role": "shared warehouse", "status": "step-32-placeholder" },
+    { "id": "gold-pile", "path": "public/assets/placeholder/gold-pile.png", "size": "128x128", "role": "floor material queue", "status": "step-32-placeholder" },
+    { "id": "locked", "path": "public/assets/placeholder/locked.png", "size": "128x128", "role": "locked floor and unlock control", "status": "step-32-placeholder" },
+    { "id": "upgrade", "path": "public/assets/placeholder/upgrade.png", "size": "128x128", "role": "upgrade control", "status": "step-32-placeholder" },
+    { "id": "gold-coin", "path": "public/assets/placeholder/gold-coin.png", "size": "128x128", "role": "spendable gold HUD", "status": "step-32-placeholder" },
+    { "id": "mine-cart", "path": "public/assets/placeholder/mine-cart.png", "size": "128x128", "role": "income HUD", "status": "step-32-placeholder" },
+    { "id": "ore-crate", "path": "public/assets/placeholder/ore-crate.png", "size": "128x128", "role": "shared-stage queued material", "status": "step-32-placeholder" }
+  ]
+}

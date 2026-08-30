@@ -7,36 +7,34 @@
  * Node tests can import it without loading Phaser.
  */
 
-export const HUD_BACKGROUND = '#0f172a';
-export const SURFACE_BACKGROUND = '#1b2735';
-export const MINE_BACKGROUND = '#111827';
-export const PANEL_BACKGROUND = '#27364b';
+export const HUD_BACKGROUND = '#132238';
+export const SURFACE_BACKGROUND = '#20334a';
+export const MINE_BACKGROUND = '#101827';
+export const PANEL_BACKGROUND = '#2c4260';
 /** Locked mine floors are drawn distinctly, not merely dimmed by alpha. */
-export const LOCKED_PANEL_BACKGROUND = '#1a2333';
-export const DIVIDER = '#fbbf24';
+export const LOCKED_PANEL_BACKGROUND = '#182334';
+export const DIVIDER = '#f4bd3e';
 
-export const BADGE_BACKGROUND = '#0b1220';
-export const CONTROL_BACKGROUND = '#3d5578';
+export const BADGE_BACKGROUND = '#17233a';
+export const CONTROL_BACKGROUND = '#41658a';
 /** An upgrade the player cannot yet pay for, drawn distinctly rather than dimmed. */
-export const CONTROL_DISABLED_BACKGROUND = '#232f42';
+export const CONTROL_DISABLED_BACKGROUND = '#24344b';
 /** Momentary press feedback: a completed purchase. */
 export const CONTROL_SUCCESS_BACKGROUND = '#15803d';
 /** Momentary press feedback: a refused purchase. */
 export const CONTROL_REFUSED_BACKGROUND = '#991b1b';
 export const PROGRESS_TRACK = '#131c2c';
-export const PROGRESS_FILL = '#34d399';
-export const MATERIAL_FILL = '#fbbf24';
-/** A full pile is drawn in its own colour, so a backlog reads at a glance. */
+export const PROGRESS_FILL = '#2ea9a1';
+/** A full pile is recoloured to this, so a backlog reads at a glance. */
 export const MATERIAL_BACKLOG_FILL = '#f87171';
-export const MINER_FILL = '#e5e7eb';
 /** Marker that travels a stage's track in step with authoritative progress. */
 export const CYCLE_MARKER_FILL = '#f9fafb';
 /** Cosmetic conveyor dashes; motion only, never a production signal. */
-export const CONVEYOR_FILL = '#4b6488';
+export const CONVEYOR_FILL = '#6688aa';
 
 export const TEXT_PRIMARY = '#f9fafb';
 export const TEXT_MUTED = '#9ca3af';
-export const TEXT_ACCENT = '#fbbf24';
+export const TEXT_ACCENT = '#f4bd3e';
 export const TEXT_DISABLED = '#6b7280';
 export const TEXT_WARNING = '#f87171';
 

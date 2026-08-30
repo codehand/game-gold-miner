@@ -22,7 +22,20 @@ const persistence = new SavePersistenceCoordinator(repository);
 let game: ReturnType<typeof createGame> | null = null;
 let offlineRewardModal: OfflineRewardModal | null = null;
 let unbindSaveLifecycle: (() => void) | null = null;
+let saveHeartbeatId: number | null = null;
 let disposed = false;
+
+/**
+ * How often a session that is only producing — not buying — is written out.
+ *
+ * Foreground progress is otherwise persisted by a purchase or by the lifecycle
+ * flush alone, and a mobile webview killed by the OS routinely skips
+ * `pagehide`. Whatever the last write missed is re-credited on the next load as
+ * offline income, which is deliberately paid at a reduced rate and capped, so
+ * an unwritten session is a session partly given back. Long enough that the
+ * writes stay rare next to the coordinator's own debounce.
+ */
+const SAVE_HEARTBEAT_MS = 30_000;
 
 void startApplication();
 
@@ -62,6 +75,22 @@ async function startApplication(): Promise<void> {
     persistence,
     () => createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now()),
   );
+
+  // Skips the write entirely while authoritative state has not moved — a
+  // backgrounded tab stops advancing the driver, and rewriting an identical
+  // document would be pure cost.
+  let lastPersistedState = driver.state;
+
+  saveHeartbeatId = window.setInterval(() => {
+    if (driver.state === lastPersistedState) {
+      return;
+    }
+
+    lastPersistedState = driver.state;
+    persistence.queueSave(
+      createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now()),
+    );
+  }, SAVE_HEARTBEAT_MS);
 
   if (pendingReward !== null) {
     offlineRewardModal = showOfflineRewardModal({
@@ -106,6 +135,12 @@ if (import.meta.hot) {
     disposed = true;
     offlineRewardModal?.destroy();
     unbindSaveLifecycle?.();
+
+    if (saveHeartbeatId !== null) {
+      window.clearInterval(saveHeartbeatId);
+      saveHeartbeatId = null;
+    }
+
     persistence.cancelScheduledSave();
     repository.close();
     game?.destroy(true);

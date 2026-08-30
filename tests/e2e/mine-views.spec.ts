@@ -20,15 +20,11 @@ import {
   calculateFloorSlotRegion,
   HUD_BACKGROUND,
   LOCKED_PANEL_BACKGROUND,
-  MATERIAL_FILL,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
   PROGRESS_TRACK,
 } from '../../src/game/layout';
-import {
-  calculateMaterialPileSteps,
-  MAX_MATERIAL_PILE_STEPS,
-} from '../../src/game/view-model';
+import { calculateMaterialPileSteps } from '../../src/game/view-model';
 import { createSaveDocument } from '../../src/persistence';
 
 const CANVAS_SELECTOR = '#game-viewport canvas';
@@ -49,8 +45,14 @@ const UNLOCKED_FLOOR_PANEL_PROBE: readonly [number, number] = [212, 266];
 const LOCKED_FLOOR_PANEL_PROBE: readonly [number, number] = [212, 518];
 const FLOOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 350];
 const FLOOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [112, 350];
-const FILLED_PILE_BLOCK_PROBE: readonly [number, number] = [78, 332];
-const EMPTY_PILE_BLOCK_PROBE: readonly [number, number] = [78, 305];
+const FILLED_PILE_PROBE: readonly [number, number] = [78, 325];
+/**
+ * Clear of the widest pile the layout allows, on the same row as the probe
+ * inside it. The pile is one sprite scaled to its slot, so this is what proves
+ * it is drawn at the size the layout chose rather than at the source
+ * artwork's: unscaled, the 128px pile would reach well past this point.
+ */
+const PILE_OVERFLOW_PROBE: readonly [number, number] = [108, 325];
 const ELEVATOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 165];
 const ELEVATOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [100, 165];
 /**
@@ -281,16 +283,11 @@ test('binds four floor views and both shared stages to a known core snapshot', a
   );
 
   // Real pixels prove the views are drawn, that locked floors look different
-  // from unlocked ones, and that bar and pile heights follow the snapshot.
+  // from unlocked ones, and that the bars and the pile follow the snapshot.
   // The dataset above reports what the view objects hold, not what reached the
-  // framebuffer.
-  // The empty-pile probe samples the topmost block, which only proves the pile
-  // stops at the queued amount while floor 1 is short of a full stack.
-  expect(
-    floors[0].materialPileSteps,
-    'empty-pile probe needs floor 1 below a full pile',
-  ).toBeLessThan(MAX_MATERIAL_PILE_STEPS);
-
+  // framebuffer. How far the pile grows with the queue is the dataset's job:
+  // `materialPileSteps` is measured back off the drawn sprite, and the floors
+  // above are already required to disagree on it.
   await expect
     .poll(async () => (await readLogicalPixels(page, [RENDERED_FRAME_PROBE]))[0], {
       message: 'the canvas never presented a frame',
@@ -302,8 +299,8 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     lockedPanel,
     progressFill,
     progressTrack,
-    filledPileBlock,
-    emptyPileBlock,
+    filledPile,
+    pileOverflow,
     elevatorFill,
     elevatorTrack,
   ] = await readLogicalPixels(page, [
@@ -311,8 +308,8 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     LOCKED_FLOOR_PANEL_PROBE,
     FLOOR_PROGRESS_FILL_PROBE,
     FLOOR_PROGRESS_TRACK_PROBE,
-    FILLED_PILE_BLOCK_PROBE,
-    EMPTY_PILE_BLOCK_PROBE,
+    FILLED_PILE_PROBE,
+    PILE_OVERFLOW_PROBE,
     ELEVATOR_PROGRESS_FILL_PROBE,
     ELEVATOR_PROGRESS_TRACK_PROBE,
   ]);
@@ -327,10 +324,11 @@ test('binds four floor views and both shared stages to a known core snapshot', a
   expect(progressTrack, 'extraction progress must not overfill').toBe(
     PROGRESS_TRACK,
   );
-  expect(filledPileBlock, 'material pile must render').toBe(MATERIAL_FILL);
-  expect(emptyPileBlock, 'material pile must stop at the queued amount').toBe(
-    PANEL_BACKGROUND,
-  );
+  expect(filledPile, 'material pile must render').not.toBe(PANEL_BACKGROUND);
+  expect(
+    pileOverflow,
+    'material pile must be drawn at its layout size, not the artwork size',
+  ).toBe(PANEL_BACKGROUND);
   expect(elevatorFill, 'elevator transit progress must be filled').toBe(
     PROGRESS_FILL,
   );

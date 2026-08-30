@@ -59,8 +59,8 @@ export interface MineScrollState {
    *
    * A control's press fires while the pointer is still up-ing, so the flag has
    * to outlive the gesture that set it: the release that ends a swipe must not
-   * also buy the button underneath it. Every pointer-down clears it again, so
-   * the next press starts from a clean slate.
+   * also buy the button underneath it. Every pointer-down that starts a
+   * gesture clears it again, so the next press begins from a clean slate.
    */
   readonly hasDragged: boolean;
 }
@@ -116,11 +116,21 @@ export function createMineScrollState(
  * which is about how far the pointer travelled wherever it began. A swipe that
  * starts on the surface strip and lifts on a floor's button is not a tap on
  * that button.
+ *
+ * A press arriving while another pointer is already down is ignored. Taking it
+ * would hand the gesture to the new finger and drop every remaining move of
+ * the one still swiping, freezing the mine mid-drag until that finger lifts
+ * and presses again; it would also clear the tap suppression the live swipe
+ * had already earned. The first finger down owns the gesture until it ends.
  */
 export function beginMineScrollGesture(
   state: MineScrollState,
   pointer: MineScrollPointer,
 ): MineScrollState {
+  if (state.gesture !== null && state.gesture.pointerId !== pointer.id) {
+    return state;
+  }
+
   return {
     ...state,
     gesture: {

@@ -18,7 +18,6 @@ import {
   CYCLE_MARKER_FILL,
   HUD_BACKGROUND,
   MATERIAL_BACKLOG_FILL,
-  MATERIAL_FILL,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
 } from '../../src/game/layout';
@@ -41,8 +40,8 @@ const FIXTURE_TIMESTAMP_MS = FIXED_TIME.getTime();
  * store stays 360x640, so these logical coordinates hold at any host viewport.
  * Each point sits where the sampled object is the topmost drawn thing.
  */
-const FLOOR_ONE_PILE_BOTTOM_PROBE: readonly [number, number] = [78, 332];
-const FLOOR_ONE_PILE_TOP_PROBE: readonly [number, number] = [78, 305];
+const FLOOR_ONE_PILE_BOTTOM_PROBE: readonly [number, number] = [78, 325];
+const FLOOR_ONE_PILE_TOP_PROBE: readonly [number, number] = [78, 311];
 const ELEVATOR_QUEUE_BLOCK_PROBE: readonly [number, number] = [28, 155];
 const WAREHOUSE_QUEUE_BLOCK_PROBE: readonly [number, number] = [200, 155];
 const ELEVATOR_TRACK_START_PROBE: readonly [number, number] = [22, 165];
@@ -297,6 +296,66 @@ test('shows a full pile on every shaft while transport is the slowest stage', as
   expect(errors).toEqual([]);
 });
 
+/**
+ * The backlog colour is the one production signal carried by pixels alone, so
+ * it has to reach the framebuffer under either renderer.
+ *
+ * It used to be a fill-mode tint, which Phaser implements in WebGL only: on a
+ * host that falls back to Canvas the recolour silently did nothing, and every
+ * shaft looked clear while the mine was jammed. `Phaser.AUTO` picks the
+ * renderer, and `BootScene` reports which one it got, so this run pins the
+ * fallback and reads the same pixels the WebGL run does.
+ */
+test('marks a backlog in the backlog colour under the Canvas renderer', async ({
+  page,
+}) => {
+  const errors = collectBrowserErrors(page);
+
+  await bootPausedFixture(page, createTransportLimitedState(), {
+    withoutWebgl: true,
+  });
+
+  // Without this the run silently proves nothing: it would be a second WebGL
+  // pass asserting what the test above already asserts.
+  await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute(
+    'data-renderer',
+    'canvas',
+  );
+
+  const floors = await readRenderedFloors(page);
+
+  floors.forEach((floor, index) => {
+    expect(floor.isPileBackedUp, `floor ${index + 1} backlog colour`).toBe(true);
+  });
+
+  const [pileBottom, pileTop, warehouseQueueBlock] = await readLogicalPixels(
+    page,
+    [
+      FLOOR_ONE_PILE_BOTTOM_PROBE,
+      FLOOR_ONE_PILE_TOP_PROBE,
+      WAREHOUSE_QUEUE_BLOCK_PROBE,
+    ],
+  );
+
+  expect(pileBottom, 'a backed-up pile must render in the backlog colour').toBe(
+    MATERIAL_BACKLOG_FILL,
+  );
+  expect(pileTop, 'a backed-up pile must be drawn to full height').toBe(
+    MATERIAL_BACKLOG_FILL,
+  );
+  // The stage downstream is not backed up, so it must still be drawn in the
+  // artwork's own colours: recolouring everything would say as little as
+  // recolouring nothing.
+  expect(warehouseQueueBlock, 'a clear queue must keep its artwork').not.toBe(
+    MATERIAL_BACKLOG_FILL,
+  );
+  expect(warehouseQueueBlock, 'a clear queue must still render').not.toBe(
+    PANEL_BACKGROUND,
+  );
+
+  expect(errors).toEqual([]);
+});
+
 test('shows a full warehouse queue while conversion is the slowest stage', async ({
   page,
 }) => {
@@ -338,8 +397,11 @@ test('shows a full warehouse queue while conversion is the slowest stage', async
   ).toBe(MATERIAL_BACKLOG_FILL);
   // The two piles must be told apart on screen, or "where the backlog is"
   // would not be readable at all.
-  expect(floorPile, 'a clear shaft must keep the normal pile colour').toBe(
-    MATERIAL_FILL,
+  expect(floorPile, 'a clear shaft must keep its generated gold artwork').not.toBe(
+    PANEL_BACKGROUND,
+  );
+  expect(floorPile, 'a clear shaft must not use the backlog treatment').not.toBe(
+    MATERIAL_BACKLOG_FILL,
   );
 
   expect(errors).toEqual([]);
@@ -457,7 +519,11 @@ async function runAnimationSpeedTrial(
 }
 
 /** Seeds one valid version-1 save and boots the real application against it. */
-async function bootPausedFixture(page: Page, state: GameState): Promise<void> {
+async function bootPausedFixture(
+  page: Page,
+  state: GameState,
+  options: { readonly withoutWebgl?: boolean } = {},
+): Promise<void> {
   const saveDocument = createSaveDocument(
     state,
     BASE_GAME_BALANCE,
@@ -467,6 +533,11 @@ async function bootPausedFixture(page: Page, state: GameState): Promise<void> {
   await page.clock.install({ time: FIXED_TIME });
   await page.clock.setFixedTime(FIXED_TIME);
   await installPixelProbeSupport(page);
+
+  if (options.withoutWebgl === true) {
+    await disableWebgl(page);
+  }
+
   await routeMainModule(
     page,
     `
@@ -529,6 +600,31 @@ async function routeMainModule(page: Page, body: string): Promise<void> {
 
     pending = false;
     await route.fulfill({ body, contentType: 'application/javascript' });
+  });
+}
+
+/**
+ * Refuses every WebGL context, which is what makes `Phaser.AUTO` fall back to
+ * its Canvas renderer — the same thing a blocklisted GPU or an embedded
+ * webview does to a real player.
+ */
+async function disableWebgl(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+
+    HTMLCanvasElement.prototype.getContext = function patchedGetContext(
+      this: HTMLCanvasElement,
+      contextType: string,
+      attributes?: unknown,
+    ) {
+      // `experimental-webgl` included: Phaser's feature detection falls back
+      // to that alias, and Chromium still honours it.
+      if (contextType.replace('experimental-', '').startsWith('webgl')) {
+        return null;
+      }
+
+      return originalGetContext.call(this, contextType, attributes);
+    } as typeof HTMLCanvasElement.prototype.getContext;
   });
 }
 

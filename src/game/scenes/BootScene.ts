@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
 
+import { createBacklogTextures } from '../assets/backlogTextures';
+import {
+  PLACEHOLDER_ASSETS,
+  PLACEHOLDER_TEXTURES,
+} from '../assets/placeholderAssets';
 import {
   HudView,
   MineFloorView,
@@ -141,7 +146,18 @@ export class BootScene extends Phaser.Scene {
       options.animationSpeedMultiplier ?? DEFAULT_ANIMATION_SPEED_MULTIPLIER;
   }
 
+  /** Loads the original Step 32 placeholder family before any view is built. */
+  public preload(): void {
+    for (const [key, path] of PLACEHOLDER_ASSETS) {
+      this.load.image(key, path);
+    }
+  }
+
   public create(): void {
+    // Before any view, because the material sprites are built from the loaded
+    // artwork and every floor and stage binds one on its first snapshot.
+    createBacklogTextures(this);
+
     const layout = calculateMineLayout(this.scale.width, this.scale.height);
 
     const fixedLayers = [
@@ -449,6 +465,7 @@ export class BootScene extends Phaser.Scene {
         height: panelHeight,
       },
       {
+        textureKey: PLACEHOLDER_TEXTURES.elevator,
         onUpgrade: () => {
           this.#requestPurchase(this.#viewModel.elevator.upgradeControl);
         },
@@ -463,6 +480,7 @@ export class BootScene extends Phaser.Scene {
         height: panelHeight,
       },
       {
+        textureKey: PLACEHOLDER_TEXTURES.warehouse,
         onUpgrade: () => {
           this.#requestPurchase(this.#viewModel.warehouse.upgradeControl);
         },

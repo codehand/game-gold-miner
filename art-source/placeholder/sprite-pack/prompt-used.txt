@@ -1,0 +1,20 @@
+Use case: stylized-concept
+Asset type: original 2D game placeholder sprite pack for a 360x640 portrait idle mining game
+Primary request: Create one exact 3x3 sprite sheet with nine distinct isolated assets, one centered asset per cell.
+Cell order, left to right, top to bottom:
+1) friendly orange cat miner wearing a teal hard hat and holding a small pickaxe, side-facing, full body
+2) compact blue steel mine elevator cage with a gold pulley and short cable
+3) small timber-and-blue-metal warehouse shed with a gold receiving chute
+4) bright chunky gold ore pile with three readable nuggets
+5) sturdy dark-blue padlock with a gold keyhole
+6) bold gold upward upgrade arrow mounted on a small blue hexagonal badge
+7) single gold coin with a simple paw-print emboss
+8) compact blue mine cart holding gold nuggets
+9) small blue conveyor crate with one gold ore nugget
+Reference image role: geometry layout guide only. Use it only for the invisible 3x3 slot count, equal spacing, centering, and safe padding. Do not reproduce guide boxes, lines, marks, labels, borders, white background, or separators.
+View: clean side/three-quarter game sprite view, consistent camera and scale family
+Art direction: original family; rounded chunky silhouettes, clean HD 2D cartoon rendering, dark navy outline, two or three value bands, minimal texture, upper-left soft highlight, friendly mobile-game readability; palette anchored by navy #17233a, steel blue #41658a, teal #2ea9a1, warm gold #f4bd3e, orange cat fur #d9823b, cream #f4ead5
+Game-scale read: every subject must remain immediately recognizable when displayed around 28-48 pixels tall; exaggerate silhouette-defining parts and omit tiny detail
+Technical output: square 3x3 grid, every asset fully contained inside the central 60% of its cell with generous padding, same visual density, solid exact #FF00FF background across the entire image
+Constraints: exactly one asset in each cell in the specified order; no overlap across cells; consistent outline, palette, lighting, and material language; no shadows outside each subject; no transparency because the magenta background will be removed deterministically
+Avoid: text, numbers, labels, UI panels, scenery, ground planes, grid lines, cell borders, mockup frames, duplicate subjects, cropped edges, gradients in the background, signatures, watermarks, logos, reference branding

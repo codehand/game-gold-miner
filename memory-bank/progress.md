@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 31 is implemented with passing automated checks and is awaiting user validation. Step 32 has not started and remains blocked.
+**Phase:** Implementation Plan Step 32 is implemented with passing automated checks and is awaiting user validation. Step 33 has not started and remains blocked.
 
 ## Completed
 
@@ -130,6 +130,11 @@
 - Step 31 review finding: the first implementation tracked only presses that began over the mine, so a swipe starting on the surface strip and lifting on a floor's button still bought a level — an accidental purchase from a gesture, which is what the step forbids. Every press is now tracked, and whether it scrolls became a separate question from whether it stays a tap. A browser test drives that swipe.
 - Step 31 test finding: the browser fixture routes `/src/main.ts` to its own module, which does not import `src/style.css` unless it says so, so a `touch-action` assertion read `auto` against a stylesheet that had never loaded. The fixture now imports the stylesheet, which also boots it closer to the real application.
 - Step 31 mutation verification: nine mutations fail with named assertions — dropping the tap suppression (`a scroll must not spend gold`), publishing bounds that ignore the camera scroll (`a floor control moves with the content it is drawn on`, plus the reveal assertion), a zero drag threshold (`a wobbling tap must still buy one level` and two unit tests), a camera that never follows the scroll state (`the bottom of the mine must come into view`), a wheel that ignores the mine region (`a wheel over the HUD must not scroll the mine`), `isPressable` reduced to visibility (`the deepest floor starts below the mine viewport`), a 20-pixel shared-stage control (the boot-time touch-target assertion), removing `touch-action` (`the canvas must own its touch gestures`), and suppressing a tap only for gestures that began over the mine (`a swipe must not spend gold`).
+- Step 31 was validated by the user through explicit authorization to proceed with Step 32.
+- Step 32 implemented on 2026-08-30: an original clean-HD cartoon placeholder family now replaces the debug miner and material shapes and gives the HUD, elevator, warehouse, locked floors, queued material, and purchase controls their own matching visual symbols. The family contains nine semantic 128×128 RGBA PNGs generated through the repository's required asset skills and built-in image generation, then chroma-keyed and sliced deterministically. English labels, prices, progress, input regions, and feedback remain code-native.
+- Step 32 asset governance: `public/assets/placeholder/art-direction-brief.md` locks the navy/steel-blue/teal/warm-gold visual system and native-scale constraints; `asset-manifest.json` records generation, roles, and the absence of third-party assets or external branding. Raw generation, prompt, processed transparent sheet, individual frames, GIF, and QC metadata are retained under `art-source/placeholder/`, outside the production public directory.
+- Step 32 visual evidence: direct browser review passed at exact 360×640 scale and at a reduced 320×568 phone viewport. Miner, elevator, warehouse, gold, locked state, and upgrade state remain distinguishable, touch controls remain readable, and fresh boots report no browser warnings or errors. Backlogged gold/crates switch to a solid red silhouette while normal queues retain the illustrated artwork; the silhouette is a texture generated once from the source sprite at boot, because Phaser tints under WebGL only and the cue has to survive a Canvas fallback.
+- Step 32 automated evidence: 277 unit tests and 26 Chromium E2E tests pass. Three new asset tests pin one runtime file per semantic texture, exact 128×128 RGBA PNG structure, generated provenance, and no third-party branding. Existing real-framebuffer probes were retargeted from debug blocks to generated gold silhouettes and still prove ordinary/empty/full/backlogged states. Lint, the strict production build, `git diff --check`, and raster alpha/size QA pass.
 
 ## Implementation Step Status
 
@@ -165,12 +170,12 @@
 | 28 — Connect the HUD | Complete | User validated the passing Step 28 checks and authorized Step 29. |
 | 29 — Connect upgrade controls | Complete | User validated the passing Step 29 checks and authorized Step 30. |
 | 30 — Connect floor unlock controls | Complete | User validated the passing Step 30 checks and authorized Step 31. |
-| 31 — Add mine scrolling and one-thumb input | Implemented / awaiting user validation | Two hundred seventy-three unit and twenty-six Chromium tests pass; seven browser tests at a phone viewport scroll the mine by drag and wheel with the fixed layers unmoved, buy before and after scrolling including from a control only scrolling reveals, refuse to buy from a drag or a swipe, keep a wobbling tap, and require 44×44 targets; nine mutations fail with named assertions. |
-| 32 — Add original placeholder presentation | Not started / blocked | Must not begin until the user validates Step 31. |
+| 31 — Add mine scrolling and one-thumb input | Complete | User validated Step 31 and authorized Step 32. |
+| 32 — Add original placeholder presentation | Implemented / awaiting user validation | 277 unit and 26 Chromium tests pass; nine original generated RGBA sprites have provenance and strict size/alpha checks, and browser review passes at 360×640 and 320×568 with no warnings or errors. |
+| 33 — Add the complete player-journey E2E test | Not started / blocked | Must not begin until the user validates Step 32. |
 
 ## Not Started
 
-- Original placeholder sprites, colours, and labels replacing the debug rectangles.
 - Expanded manager, boost, and gift-drop systems after the base milestone.
 - Original art, sprite atlases, audio, and visual polish.
 - Mobile performance and Telegram integration testing.

@@ -20,7 +20,7 @@ import {
   MINE_MIN_HEIGHT,
   MIN_TOUCH_TARGET_PX,
   LOCKED_PANEL_BACKGROUND,
-  MATERIAL_FILL,
+  MATERIAL_BACKLOG_FILL,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
   PROGRESS_TRACK,
@@ -249,7 +249,7 @@ describe('palette', () => {
       LOCKED_PANEL_BACKGROUND,
       PROGRESS_TRACK,
       PROGRESS_FILL,
-      MATERIAL_FILL,
+      MATERIAL_BACKLOG_FILL,
     ];
 
     expect(new Set(colors).size).toBe(colors.length);
@@ -263,7 +263,7 @@ describe('palette', () => {
   });
 
   it('derives the numeric fill Phaser needs from the hex source of truth', () => {
-    expect(toFillColor(HUD_BACKGROUND)).toBe(0x0f172a);
+    expect(toFillColor(HUD_BACKGROUND)).toBe(0x132238);
     expect(toFillColor('#000000')).toBe(0x000000);
     expect(toFillColor('#ffffff')).toBe(0xffffff);
   });

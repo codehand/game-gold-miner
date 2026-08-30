@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 
+import { PLACEHOLDER_TEXTURES } from '../assets/placeholderAssets';
 import {
   toFillColor,
   DIVIDER,
@@ -29,6 +30,8 @@ const COLOR_HUD_BACKGROUND = toFillColor(HUD_BACKGROUND);
 const COLOR_DIVIDER = toFillColor(DIVIDER);
 
 const HUD_INSET_X = 16;
+const HUD_TEXT_INSET_X = 42;
+const HUD_ICON_Y = 38;
 const LABEL_Y = 16;
 const VALUE_Y = 32;
 const DIVIDER_HEIGHT = 2;
@@ -66,11 +69,22 @@ export class HudView {
       )
       .setOrigin(0, 0);
 
-    this.#goldLabel = this.#createLabel(scene, HUD_INSET_X, ORIGIN_LEFT);
-    this.#goldValue = this.#createValue(scene, HUD_INSET_X, ORIGIN_LEFT);
+    const goldIcon = scene.add
+      .image(HUD_INSET_X + 10, HUD_ICON_Y, PLACEHOLDER_TEXTURES.goldCoin)
+      .setDisplaySize(28, 28);
+    const incomeIcon = scene.add
+      .image(
+        region.width - HUD_INSET_X - 10,
+        HUD_ICON_Y,
+        PLACEHOLDER_TEXTURES.mineCart,
+      )
+      .setDisplaySize(32, 32);
+
+    this.#goldLabel = this.#createLabel(scene, HUD_TEXT_INSET_X, ORIGIN_LEFT);
+    this.#goldValue = this.#createValue(scene, HUD_TEXT_INSET_X, ORIGIN_LEFT);
     // Anchored to the right edge so a long value grows inwards rather than off
     // the screen.
-    const incomeX = region.width - HUD_INSET_X;
+    const incomeX = region.width - HUD_TEXT_INSET_X;
 
     this.#incomeLabel = this.#createLabel(scene, incomeX, ORIGIN_RIGHT);
     this.#incomeValue = this.#createValue(scene, incomeX, ORIGIN_RIGHT);
@@ -78,6 +92,8 @@ export class HudView {
     this.#root.add([
       background,
       divider,
+      goldIcon,
+      incomeIcon,
       this.#goldLabel,
       this.#goldValue,
       this.#incomeLabel,
