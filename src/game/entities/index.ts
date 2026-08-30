@@ -15,3 +15,4 @@ export {
   type PurchaseControlViewOptions,
   type RenderedPurchaseControlState,
 } from './PurchaseControlView';
+export { setTextColor } from './setTextColor';

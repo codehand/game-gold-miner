@@ -29,6 +29,7 @@ import {
   PurchaseControlView,
   type RenderedPurchaseControlState,
 } from './PurchaseControlView';
+import { setTextColor } from './setTextColor';
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedFloorState {
@@ -353,9 +354,9 @@ export class MineFloorView {
     );
     this.#badgeLabel.setText(String(floor.floorNumber));
     this.#title.setText(floor.floorLabel);
-    this.#title.setColor(floor.isUnlocked ? TEXT_PRIMARY : TEXT_DISABLED);
+    setTextColor(this.#title, floor.isUnlocked ? TEXT_PRIMARY : TEXT_DISABLED);
     this.#level.setText(floor.levelLabel);
-    this.#level.setColor(floor.isUnlocked ? TEXT_MUTED : TEXT_DISABLED);
+    setTextColor(this.#level, floor.isUnlocked ? TEXT_MUTED : TEXT_DISABLED);
 
     const locked = floor.statusLabel !== null;
     this.#status.setText(floor.statusLabel ?? '').setVisible(locked);
@@ -394,8 +395,11 @@ export class MineFloorView {
     // knows whether to keep upgrading or keep earning.
     this.#unlockRequirement
       .setText(floor.unlockRequirementLabel ?? '')
-      .setVisible(floor.unlockRequirementLabel !== null)
-      .setColor(floor.isUnlockRequirementMet ? TEXT_MUTED : TEXT_WARNING);
+      .setVisible(floor.unlockRequirementLabel !== null);
+    setTextColor(
+      this.#unlockRequirement,
+      floor.isUnlockRequirementMet ? TEXT_MUTED : TEXT_WARNING,
+    );
 
     this.#upgradeControl.applySnapshot(floor.upgradeControl);
     this.#unlockControl.applySnapshot(floor.unlockControl);

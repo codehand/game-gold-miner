@@ -17,6 +17,7 @@ import type {
   PurchaseControlViewModel,
   PurchaseFeedbackViewModel,
 } from '../view-model';
+import { setTextColor } from './setTextColor';
 
 /** What the control actually put on screen, read back from its own objects. */
 export interface RenderedPurchaseControlState {
@@ -244,19 +245,5 @@ export class PurchaseControlView {
         fontStyle: 'bold',
       })
       .setOrigin(originX, 0.5);
-  }
-}
-
-/**
- * Writes a text colour only when it differs from the one already applied.
- *
- * `Text.setText` skips an unchanged value, but `Text.setColor` does not: it
- * re-rasterizes the text's own canvas and re-uploads its texture on every
- * call. On the every-frame render path that is a full repaint of each caption
- * sixty times a second to produce the pixels already on screen.
- */
-function setTextColor(text: Phaser.GameObjects.Text, color: string): void {
-  if (text.style.color !== color) {
-    text.setColor(color);
   }
 }

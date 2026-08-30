@@ -257,9 +257,15 @@ Implementation Plan Step 31 is implemented and its automated validation passes. 
 2. Begin Step 32 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
+- Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.
+- Confirmed as deliberate that a backgrounded tab is credited at full pipeline rate while a closed one is credited through the 50% offline efficiency, so the same two-hour absence is worth about twice as much with the tab left open. Documented the asymmetry on `MAX_CATCH_UP_MS` and pinned the ratio in `tests/unit/simulation-time.test.ts`, verified by mutation to fail if either side changes.
+- Extracted the `Text.setColor` repaint guard into a shared `setTextColor` helper and applied it to the mine-floor and shared-stage views, which were repainting fourteen captions per simulation tick to produce the colours already on screen.
+- Recorded the measured worst-case catch-up cost — 72,000 ticks in roughly 50 ms with four floors open on a development machine — on `MAX_CATCH_UP_MS`, so a future change to the cap can weigh the resume hitch it buys.
+- Observed but did not change: with all four floors open the real pipeline delivers about 90% of `calculateMineProductionRates().effectiveProductionPerSecond`, steady across 15-minute, 1-hour, and 2-hour windows, because round-robin pickup and per-cycle capacities quantize what the analytic rate assumes is continuous. The HUD income estimate and the saved offline rate snapshot both inherit that overstatement.
 
 ## Open Questions
 
 - Validation and refinement of the provisional balance curve through Step 19 and playtesting.
+- Whether `calculateMineProductionRates` should model the round-robin and per-cycle quantization that makes real four-floor throughput about 10% below its estimate, or whether the estimate stays an upper bound the HUD and the offline snapshot both accept.
 - Final art-production workflow and original visual identity.
 - Target Telegram launch requirements beyond the prototype.

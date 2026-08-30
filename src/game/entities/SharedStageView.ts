@@ -28,6 +28,7 @@ import {
   PurchaseControlView,
   type RenderedPurchaseControlState,
 } from './PurchaseControlView';
+import { setTextColor } from './setTextColor';
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedSharedStageState {
@@ -266,7 +267,7 @@ export class SharedStageView {
     this.#capacity.setText(stage.capacityLabel);
     this.#queue.setText(stage.queueLabel);
     this.#status.setText(stage.statusLabel);
-    this.#status.setColor(stage.isBackedUp ? TEXT_WARNING : TEXT_MUTED);
+    setTextColor(this.#status, stage.isBackedUp ? TEXT_WARNING : TEXT_MUTED);
 
     const queueColor = stage.isBackedUp ? COLOR_MATERIAL_BACKLOG : COLOR_MATERIAL;
 

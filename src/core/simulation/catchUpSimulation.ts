@@ -6,10 +6,21 @@ import { advanceSimulation, MAX_FOREGROUND_DELTA_MS } from './advanceSimulation'
  *
  * The bound exists because catch-up runs inside the frame that discovers the
  * gap, so an unbounded walk would freeze the tab for as long as the player was
- * away. Two hours matches the horizon `offlineIncome.capDurationMs` already
- * applies to away time, so leaving the tab open and closing it are capped
- * alike; time past the cap is consumed without being credited, exactly as a
- * long absence is.
+ * away. Two hours is what the cap costs at its worst: with all four floors
+ * open it walks 72,000 ticks in roughly 50 ms on a development machine, so a
+ * mid-range phone pays a few hundred milliseconds once, on the frame the tab
+ * comes back. Raising the cap raises that hitch in proportion.
+ *
+ * The value matches `offlineIncome.capDurationMs`, so no absence is credited
+ * for longer than two hours however the player spent it, and time past the cap
+ * is consumed without being credited exactly as a long absence is.
+ *
+ * Only the horizon is shared, not the payout. Offline income scales by
+ * `offlineIncome.efficiency`; catch-up runs the real pipeline at full rate, so
+ * two hours in a backgrounded tab is worth about twice two hours with the tab
+ * closed. That is deliberate — a tab left open is treated as online, as the
+ * genre generally does — and `tests/unit/simulation-time.test.ts` pins the
+ * ratio so it cannot drift into being true by accident.
  */
 export const MAX_CATCH_UP_MS = 2 * 60 * 60 * 1_000;
 

@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   advanceSimulation,
+  calculateMineProductionRates,
+  calculateOfflineIncome,
   catchUpSimulation,
   createInitialGameState,
+  createMineFloorState,
   MAX_CATCH_UP_MS,
   MAX_FOREGROUND_DELTA_MS,
   SIMULATION_STEP_MS,
@@ -62,6 +65,65 @@ describe('fixed-step simulation time', () => {
     expect(state.simulationRemainderMs).toBe(0);
     expect(state.lastUpdateTimestampMs).toBe(TIMESTAMP_MS + elapsedMs);
     expectProductionState(state, initialState);
+  });
+
+  /**
+   * The asymmetry this pins is deliberate, and cheap to erase by accident: a
+   * backgrounded tab is treated as online and credited at full rate, while a
+   * closed one is credited through `offlineIncome.efficiency`. Applying the
+   * efficiency to catch-up, or dropping it from offline income, would collapse
+   * the ratio to about one and pass every other test in this file.
+   *
+   * The horizon is asserted exactly because it is shared by construction. The
+   * ratio is bracketed rather than fixed at `1 / efficiency`, because the two
+   * sides are not the same calculation: offline income multiplies an analytic
+   * rate by time, while catch-up runs the real pipeline, whose round-robin
+   * pickup and per-cycle capacities quantize it to roughly ninety percent of
+   * that rate once all four floors compete for one elevator.
+   */
+  it('credits a backgrounded tab about twice a closed one over the same gap', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const { efficiency } = BASE_GAME_BALANCE.offlineIncome;
+
+    expect(MAX_CATCH_UP_MS).toBe(BASE_GAME_BALANCE.offlineIncome.capDurationMs);
+
+    const states: readonly (readonly [string, GameState])[] = [
+      ['one open floor', initialState],
+      [
+        'every floor open',
+        {
+          ...initialState,
+          floors: initialState.floors.map((_, index) => {
+            return createMineFloorState(BASE_GAME_BALANCE.floors[index], true);
+          }),
+        },
+      ],
+    ];
+
+    for (const [name, state] of states) {
+      const backgrounded = Number(
+        catchUpSimulation(state, MAX_CATCH_UP_MS).gold.serialize(),
+      );
+      const closed = Number(
+        calculateOfflineIncome(
+          state,
+          TIMESTAMP_MS,
+          TIMESTAMP_MS + MAX_CATCH_UP_MS,
+          calculateMineProductionRates(state, BASE_GAME_BALANCE)
+            .effectiveProductionPerSecond,
+          BASE_GAME_BALANCE.offlineIncome,
+        ).reward.serialize(),
+      );
+
+      expect(closed, name).toBeGreaterThan(0);
+      // Comfortably above one, and no higher than the analytic ceiling the
+      // efficiency implies. Both bounds fail the moment either side changes.
+      expect(backgrounded / closed, name).toBeGreaterThan(1.5);
+      expect(backgrounded / closed, name).toBeLessThanOrEqual(1 / efficiency + 0.01);
+    }
   });
 
   it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
