@@ -10,16 +10,27 @@
  * the HUD read alike as magnitudes grow.
  */
 
-import type { BaseGameBalanceConfig } from '../../config';
 import type {
-  ElevatorState,
-  GameNumber,
-  GameState,
-  MineFloorState,
-  WarehouseState,
+  BaseGameBalanceConfig,
+  MineFloorConfig,
+  SharedStageConfig,
+} from '../../config';
+import {
+  calculateElevatorUpgradeCost,
+  calculateMineShaftUpgradeCost,
+  calculateWarehouseUpgradeCost,
+  type ElevatorState,
+  type GameNumber,
+  type GameState,
+  type MineFloorState,
+  type WarehouseState,
 } from '../../core';
 import { formatAmount } from './formatAmount';
 import { createHudViewModel, type HudViewModel } from './hudViewModel';
+import {
+  createUpgradeControlViewModel,
+  type UpgradeControlViewModel,
+} from './upgradeControl';
 
 /** Discrete pile heights, so a growing bottleneck is visible at a glance. */
 export const MAX_MATERIAL_PILE_STEPS = 4;
@@ -53,9 +64,8 @@ export interface MineFloorViewModel {
   readonly isMaterialBackedUp: boolean;
   /** `Backed up` while the pile is full, otherwise `null`. */
   readonly backlogLabel: string | null;
-  /** Step 29 turns this into an affordable/unaffordable interactive control. */
-  readonly showsUpgradeControl: boolean;
-  readonly upgradeControlLabel: string;
+  /** The shaft-upgrade control, or `null` for a locked floor that has none. */
+  readonly upgradeControl: UpgradeControlViewModel | null;
 }
 
 export interface SharedStageViewModel {
@@ -77,7 +87,8 @@ export interface SharedStageViewModel {
   /** Normalized transit or conversion progress in `[0, 1)`. */
   readonly progress: number;
   readonly progressLabel: string;
-  readonly upgradeControlLabel: string;
+  /** A shared stage is always upgradeable, so this is never `null`. */
+  readonly upgradeControl: UpgradeControlViewModel;
 }
 
 export interface MineViewModel {
@@ -87,9 +98,27 @@ export interface MineViewModel {
   readonly warehouse: SharedStageViewModel;
 }
 
+export interface MineFloorViewModelInput {
+  readonly floor: MineFloorState;
+  /** This floor's balance data, which its upgrade price is derived from. */
+  readonly config: MineFloorConfig;
+  /** Measures the floor's pile: what one elevator trip removes. */
+  readonly elevatorCapacity: GameNumber;
+  /** The spendable balance, which decides whether the control is affordable. */
+  readonly gold: GameNumber;
+}
+
+export interface SharedStageViewModelInput<TStage> {
+  readonly stage: TStage;
+  readonly config: SharedStageConfig;
+  readonly gold: GameNumber;
+}
+
 /**
  * Balance data is required because the HUD's income estimate is derived from
- * the same production rates the core calculates, never from observed frames.
+ * the same production rates the core calculates, never from observed frames,
+ * and because every upgrade control prices itself through the same core
+ * function the purchase command charges.
  */
 export function createMineViewModel(
   state: GameState,
@@ -97,18 +126,33 @@ export function createMineViewModel(
 ): MineViewModel {
   return {
     hud: createHudViewModel(state, balance),
-    floors: state.floors.map((floor) => {
-      return createMineFloorViewModel(floor, state.elevator.capacity);
+    floors: state.floors.map((floor, index) => {
+      return createMineFloorViewModel({
+        floor,
+        config: balance.floors[index],
+        elevatorCapacity: state.elevator.capacity,
+        gold: state.gold,
+      });
     }),
-    elevator: createElevatorViewModel(state.elevator),
-    warehouse: createWarehouseViewModel(state.warehouse),
+    elevator: createElevatorViewModel({
+      stage: state.elevator,
+      config: balance.elevator,
+      gold: state.gold,
+    }),
+    warehouse: createWarehouseViewModel({
+      stage: state.warehouse,
+      config: balance.warehouse,
+      gold: state.gold,
+    }),
   };
 }
 
-export function createMineFloorViewModel(
-  floor: MineFloorState,
-  elevatorCapacity: GameNumber,
-): MineFloorViewModel {
+export function createMineFloorViewModel({
+  floor,
+  config,
+  elevatorCapacity,
+  gold,
+}: MineFloorViewModelInput): MineFloorViewModel {
   assertNormalizedProgress(floor.extractionProgress, `floor ${floor.id} extraction`);
   assertDisplayableLevel(floor.mineShaftLevel, `floor ${floor.id}`);
 
@@ -132,14 +176,23 @@ export function createMineFloorViewModel(
     materialPileSteps: pileSteps,
     isMaterialBackedUp: backedUp,
     backlogLabel: backedUp ? 'Backed up' : null,
-    showsUpgradeControl: floor.isUnlocked,
-    upgradeControlLabel: 'Upgrade',
+    // A locked floor has no shaft to upgrade; Step 30 gives it an unlock
+    // control of its own instead.
+    upgradeControl: floor.isUnlocked
+      ? createUpgradeControlViewModel(
+          { type: 'mine-shaft', floorId: floor.id },
+          calculateMineShaftUpgradeCost(floor, config),
+          gold,
+        )
+      : null,
   };
 }
 
-export function createElevatorViewModel(
-  elevator: ElevatorState,
-): SharedStageViewModel {
+export function createElevatorViewModel({
+  stage: elevator,
+  config,
+  gold,
+}: SharedStageViewModelInput<ElevatorState>): SharedStageViewModel {
   assertNormalizedProgress(elevator.transitProgress, 'elevator transit');
   assertDisplayableLevel(elevator.level, 'elevator');
 
@@ -163,13 +216,19 @@ export function createElevatorViewModel(
     statusLabel: isRunning ? 'In transit' : 'Idle',
     progress: elevator.transitProgress,
     progressLabel: formatProgress(elevator.transitProgress),
-    upgradeControlLabel: 'Upgrade',
+    upgradeControl: createUpgradeControlViewModel(
+      { type: 'elevator' },
+      calculateElevatorUpgradeCost(elevator, config),
+      gold,
+    ),
   };
 }
 
-export function createWarehouseViewModel(
-  warehouse: WarehouseState,
-): SharedStageViewModel {
+export function createWarehouseViewModel({
+  stage: warehouse,
+  config,
+  gold,
+}: SharedStageViewModelInput<WarehouseState>): SharedStageViewModel {
   assertNormalizedProgress(warehouse.conversionProgress, 'warehouse conversion');
   assertDisplayableLevel(warehouse.level, 'warehouse');
 
@@ -193,7 +252,11 @@ export function createWarehouseViewModel(
     statusLabel: describeWarehouseStatus(isRunning, isBackedUp),
     progress: warehouse.conversionProgress,
     progressLabel: formatProgress(warehouse.conversionProgress),
-    upgradeControlLabel: 'Upgrade',
+    upgradeControl: createUpgradeControlViewModel(
+      { type: 'warehouse' },
+      calculateWarehouseUpgradeCost(warehouse, config),
+      gold,
+    ),
   };
 }
 

@@ -3,7 +3,6 @@ import Phaser from 'phaser';
 import {
   toFillColor,
   BADGE_BACKGROUND,
-  CONTROL_BACKGROUND,
   FONT_FAMILY,
   LOCKED_PANEL_BACKGROUND,
   MATERIAL_BACKLOG_FILL,
@@ -23,7 +22,12 @@ import {
   calculateMinerSwingOffsetPx,
   MAX_MATERIAL_PILE_STEPS,
   type MineFloorViewModel,
+  type UpgradeFeedbackViewModel,
 } from '../view-model';
+import {
+  UpgradeControlView,
+  type RenderedUpgradeControlState,
+} from './UpgradeControlView';
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedFloorState {
@@ -46,14 +50,16 @@ export interface RenderedFloorState {
    * only: it is derived from the animation clock and never from production.
    */
   readonly minerSwingOffsetPx: number;
+  /** Locked floors have no shaft to upgrade, so they show no control. */
   readonly showsUpgradeControl: boolean;
+  /** The control's own read-back: price, affordability, and press feedback. */
+  readonly upgradeControl: RenderedUpgradeControlState;
   readonly isLockedAppearance: boolean;
 }
 
 const COLOR_PANEL = toFillColor(PANEL_BACKGROUND);
 const COLOR_LOCKED_PANEL = toFillColor(LOCKED_PANEL_BACKGROUND);
 const COLOR_BADGE = toFillColor(BADGE_BACKGROUND);
-const COLOR_CONTROL = toFillColor(CONTROL_BACKGROUND);
 const COLOR_PROGRESS_TRACK = toFillColor(PROGRESS_TRACK);
 const COLOR_PROGRESS_FILL = toFillColor(PROGRESS_FILL);
 const COLOR_MATERIAL = toFillColor(MATERIAL_FILL);
@@ -86,6 +92,11 @@ const UPGRADE_HEIGHT = 32;
 const UPGRADE_INSET_X = 12;
 const UPGRADE_Y = 56;
 
+export interface MineFloorViewOptions {
+  /** Called when the shaft-upgrade control is pressed. */
+  readonly onUpgrade: () => void;
+}
+
 /**
  * One reusable mine-floor view bound to a read-only snapshot.
  *
@@ -96,7 +107,8 @@ const UPGRADE_Y = 56;
  *
  * It renders the extraction stage of the production chain: the progress bar and
  * pile follow authoritative values, while `applyAnimation` moves the pick from
- * the cosmetic clock alone.
+ * the cosmetic clock alone. Its shaft-upgrade control is a `UpgradeControlView`
+ * that reports presses back to the scene.
  */
 export class MineFloorView {
   readonly #root: Phaser.GameObjects.Container;
@@ -114,12 +126,15 @@ export class MineFloorView {
   readonly #progressTrack: Phaser.GameObjects.Rectangle;
   readonly #progressFill: Phaser.GameObjects.Rectangle;
   readonly #progressLabel: Phaser.GameObjects.Text;
-  readonly #upgradeBackground: Phaser.GameObjects.Rectangle;
-  readonly #upgradeLabel: Phaser.GameObjects.Text;
+  readonly #upgradeControl: UpgradeControlView;
   /** Derived from the slot, like `SharedStageView`, so the bar follows its panel. */
   readonly #trackWidth: number;
 
-  public constructor(scene: Phaser.Scene, region: LayoutRegion) {
+  public constructor(
+    scene: Phaser.Scene,
+    region: LayoutRegion,
+    options: MineFloorViewOptions,
+  ) {
     this.#trackWidth =
       region.width - PROGRESS_INSET_X - PROGRESS_LABEL_GAP - PROGRESS_LABEL_WIDTH;
     this.#root = scene.add.container(region.x, region.y);
@@ -252,30 +267,16 @@ export class MineFloorView {
       )
       .setOrigin(0, 0);
 
-    const upgradeX = region.width - UPGRADE_INSET_X - UPGRADE_WIDTH;
-
-    this.#upgradeBackground = scene.add
-      .rectangle(
-        upgradeX,
-        UPGRADE_Y,
-        UPGRADE_WIDTH,
-        UPGRADE_HEIGHT,
-        COLOR_CONTROL,
-      )
-      .setOrigin(0, 0);
-    this.#upgradeLabel = scene.add
-      .text(
-        upgradeX + UPGRADE_WIDTH / 2,
-        UPGRADE_Y + UPGRADE_HEIGHT / 2,
-        '',
-        {
-          color: TEXT_PRIMARY,
-          fontFamily: FONT_FAMILY,
-          fontSize: '13px',
-          fontStyle: 'bold',
-        },
-      )
-      .setOrigin(0.5, 0.5);
+    this.#upgradeControl = new UpgradeControlView(scene, {
+      region: {
+        x: region.width - UPGRADE_INSET_X - UPGRADE_WIDTH,
+        y: UPGRADE_Y,
+        width: UPGRADE_WIDTH,
+        height: UPGRADE_HEIGHT,
+      },
+      layout: 'stacked',
+      onPress: options.onUpgrade,
+    });
 
     this.#root.add([
       this.#background,
@@ -293,8 +294,7 @@ export class MineFloorView {
       this.#progressTrack,
       this.#progressFill,
       this.#progressLabel,
-      this.#upgradeBackground,
-      this.#upgradeLabel,
+      ...this.#upgradeControl.objects,
     ]);
   }
 
@@ -346,10 +346,12 @@ export class MineFloorView {
     );
     this.#progressLabel.setText(floor.extractionProgressLabel);
 
-    this.#upgradeBackground.setVisible(floor.showsUpgradeControl);
-    this.#upgradeLabel
-      .setText(floor.upgradeControlLabel)
-      .setVisible(floor.showsUpgradeControl);
+    this.#upgradeControl.applySnapshot(floor.upgradeControl);
+  }
+
+  /** Shows or clears the result of a press on this floor's upgrade control. */
+  public applyUpgradeFeedback(feedback: UpgradeFeedbackViewModel | null): void {
+    this.#upgradeControl.applyFeedback(feedback);
   }
 
   /**
@@ -363,7 +365,14 @@ export class MineFloorView {
     );
   }
 
+  /** The upgrade control's read-back alone, for the scene's control diagnostic. */
+  public describeUpgradeControl(): RenderedUpgradeControlState {
+    return this.#upgradeControl.describeRenderedState();
+  }
+
   public describeRenderedState(): RenderedFloorState {
+    const upgradeControl = this.describeUpgradeControl();
+
     return {
       floorLabel: this.#title.text,
       badgeLabel: this.#badgeLabel.text,
@@ -380,7 +389,8 @@ export class MineFloorView {
       }),
       showsMiner: this.#pick.visible,
       minerSwingOffsetPx: this.#pick.y - PICK_REST_Y,
-      showsUpgradeControl: this.#upgradeBackground.visible,
+      showsUpgradeControl: upgradeControl.isVisible,
+      upgradeControl,
       isLockedAppearance:
         this.#background.fillColor === COLOR_LOCKED_PANEL,
     };

@@ -258,7 +258,7 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     levelLabel: `Lv ${fixture.elevator.level}`,
     queueLabel: 'Carrying 20',
     progressLabel: '40%',
-    upgradeControlLabel: 'Upgrade',
+    upgradeControl: { actionLabel: 'Upgrade' },
   });
   expect(elevator.progressFillWidth / elevator.progressTrackWidth).toBeCloseTo(
     fixture.elevator.transitProgress,
@@ -269,7 +269,7 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     levelLabel: `Lv ${fixture.warehouse.level}`,
     queueLabel: 'Queued 30',
     progressLabel: '75%',
-    upgradeControlLabel: 'Upgrade',
+    upgradeControl: { actionLabel: 'Upgrade' },
   });
   expect(warehouse.progressFillWidth / warehouse.progressTrackWidth).toBeCloseTo(
     fixture.warehouse.conversionProgress,
@@ -388,7 +388,12 @@ test('republishes rendered values whenever a newer snapshot is applied', async (
         };
         // A stand-in snapshot source: the scene pulls it every frame exactly as
         // it pulls the real simulation driver.
-        const source = { snapshot: initial, advance: () => source.snapshot };
+        const source = {
+          snapshot: initial,
+          advance: () => source.snapshot,
+          // This harness only feeds snapshots; no press happens in this test.
+          purchaseUpgrade: () => 'unavailable',
+        };
 
         createGame(document.querySelector('#game-viewport'), source);
 

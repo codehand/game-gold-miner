@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 
 import { GAME_HEIGHT, GAME_WIDTH, MINE_BACKGROUND } from './layout';
-import type { MineSnapshotSource } from './runtime';
+import type { MineRuntimePort } from './runtime';
 import { BootScene } from './scenes/BootScene';
 
 export { GAME_HEIGHT, GAME_WIDTH };
 export {
   MineSimulationDriver,
+  type MineCommandSink,
+  type MineRuntimePort,
   type MineSimulationDriverOptions,
   type MineSnapshotSource,
 } from './runtime';
@@ -14,10 +16,14 @@ export {
   createMineViewModel,
   formatAmount,
   DEFAULT_ANIMATION_SPEED_MULTIPLIER,
+  UPGRADE_FEEDBACK_DURATION_MS,
   type HudViewModel,
   type MineFloorViewModel,
   type MineViewModel,
   type SharedStageViewModel,
+  type UpgradeControlViewModel,
+  type UpgradeOutcome,
+  type UpgradeTarget,
 } from './view-model';
 
 export interface CreateGameOptions {
@@ -27,7 +33,7 @@ export interface CreateGameOptions {
 
 export function createGame(
   parent: HTMLElement,
-  source: MineSnapshotSource,
+  source: MineRuntimePort,
   options: CreateGameOptions = {},
 ): Phaser.Game {
   return new Phaser.Game({

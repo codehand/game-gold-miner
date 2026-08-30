@@ -14,8 +14,20 @@
  */
 
 import type { BaseGameBalanceConfig } from '../../config';
-import { catchUpSimulation, type GameState } from '../../core';
-import { createMineViewModel, type MineViewModel } from '../view-model';
+import {
+  catchUpSimulation,
+  purchaseElevatorUpgrade,
+  purchaseMineShaftUpgrade,
+  purchaseWarehouseUpgrade,
+  type GameState,
+  type UpgradePurchaseResult,
+} from '../../core';
+import {
+  createMineViewModel,
+  type MineViewModel,
+  type UpgradeOutcome,
+  type UpgradeTarget,
+} from '../view-model';
 
 /** What the scene needs from whatever is feeding it snapshots. */
 export interface MineSnapshotSource {
@@ -25,23 +37,42 @@ export interface MineSnapshotSource {
   advance(): MineViewModel;
 }
 
+/** What the scene sends when a player presses a control. */
+export interface MineCommandSink {
+  /**
+   * Routes a press to the matching core command and reports what happened, so
+   * the scene can show the result without deciding it.
+   */
+  purchaseUpgrade(target: UpgradeTarget): UpgradeOutcome;
+}
+
+/** Everything the scene needs: snapshots to pull, commands to send. */
+export interface MineRuntimePort extends MineSnapshotSource, MineCommandSink {}
+
 export interface MineSimulationDriverOptions {
   readonly state: GameState;
   /** Balance data the HUD's income estimate is derived from. */
   readonly balance: BaseGameBalanceConfig;
   /** Injected wall clock in milliseconds, normally `Date.now`. */
   readonly now: () => number;
+  /**
+   * Called after a command has changed authoritative state, so the host can
+   * persist a purchase that no simulation tick would otherwise record.
+   */
+  readonly onCommandApplied?: () => void;
 }
 
-export class MineSimulationDriver implements MineSnapshotSource {
+export class MineSimulationDriver implements MineRuntimePort {
   readonly #now: () => number;
   readonly #balance: BaseGameBalanceConfig;
+  readonly #onCommandApplied: (() => void) | null;
   #state: GameState;
   #snapshot: MineViewModel;
 
   public constructor(options: MineSimulationDriverOptions) {
     this.#now = options.now;
     this.#balance = options.balance;
+    this.#onCommandApplied = options.onCommandApplied ?? null;
     this.#state = options.state;
     this.#snapshot = createMineViewModel(options.state, options.balance);
   }
@@ -93,11 +124,52 @@ export class MineSimulationDriver implements MineSnapshotSource {
   }
 
   /**
+   * Buys the next level of one stage, and reports the core's answer.
+   *
+   * The mine is advanced to the current time first, because the player is
+   * spending the gold they have now rather than the gold the last rendered
+   * frame happened to show. The core remains the only authority on whether the
+   * purchase succeeds: a refusal leaves authoritative state and the memoized
+   * snapshot exactly as they were.
+   */
+  public purchaseUpgrade(target: UpgradeTarget): UpgradeOutcome {
+    this.advance();
+
+    const result = this.#purchase(target);
+
+    if (!result.success) {
+      return result.reason === 'insufficient-funds'
+        ? 'insufficient-funds'
+        : 'unavailable';
+    }
+
+    this.#setState(result.state);
+    this.#onCommandApplied?.();
+
+    return 'purchased';
+  }
+
+  /**
    * Replaces authoritative state from outside the simulation, for commands such
    * as claiming an offline reward. The next `advance` continues from it.
    */
   public replaceState(state: GameState): void {
     this.#setState(state);
+  }
+
+  #purchase(target: UpgradeTarget): UpgradePurchaseResult {
+    switch (target.type) {
+      case 'mine-shaft':
+        return purchaseMineShaftUpgrade(
+          this.#state,
+          target.floorId,
+          this.#balance,
+        );
+      case 'elevator':
+        return purchaseElevatorUpgrade(this.#state, this.#balance);
+      case 'warehouse':
+        return purchaseWarehouseUpgrade(this.#state, this.#balance);
+    }
   }
 
   #setState(state: GameState): void {

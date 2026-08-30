@@ -44,6 +44,15 @@ async function startApplication(): Promise<void> {
     state: loadResult.state,
     balance: BASE_GAME_BALANCE,
     now: () => Date.now(),
+    // A purchase changes authoritative state without any tick completing, and
+    // routine saves are debounced rather than continuous, so the coordinator is
+    // told about it explicitly. Without this an upgrade the player just paid
+    // for could be lost on the next reload.
+    onCommandApplied: () => {
+      persistence.queueSave(
+        createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now()),
+      );
+    },
   });
   let pendingReward = createPendingOfflineReward(loadResult.offlineIncome);
   let rewardClaimed = false;

@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 
-import { HudView, MineFloorView, SharedStageView } from '../entities';
+import {
+  HudView,
+  MineFloorView,
+  SharedStageView,
+  type RenderedUpgradeControlState,
+} from '../entities';
 import {
   calculateFloorSlotRegion,
   calculateMineContentHeight,
@@ -15,13 +20,18 @@ import {
   type LayoutRegion,
   type MineLayout,
 } from '../layout';
-import type { MineSnapshotSource } from '../runtime';
+import type { MineRuntimePort } from '../runtime';
 import {
   advanceAnimationTimeMs,
   assertAnimationSpeedMultiplier,
   assertRenderableMineViewModel,
+  createUpgradeFeedback,
+  describeUpgradeFeedback,
   DEFAULT_ANIMATION_SPEED_MULTIPLIER,
   type MineViewModel,
+  type UpgradeControlViewModel,
+  type UpgradeFeedback,
+  type UpgradeFeedbackViewModel,
 } from '../view-model';
 
 export const BOOT_SCENE_KEY = 'BootScene';
@@ -52,8 +62,19 @@ const SURFACE_PANEL_BOTTOM_INSET = 10;
 const COLOR_SURFACE_BACKGROUND = toFillColor(SURFACE_BACKGROUND);
 const COLOR_MINE_BACKGROUND = toFillColor(MINE_BACKGROUND);
 
+/**
+ * One upgrade control as a browser test sees it: what it shows, plus where it
+ * is on screen so a press can be aimed at it. `worldBounds` from the view is
+ * converted through the camera that renders it, because the mine scrolls
+ * behind its own viewport while the surface does not.
+ */
+export interface PublishedUpgradeControl extends RenderedUpgradeControlState {
+  readonly key: string;
+  readonly screenBounds: LayoutRegion;
+}
+
 export interface BootSceneOptions {
-  readonly source: MineSnapshotSource;
+  readonly source: MineRuntimePort;
   /** Scales cosmetic motion only; production is never derived from it. */
   readonly animationSpeedMultiplier?: number;
 }
@@ -73,7 +94,9 @@ export interface BootSceneOptions {
  * authoritative progress, so changing the animation speed cannot change output.
  */
 export class BootScene extends Phaser.Scene {
-  readonly #source: MineSnapshotSource;
+  readonly #source: MineRuntimePort;
+  /** Live press results, keyed by control, cleared as each one expires. */
+  readonly #upgradeFeedback = new Map<string, UpgradeFeedback>();
   /** The snapshot currently bound to the views, compared by identity. */
   #viewModel: MineViewModel;
   #hudView: HudView | null = null;
@@ -83,6 +106,9 @@ export class BootScene extends Phaser.Scene {
   #animationSpeedMultiplier: number;
   #animationTimeMs = 0;
   #lastViewDiagnosticMs = Number.NEGATIVE_INFINITY;
+  /** The camera the mine content is drawn through, needed to place presses. */
+  #mineCamera: Phaser.Cameras.Scene2D.Camera | null = null;
+  #mineRegion: LayoutRegion | null = null;
 
   public constructor(options: BootSceneOptions) {
     super({ key: BOOT_SCENE_KEY });
@@ -109,6 +135,7 @@ export class BootScene extends Phaser.Scene {
 
     this.#bindSnapshot(this.#source.snapshot, true);
     this.#applyAnimation();
+    this.#applyUpgradeFeedback(this.time.now);
 
     // A dedicated camera viewport clips the mine area in both WebGL and Canvas
     // and gives Step 31 a single `scrollY` value to drive.
@@ -124,6 +151,8 @@ export class BootScene extends Phaser.Scene {
     mineCamera.setScroll(0, 0);
     mineCamera.ignore(fixedLayers);
     this.cameras.main.ignore(mineContent);
+    this.#mineCamera = mineCamera;
+    this.#mineRegion = layout.mine;
 
     this.#publishDiagnostics(layout);
   }
@@ -135,7 +164,7 @@ export class BootScene extends Phaser.Scene {
    * wall-clock advance, while `delta` — how long this frame happened to take —
    * only ever reaches decoration.
    */
-  public override update(_time: number, delta: number): void {
+  public override update(time: number, delta: number): void {
     this.#bindSnapshot(this.#source.advance(), false);
     this.#animationTimeMs = advanceAnimationTimeMs(
       this.#animationTimeMs,
@@ -143,6 +172,9 @@ export class BootScene extends Phaser.Scene {
       this.#animationSpeedMultiplier,
     );
     this.#applyAnimation();
+    // Press results run on the scene clock rather than the cosmetic one: how
+    // long a message stays readable must not change with animation speed.
+    this.#applyUpgradeFeedback(time);
     this.#publishViewDiagnostics(false);
   }
 
@@ -187,6 +219,64 @@ export class BootScene extends Phaser.Scene {
     this.#warehouseView.applySnapshot(viewModel.warehouse);
   }
 
+  /**
+   * Sends one press to the core and shows what came back.
+   *
+   * The control is pressable even when it is drawn unaffordable, so the answer
+   * always comes from the command rather than from the price the renderer
+   * happened to be showing. The snapshot is rebound and the diagnostics are
+   * republished immediately, because a purchase changes displayed values
+   * without any fixed tick completing.
+   */
+  #requestUpgrade(control: UpgradeControlViewModel | null): void {
+    if (control === null) {
+      return;
+    }
+
+    const outcome = this.#source.purchaseUpgrade(control.target);
+
+    this.#upgradeFeedback.set(
+      control.key,
+      createUpgradeFeedback(outcome, this.time.now),
+    );
+    this.#bindSnapshot(this.#source.snapshot, false);
+    this.#applyUpgradeFeedback(this.time.now);
+    this.#publishViewDiagnostics(true);
+  }
+
+  #applyUpgradeFeedback(nowMs: number): void {
+    this.#floorViews.forEach((view, index) => {
+      view.applyUpgradeFeedback(
+        this.#describeFeedback(this.#viewModel.floors[index].upgradeControl, nowMs),
+      );
+    });
+    this.#elevatorView?.applyUpgradeFeedback(
+      this.#describeFeedback(this.#viewModel.elevator.upgradeControl, nowMs),
+    );
+    this.#warehouseView?.applyUpgradeFeedback(
+      this.#describeFeedback(this.#viewModel.warehouse.upgradeControl, nowMs),
+    );
+  }
+
+  /** Reads one control's live result, dropping it once it has expired. */
+  #describeFeedback(
+    control: UpgradeControlViewModel | null,
+    nowMs: number,
+  ): UpgradeFeedbackViewModel | null {
+    if (control === null) {
+      return null;
+    }
+
+    const feedback = this.#upgradeFeedback.get(control.key) ?? null;
+    const described = describeUpgradeFeedback(feedback, nowMs);
+
+    if (described === null && feedback !== null) {
+      this.#upgradeFeedback.delete(control.key);
+    }
+
+    return described;
+  }
+
   #applyAnimation(): void {
     for (const view of this.#floorViews) {
       view.applyAnimation(this.#animationTimeMs);
@@ -224,18 +314,34 @@ export class BootScene extends Phaser.Scene {
         .setOrigin(0, 0),
     );
 
-    this.#elevatorView = new SharedStageView(this, {
-      x: SURFACE_PANEL_INSET,
-      y: SURFACE_TITLE_HEIGHT,
-      width: panelWidth,
-      height: panelHeight,
-    });
-    this.#warehouseView = new SharedStageView(this, {
-      x: SURFACE_PANEL_INSET + panelWidth + SURFACE_PANEL_GAP,
-      y: SURFACE_TITLE_HEIGHT,
-      width: panelWidth,
-      height: panelHeight,
-    });
+    this.#elevatorView = new SharedStageView(
+      this,
+      {
+        x: SURFACE_PANEL_INSET,
+        y: SURFACE_TITLE_HEIGHT,
+        width: panelWidth,
+        height: panelHeight,
+      },
+      {
+        onUpgrade: () => {
+          this.#requestUpgrade(this.#viewModel.elevator.upgradeControl);
+        },
+      },
+    );
+    this.#warehouseView = new SharedStageView(
+      this,
+      {
+        x: SURFACE_PANEL_INSET + panelWidth + SURFACE_PANEL_GAP,
+        y: SURFACE_TITLE_HEIGHT,
+        width: panelWidth,
+        height: panelHeight,
+      },
+      {
+        onUpgrade: () => {
+          this.#requestUpgrade(this.#viewModel.warehouse.upgradeControl);
+        },
+      },
+    );
 
     layer.add([this.#elevatorView.root, this.#warehouseView.root]);
 
@@ -247,11 +353,69 @@ export class BootScene extends Phaser.Scene {
     const content = this.add.container(0, 0);
 
     this.#floorViews = Array.from({ length: MINE_FLOOR_COUNT }, (_, index) => {
-      return new MineFloorView(this, calculateFloorSlotRegion(index, width));
+      return new MineFloorView(this, calculateFloorSlotRegion(index, width), {
+        // Resolved from the current snapshot at press time, not captured here:
+        // the control's price and target change as the mine does.
+        onUpgrade: () => {
+          this.#requestUpgrade(this.#viewModel.floors[index].upgradeControl);
+        },
+      });
     });
     content.add(this.#floorViews.map((view) => view.root));
 
     return content;
+  }
+
+  /**
+   * Every visible upgrade control, with its pressable rectangle in screen
+   * coordinates. Floor controls are drawn through the mine camera, so their
+   * world rectangle is offset by that camera's viewport and scroll; the shared
+   * stages are drawn by the main camera, where world and screen coincide.
+   */
+  #describeUpgradeControls(): readonly PublishedUpgradeControl[] {
+    const published: PublishedUpgradeControl[] = [];
+    const camera = this.#mineCamera;
+    const mine = this.#mineRegion;
+
+    this.#floorViews.forEach((view, index) => {
+      const control = this.#viewModel.floors[index].upgradeControl;
+
+      if (control === null || camera === null || mine === null) {
+        return;
+      }
+
+      const state = view.describeUpgradeControl();
+
+      published.push({
+        ...state,
+        key: control.key,
+        screenBounds: {
+          x: state.worldBounds.x + mine.x - camera.scrollX,
+          y: state.worldBounds.y + mine.y - camera.scrollY,
+          width: state.worldBounds.width,
+          height: state.worldBounds.height,
+        },
+      });
+    });
+
+    for (const [stage, view] of [
+      [this.#viewModel.elevator, this.#elevatorView],
+      [this.#viewModel.warehouse, this.#warehouseView],
+    ] as const) {
+      if (view === null) {
+        continue;
+      }
+
+      const state = view.describeUpgradeControl();
+
+      published.push({
+        ...state,
+        key: stage.upgradeControl.key,
+        screenBounds: state.worldBounds,
+      });
+    }
+
+    return published;
   }
 
   #publishDiagnostics(layout: MineLayout): void {
@@ -320,6 +484,9 @@ export class BootScene extends Phaser.Scene {
       this.#elevatorView?.describeRenderedState() ?? null,
       this.#warehouseView?.describeRenderedState() ?? null,
     ]);
+    canvas.dataset.upgradeControls = JSON.stringify(
+      this.#describeUpgradeControls(),
+    );
     canvas.dataset.animation = JSON.stringify({
       speedMultiplier: this.#animationSpeedMultiplier,
       animationTimeMs: this.#animationTimeMs,

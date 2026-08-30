@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 
 import {
   toFillColor,
-  CONTROL_BACKGROUND,
   CONVEYOR_FILL,
   CYCLE_MARKER_FILL,
   FONT_FAMILY,
@@ -22,7 +21,12 @@ import {
   calculateCycleMarkerOffsetPx,
   MAX_MATERIAL_PILE_STEPS,
   type SharedStageViewModel,
+  type UpgradeFeedbackViewModel,
 } from '../view-model';
+import {
+  UpgradeControlView,
+  type RenderedUpgradeControlState,
+} from './UpgradeControlView';
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedSharedStageState {
@@ -44,15 +48,15 @@ export interface RenderedSharedStageState {
   /** The conveyor runs only while the stage holds material. */
   readonly showsConveyor: boolean;
   /**
-   * The label actually bound onto the control. A shared stage never hides its
-   * upgrade control, so reporting visibility here would be a constant that no
-   * assertion could ever fail; the bound text does catch a broken binding.
+   * The control's own read-back: price, affordability, and press feedback. A
+   * shared stage never hides its upgrade control, so its visibility would be a
+   * constant no assertion could fail; the bound price does catch a broken
+   * binding.
    */
-  readonly upgradeControlLabel: string;
+  readonly upgradeControl: RenderedUpgradeControlState;
 }
 
 const COLOR_PANEL = toFillColor(PANEL_BACKGROUND);
-const COLOR_CONTROL = toFillColor(CONTROL_BACKGROUND);
 const COLOR_PROGRESS_TRACK = toFillColor(PROGRESS_TRACK);
 const COLOR_PROGRESS_FILL = toFillColor(PROGRESS_FILL);
 const COLOR_MATERIAL = toFillColor(MATERIAL_FILL);
@@ -75,7 +79,12 @@ const CONVEYOR_DASH_COUNT = 3;
 const CONVEYOR_DASH_WIDTH = 10;
 const CONVEYOR_DASH_HEIGHT = 4;
 const UPGRADE_Y = 82;
-const UPGRADE_HEIGHT = 18;
+const UPGRADE_HEIGHT = 20;
+
+export interface SharedStageViewOptions {
+  /** Called when this stage's upgrade control is pressed. */
+  readonly onUpgrade: () => void;
+}
 
 /**
  * The shared elevator or warehouse, rendered in the surface strip with its own
@@ -100,10 +109,14 @@ export class SharedStageView {
   readonly #progressLabel: Phaser.GameObjects.Text;
   readonly #cycleMarker: Phaser.GameObjects.Rectangle;
   readonly #conveyorDashes: readonly Phaser.GameObjects.Rectangle[];
-  readonly #upgradeLabel: Phaser.GameObjects.Text;
+  readonly #upgradeControl: UpgradeControlView;
   readonly #trackWidth: number;
 
-  public constructor(scene: Phaser.Scene, region: LayoutRegion) {
+  public constructor(
+    scene: Phaser.Scene,
+    region: LayoutRegion,
+    options: SharedStageViewOptions,
+  ) {
     this.#trackWidth = region.width - PANEL_INSET_X * 2 - PROGRESS_LABEL_WIDTH;
     this.#root = scene.add.container(region.x, region.y);
 
@@ -209,23 +222,16 @@ export class SharedStageView {
         .setOrigin(0, 0);
     });
 
-    const upgradeBackground = scene.add
-      .rectangle(
-        PANEL_INSET_X,
-        UPGRADE_Y,
-        region.width - PANEL_INSET_X * 2,
-        UPGRADE_HEIGHT,
-        COLOR_CONTROL,
-      )
-      .setOrigin(0, 0);
-    this.#upgradeLabel = scene.add
-      .text(region.width / 2, UPGRADE_Y + UPGRADE_HEIGHT / 2, '', {
-        color: TEXT_PRIMARY,
-        fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5, 0.5);
+    this.#upgradeControl = new UpgradeControlView(scene, {
+      region: {
+        x: PANEL_INSET_X,
+        y: UPGRADE_Y,
+        width: region.width - PANEL_INSET_X * 2,
+        height: UPGRADE_HEIGHT,
+      },
+      layout: 'inline',
+      onPress: options.onUpgrade,
+    });
 
     this.#root.add([
       background,
@@ -240,8 +246,7 @@ export class SharedStageView {
       this.#cycleMarker,
       this.#progressLabel,
       ...this.#conveyorDashes,
-      upgradeBackground,
-      this.#upgradeLabel,
+      ...this.#upgradeControl.objects,
     ]);
   }
 
@@ -278,7 +283,12 @@ export class SharedStageView {
       dash.setVisible(stage.isRunning);
     }
 
-    this.#upgradeLabel.setText(stage.upgradeControlLabel);
+    this.#upgradeControl.applySnapshot(stage.upgradeControl);
+  }
+
+  /** Shows or clears the result of a press on this stage's upgrade control. */
+  public applyUpgradeFeedback(feedback: UpgradeFeedbackViewModel | null): void {
+    this.#upgradeControl.applyFeedback(feedback);
   }
 
   /**
@@ -292,6 +302,11 @@ export class SharedStageView {
     this.#conveyorDashes.forEach((dash, index) => {
       dash.setX(PANEL_INSET_X + ((offset + index * spacing) % this.#trackWidth));
     });
+  }
+
+  /** The upgrade control's read-back alone, for the scene's control diagnostic. */
+  public describeUpgradeControl(): RenderedUpgradeControlState {
+    return this.#upgradeControl.describeRenderedState();
   }
 
   public describeRenderedState(): RenderedSharedStageState {
@@ -313,7 +328,7 @@ export class SharedStageView {
       cycleMarkerOffsetPx: this.#cycleMarker.x - PANEL_INSET_X,
       conveyorOffsetPx: firstDash.x - PANEL_INSET_X,
       showsConveyor: firstDash.visible,
-      upgradeControlLabel: this.#upgradeLabel.text,
+      upgradeControl: this.describeUpgradeControl(),
     };
   }
 }

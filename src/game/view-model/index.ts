@@ -16,10 +16,24 @@ export {
   formatProgress,
   MAX_MATERIAL_PILE_STEPS,
   type MineFloorViewModel,
+  type MineFloorViewModelInput,
   type MineViewModel,
   type SharedStageId,
   type SharedStageViewModel,
+  type SharedStageViewModelInput,
 } from './mineViewModel';
+export {
+  createUpgradeControlViewModel,
+  createUpgradeFeedback,
+  describeUpgradeFeedback,
+  upgradeTargetKey,
+  UPGRADE_FEEDBACK_DURATION_MS,
+  type UpgradeControlViewModel,
+  type UpgradeFeedback,
+  type UpgradeFeedbackViewModel,
+  type UpgradeOutcome,
+  type UpgradeTarget,
+} from './upgradeControl';
 export {
   advanceAnimationTimeMs,
   assertAnimationSpeedMultiplier,

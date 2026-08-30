@@ -17,6 +17,12 @@ export const DIVIDER = '#fbbf24';
 
 export const BADGE_BACKGROUND = '#0b1220';
 export const CONTROL_BACKGROUND = '#3d5578';
+/** An upgrade the player cannot yet pay for, drawn distinctly rather than dimmed. */
+export const CONTROL_DISABLED_BACKGROUND = '#232f42';
+/** Momentary press feedback: a completed purchase. */
+export const CONTROL_SUCCESS_BACKGROUND = '#15803d';
+/** Momentary press feedback: a refused purchase. */
+export const CONTROL_REFUSED_BACKGROUND = '#991b1b';
 export const PROGRESS_TRACK = '#131c2c';
 export const PROGRESS_FILL = '#34d399';
 export const MATERIAL_FILL = '#fbbf24';

@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 28 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the live HUD — spendable gold, the estimated mine income per second, and their abbreviated formatting; Step 29 must not begin without explicit authorization.
+Implementation Plan Step 29 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the upgrade controls — the priced, affordability-aware buttons on every unlocked mine shaft and on both shared stages, the one-deduction purchase they perform, and the success/refusal feedback they show; Step 30 must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -142,6 +142,12 @@ Implementation Plan Step 28 is implemented and its automated validation passes. 
 - Step 28 evidence: two hundred seventeen unit tests, fourteen Chromium E2E tests, lint, the strict production build, and `git diff --check` pass. One browser test asserts the HUD's abbreviated gold and its income against the core's own rate calculation; a second boots the real driver one conversion cycle short of a delivery, runs two seconds of fake wall clock, and asserts the displayed gold equals the authoritative balance while the scene's display-object count is unchanged. Six mutations fail with named assertions: a HUD bound once at boot and never rebound, a HUD never bound at all, a formatter that rounds instead of truncating, an alphabetic run starting one tier late, a formatter reading magnitude through `Number`, an income value taken from aggregate extraction instead of the bottleneck-capped rate, and a `HudView` that appends a text object per rebind.
 - Step 28 review fixes: four review findings were corrected without changing behaviour. `TRUNCATION_TOLERANCE` in `formatAmount.ts` claimed a displayed amount can never read high, but the tolerance that keeps floating-point scaling from dropping a digit also lifts a value within `1e-9` of the next digit onto it, so `0.9999999999` reads `1`; the tolerance is now documented as the bound on that overstatement and a unit test pins both sides of it, making the claim checkable rather than asserted. `HudView` typed its text anchor as a bare `number` after the move out of `BootScene`, losing the old `'left' | 'right'` safety, and now uses a `HorizontalOrigin = 0 | 1` alias with named constants. `BootScene` published `data-hud-view` as `"null"` before the view existed, which would have surfaced in a browser test as a property access on `null` rather than a named diagnostic failure; the attribute is now written only once the view exists. `GameNumber`'s `mantissa`/`exponent` getters moved out of the middle of the arithmetic group to sit beside `serialize()`, and `exponent` gained its own doc.
 
+- Implemented Step 29 on 2026-08-29 after the user authorized it. Every unlocked mine shaft and both shared stages now carry a working upgrade control. `createUpgradeControlViewModel(target, cost, gold)` derives the `Upgrade` caption, the abbreviated price, `isAffordable`, the command target, and a stable key; a locked floor's `upgradeControl` is `null`. Each price comes from the same core function that charges it, so `createMineViewModel` now takes each floor's balance config and the spendable balance alongside the state it reads.
+- `UpgradeControlView` is one reusable entity used by both the floor panels (`stacked` layout) and the shared-stage panels (`inline`). Its background rectangle carries the hit area, so the pressable region is exactly the drawn one and a hidden control is unreachable — which is how locked floors have no button. An unaffordable control is drawn disabled but still accepts a press, because refusing in the view would substitute the renderer's guess for the core's answer and leave the player with no feedback.
+- `MineSimulationDriver.purchaseUpgrade(target)` is the scene's command sink. It advances to the current time first, dispatches to `purchaseMineShaftUpgrade` / `purchaseElevatorUpgrade` / `purchaseWarehouseUpgrade`, and returns `purchased`, `insufficient-funds`, or `unavailable`. A refusal leaves state and the memoized snapshot untouched; a purchase re-derives the snapshot and calls the new optional `onCommandApplied` hook, which `src/main.ts` uses to queue a debounced save so a purchase is not lost on the next reload.
+- The result appears on the pressed control for 1,200 ms — `Upgraded!` on green, `Need more gold` on red — expired by the pure `describeUpgradeFeedback`, run on the Phaser scene clock rather than the cosmetic animation clock. `BootScene` rebinds and republishes diagnostics immediately on a press, since a purchase changes displayed values without any tick completing, and publishes `data-upgrade-controls` with each control's screen-space rectangle so a browser test can aim a real press at it.
+- Step 29 evidence: two hundred thirty-two unit tests, eighteen Chromium E2E tests, lint, the strict production build, and `git diff --check` pass. Three browser flows press real controls at published coordinates: an unaffordable press that spends nothing and says `Need more gold`, one mine-shaft purchase with exactly one deduction, one level increase, an unchanged display-object count, and an updated button price, and the two shared stages bought through their own commands. Eight mutations fail with named assertions: affordability using strictly-greater instead of at-least, a purchase that skips advancing to the current time, feedback that never expires, a refused command reported as applied, a view that refuses an unaffordable press itself, every press routed to the mine shaft, floor control geometry that ignores the mine camera, and a control bound once and never rebound.
+
 ## Active Decisions
 
 - Target browser and Telegram Mini App first.
@@ -175,7 +181,13 @@ Implementation Plan Step 28 is implemented and its automated validation passes. 
 - Truncate a displayed balance rather than rounding it: a number that reads higher than it is promises a purchase the player cannot make.
 - Read a magnitude through `GameNumber`'s own mantissa and exponent, never through `Number`, which collapses everything past its range to the same value.
 - Estimate income from the core's bottleneck-capped effective rate, never from aggregate extraction and never from what the renderer observed.
-- Bulk purchases and UI controls remain deferred.
+- Price every control through the same core function the command charges, so the shown and charged figures cannot drift.
+- Let a control drawn unaffordable still be pressable and let the core answer: the view must not decide a purchase, and a silent press is worse than a refusal the player can read.
+- Advance the simulation to the current time before applying a command, so the player spends the gold the mine has now rather than the gold the last frame showed.
+- Persist a command's result explicitly; a purchase completes no tick, and a save that follows only ticks would lose it.
+- Time press feedback on the presentation clock, never the cosmetic one, so animation speed cannot change how long a message is readable.
+- Publish an interactive element's screen-space rectangle, converted through the camera that draws it, so browser tests press the real control.
+- Bulk purchases remain deferred; floor unlock controls arrive in Step 30.
 - Use the Step 19 automated policy only as a reproducible balance-analysis harness; it does not issue player-runtime purchases or replace later playtesting.
 - Persist every `GameNumber` as a finite decimal/scientific string, validate exact version-1 structure and authoritative invariants before deserialization, and keep migration dispatch separate from IndexedDB storage.
 - Store one active document under the fixed `active` key, debounce routine writes by 500 ms, force the newest snapshot on supported lifecycle events, and surface storage failures without terminating the running session.
@@ -211,8 +223,8 @@ Implementation Plan Step 28 is implemented and its automated validation passes. 
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 28 HUD.
-2. Begin Step 29 only after explicit user authorization.
+1. Wait for the user to validate the Step 29 upgrade controls.
+2. Begin Step 30 only after explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 

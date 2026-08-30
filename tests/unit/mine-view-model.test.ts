@@ -122,8 +122,8 @@ describe('mine view model', () => {
       'Locked',
     ]);
     expect(
-      viewModel.floors.map(({ showsUpgradeControl }) => showsUpgradeControl),
-    ).toEqual([true, true, false, false]);
+      viewModel.floors.map(({ upgradeControl }) => upgradeControl === null),
+    ).toEqual([false, false, true, true]);
     expect(viewModel.floors[2].materialPileSteps).toBe(0);
     expect(viewModel.floors[2].materialQueueLabel).toBe('0');
   });
@@ -132,8 +132,11 @@ describe('mine view model', () => {
     const viewModel = createViewModel(createFixtureState());
 
     for (const floor of viewModel.floors.filter(({ isUnlocked }) => isUnlocked)) {
-      expect(floor.showsUpgradeControl).toBe(true);
-      expect(floor.upgradeControlLabel).toBe('Upgrade');
+      expect(floor.upgradeControl?.actionLabel).toBe('Upgrade');
+      expect(floor.upgradeControl?.target).toEqual({
+        type: 'mine-shaft',
+        floorId: floor.id,
+      });
     }
   });
 
@@ -150,7 +153,10 @@ describe('mine view model', () => {
       queueLabel: 'Carrying 20',
       progress: 0.4,
       progressLabel: '40%',
-      upgradeControlLabel: 'Upgrade',
+    });
+    expect(viewModel.elevator.upgradeControl).toMatchObject({
+      actionLabel: 'Upgrade',
+      target: { type: 'elevator' },
     });
     expect(viewModel.warehouse).toMatchObject({
       id: 'warehouse',
@@ -161,7 +167,10 @@ describe('mine view model', () => {
       queueLabel: 'Queued 30',
       progress: 0.75,
       progressLabel: '75%',
-      upgradeControlLabel: 'Upgrade',
+    });
+    expect(viewModel.warehouse.upgradeControl).toMatchObject({
+      actionLabel: 'Upgrade',
+      target: { type: 'warehouse' },
     });
   });
 

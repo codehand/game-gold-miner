@@ -63,6 +63,15 @@ Persistence and Platform Adapters
 - Signal a locked or disabled element with its own palette colour and badge rather than an alpha dim, so a pixel probe can prove the distinction.
 - Show a bottleneck as a discrete pile measured against what the next stage removes in one cycle, so a full pile is a readable signal rather than an unbounded number.
 - Keep rendering steps free of interaction: a step that renders a control renders it inert, and the later ordered step adds costs, affordability, commands, and feedback.
+- Price a control through the same function the command charges, so the figure on the button and the figure deducted cannot drift apart.
+- Let a disabled-looking control still be pressable and let the core decide: refusing in the view replaces the core's answer with the renderer's guess, and leaves a player who cannot afford something with no feedback at all.
+- Advance the simulation to the current time before applying a command: the player is spending the gold the mine has now, not the gold the last rendered frame happened to show.
+- Return an explicit outcome from every command and leave state and the memoized snapshot untouched on refusal, so a refused press costs the scene no rebinding.
+- Persist a command's result explicitly. A purchase changes authoritative state without completing a simulation tick, so a debounced save that only follows ticks would lose it.
+- Carry a press result on a presentation clock separate from the cosmetic one, so how long a message stays readable cannot change with animation speed.
+- Make a control's own rectangle its hit area, so the pressable region is exactly the drawn one and hiding the control removes it from input.
+- Keep an every-frame render path free of writes that repaint. `Text.setText` skips an unchanged value but `Text.setColor` does not: it re-rasterizes the text canvas and re-uploads its texture, so a colour written unconditionally each frame repaints captions that never changed. Compare before writing, and cover it with a test that counts repaints across idle frames.
+- Publish an interactive element's rectangle in screen coordinates, converted through the camera that renders it, so a browser test aims a real press at a real control instead of assuming a coordinate.
 - Absorb host safe-area insets in CSS around the Phaser parent element rather than inside the canvas, so insets are applied exactly once and the logical viewport stays a fixed 360×640.
 - Scale with `FIT` and `CENTER_BOTH`: letterbox rather than crop, so no required control can leave the host viewport.
 - Clip scrollable screen regions with a dedicated camera viewport, not a geometry mask; Phaser 4 removed WebGL geometry masks, and camera scroll gives later input steps a single value to drive.
