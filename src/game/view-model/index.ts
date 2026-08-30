@@ -23,6 +23,20 @@ export {
   type SharedStageViewModelInput,
 } from './mineViewModel';
 export {
+  beginMineScrollGesture,
+  createMineScrollState,
+  describeMineScroll,
+  dragMineScroll,
+  endMineScrollGesture,
+  scrollMineByWheel,
+  MINE_SCROLL_DRAG_THRESHOLD_PX,
+  type MineScrollGesture,
+  type MineScrollOptions,
+  type MineScrollPointer,
+  type MineScrollReadBack,
+  type MineScrollState,
+} from './mineScroll';
+export {
   createFloorUnlockControlViewModel,
   createPurchaseFeedback,
   createUpgradeControlViewModel,

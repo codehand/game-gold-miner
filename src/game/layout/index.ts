@@ -1,7 +1,9 @@
 export {
+  assertTouchTargetRegion,
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,
+  regionContainsPoint,
   serializeRegion,
   FLOOR_SLOT_GAP,
   FLOOR_SLOT_HEIGHT,
@@ -12,6 +14,7 @@ export {
   MINE_CONTENT_PADDING,
   MINE_FLOOR_COUNT,
   MINE_MIN_HEIGHT,
+  MIN_TOUCH_TARGET_PX,
   SURFACE_HEIGHT,
   type LayoutRegion,
   type MineLayout,

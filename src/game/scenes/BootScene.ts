@@ -10,6 +10,7 @@ import {
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,
+  regionContainsPoint,
   toFillColor,
   FONT_FAMILY,
   MINE_BACKGROUND,
@@ -25,9 +26,17 @@ import {
   advanceAnimationTimeMs,
   assertAnimationSpeedMultiplier,
   assertRenderableMineViewModel,
+  beginMineScrollGesture,
+  createMineScrollState,
   createPurchaseFeedback,
+  describeMineScroll,
   describePurchaseFeedback,
+  dragMineScroll,
+  endMineScrollGesture,
+  scrollMineByWheel,
   DEFAULT_ANIMATION_SPEED_MULTIPLIER,
+  type MineScrollPointer,
+  type MineScrollState,
   type MineViewModel,
   type PurchaseControlViewModel,
   type PurchaseFeedback,
@@ -71,6 +80,12 @@ const COLOR_MINE_BACKGROUND = toFillColor(MINE_BACKGROUND);
 export interface PublishedPurchaseControl extends RenderedPurchaseControlState {
   readonly key: string;
   readonly screenBounds: LayoutRegion;
+  /**
+   * True when a press aimed at `screenBounds` would actually reach this
+   * control. A scrolled floor control can sit outside the mine viewport, where
+   * it is neither drawn nor hit-tested, and a rectangle alone cannot say so.
+   */
+  readonly isPressable: boolean;
 }
 
 export interface BootSceneOptions {
@@ -109,6 +124,8 @@ export class BootScene extends Phaser.Scene {
   /** The camera the mine content is drawn through, needed to place presses. */
   #mineCamera: Phaser.Cameras.Scene2D.Camera | null = null;
   #mineRegion: LayoutRegion | null = null;
+  /** Scroll offset and tap-versus-drag state for the mine; null before `create`. */
+  #scroll: MineScrollState | null = null;
 
   public constructor(options: BootSceneOptions) {
     super({ key: BOOT_SCENE_KEY });
@@ -137,8 +154,10 @@ export class BootScene extends Phaser.Scene {
     this.#applyAnimation();
     this.#applyPurchaseFeedback(this.time.now);
 
-    // A dedicated camera viewport clips the mine area in both WebGL and Canvas
-    // and gives Step 31 a single `scrollY` value to drive.
+    // A dedicated camera viewport clips the mine area in both WebGL and Canvas,
+    // and its `scrollY` is the one value the scroll gesture drives. Phaser
+    // hit-tests through the same camera, so a control's pressable rectangle
+    // follows the content it is drawn on without any further bookkeeping.
     const mineCamera = this.cameras.add(
       layout.mine.x,
       layout.mine.y,
@@ -153,6 +172,11 @@ export class BootScene extends Phaser.Scene {
     this.cameras.main.ignore(mineContent);
     this.#mineCamera = mineCamera;
     this.#mineRegion = layout.mine;
+    this.#scroll = createMineScrollState({
+      region: layout.mine,
+      contentHeight: calculateMineContentHeight(MINE_FLOOR_COUNT),
+    });
+    this.#bindScrollInput();
 
     this.#publishDiagnostics(layout);
   }
@@ -233,6 +257,13 @@ export class BootScene extends Phaser.Scene {
       return;
     }
 
+    // The release that ends a scroll lands on whatever the finger dragged the
+    // content under, which is routinely a button. That press is the tail of a
+    // gesture the player already spent on scrolling, so it buys nothing.
+    if (this.#scroll?.hasDragged === true) {
+      return;
+    }
+
     const outcome = this.#source.purchase(control.target);
 
     this.#purchaseFeedback.set(
@@ -242,6 +273,85 @@ export class BootScene extends Phaser.Scene {
     this.#bindSnapshot(this.#source.snapshot, false);
     this.#applyPurchaseFeedback(this.time.now);
     this.#publishViewDiagnostics(true);
+  }
+
+  /**
+   * Drives the mine camera from pointer and wheel input.
+   *
+   * These are scene-wide input events rather than a draggable object, because
+   * the mine is scrolled by dragging anywhere over it — including across the
+   * floor panels and their buttons. The gesture model decides which of those
+   * presses was a tap; the handlers here only translate Phaser's pointers into
+   * it.
+   */
+  #bindScrollInput(): void {
+    this.input.on(
+      Phaser.Input.Events.POINTER_DOWN,
+      (pointer: Phaser.Input.Pointer) => {
+        this.#updateScroll((scroll) => {
+          return beginMineScrollGesture(scroll, toScrollPointer(pointer));
+        });
+      },
+    );
+    this.input.on(
+      Phaser.Input.Events.POINTER_MOVE,
+      (pointer: Phaser.Input.Pointer) => {
+        this.#updateScroll((scroll) => {
+          return dragMineScroll(scroll, toScrollPointer(pointer));
+        });
+      },
+    );
+
+    // A pointer released off the canvas still ends its gesture, or the mine
+    // would keep following a finger that has already left.
+    for (const event of [
+      Phaser.Input.Events.POINTER_UP,
+      Phaser.Input.Events.POINTER_UP_OUTSIDE,
+    ]) {
+      this.input.on(event, (pointer: Phaser.Input.Pointer) => {
+        this.#updateScroll((scroll) => endMineScrollGesture(scroll, pointer.id));
+      });
+    }
+
+    this.input.on(
+      Phaser.Input.Events.POINTER_WHEEL,
+      (pointer: Phaser.Input.Pointer) => {
+        this.#updateScroll((scroll) => {
+          return scrollMineByWheel(scroll, toScrollPointer(pointer), pointer.deltaY);
+        });
+      },
+    );
+  }
+
+  /**
+   * Applies one pure scroll transition and moves the camera if it changed.
+   *
+   * The transitions return their input unchanged by identity when nothing
+   * moved, which is most pointer moves, so this is the cheap path on a frame
+   * where the finger only wobbled. The rendered-state diagnostic is left to its
+   * own cadence: republishing it on every pointer move would serialize the
+   * whole screen at the pointer's rate rather than ten times a second.
+   */
+  #updateScroll(
+    transition: (scroll: MineScrollState) => MineScrollState,
+  ): void {
+    const scroll = this.#scroll;
+
+    if (scroll === null) {
+      return;
+    }
+
+    const next = transition(scroll);
+
+    if (next === scroll) {
+      return;
+    }
+
+    this.#scroll = next;
+
+    if (next.scrollY !== scroll.scrollY) {
+      this.#mineCamera?.setScroll(0, next.scrollY);
+    }
   }
 
   #applyPurchaseFeedback(nowMs: number): void {
@@ -414,15 +524,28 @@ export class BootScene extends Phaser.Scene {
           continue;
         }
 
+        const screenBounds = {
+          x: state.worldBounds.x + mine.x - camera.scrollX,
+          y: state.worldBounds.y + mine.y - camera.scrollY,
+          width: state.worldBounds.width,
+          height: state.worldBounds.height,
+        };
+
         published.push({
           ...state,
           key: control.key,
-          screenBounds: {
-            x: state.worldBounds.x + mine.x - camera.scrollX,
-            y: state.worldBounds.y + mine.y - camera.scrollY,
-            width: state.worldBounds.width,
-            height: state.worldBounds.height,
-          },
+          screenBounds,
+          // Scrolled far enough, a floor control leaves the mine viewport
+          // entirely. It is then clipped away and Phaser hit-tests the mine
+          // camera only under its own viewport, so the rectangle still exists
+          // while the control behind it does not.
+          isPressable:
+            state.isVisible &&
+            regionContainsPoint(
+              mine,
+              screenBounds.x + screenBounds.width / 2,
+              screenBounds.y + screenBounds.height / 2,
+            ),
         });
       }
     });
@@ -441,6 +564,9 @@ export class BootScene extends Phaser.Scene {
         ...state,
         key: stage.upgradeControl.key,
         screenBounds: state.worldBounds,
+        // The surface is drawn by the main camera, which neither scrolls nor
+        // clips, so a visible shared-stage control is always reachable.
+        isPressable: state.isVisible,
       });
     }
 
@@ -520,5 +646,21 @@ export class BootScene extends Phaser.Scene {
       speedMultiplier: this.#animationSpeedMultiplier,
       animationTimeMs: this.#animationTimeMs,
     });
+
+    if (this.#scroll !== null) {
+      canvas.dataset.mineScroll = JSON.stringify(describeMineScroll(this.#scroll));
+    }
   }
+}
+
+/**
+ * Phaser's pointer in the same logical coordinates the layout regions use.
+ *
+ * `pointer.x` and `pointer.y` are already scaled back through the fitted
+ * canvas, so they can be compared with layout regions directly; `id` is the
+ * slot Phaser keeps that pointer in, which is what distinguishes a second
+ * finger from the one that started the gesture.
+ */
+function toScrollPointer(pointer: Phaser.Input.Pointer): MineScrollPointer {
+  return { id: pointer.id, x: pointer.x, y: pointer.y };
 }

@@ -38,6 +38,13 @@ body {
 
 #game-viewport canvas {
   display: block;
+
+  /*
+   * The mine owns vertical drags. Without this the browser may claim the
+   * gesture first and pan or zoom the page instead, and once it has started
+   * doing so a canvas listener can no longer take it back.
+   */
+  touch-action: none;
 }
 
 .offline-reward-backdrop {

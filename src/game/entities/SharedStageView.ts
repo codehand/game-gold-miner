@@ -7,6 +7,7 @@ import {
   FONT_FAMILY,
   MATERIAL_BACKLOG_FILL,
   MATERIAL_FILL,
+  MIN_TOUCH_TARGET_PX,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
   PROGRESS_TRACK,
@@ -79,7 +80,11 @@ const CONVEYOR_DASH_COUNT = 3;
 const CONVEYOR_DASH_WIDTH = 10;
 const CONVEYOR_DASH_HEIGHT = 4;
 const UPGRADE_Y = 82;
-const UPGRADE_HEIGHT = 20;
+/**
+ * A thumb-sized target. The surface strip is sized to end each stage panel with
+ * exactly this control, so the panel bottom and the control bottom coincide.
+ */
+const UPGRADE_HEIGHT = MIN_TOUCH_TARGET_PX;
 
 export interface SharedStageViewOptions {
   /** Called when this stage's upgrade control is pressed. */

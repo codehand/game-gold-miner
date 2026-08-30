@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 
 import {
+  assertTouchTargetRegion,
   toFillColor,
   CONTROL_BACKGROUND,
   CONTROL_DISABLED_BACKGROUND,
@@ -81,6 +82,11 @@ export class PurchaseControlView {
 
   public constructor(scene: Phaser.Scene, options: PurchaseControlViewOptions) {
     const { region, layout } = options;
+
+    // The drawn rectangle is also the hit area, so the size that has to be
+    // thumb-sized is this one. Checked here rather than in each owning view:
+    // every button on the screen is one of these.
+    assertTouchTargetRegion(region, 'A purchase control');
 
     this.#background = scene.add
       .rectangle(region.x, region.y, region.width, region.height, COLOR_ENABLED)

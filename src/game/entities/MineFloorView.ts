@@ -8,6 +8,7 @@ import {
   MATERIAL_BACKLOG_FILL,
   MATERIAL_FILL,
   MINER_FILL,
+  MIN_TOUCH_TARGET_PX,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
   PROGRESS_TRACK,
@@ -100,9 +101,11 @@ const PICK_X = 40;
 const PICK_REST_Y = 70;
 const PICK_SWING_AMPLITUDE_PX = 6;
 const CONTROL_WIDTH = 92;
-const CONTROL_HEIGHT = 32;
+/** A thumb-sized target, which is what sets the height of the slot. */
+const CONTROL_HEIGHT = MIN_TOUCH_TARGET_PX;
 const CONTROL_INSET_X = 12;
-const CONTROL_Y = 56;
+/** Clear of the status badge above it and the progress bar below it. */
+const CONTROL_Y = 50;
 const REQUIREMENT_X = 54;
 const REQUIREMENT_Y = 66;
 

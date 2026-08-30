@@ -12,8 +12,14 @@ export const GAME_HEIGHT = 640;
 
 /** Fixed top HUD that never scrolls with the mine. */
 export const HUD_HEIGHT = 72;
-/** Surface strip holding the shared elevator and warehouse. */
-export const SURFACE_HEIGHT = 140;
+/**
+ * Surface strip holding the shared elevator and warehouse.
+ *
+ * Tall enough for each stage panel to end in a thumb-sized upgrade control:
+ * the strip is `SURFACE_HEIGHT` minus its title row and bottom inset, and the
+ * control is the last `MIN_TOUCH_TARGET_PX` of that panel.
+ */
+export const SURFACE_HEIGHT = 164;
 /** Smallest usable scrollable mine viewport. */
 export const MINE_MIN_HEIGHT = 200;
 
@@ -24,6 +30,17 @@ export const FLOOR_SLOT_GAP = 10;
 
 /** Base-game floor count; deeper mines are out of scope. */
 export const MINE_FLOOR_COUNT = 4;
+
+/**
+ * Smallest side of anything the player presses, in logical pixels.
+ *
+ * The logical viewport is 360 wide and the scale manager fits it to the host,
+ * so at the reference phone width one logical pixel is one CSS pixel and this
+ * is the 44 px touch target the platform guidelines ask for. On a narrower
+ * phone every target shrinks with the whole screen, which is a property of
+ * fitting a fixed design rather than something a single control can fix.
+ */
+export const MIN_TOUCH_TARGET_PX = 44;
 
 export interface LayoutRegion {
   readonly x: number;
@@ -106,6 +123,43 @@ export function calculateFloorSlotRegion(
     width: width - MINE_CONTENT_INSET_X * 2,
     height: FLOOR_SLOT_HEIGHT,
   };
+}
+
+/** True when the point is inside the region, treating it as `[x, x + width)`. */
+export function regionContainsPoint(
+  region: LayoutRegion,
+  x: number,
+  y: number,
+): boolean {
+  return (
+    x >= region.x &&
+    x < region.x + region.width &&
+    y >= region.y &&
+    y < region.y + region.height
+  );
+}
+
+/**
+ * Rejects an interactive region too small for a thumb.
+ *
+ * Thrown rather than merely reported: a control the player cannot reliably hit
+ * is a defect in the layout, and every browser test boots the scene, so a
+ * shrunken control fails loudly on the frame it is built instead of surviving
+ * as a slow, unattributable miss rate on a real phone.
+ */
+export function assertTouchTargetRegion(
+  region: LayoutRegion,
+  name: string,
+): void {
+  if (
+    region.width < MIN_TOUCH_TARGET_PX ||
+    region.height < MIN_TOUCH_TARGET_PX
+  ) {
+    throw new Error(
+      `${name} must be at least ${MIN_TOUCH_TARGET_PX}x${MIN_TOUCH_TARGET_PX} logical pixels, ` +
+        `but is ${region.width}x${region.height}.`,
+    );
+  }
 }
 
 export function serializeRegion(region: LayoutRegion): string {

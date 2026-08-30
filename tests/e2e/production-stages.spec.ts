@@ -41,8 +41,8 @@ const FIXTURE_TIMESTAMP_MS = FIXED_TIME.getTime();
  * store stays 360x640, so these logical coordinates hold at any host viewport.
  * Each point sits where the sampled object is the topmost drawn thing.
  */
-const FLOOR_ONE_PILE_BOTTOM_PROBE: readonly [number, number] = [78, 308];
-const FLOOR_ONE_PILE_TOP_PROBE: readonly [number, number] = [78, 281];
+const FLOOR_ONE_PILE_BOTTOM_PROBE: readonly [number, number] = [78, 332];
+const FLOOR_ONE_PILE_TOP_PROBE: readonly [number, number] = [78, 305];
 const ELEVATOR_QUEUE_BLOCK_PROBE: readonly [number, number] = [28, 155];
 const WAREHOUSE_QUEUE_BLOCK_PROBE: readonly [number, number] = [200, 155];
 const ELEVATOR_TRACK_START_PROBE: readonly [number, number] = [22, 165];

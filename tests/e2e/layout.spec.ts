@@ -47,8 +47,8 @@ const CANVAS_SELECTOR = '#game-viewport canvas';
  */
 const HUD_PROBE: readonly [number, number] = [180, 30];
 const SURFACE_PROBE: readonly [number, number] = [300, 85];
-const MINE_GUTTER_PROBE: readonly [number, number] = [6, 230];
-const MINE_PANEL_PROBE: readonly [number, number] = [180, 230];
+const MINE_GUTTER_PROBE: readonly [number, number] = [6, 254];
+const MINE_PANEL_PROBE: readonly [number, number] = [180, 254];
 
 test.beforeEach(async ({ page }) => {
   // Phaser disables preserveDrawingBuffer for performance, which makes the

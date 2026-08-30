@@ -45,12 +45,12 @@ const FIXTURE_TIMESTAMP_MS = FIXED_TIME.getTime();
  * store stays 360x640, so these logical coordinates hold at any host viewport.
  * Each point sits where the sampled object is the topmost drawn thing.
  */
-const UNLOCKED_FLOOR_PANEL_PROBE: readonly [number, number] = [212, 242];
-const LOCKED_FLOOR_PANEL_PROBE: readonly [number, number] = [212, 494];
-const FLOOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 326];
-const FLOOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [112, 326];
-const FILLED_PILE_BLOCK_PROBE: readonly [number, number] = [78, 308];
-const EMPTY_PILE_BLOCK_PROBE: readonly [number, number] = [78, 281];
+const UNLOCKED_FLOOR_PANEL_PROBE: readonly [number, number] = [212, 266];
+const LOCKED_FLOOR_PANEL_PROBE: readonly [number, number] = [212, 518];
+const FLOOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 350];
+const FLOOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [112, 350];
+const FILLED_PILE_BLOCK_PROBE: readonly [number, number] = [78, 332];
+const EMPTY_PILE_BLOCK_PROBE: readonly [number, number] = [78, 305];
 const ELEVATOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 165];
 const ELEVATOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [100, 165];
 /**

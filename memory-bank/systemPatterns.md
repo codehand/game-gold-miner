@@ -80,8 +80,16 @@ Persistence and Platform Adapters
 - Publish an interactive element's rectangle in screen coordinates, converted through the camera that renders it, so a browser test aims a real press at a real control instead of assuming a coordinate.
 - Absorb host safe-area insets in CSS around the Phaser parent element rather than inside the canvas, so insets are applied exactly once and the logical viewport stays a fixed 360×640.
 - Scale with `FIT` and `CENTER_BOTH`: letterbox rather than crop, so no required control can leave the host viewport.
-- Clip scrollable screen regions with a dedicated camera viewport, not a geometry mask; Phaser 4 removed WebGL geometry masks, and camera scroll gives later input steps a single value to drive.
-- Keep fixed and scrolling layers in separate containers and cross-ignore them between cameras so the HUD cannot scroll with the mine.
+- Clip scrollable screen regions with a dedicated camera viewport, not a geometry mask; Phaser 4 removed WebGL geometry masks, and camera scroll is the single value a scroll gesture drives.
+- Keep fixed and scrolling layers in separate containers and cross-ignore them between cameras so the HUD cannot scroll with the mine. Scroll the same camera the engine hit-tests through, so a control's pressable rectangle follows the content it is drawn on rather than needing its own bookkeeping.
+- Decide a scroll gesture in a pure model over pointer coordinates and one region, so telling a tap from a drag is unit-testable in Node instead of only reachable through a browser drag.
+- Separate the two things a gesture decides: whether the surface scrolls, which needs the press to have started over it, and whether the release is still a tap, which is about how far the pointer travelled wherever it began. A swipe that lifts on a button is not a press on that button.
+- Give a drag a threshold and let travel under it change nothing at all: a thumb never lands perfectly still, so a press that wobbles must both leave the screen where the player aimed and still buy what they aimed at.
+- Let a suppressed tap outlive the gesture that suppressed it and clear it only on the next press, because the engine reports a control's press while the pointer is still coming up.
+- Return state unchanged by identity whenever a pointer transition moved nothing, so a held finger costs no camera write and no republished diagnostic.
+- Size every interactive region for a thumb and assert the minimum where the control is built, so an undersized button fails at boot rather than as an unattributable miss rate on a real phone.
+- Let the surface that owns a gesture claim it in CSS as well as in code: without `touch-action: none` a browser can start panning the page and no canvas listener can take the gesture back.
+- Publish whether an element is actually reachable, not only where it is: a scrolled-away control's rectangle outlives the control, and a test aiming at it would press whatever took its place.
 - Format every displayed amount through one shared function, so a value never reads one way in the HUD and another in the mine.
 - Truncate a displayed balance rather than rounding it: a number that reads higher than it is promises a purchase the player cannot make.
 - Read a magnitude through the numeric boundary's own mantissa and exponent, never through `Number`, which collapses everything past its range to the same value.

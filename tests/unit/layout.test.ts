@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  assertTouchTargetRegion,
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,
+  regionContainsPoint,
   serializeRegion,
   toFillColor,
   FLOOR_SLOT_GAP,
@@ -16,6 +18,7 @@ import {
   MINE_CONTENT_PADDING,
   MINE_FLOOR_COUNT,
   MINE_MIN_HEIGHT,
+  MIN_TOUCH_TARGET_PX,
   LOCKED_PANEL_BACKGROUND,
   MATERIAL_FILL,
   PANEL_BACKGROUND,
@@ -166,9 +169,74 @@ describe('scrollable mine content', () => {
   });
 });
 
+describe('region containment', () => {
+  it('includes the top-left corner and excludes the far edges', () => {
+    const region = { x: 10, y: 20, width: 30, height: 40 };
+
+    expect(regionContainsPoint(region, 10, 20)).toBe(true);
+    expect(regionContainsPoint(region, 39, 59)).toBe(true);
+    expect(regionContainsPoint(region, 40, 40)).toBe(false);
+    expect(regionContainsPoint(region, 20, 60)).toBe(false);
+    expect(regionContainsPoint(region, 9, 40)).toBe(false);
+    expect(regionContainsPoint(region, 20, 19)).toBe(false);
+  });
+
+  it('separates the mine from the fixed layers above it', () => {
+    const layout = calculateMineLayout();
+
+    expect(regionContainsPoint(layout.mine, 180, layout.mine.y)).toBe(true);
+    expect(regionContainsPoint(layout.mine, 180, layout.mine.y - 1)).toBe(false);
+    expect(regionContainsPoint(layout.hud, 180, layout.mine.y)).toBe(false);
+  });
+});
+
+describe('touch targets', () => {
+  it('holds the platform guideline at the reference phone width', () => {
+    expect(MIN_TOUCH_TARGET_PX).toBe(44);
+  });
+
+  it('accepts a region at or above the minimum on both sides', () => {
+    expect(() =>
+      assertTouchTargetRegion(
+        { x: 0, y: 0, width: MIN_TOUCH_TARGET_PX, height: MIN_TOUCH_TARGET_PX },
+        'A control',
+      ),
+    ).not.toThrow();
+  });
+
+  it('rejects a region too small on either side', () => {
+    expect(() =>
+      assertTouchTargetRegion(
+        {
+          x: 0,
+          y: 0,
+          width: MIN_TOUCH_TARGET_PX,
+          height: MIN_TOUCH_TARGET_PX - 1,
+        },
+        'A purchase control',
+      ),
+    ).toThrow(/A purchase control must be at least 44x44 logical pixels/);
+    expect(() =>
+      assertTouchTargetRegion(
+        {
+          x: 0,
+          y: 0,
+          width: MIN_TOUCH_TARGET_PX - 1,
+          height: MIN_TOUCH_TARGET_PX,
+        },
+        'A purchase control',
+      ),
+    ).toThrow(/but is 43x44/);
+  });
+
+  it('leaves room in a floor slot for a thumb-sized control', () => {
+    expect(FLOOR_SLOT_HEIGHT).toBeGreaterThan(MIN_TOUCH_TARGET_PX);
+  });
+});
+
 describe('region serialization', () => {
   it('emits the diagnostic form the browser layout test reads', () => {
-    expect(serializeRegion(calculateMineLayout().mine)).toBe('0,212,360,428');
+    expect(serializeRegion(calculateMineLayout().mine)).toBe('0,236,360,404');
   });
 });
 

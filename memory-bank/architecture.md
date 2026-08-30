@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 29 are complete. Step 30's floor unlock controls — every locked floor now states the prerequisite it waits on and the price it costs, and opens in place when both are satisfied — are implemented with passing automated checks and are awaiting user validation. Step 31 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
+Steps 1 through 30 are complete. Step 31's mine scrolling and one-thumb input — the mine area now scrolls under a drag or a wheel while the HUD and surface stay fixed, a gesture that became a scroll can no longer buy the button it ends on, and every control is a 44x44 logical touch target — are implemented with passing automated checks and are awaiting user validation. Step 32 and all later work remain blocked. IndexedDB schema version 1 is unchanged and documented below; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -193,12 +193,30 @@ The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inse
 | Region | Logical rect (360×640) | Role |
 |---|---|---|
 | `hud` | `0,0,360,72` | Fixed top HUD; English `Gold` and `Income /s` labels. |
-| `surface` | `0,72,360,140` | Shared elevator and warehouse panels. |
-| `mine` | `0,212,360,428` | Clipped viewport the mine content scrolls behind; runs to the bottom edge. |
+| `surface` | `0,72,360,164` | Shared elevator and warehouse panels. |
+| `mine` | `0,236,360,404` | Clipped viewport the mine content scrolls behind; runs to the bottom edge. |
 
-The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT` (412). `calculateMineContentHeight()` returns 514 logical pixels for four floor slots — taller than the 428-pixel mine region — so the area must scroll. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin.
+The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT` (436). `calculateMineContentHeight()` returns 514 logical pixels for four floor slots — taller than the 404-pixel mine region — so the area must scroll by 110. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin.
 
-Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD and surface never scroll and Step 31 only needs to drive the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
+`MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects any smaller interactive region. The surface strip is sized around it: a stage panel is `SURFACE_HEIGHT` less its title row and bottom inset, and its last 44 pixels are the upgrade control. That is why the strip is 164 rather than the 140 it was through Step 30.
+
+Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD and surface never scroll and the scroll gesture drives only the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
+
+## Mine Scroll and Input Contract
+
+The mine content is 110 logical pixels taller than the region it is drawn through, so the player reaches the lower floors by dragging or wheeling. `src/game/view-model/mineScroll.ts` decides all of that from pointer coordinates and the mine region alone; the scene only applies the resulting `scrollY` to the mine camera, which is also the camera Phaser hit-tests through, so a control's pressable rectangle follows the content it is drawn on without further bookkeeping.
+
+`createMineScrollState({region, contentHeight})` caps travel at `max(0, contentHeight - region.height)`, so content that already fits cannot scroll into empty space. `beginMineScrollGesture` anchors a press, `dragMineScroll` moves the content one pixel per pixel of travel from that anchor, `endMineScrollGesture` releases it, and `scrollMineByWheel` adds a wheel delta. Both scrolling entry points clamp at `[0, maxScrollY]`, and every transition returns its input unchanged by identity when nothing moved, so a held finger that only wobbles costs no camera write.
+
+Telling a tap from a scroll is the awkward part, and it is decided in that pure model rather than in Phaser:
+
+- Travel under `MINE_SCROLL_DRAG_THRESHOLD_PX` (6) scrolls nothing and suppresses nothing, because a thumb never lands perfectly still and a press that wobbles must still buy what it aimed at. Crossing the threshold scrolls the whole travel including those first pixels — six pixels is below what the eye catches, while losing one-to-one tracking is not.
+- Every press is tracked, not only one that landed on the mine, because a gesture decides two separate things: whether the mine scrolls, which needs the press to have started over it, and whether the release is still a tap, which is about how far the pointer travelled wherever it began. A swipe from the surface strip that lifts on a floor's button is not a tap on that button.
+- `hasDragged` outlives the gesture that set it and is cleared only by the next pointer-down. Phaser reports a control's press while the pointer is still coming up, so the flag has to survive that release; `BootScene.#requestPurchase` returns early while it is set. A wheel never sets it, because a notch of scroll followed by a click is two separate intentions.
+
+The wheel is ignored unless the pointer is over the mine, so the fixed layers cannot scroll it. Wheel deltas arrive in host pixels rather than logical ones, which differ by the fitted canvas scale; for a wheel that is not worth carrying the scale factor into a pure module. `#game-viewport canvas` sets `touch-action: none` so the browser cannot claim a vertical gesture as a page pan before Phaser sees it.
+
+`PublishedPurchaseControl` carries `isPressable` beside its screen rectangle: a floor control scrolled out of the mine viewport is clipped away and hit-tested by no camera, so the rectangle outlives the control behind it. `describeMineScroll` is published as `data-mine-scroll` on the same 100 ms cadence as the other read-backs.
 
 ## Mine View Contract
 
