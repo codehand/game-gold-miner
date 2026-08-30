@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   createInitialGameState,
+  describeFloorUnlock,
   GameNumber,
   type GameState,
   type MineFloorState,
@@ -10,6 +11,7 @@ import {
 import {
   assertRenderableMineViewModel,
   calculateMaterialPileSteps,
+  createMineFloorViewModel,
   createMineViewModel,
   formatAmount,
   MAX_MATERIAL_PILE_STEPS,
@@ -112,7 +114,7 @@ describe('mine view model', () => {
     ).toEqual(['25%', '50%', '0%', '0%']);
   });
 
-  it('marks locked floors distinctly and hides their upgrade control', () => {
+  it('marks locked floors distinctly and swaps their upgrade control for an unlock', () => {
     const viewModel = createViewModel(createFixtureState());
 
     expect(viewModel.floors.map(({ statusLabel }) => statusLabel)).toEqual([
@@ -124,6 +126,12 @@ describe('mine view model', () => {
     expect(
       viewModel.floors.map(({ upgradeControl }) => upgradeControl === null),
     ).toEqual([false, false, true, true]);
+    expect(
+      viewModel.floors.map(({ unlockControl }) => unlockControl === null),
+    ).toEqual([true, true, false, false]);
+    expect(
+      viewModel.floors.map(({ unlockRequirementLabel }) => unlockRequirementLabel),
+    ).toEqual([null, null, 'Needs Floor 2 Lv 5', 'Needs Floor 3 Lv 7']);
     expect(viewModel.floors[2].materialPileSteps).toBe(0);
     expect(viewModel.floors[2].materialQueueLabel).toBe('0');
   });
@@ -350,6 +358,55 @@ describe('renderable snapshot guard', () => {
     expect(() =>
       assertRenderableMineViewModel(viewModel, viewModel.floors.length),
     ).not.toThrow();
+  });
+
+  it('rejects a floor offering both purchases or neither', () => {
+    const viewModel = createViewModel(createFixtureState());
+    const open = viewModel.floors[0];
+    const locked = viewModel.floors[2];
+    const withFloors = (floor: (typeof viewModel.floors)[number]) => {
+      return { ...viewModel, floors: [floor, ...viewModel.floors.slice(1)] };
+    };
+
+    // Both controls share one slot on the panel, so a floor carrying both would
+    // stack two live buttons and a floor carrying neither would strand a
+    // purchasable stage with no way to buy it.
+    expect(() =>
+      assertRenderableMineViewModel(
+        withFloors({ ...open, unlockControl: locked.unlockControl }),
+        4,
+      ),
+    ).toThrow(/floor-1 must offer exactly one/);
+    expect(() =>
+      assertRenderableMineViewModel(
+        withFloors({ ...open, upgradeControl: null }),
+        4,
+      ),
+    ).toThrow(/floor-1 must offer exactly one/);
+  });
+
+  it('rejects an unlock description that disagrees with the lock state', () => {
+    const state = createFixtureState();
+    const lockedUnlock = describeFloorUnlock(state, 'floor-3', BASE_GAME_BALANCE);
+
+    expect(() =>
+      createMineFloorViewModel({
+        floor: state.floors[0],
+        config: BASE_GAME_BALANCE.floors[0],
+        elevatorCapacity: state.elevator.capacity,
+        gold: state.gold,
+        unlock: lockedUnlock,
+      }),
+    ).toThrow(/Open floor floor-1 was given an unlock description/);
+    expect(() =>
+      createMineFloorViewModel({
+        floor: state.floors[2],
+        config: BASE_GAME_BALANCE.floors[2],
+        elevatorCapacity: state.elevator.capacity,
+        gold: state.gold,
+        unlock: null,
+      }),
+    ).toThrow(/Locked floor floor-3 was given no unlock description/);
   });
 
   it('rejects a snapshot the screen would render only partially', () => {

@@ -10,8 +10,8 @@ export {
   type SharedStageViewOptions,
 } from './SharedStageView';
 export {
-  UpgradeControlView,
-  type RenderedUpgradeControlState,
-  type UpgradeControlLayout,
-  type UpgradeControlViewOptions,
-} from './UpgradeControlView';
+  PurchaseControlView,
+  type PurchaseControlLayout,
+  type PurchaseControlViewOptions,
+  type RenderedPurchaseControlState,
+} from './PurchaseControlView';

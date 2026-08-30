@@ -202,6 +202,10 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     expect(rendered.showsUpgradeControl, `${label} upgrade control`).toBe(
       source.isUnlocked,
     );
+    // The two controls share one slot, so exactly one of them is ever drawn.
+    expect(rendered.showsUnlockControl, `${label} unlock control`).toBe(
+      !source.isUnlocked,
+    );
     expect(rendered.progressLabel, `${label} progress label`).toBe(
       `${Math.round(source.extractionProgress * 100)}%`,
     );

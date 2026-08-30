@@ -11,7 +11,7 @@ import {
 } from '../../src/core';
 // The scene's own diagnostic type, imported rather than restated, so a renamed
 // field fails type-check instead of silently reading `undefined`.
-import type { PublishedUpgradeControl } from '../../src/game/scenes/BootScene';
+import type { PublishedPurchaseControl } from '../../src/game/scenes/BootScene';
 import { formatAmount } from '../../src/game/view-model';
 import { createSaveDocument } from '../../src/persistence';
 
@@ -92,19 +92,19 @@ test('refuses an unaffordable upgrade and changes nothing', async ({ page }) => 
   const fixture = createFixtureState(GameNumber.from(1));
 
   const before = await bootDriverFixture(page, fixture);
-  const control = await readUpgradeControl(page, FLOOR_1_KEY);
+  const control = await readPurchaseControl(page, FLOOR_1_KEY);
 
   expect(control.costLabel, 'the control shows the next price').toBe(
     formatAmount(nextCosts(fixture).floor1),
   );
-  expect(control.isAffordableAppearance, 'one gold cannot buy a level').toBe(
+  expect(control.isEnabledAppearance, 'one gold cannot buy a level').toBe(
     false,
   );
 
-  await pressUpgradeControl(page, FLOOR_1_KEY);
+  await pressPurchaseControl(page, FLOOR_1_KEY);
 
   await expect
-    .poll(async () => (await readUpgradeControl(page, FLOOR_1_KEY)).feedbackLabel, {
+    .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).feedbackLabel, {
       message: 'a refused press must say why',
     })
     .toBe('Need more gold');
@@ -118,7 +118,7 @@ test('refuses an unaffordable upgrade and changes nothing', async ({ page }) => 
   // The refusal covers the price while it is showing, so the price is checked
   // once it has cleared: a refused press must leave the same figure behind.
   await expect
-    .poll(async () => (await readUpgradeControl(page, FLOOR_1_KEY)).costLabel, {
+    .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).costLabel, {
       message: 'the price must be unchanged',
     })
     .toBe(control.costLabel);
@@ -133,17 +133,17 @@ test('buys one mine-shaft level, deducting the price once', async ({ page }) => 
   const cost = nextCosts(fixture).floor1;
 
   const before = await bootDriverFixture(page, fixture);
-  const beforeControl = await readUpgradeControl(page, FLOOR_1_KEY);
+  const beforeControl = await readPurchaseControl(page, FLOOR_1_KEY);
 
-  expect(beforeControl.isAffordableAppearance, 'the control must be enabled').toBe(
+  expect(beforeControl.isEnabledAppearance, 'the control must be enabled').toBe(
     true,
   );
   expect(beforeControl.costLabel).toBe(formatAmount(cost));
 
-  await pressUpgradeControl(page, FLOOR_1_KEY);
+  await pressPurchaseControl(page, FLOOR_1_KEY);
 
   await expect
-    .poll(async () => (await readUpgradeControl(page, FLOOR_1_KEY)).feedbackLabel, {
+    .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).feedbackLabel, {
       message: 'a completed purchase must confirm itself',
     })
     .toBe('Upgraded!');
@@ -170,7 +170,7 @@ test('buys one mine-shaft level, deducting the price once', async ({ page }) => 
 
   // Once the confirmation expires the button shows the new, higher price.
   await expect
-    .poll(async () => (await readUpgradeControl(page, FLOOR_1_KEY)).costLabel, {
+    .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).costLabel, {
       message: 'the button price must follow the new level',
     })
     .toBe(
@@ -193,12 +193,12 @@ test('buys the shared elevator and warehouse from their own controls', async ({
 
   const before = await bootDriverFixture(page, fixture);
 
-  await pressUpgradeControl(page, ELEVATOR_KEY);
+  await pressPurchaseControl(page, ELEVATOR_KEY);
   await expect
     .poll(async () => (await readCoreState(page)).elevatorLevel)
     .toBe(before.elevatorLevel + 1);
 
-  await pressUpgradeControl(page, WAREHOUSE_KEY);
+  await pressPurchaseControl(page, WAREHOUSE_KEY);
   await expect
     .poll(async () => (await readCoreState(page)).warehouseLevel)
     .toBe(before.warehouseLevel + 1);
@@ -352,7 +352,7 @@ async function bootDriverFixture(
     'BootScene',
   );
   await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute(
-    'data-upgrade-controls',
+    'data-purchase-controls',
     /Upgrade/,
   );
 
@@ -367,9 +367,9 @@ async function bootDriverFixture(
  * rectangle is mapped through the canvas' own box rather than assumed to be
  * one-to-one with page pixels.
  */
-async function pressUpgradeControl(page: Page, key: string): Promise<void> {
+async function pressPurchaseControl(page: Page, key: string): Promise<void> {
   const canvas = page.locator(CANVAS_SELECTOR);
-  const control = await readUpgradeControl(page, key);
+  const control = await readPurchaseControl(page, key);
   const box = await boundingBox(canvas);
   const scaleX = box.width / 360;
   const scaleY = box.height / 640;
@@ -388,19 +388,19 @@ async function pressUpgradeControl(page: Page, key: string): Promise<void> {
   await page.mouse.click(center.x, center.y);
 }
 
-async function readUpgradeControl(
+async function readPurchaseControl(
   page: Page,
   key: string,
-): Promise<PublishedUpgradeControl> {
+): Promise<PublishedPurchaseControl> {
   const serialized = await page
     .locator(CANVAS_SELECTOR)
-    .getAttribute('data-upgrade-controls');
+    .getAttribute('data-purchase-controls');
 
   if (serialized === null) {
-    throw new Error('Diagnostic "data-upgrade-controls" was not published.');
+    throw new Error('Diagnostic "data-purchase-controls" was not published.');
   }
 
-  const controls = JSON.parse(serialized) as PublishedUpgradeControl[];
+  const controls = JSON.parse(serialized) as PublishedPurchaseControl[];
   const control = controls.find((candidate) => candidate.key === key);
 
   if (control === undefined) {

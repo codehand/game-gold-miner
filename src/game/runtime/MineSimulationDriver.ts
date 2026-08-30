@@ -17,16 +17,19 @@ import type { BaseGameBalanceConfig } from '../../config';
 import {
   catchUpSimulation,
   purchaseElevatorUpgrade,
+  purchaseFloorUnlock,
   purchaseMineShaftUpgrade,
   purchaseWarehouseUpgrade,
+  type FloorUnlockFailureReason,
   type GameState,
+  type UpgradePurchaseFailureReason,
   type UpgradePurchaseResult,
 } from '../../core';
 import {
   createMineViewModel,
   type MineViewModel,
-  type UpgradeOutcome,
-  type UpgradeTarget,
+  type PurchaseOutcome,
+  type PurchaseTarget,
 } from '../view-model';
 
 /** What the scene needs from whatever is feeding it snapshots. */
@@ -43,7 +46,7 @@ export interface MineCommandSink {
    * Routes a press to the matching core command and reports what happened, so
    * the scene can show the result without deciding it.
    */
-  purchaseUpgrade(target: UpgradeTarget): UpgradeOutcome;
+  purchase(target: PurchaseTarget): PurchaseOutcome;
 }
 
 /** Everything the scene needs: snapshots to pull, commands to send. */
@@ -124,7 +127,8 @@ export class MineSimulationDriver implements MineRuntimePort {
   }
 
   /**
-   * Buys the next level of one stage, and reports the core's answer.
+   * Buys the next level of one stage or opens one locked floor, and reports the
+   * core's answer.
    *
    * The mine is advanced to the current time first, because the player is
    * spending the gold they have now rather than the gold the last rendered
@@ -132,21 +136,22 @@ export class MineSimulationDriver implements MineRuntimePort {
    * purchase succeeds: a refusal leaves authoritative state and the memoized
    * snapshot exactly as they were.
    */
-  public purchaseUpgrade(target: UpgradeTarget): UpgradeOutcome {
+  public purchase(target: PurchaseTarget): PurchaseOutcome {
     this.advance();
 
-    const result = this.#purchase(target);
+    const result =
+      target.type === 'floor-unlock'
+        ? purchaseFloorUnlock(this.#state, target.floorId, this.#balance)
+        : this.#purchaseUpgrade(target);
 
     if (!result.success) {
-      return result.reason === 'insufficient-funds'
-        ? 'insufficient-funds'
-        : 'unavailable';
+      return describeRefusal(result.reason);
     }
 
     this.#setState(result.state);
     this.#onCommandApplied?.();
 
-    return 'purchased';
+    return target.type === 'floor-unlock' ? 'unlocked' : 'purchased';
   }
 
   /**
@@ -157,7 +162,9 @@ export class MineSimulationDriver implements MineRuntimePort {
     this.#setState(state);
   }
 
-  #purchase(target: UpgradeTarget): UpgradePurchaseResult {
+  #purchaseUpgrade(
+    target: Exclude<PurchaseTarget, { type: 'floor-unlock' }>,
+  ): UpgradePurchaseResult {
     switch (target.type) {
       case 'mine-shaft':
         return purchaseMineShaftUpgrade(
@@ -175,5 +182,26 @@ export class MineSimulationDriver implements MineRuntimePort {
   #setState(state: GameState): void {
     this.#state = state;
     this.#snapshot = createMineViewModel(state, this.#balance);
+  }
+}
+
+/**
+ * Translates a core refusal into what the control will say.
+ *
+ * Only the two reasons a player can act on are named: earn more gold, or raise
+ * the prerequisite shaft. Everything else — an unknown floor, a locked shaft, a
+ * floor already open — is a press that should not have been reachable, and
+ * reads as unavailable rather than as advice the player cannot use.
+ */
+function describeRefusal(
+  reason: UpgradePurchaseFailureReason | FloorUnlockFailureReason,
+): PurchaseOutcome {
+  switch (reason) {
+    case 'insufficient-funds':
+      return 'insufficient-funds';
+    case 'prerequisite-not-met':
+      return 'requirement-not-met';
+    default:
+      return 'unavailable';
   }
 }

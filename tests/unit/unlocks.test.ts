@@ -4,6 +4,7 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   advanceSimulation,
   createInitialGameState,
+  describeFloorUnlock,
   GameNumber,
   purchaseFloorUnlock,
   type GameState,
@@ -260,3 +261,121 @@ function expectSimulationMetadataPreserved(
   expect(actual.simulationTick).toBe(expected.simulationTick);
   expect(actual.simulationRemainderMs).toBe(expected.simulationRemainderMs);
 }
+
+describe('floor unlock description', () => {
+  /** A mine whose floor-1 shaft and balance can be set independently. */
+  function createState(mineShaftLevel: number, gold: number): GameState {
+    const base = createInitialGameState(BASE_GAME_BALANCE, TIMESTAMP_MS);
+
+    return {
+      ...base,
+      gold: GameNumber.from(gold),
+      floors: base.floors.map((floor, index) => {
+        return index === 0 ? { ...floor, mineShaftLevel } : floor;
+      }),
+    };
+  }
+
+  it('describes a locked floor from its balance data and the mine it waits on', () => {
+    const availability = describeFloorUnlock(
+      createState(3, 100),
+      'floor-2',
+      BASE_GAME_BALANCE,
+    );
+
+    expect(availability).toMatchObject({
+      floorId: 'floor-2',
+      requirement: {
+        floorId: 'floor-1',
+        floorNumber: 1,
+        level: 5,
+        currentLevel: 3,
+      },
+      isRequirementMet: false,
+      isAffordable: false,
+      canUnlock: false,
+    });
+    expect(availability?.cost.equals(250)).toBe(true);
+  });
+
+  it('reports a still-locked prerequisite as level zero rather than as its level', () => {
+    const base = createInitialGameState(BASE_GAME_BALANCE, TIMESTAMP_MS);
+    const state: GameState = {
+      ...base,
+      gold: GameNumber.from(10_000),
+      // Floor 2 sits above the gate but has never been opened, so floor 3 is
+      // still waiting on nothing it can count.
+      floors: base.floors.map((floor, index) => {
+        return index === 1 ? { ...floor, mineShaftLevel: 9 } : floor;
+      }),
+    };
+
+    expect(
+      describeFloorUnlock(state, 'floor-3', BASE_GAME_BALANCE),
+    ).toMatchObject({
+      requirement: { floorNumber: 2, level: 5, currentLevel: 0 },
+      isRequirementMet: false,
+      isAffordable: true,
+      canUnlock: false,
+    });
+  });
+
+  it('separates a met requirement from an affordable price', () => {
+    expect(
+      describeFloorUnlock(createState(5, 100), 'floor-2', BASE_GAME_BALANCE),
+    ).toMatchObject({
+      isRequirementMet: true,
+      isAffordable: false,
+      canUnlock: false,
+    });
+    expect(
+      describeFloorUnlock(createState(5, 250), 'floor-2', BASE_GAME_BALANCE),
+    ).toMatchObject({
+      isRequirementMet: true,
+      isAffordable: true,
+      canUnlock: true,
+    });
+  });
+
+  it('describes nothing for a floor that is already open', () => {
+    expect(
+      describeFloorUnlock(createState(1, 0), 'floor-1', BASE_GAME_BALANCE),
+    ).toBeNull();
+  });
+
+  it('describes nothing for an unknown floor', () => {
+    expect(
+      describeFloorUnlock(createState(1, 0), 'floor-9', BASE_GAME_BALANCE),
+    ).toBeNull();
+  });
+
+  /**
+   * The description is what a control renders and the command is what charges
+   * gold. If they disagreed, a floor could look unlockable and refuse the
+   * press, or look gated and open anyway.
+   */
+  it('agrees with the command it is describing at every gate', () => {
+    for (const mineShaftLevel of [1, 4, 5, 6]) {
+      for (const gold of [0, 249, 250, 5_000]) {
+        const state = createState(mineShaftLevel, gold);
+        const availability = describeFloorUnlock(
+          state,
+          'floor-2',
+          BASE_GAME_BALANCE,
+        );
+        const result = purchaseFloorUnlock(state, 'floor-2', BASE_GAME_BALANCE);
+        const label = `level ${mineShaftLevel} with ${gold} gold`;
+
+        expect(availability?.canUnlock, label).toBe(result.success);
+        expect(availability?.cost.equals(result.cost ?? 0), label).toBe(true);
+
+        if (!result.success) {
+          expect(
+            result.reason === 'prerequisite-not-met',
+            `${label} names the gate the description reports`,
+          ).toBe(!availability?.isRequirementMet);
+        }
+      }
+    }
+  });
+});

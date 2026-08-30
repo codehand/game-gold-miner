@@ -27,7 +27,7 @@ Persistence and Platform Adapters
 - Let the shared elevator service non-empty unlocked floors round-robin from top to bottom.
 - Upgrade each mine shaft, the elevator, and the warehouse independently; shaft levels derive higher extraction yield, shared-stage levels derive higher capacity, and all upgrades retain queued material and in-progress completion percentage.
 - Derive cumulative level 10/25/50/100 milestone multipliers from the current level for every stage; never store grant flags or mutate bonuses that could be applied twice after reload.
-- Unlock deeper floors only through a distinct immutable command after the immediately previous floor is unlocked at its configured shaft level; deduct once and initialize the target from balance data.
+- Unlock deeper floors only through a distinct immutable command after the immediately previous floor is unlocked at its configured shaft level; deduct once and initialize the target from balance data. Derive what a locked floor shows from the same private predicate that command uses, so the description and the charge cannot disagree.
 - Analyze provisional balance with a deterministic one-second automated playthrough: prioritize eligible unlocks, reserve their cost once prerequisites are met, otherwise buy the affordable upgrade with the greatest modeled effective-rate increase, and use next-unlock progress plus configured order for exact ties.
 - Use events/commands between presentation and core logic; never mutate economy state directly from a scene.
 - Advance foreground simulation through 100 ms fixed ticks, retain sub-tick remainder in authoritative state, and credit at most 1,000 ms per update after suspension while consuming the full wall-clock delta.
@@ -63,6 +63,12 @@ Persistence and Platform Adapters
 - Signal a locked or disabled element with its own palette colour and badge rather than an alpha dim, so a pixel probe can prove the distinction.
 - Show a bottleneck as a discrete pile measured against what the next stage removes in one cycle, so a full pile is a readable signal rather than an unbounded number.
 - Keep rendering steps free of interaction: a step that renders a control renders it inert, and the later ordered step adds costs, affordability, commands, and feedback.
+- Model every purchase as one control: a labelled button with a price that either can or cannot be pressed to effect right now. A second kind of purchase reuses the button, the command sink, the feedback, and the diagnostic rather than duplicating them.
+- Enable a control from everything the purchase needs, not from the price alone; put a second requirement beside the button as its own line, and colour it by whether it is met, so a player short of gold is not told to keep upgrading.
+- Give a slot exactly one live control and assert it: two overlapping buttons on one panel is a rendering bug the view model can catch before the scene draws it.
+- Name only the refusals a player can act on. Every other core failure is a press that should not have been reachable, and reads as unavailable rather than as advice the player cannot use.
+- Expire a feedback map on its own terms, not through the controls still on screen: a purchase that removes the control it was made on would otherwise leave its result uncollected forever.
+- Let a completed change be its own confirmation. A floor that visibly opens says more than a message on a button the same frame removes.
 - Price a control through the same function the command charges, so the figure on the button and the figure deducted cannot drift apart.
 - Let a disabled-looking control still be pressable and let the core decide: refusing in the view replaces the core's answer with the renderer's guess, and leaves a player who cannot afford something with no feedback at all.
 - Advance the simulation to the current time before applying a command: the player is spending the gold the mine has now, not the gold the last rendered frame happened to show.

@@ -22,12 +22,12 @@ import {
   calculateMinerSwingOffsetPx,
   MAX_MATERIAL_PILE_STEPS,
   type MineFloorViewModel,
-  type UpgradeFeedbackViewModel,
+  type PurchaseFeedbackViewModel,
 } from '../view-model';
 import {
-  UpgradeControlView,
-  type RenderedUpgradeControlState,
-} from './UpgradeControlView';
+  PurchaseControlView,
+  type RenderedPurchaseControlState,
+} from './PurchaseControlView';
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedFloorState {
@@ -52,8 +52,20 @@ export interface RenderedFloorState {
   readonly minerSwingOffsetPx: number;
   /** Locked floors have no shaft to upgrade, so they show no control. */
   readonly showsUpgradeControl: boolean;
-  /** The control's own read-back: price, affordability, and press feedback. */
-  readonly upgradeControl: RenderedUpgradeControlState;
+  /** The control's own read-back: price, enabled state, and press feedback. */
+  readonly upgradeControl: RenderedPurchaseControlState;
+  /** Open floors have nothing left to unlock, so they show no control. */
+  readonly showsUnlockControl: boolean;
+  /** The unlock control's read-back, in the same slot as the upgrade one. */
+  readonly unlockControl: RenderedPurchaseControlState;
+  /** `Needs Floor 1 Lv 5` while locked, otherwise `null`. */
+  readonly unlockRequirementLabel: string | null;
+  /**
+   * True while the requirement is drawn as satisfied — the same polarity as
+   * the view model's own `isUnlockRequirementMet`, so a test reads one sense
+   * of the flag across both layers. A floor with no requirement reports true.
+   */
+  readonly isUnlockRequirementMet: boolean;
   readonly isLockedAppearance: boolean;
 }
 
@@ -87,14 +99,18 @@ const PICK_X = 40;
 /** Rest position of the pick; the swing moves it symmetrically around this. */
 const PICK_REST_Y = 70;
 const PICK_SWING_AMPLITUDE_PX = 6;
-const UPGRADE_WIDTH = 92;
-const UPGRADE_HEIGHT = 32;
-const UPGRADE_INSET_X = 12;
-const UPGRADE_Y = 56;
+const CONTROL_WIDTH = 92;
+const CONTROL_HEIGHT = 32;
+const CONTROL_INSET_X = 12;
+const CONTROL_Y = 56;
+const REQUIREMENT_X = 54;
+const REQUIREMENT_Y = 66;
 
 export interface MineFloorViewOptions {
   /** Called when the shaft-upgrade control is pressed. */
   readonly onUpgrade: () => void;
+  /** Called when the unlock control on a locked floor is pressed. */
+  readonly onUnlock: () => void;
 }
 
 /**
@@ -107,8 +123,9 @@ export interface MineFloorViewOptions {
  *
  * It renders the extraction stage of the production chain: the progress bar and
  * pile follow authoritative values, while `applyAnimation` moves the pick from
- * the cosmetic clock alone. Its shaft-upgrade control is a `UpgradeControlView`
- * that reports presses back to the scene.
+ * the cosmetic clock alone. Its one control slot holds two `PurchaseControlView`
+ * buttons — the shaft upgrade and the floor unlock — of which exactly one is
+ * ever visible, and both report presses back to the scene.
  */
 export class MineFloorView {
   readonly #root: Phaser.GameObjects.Container;
@@ -126,7 +143,9 @@ export class MineFloorView {
   readonly #progressTrack: Phaser.GameObjects.Rectangle;
   readonly #progressFill: Phaser.GameObjects.Rectangle;
   readonly #progressLabel: Phaser.GameObjects.Text;
-  readonly #upgradeControl: UpgradeControlView;
+  readonly #upgradeControl: PurchaseControlView;
+  readonly #unlockControl: PurchaseControlView;
+  readonly #unlockRequirement: Phaser.GameObjects.Text;
   /** Derived from the slot, like `SharedStageView`, so the bar follows its panel. */
   readonly #trackWidth: number;
 
@@ -267,15 +286,35 @@ export class MineFloorView {
       )
       .setOrigin(0, 0);
 
-    this.#upgradeControl = new UpgradeControlView(scene, {
-      region: {
-        x: region.width - UPGRADE_INSET_X - UPGRADE_WIDTH,
-        y: UPGRADE_Y,
-        width: UPGRADE_WIDTH,
-        height: UPGRADE_HEIGHT,
-      },
+    this.#unlockRequirement = scene.add
+      .text(REQUIREMENT_X, REQUIREMENT_Y, '', {
+        color: TEXT_WARNING,
+        fontFamily: FONT_FAMILY,
+        fontSize: '11px',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0, 0);
+
+    // Both controls occupy the same slot, because a floor is either open or
+    // locked and so offers exactly one of them. The hidden one is not drawn and
+    // Phaser skips invisible objects when hit-testing, so the two can never
+    // both take a press.
+    const controlRegion = {
+      x: region.width - CONTROL_INSET_X - CONTROL_WIDTH,
+      y: CONTROL_Y,
+      width: CONTROL_WIDTH,
+      height: CONTROL_HEIGHT,
+    };
+
+    this.#upgradeControl = new PurchaseControlView(scene, {
+      region: controlRegion,
       layout: 'stacked',
       onPress: options.onUpgrade,
+    });
+    this.#unlockControl = new PurchaseControlView(scene, {
+      region: controlRegion,
+      layout: 'stacked',
+      onPress: options.onUnlock,
     });
 
     this.#root.add([
@@ -294,7 +333,9 @@ export class MineFloorView {
       this.#progressTrack,
       this.#progressFill,
       this.#progressLabel,
+      this.#unlockRequirement,
       ...this.#upgradeControl.objects,
+      ...this.#unlockControl.objects,
     ]);
   }
 
@@ -346,12 +387,32 @@ export class MineFloorView {
     );
     this.#progressLabel.setText(floor.extractionProgressLabel);
 
+    // Met but unaffordable reads differently from still-gated, so the player
+    // knows whether to keep upgrading or keep earning.
+    this.#unlockRequirement
+      .setText(floor.unlockRequirementLabel ?? '')
+      .setVisible(floor.unlockRequirementLabel !== null)
+      .setColor(floor.isUnlockRequirementMet ? TEXT_MUTED : TEXT_WARNING);
+
     this.#upgradeControl.applySnapshot(floor.upgradeControl);
+    this.#unlockControl.applySnapshot(floor.unlockControl);
   }
 
   /** Shows or clears the result of a press on this floor's upgrade control. */
-  public applyUpgradeFeedback(feedback: UpgradeFeedbackViewModel | null): void {
+  public applyUpgradeFeedback(feedback: PurchaseFeedbackViewModel | null): void {
     this.#upgradeControl.applyFeedback(feedback);
+  }
+
+  /**
+   * Shows or clears the result of a press on this floor's unlock control.
+   *
+   * A successful unlock hides this control on the same frame, so what confirms
+   * it is the floor's own change of appearance rather than a message; the
+   * feedback that matters here is a refusal, which stays on the still-visible
+   * button.
+   */
+  public applyUnlockFeedback(feedback: PurchaseFeedbackViewModel | null): void {
+    this.#unlockControl.applyFeedback(feedback);
   }
 
   /**
@@ -366,12 +427,18 @@ export class MineFloorView {
   }
 
   /** The upgrade control's read-back alone, for the scene's control diagnostic. */
-  public describeUpgradeControl(): RenderedUpgradeControlState {
+  public describeUpgradeControl(): RenderedPurchaseControlState {
     return this.#upgradeControl.describeRenderedState();
+  }
+
+  /** The unlock control's read-back alone, for the scene's control diagnostic. */
+  public describeUnlockControl(): RenderedPurchaseControlState {
+    return this.#unlockControl.describeRenderedState();
   }
 
   public describeRenderedState(): RenderedFloorState {
     const upgradeControl = this.describeUpgradeControl();
+    const unlockControl = this.describeUnlockControl();
 
     return {
       floorLabel: this.#title.text,
@@ -391,6 +458,12 @@ export class MineFloorView {
       minerSwingOffsetPx: this.#pick.y - PICK_REST_Y,
       showsUpgradeControl: upgradeControl.isVisible,
       upgradeControl,
+      showsUnlockControl: unlockControl.isVisible,
+      unlockControl,
+      unlockRequirementLabel: this.#unlockRequirement.visible
+        ? this.#unlockRequirement.text
+        : null,
+      isUnlockRequirementMet: this.#unlockRequirement.style.color === TEXT_MUTED,
       isLockedAppearance:
         this.#background.fillColor === COLOR_LOCKED_PANEL,
     };

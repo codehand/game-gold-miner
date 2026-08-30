@@ -20,13 +20,13 @@ import {
   calculateConveyorOffsetPx,
   calculateCycleMarkerOffsetPx,
   MAX_MATERIAL_PILE_STEPS,
+  type PurchaseFeedbackViewModel,
   type SharedStageViewModel,
-  type UpgradeFeedbackViewModel,
 } from '../view-model';
 import {
-  UpgradeControlView,
-  type RenderedUpgradeControlState,
-} from './UpgradeControlView';
+  PurchaseControlView,
+  type RenderedPurchaseControlState,
+} from './PurchaseControlView';
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedSharedStageState {
@@ -48,12 +48,12 @@ export interface RenderedSharedStageState {
   /** The conveyor runs only while the stage holds material. */
   readonly showsConveyor: boolean;
   /**
-   * The control's own read-back: price, affordability, and press feedback. A
+   * The control's own read-back: price, enabled state, and press feedback. A
    * shared stage never hides its upgrade control, so its visibility would be a
    * constant no assertion could fail; the bound price does catch a broken
    * binding.
    */
-  readonly upgradeControl: RenderedUpgradeControlState;
+  readonly upgradeControl: RenderedPurchaseControlState;
 }
 
 const COLOR_PANEL = toFillColor(PANEL_BACKGROUND);
@@ -109,7 +109,7 @@ export class SharedStageView {
   readonly #progressLabel: Phaser.GameObjects.Text;
   readonly #cycleMarker: Phaser.GameObjects.Rectangle;
   readonly #conveyorDashes: readonly Phaser.GameObjects.Rectangle[];
-  readonly #upgradeControl: UpgradeControlView;
+  readonly #upgradeControl: PurchaseControlView;
   readonly #trackWidth: number;
 
   public constructor(
@@ -222,7 +222,7 @@ export class SharedStageView {
         .setOrigin(0, 0);
     });
 
-    this.#upgradeControl = new UpgradeControlView(scene, {
+    this.#upgradeControl = new PurchaseControlView(scene, {
       region: {
         x: PANEL_INSET_X,
         y: UPGRADE_Y,
@@ -287,7 +287,7 @@ export class SharedStageView {
   }
 
   /** Shows or clears the result of a press on this stage's upgrade control. */
-  public applyUpgradeFeedback(feedback: UpgradeFeedbackViewModel | null): void {
+  public applyUpgradeFeedback(feedback: PurchaseFeedbackViewModel | null): void {
     this.#upgradeControl.applyFeedback(feedback);
   }
 
@@ -305,7 +305,7 @@ export class SharedStageView {
   }
 
   /** The upgrade control's read-back alone, for the scene's control diagnostic. */
-  public describeUpgradeControl(): RenderedUpgradeControlState {
+  public describeUpgradeControl(): RenderedPurchaseControlState {
     return this.#upgradeControl.describeRenderedState();
   }
 

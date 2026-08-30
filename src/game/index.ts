@@ -16,14 +16,14 @@ export {
   createMineViewModel,
   formatAmount,
   DEFAULT_ANIMATION_SPEED_MULTIPLIER,
-  UPGRADE_FEEDBACK_DURATION_MS,
+  PURCHASE_FEEDBACK_DURATION_MS,
   type HudViewModel,
   type MineFloorViewModel,
   type MineViewModel,
+  type PurchaseControlViewModel,
+  type PurchaseOutcome,
+  type PurchaseTarget,
   type SharedStageViewModel,
-  type UpgradeControlViewModel,
-  type UpgradeOutcome,
-  type UpgradeTarget,
 } from './view-model';
 
 export interface CreateGameOptions {

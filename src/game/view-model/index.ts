@@ -23,17 +23,19 @@ export {
   type SharedStageViewModelInput,
 } from './mineViewModel';
 export {
+  createFloorUnlockControlViewModel,
+  createPurchaseFeedback,
   createUpgradeControlViewModel,
-  createUpgradeFeedback,
-  describeUpgradeFeedback,
-  upgradeTargetKey,
-  UPGRADE_FEEDBACK_DURATION_MS,
-  type UpgradeControlViewModel,
-  type UpgradeFeedback,
-  type UpgradeFeedbackViewModel,
-  type UpgradeOutcome,
-  type UpgradeTarget,
-} from './upgradeControl';
+  describePurchaseFeedback,
+  formatUnlockRequirement,
+  purchaseTargetKey,
+  PURCHASE_FEEDBACK_DURATION_MS,
+  type PurchaseControlViewModel,
+  type PurchaseFeedback,
+  type PurchaseFeedbackViewModel,
+  type PurchaseOutcome,
+  type PurchaseTarget,
+} from './purchaseControl';
 export {
   advanceAnimationTimeMs,
   assertAnimationSpeedMultiplier,

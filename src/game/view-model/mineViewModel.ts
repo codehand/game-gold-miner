@@ -19,7 +19,9 @@ import {
   calculateElevatorUpgradeCost,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,
+  describeFloorUnlock,
   type ElevatorState,
+  type FloorUnlockAvailability,
   type GameNumber,
   type GameState,
   type MineFloorState,
@@ -28,9 +30,11 @@ import {
 import { formatAmount } from './formatAmount';
 import { createHudViewModel, type HudViewModel } from './hudViewModel';
 import {
+  createFloorUnlockControlViewModel,
   createUpgradeControlViewModel,
-  type UpgradeControlViewModel,
-} from './upgradeControl';
+  formatUnlockRequirement,
+  type PurchaseControlViewModel,
+} from './purchaseControl';
 
 /** Discrete pile heights, so a growing bottleneck is visible at a glance. */
 export const MAX_MATERIAL_PILE_STEPS = 4;
@@ -65,7 +69,17 @@ export interface MineFloorViewModel {
   /** `Backed up` while the pile is full, otherwise `null`. */
   readonly backlogLabel: string | null;
   /** The shaft-upgrade control, or `null` for a locked floor that has none. */
-  readonly upgradeControl: UpgradeControlViewModel | null;
+  readonly upgradeControl: PurchaseControlViewModel | null;
+  /** The unlock control, or `null` once the floor is open. */
+  readonly unlockControl: PurchaseControlViewModel | null;
+  /** `Needs Floor 1 Lv 5` while locked, otherwise `null`. */
+  readonly unlockRequirementLabel: string | null;
+  /**
+   * True once the prerequisite shaft has reached its required level, so the
+   * requirement can be drawn as satisfied while the price is still out of
+   * reach. A floor that is already open reports `true`.
+   */
+  readonly isUnlockRequirementMet: boolean;
 }
 
 export interface SharedStageViewModel {
@@ -88,7 +102,7 @@ export interface SharedStageViewModel {
   readonly progress: number;
   readonly progressLabel: string;
   /** A shared stage is always upgradeable, so this is never `null`. */
-  readonly upgradeControl: UpgradeControlViewModel;
+  readonly upgradeControl: PurchaseControlViewModel;
 }
 
 export interface MineViewModel {
@@ -106,6 +120,13 @@ export interface MineFloorViewModelInput {
   readonly elevatorCapacity: GameNumber;
   /** The spendable balance, which decides whether the control is affordable. */
   readonly gold: GameNumber;
+  /**
+   * The core's own unlock description for a locked floor, or `null` for an open
+   * one. Passed in rather than derived here because it is a fact about the
+   * whole mine — it reads the prerequisite floor's level — while everything
+   * else on this input is a fact about this floor alone.
+   */
+  readonly unlock: FloorUnlockAvailability | null;
 }
 
 export interface SharedStageViewModelInput<TStage> {
@@ -132,6 +153,7 @@ export function createMineViewModel(
         config: balance.floors[index],
         elevatorCapacity: state.elevator.capacity,
         gold: state.gold,
+        unlock: describeFloorUnlock(state, floor.id, balance),
       });
     }),
     elevator: createElevatorViewModel({
@@ -152,9 +174,11 @@ export function createMineFloorViewModel({
   config,
   elevatorCapacity,
   gold,
+  unlock,
 }: MineFloorViewModelInput): MineFloorViewModel {
   assertNormalizedProgress(floor.extractionProgress, `floor ${floor.id} extraction`);
   assertDisplayableLevel(floor.mineShaftLevel, `floor ${floor.id}`);
+  assertUnlockMatchesLockState(floor, unlock);
 
   const pileSteps = calculateMaterialPileSteps(
     floor.materialQueue,
@@ -176,15 +200,21 @@ export function createMineFloorViewModel({
     materialPileSteps: pileSteps,
     isMaterialBackedUp: backedUp,
     backlogLabel: backedUp ? 'Backed up' : null,
-    // A locked floor has no shaft to upgrade; Step 30 gives it an unlock
-    // control of its own instead.
-    upgradeControl: floor.isUnlocked
-      ? createUpgradeControlViewModel(
-          { type: 'mine-shaft', floorId: floor.id },
-          calculateMineShaftUpgradeCost(floor, config),
-          gold,
-        )
-      : null,
+    // A locked floor has no shaft to upgrade, and an open one has nothing left
+    // to unlock: a floor always offers exactly one of the two purchases.
+    upgradeControl:
+      unlock === null
+        ? createUpgradeControlViewModel(
+            { type: 'mine-shaft', floorId: floor.id },
+            calculateMineShaftUpgradeCost(floor, config),
+            gold,
+          )
+        : null,
+    unlockControl:
+      unlock === null ? null : createFloorUnlockControlViewModel(unlock),
+    unlockRequirementLabel:
+      unlock === null ? null : formatUnlockRequirement(unlock),
+    isUnlockRequirementMet: unlock === null ? true : unlock.isRequirementMet,
   };
 }
 
@@ -317,6 +347,37 @@ export function assertRenderableMineViewModel(
       `The mine screen renders exactly ${expectedFloorCount} floors, but the snapshot describes ${viewModel.floors.length}.`,
     );
   }
+
+  for (const floor of viewModel.floors) {
+    // The two controls share one slot on the panel, so a floor offering both
+    // would stack a live unlock button on a live upgrade button, and a floor
+    // offering neither would leave a purchasable stage with no way to buy it.
+    if ((floor.upgradeControl === null) === (floor.unlockControl === null)) {
+      throw new Error(
+        `Floor ${floor.id} must offer exactly one of an upgrade control and an unlock control.`,
+      );
+    }
+  }
+}
+
+/**
+ * A locked floor without an unlock description, or an open one carrying a
+ * stale description, would render a button that buys the wrong thing. Both are
+ * caller bugs rather than states the mine can reach.
+ */
+function assertUnlockMatchesLockState(
+  floor: MineFloorState,
+  unlock: FloorUnlockAvailability | null,
+): void {
+  if (floor.isUnlocked === (unlock === null)) {
+    return;
+  }
+
+  throw new Error(
+    floor.isUnlocked
+      ? `Open floor ${floor.id} was given an unlock description.`
+      : `Locked floor ${floor.id} was given no unlock description.`,
+  );
 }
 
 function assertNormalizedProgress(value: number, name: string): void {

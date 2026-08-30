@@ -45,8 +45,11 @@ export {
   type UpgradePurchaseResult,
 } from './progression/upgrades';
 export {
+  describeFloorUnlock,
   purchaseFloorUnlock,
+  type FloorUnlockAvailability,
   type FloorUnlockFailureReason,
+  type FloorUnlockRequirement,
   type FloorUnlockResult,
 } from './progression/unlocks';
 export {
