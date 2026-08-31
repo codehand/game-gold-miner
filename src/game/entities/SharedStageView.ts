@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
 
 import { PLACEHOLDER_BACKLOG_TEXTURES } from '../assets/backlogTextures';
-import { PLACEHOLDER_TEXTURES } from '../assets/placeholderAssets';
+import {
+  PLACEHOLDER_ANIMATION_TEXTURES,
+  PLACEHOLDER_TEXTURES,
+} from '../assets/placeholderAssets';
 import {
   toFillColor,
   CONVEYOR_FILL,
@@ -20,6 +23,7 @@ import {
 import {
   calculateConveyorOffsetPx,
   calculateCycleMarkerOffsetPx,
+  calculateGeneratedAssetFrame,
   MAX_MATERIAL_PILE_STEPS,
   type PurchaseFeedbackViewModel,
   type SharedStageViewModel,
@@ -49,6 +53,8 @@ export interface RenderedSharedStageState {
   readonly conveyorOffsetPx: number;
   /** The conveyor runs only while the stage holds material. */
   readonly showsConveyor: boolean;
+  /** Current generated-art frame; zero while the stage is idle. */
+  readonly assetFrame: number;
   /**
    * The control's own read-back: price, enabled state, and press feedback. A
    * shared stage never hides its upgrade control, so its visibility would be a
@@ -92,8 +98,8 @@ export interface SharedStageViewOptions {
   readonly onUpgrade: () => void;
   /** Original placeholder artwork distinguishing the two shared stages. */
   readonly textureKey:
-    | typeof PLACEHOLDER_TEXTURES.elevator
-    | typeof PLACEHOLDER_TEXTURES.warehouse;
+    | typeof PLACEHOLDER_ANIMATION_TEXTURES.elevatorPulley
+    | typeof PLACEHOLDER_ANIMATION_TEXTURES.warehouseReceive;
 }
 
 /**
@@ -108,7 +114,7 @@ export interface SharedStageViewOptions {
  */
 export class SharedStageView {
   readonly #root: Phaser.GameObjects.Container;
-  readonly #stageSprite: Phaser.GameObjects.Image;
+  readonly #stageSprite: Phaser.GameObjects.Sprite;
   readonly #title: Phaser.GameObjects.Text;
   readonly #level: Phaser.GameObjects.Text;
   readonly #capacity: Phaser.GameObjects.Text;
@@ -122,6 +128,7 @@ export class SharedStageView {
   readonly #conveyorDashes: readonly Phaser.GameObjects.Rectangle[];
   readonly #upgradeControl: PurchaseControlView;
   readonly #trackWidth: number;
+  #isRunning = false;
 
   public constructor(
     scene: Phaser.Scene,
@@ -136,7 +143,7 @@ export class SharedStageView {
       .setOrigin(0, 0);
 
     this.#stageSprite = scene.add
-      .image(STAGE_SPRITE_X, STAGE_SPRITE_Y, options.textureKey)
+      .sprite(STAGE_SPRITE_X, STAGE_SPRITE_Y, options.textureKey, 0)
       .setDisplaySize(STAGE_SPRITE_SIZE, STAGE_SPRITE_SIZE);
 
     this.#title = scene.add
@@ -272,6 +279,7 @@ export class SharedStageView {
 
   /** Rebinds every displayed value to a newer read-only snapshot. */
   public applySnapshot(stage: SharedStageViewModel): void {
+    this.#isRunning = stage.isRunning;
     this.#title.setText(stage.title);
     this.#level.setText(stage.levelLabel);
     this.#capacity.setText(stage.capacityLabel);
@@ -323,6 +331,9 @@ export class SharedStageView {
    * cycle marker, which stay tied to authoritative progress.
    */
   public applyAnimation(animationTimeMs: number): void {
+    this.#stageSprite.setFrame(
+      this.#isRunning ? calculateGeneratedAssetFrame(animationTimeMs) : 0,
+    );
     const spacing = this.#trackWidth / CONVEYOR_DASH_COUNT;
     const offset = calculateConveyorOffsetPx(animationTimeMs, spacing);
 
@@ -355,6 +366,7 @@ export class SharedStageView {
       cycleMarkerOffsetPx: this.#cycleMarker.x - PANEL_INSET_X,
       conveyorOffsetPx: firstDash.x - PANEL_INSET_X,
       showsConveyor: firstDash.visible,
+      assetFrame: Number(this.#stageSprite.frame.name),
       upgradeControl: this.describeUpgradeControl(),
     };
   }

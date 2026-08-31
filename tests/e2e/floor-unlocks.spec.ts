@@ -203,18 +203,16 @@ test('blocks a premature unlock, then opens the floor and keeps it open', async 
   expect(spent, 'one unlock price is deducted').toBeGreaterThan(price * 0.9);
   expect(spent, 'and no more than one').toBeLessThanOrEqual(price + 1);
 
-  // The opened floor's upgrade control now occupies the exact rectangle the
-  // unlock control had. Only a visible control may take a press, so buying a
-  // shaft level through that rectangle is what proves the hidden unlock control
-  // is out of the input path — the one thing sharing a slot could get wrong.
+  // The opened floor replaces the wide unlock button with layout1's compact
+  // Level badge. Pressing it proves the hidden unlock control left input.
   await page.clock.runFor(PURCHASE_FEEDBACK_DURATION_MS);
 
   const revealed = await readPurchaseControl(page, FLOOR_2_UPGRADE_KEY);
 
-  expect(
-    revealed.screenBounds,
-    'the upgrade control takes over the slot the unlock control had',
-  ).toEqual(lockedControl.screenBounds);
+  expect(revealed.screenBounds.width, 'the Level badge uses its compact width').toBe(44);
+  expect(revealed.screenBounds.height, 'the Level badge stays thumb-sized').toBe(50);
+  expect(revealed.actionLabel).toBe('Level');
+  expect(revealed.costLabel).toBe('1');
   // Without this the press below could be refused for gold and the level
   // assertion would fail for a reason that has nothing to do with the slot.
   expect(

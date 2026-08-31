@@ -210,6 +210,8 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 **Test:** Perform a visual review at 100% and reduced mobile scale. Confirm every gameplay object remains distinguishable and no third-party protected asset is included in `public/assets/`.
 
+**Step 32A approved revision:** Implement the locked `layout1.png` floor composition and first asset pack: walking miner with runtime direction flip, unloading attendant plus separate gold container, floor background and gold pile, and separate shaft/cabin/cargo-cat elevator visuals. This remains inside Step 32 and must pass the Step 32 validation gate before Step 33 starts.
+
 ## Phase 6 — Integration and Base-Game Exit Criteria
 
 ### Step 33: Add the complete player-journey E2E test

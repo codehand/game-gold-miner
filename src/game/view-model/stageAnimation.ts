@@ -11,6 +11,58 @@
  */
 
 export const DEFAULT_ANIMATION_SPEED_MULTIPLIER = 1;
+/** Generated Step 32A loops contain four equally timed frames. */
+export const GENERATED_ASSET_FRAME_COUNT = 4;
+export const GENERATED_ASSET_FRAME_DURATION_MS = 160;
+export const MINER_PATROL_PERIOD_MS = 3_200;
+
+export interface MinerPatrolPose {
+  readonly x: number;
+  readonly facesLeft: boolean;
+}
+
+/** Ping-pong walk along one floor, with a direction flip at each end. */
+export function calculateMinerPatrolPose(
+  animationTimeMs: number,
+  startX: number,
+  endX: number,
+): MinerPatrolPose {
+  assertAnimationTime(animationTimeMs);
+
+  if (!Number.isFinite(startX) || !Number.isFinite(endX) || endX < startX) {
+    throw new Error('Miner patrol bounds must be finite and ordered.');
+  }
+
+  const phase = (animationTimeMs % MINER_PATROL_PERIOD_MS) / MINER_PATROL_PERIOD_MS;
+  const facesLeft = phase >= 0.5;
+  const localProgress = facesLeft ? (1 - phase) * 2 : phase * 2;
+
+  return {
+    x: startX + (endX - startX) * localProgress,
+    facesLeft,
+  };
+}
+
+/** Frame selection for generated sprite sheets, driven only by cosmetic time. */
+export function calculateGeneratedAssetFrame(
+  animationTimeMs: number,
+  frameCount: number = GENERATED_ASSET_FRAME_COUNT,
+  frameDurationMs: number = GENERATED_ASSET_FRAME_DURATION_MS,
+): number {
+  if (!Number.isFinite(animationTimeMs) || animationTimeMs < 0) {
+    throw new Error('Animation time must be a finite non-negative number.');
+  }
+
+  if (!Number.isInteger(frameCount) || frameCount < 1) {
+    throw new Error('Animation frame count must be a positive integer.');
+  }
+
+  if (!Number.isFinite(frameDurationMs) || frameDurationMs <= 0) {
+    throw new Error('Animation frame duration must be a finite positive number.');
+  }
+
+  return Math.floor(animationTimeMs / frameDurationMs) % frameCount;
+}
 
 /** A hitch or a backgrounded tab must not teleport a cosmetic animation. */
 export const MAX_ANIMATION_FRAME_MS = 250;

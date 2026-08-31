@@ -1,0 +1,3 @@
+Built-in image generation using warehouse.png as the identity/style reference and 2x2-layout-guide.png as geometry only.
+
+Four-frame seamless receiving loop in a 2x2 grid: shutter closed, half-open glow, fully open with a compact ore crate inside the chute, and closing. Preserve the navy roof, steel panels, timber frame, gold-trimmed chute, clean-HD cartoon rendering, stable scale, and bottom anchor. Solid #FF00FF background. No borders, scenery, ground, characters, extra props, text, UI, logos, signatures, or edge crossing.

@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 32 is implemented and its automated validation passes. The project is paused at the required stop gate while the user validates the original placeholder presentation at native and reduced mobile scale. Step 33 has not started and must not begin without explicit authorization.
+Implementation Plan Step 32 and the approved Step 32A layout/animation revision are implemented with passing automated validation. The project is paused at the required stop gate while the user validates the new `layout1.png` floor composition and first asset pack. Step 33 has not started and must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -88,7 +88,7 @@ Implementation Plan Step 32 is implemented and its automated validation passes. 
 - The user authorized Step 25 on 2026-08-28, which validated Step 24.
 - Added `src/game/layout/mineLayout.ts`, a pure Phaser-free module that tiles the 360×640 portrait viewport into a fixed HUD, a shared surface strip, and a scrollable mine region reaching the bottom edge with no reserved bottom navigation.
 - Moved the Phaser parent into `#game-viewport` and gave `#app` `env(safe-area-inset-*)` padding plus `viewport-fit=cover`, so safe-area insets are applied once, outside the canvas, before the scale manager measures its parent.
-- Rebuilt `BootScene` around separate fixed and scrolling layers, English HUD/surface placeholders, and four placeholder floor slots whose combined 514-pixel content exceeds the 428-pixel mine region.
+- Rebuilt `BootScene` around separate fixed and scrolling layers, English HUD/surface placeholders, and four placeholder floor slots whose then-current 508-pixel content exceeded the 428-pixel mine region.
 - Replaced an initial geometry-mask attempt with a dedicated mine camera viewport after Phaser 4 warned that `setMask` does nothing in WebGL; the mine area is now genuinely clipped in both renderers.
 - Added sixteen layout/palette unit tests and four Playwright viewport tests (320×568, 390×844, 768×1024, 1280×800).
 - Review of the first Step 25 implementation found the browser suite could not detect a broken render: deleting either camera-ignore call left all four viewport tests green while the HUD was visibly destroyed. Added pixel probes that sample the real canvas, extracted the palette into a pure module so scene and test read one source of truth, replaced a hardcoded `428` with the published mine height, threaded `layout.width` into the floor slots, and put the `src/game/layout` purity claim behind a lint rule with an `architecture.test.ts` probe.
@@ -257,12 +257,55 @@ Implementation Plan Step 32 is implemented and its automated validation passes. 
 - Step 32 automated evidence: 278 unit tests and 27 Chromium E2E tests pass, including provenance/dimension checks for every runtime asset and real framebuffer probes updated to prove generated gold and backlog silhouettes render under both the WebGL and the Canvas renderer. Lint, strict production build, and asset alpha/size reporting pass.
 - A code review of the Step 32 change corrected six defects before the gate: the backlog cue was a WebGL-only fill tint and vanished on a Canvas fallback, so it is now a boot-generated recoloured texture; `describeRenderedState` had started echoing cached snapshot fields, so pile size and backlog state are measured back off the drawn sprite again; the stacked purchase control overlapped its icon with its action label; `PurchaseControlView.#render` called the unguarded `setTexture` every frame; a second finger stole a live scroll gesture and froze the mine mid-drag; and foreground progress was persisted only by a purchase or a lifecycle flush, so a 30-second save heartbeat now covers a webview killed without `pagehide`.
 
+## Step 32A — approved layout and first animation asset pack
+
+- Implemented the approved `art-source/spritecook-review/layout-proposal/layout1.png`
+  composition inside Step 32. The shaft is 48 px wide, each floor is 288×132,
+  mine content is 572 px tall, and maximum scroll is 168 px; HUD, surface, and
+  mine viewport geometry remain unchanged.
+- Added pure `mineFloorPanel.ts` geometry for the timer/title area, receiving
+  container, unloading cat, miner patrol corridor, gold pile, far-right level
+  control, and extraction track. Renderer and browser probes share this contract.
+- Added the first generated pack under `public/assets/step-32a/`: cave background,
+  gold container, gold pile, shaft frame, cabin, 4-frame miner walk, 4-frame
+  unloader idle, and 4-frame cargo-cat idle. Sources, rejected first passes,
+  prompts, deterministic outputs, GIFs, QC, and provenance remain under
+  `art-source/step-32a-asset-pack/` and the public pack manifest.
+- The miner walks right through its floor corridor, flips horizontally, and
+  returns left on a 3.2-second cosmetic loop. The unloading cat stays at the
+  floor head beside its own empty container. The cabin follows authoritative
+  elevator progress while its cargo cat animates only cosmetically.
+- Strict QC reports zero empty frames, output-edge contacts, and paste clamps.
+  The first miner/unloader sheets failed the feet-anchor gate and were regenerated;
+  accepted anchor-Y standard deviations are 0.0449, 0.0424, and 0.0299.
+- All gameplay state, production timing, text, progress, controls, and purchase
+  behavior remain code-native and unchanged. The pack is awaiting user visual
+  validation and is not yet marked final production art.
+- Applied the six Step 32A annotation fixes on 2026-08-31: floor extraction bars
+  and duplicate `Floor N` headings are hidden; miner travel now follows
+  authoritative extraction progress while walk frames stay cosmetic; queued
+  gold reads as coin icon plus amount; the gold pile stays gold and is centred
+  under the timber support; open-floor controls use a compact 44×50 `Level N`
+  badge; and floors two onward crop the ceiling seam to half thickness while
+  floor one and the surface remain unchanged. All 288 unit and 27 Chromium E2E
+  tests, lint, and the production build pass. Step 33 remains blocked.
+- Follow-up annotations further reduced the level control to its minimum
+  thumb-safe footprint, raised the gold pile clear of the floor seam, and
+  extended miner travel from the unloading cat to the pile before turning.
+- A second annotation pass uses the shared abbreviated amount formatter in the
+  offline-reward modal, restores a number-only floor badge without restoring
+  `Floor N`, aligns the queue coin and amount on one baseline, and replaces the
+  coarse pile with a new layout1-referenced 128×128 RGBA sprite. The visible
+  level badge is now 30×34 with resolution-2 text inside an unchanged 44×50
+  hit target. The revised pile passed strict sprite QC and native-scale browser
+  inspection. Step 33 remains blocked pending user validation.
+
 ## Next Steps
 
-1. Wait for the user to validate the Step 32 original placeholder presentation.
+1. Wait for the user to validate the Step 32A layout and first animation asset pack.
 2. Begin Step 33 only after explicit user authorization.
-3. Keep all later steps blocked behind their preceding validation gates.
-4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
+4. Keep all later steps blocked behind their preceding validation gates.
+5. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 - Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.
 - Confirmed as deliberate that a backgrounded tab is credited at full pipeline rate while a closed one is credited through the 50% offline efficiency, so the same two-hour absence is worth about twice as much with the tab left open. Documented the asymmetry on `MAX_CATCH_UP_MS` and pinned the ratio in `tests/unit/simulation-time.test.ts`, verified by mutation to fail if either side changes.
 - Extracted the `Text.setColor` repaint guard into a shared `setTextColor` helper and applied it to the mine-floor and shared-stage views, which were repainting fourteen captions per simulation tick to produce the colours already on screen.

@@ -61,7 +61,7 @@ test('presents, claims, persists, and cannot duplicate offline rewards', async (
   await expect(modal).toBeVisible();
   await expect(page.getByTestId('offline-reward-time')).toHaveText('2h credited');
   await expect(page.getByTestId('offline-reward-amount')).toHaveText(
-    '18000 gold',
+    '18K gold',
   );
 
   await page.getByTestId('offline-reward-claim').click();

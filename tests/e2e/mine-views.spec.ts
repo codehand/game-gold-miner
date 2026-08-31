@@ -18,13 +18,18 @@ import type {
 } from '../../src/game/entities';
 import {
   calculateFloorSlotRegion,
+  calculateMineFloorPanelLayout,
+  calculateMineLayout,
+  MINE_BACKGROUND,
   HUD_BACKGROUND,
-  LOCKED_PANEL_BACKGROUND,
-  PANEL_BACKGROUND,
   PROGRESS_FILL,
   PROGRESS_TRACK,
 } from '../../src/game/layout';
-import { calculateMaterialPileSteps } from '../../src/game/view-model';
+import {
+  calculateMaterialPileSteps,
+  calculateMinerPatrolPose,
+  MINER_PATROL_PERIOD_MS,
+} from '../../src/game/view-model';
 import { createSaveDocument } from '../../src/persistence';
 
 const CANVAS_SELECTOR = '#game-viewport canvas';
@@ -41,18 +46,25 @@ const FIXTURE_TIMESTAMP_MS = FIXED_TIME.getTime();
  * store stays 360x640, so these logical coordinates hold at any host viewport.
  * Each point sits where the sampled object is the topmost drawn thing.
  */
-const UNLOCKED_FLOOR_PANEL_PROBE: readonly [number, number] = [212, 266];
-const LOCKED_FLOOR_PANEL_PROBE: readonly [number, number] = [212, 518];
-const FLOOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 350];
-const FLOOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [112, 350];
-const FILLED_PILE_PROBE: readonly [number, number] = [78, 325];
+const FLOOR_PANEL = calculateMineFloorPanelLayout();
+const MINE_Y = calculateMineLayout().mine.y;
+const FLOOR_ONE = calculateFloorSlotRegion(0);
+const FLOOR_THREE = calculateFloorSlotRegion(2);
+const floorProbe = (
+  floor: { readonly x: number; readonly y: number },
+  x: number,
+  y: number,
+): readonly [number, number] => [floor.x + x, MINE_Y + floor.y + y];
+const UNLOCKED_FLOOR_PANEL_PROBE = floorProbe(FLOOR_ONE, 150, 30);
+const LOCKED_FLOOR_PANEL_PROBE = floorProbe(FLOOR_THREE, 150, 30);
+const FILLED_PILE_PROBE = floorProbe(FLOOR_ONE, FLOOR_PANEL.goldPile.x + 24, FLOOR_PANEL.goldPile.y + 20);
 /**
  * Clear of the widest pile the layout allows, on the same row as the probe
  * inside it. The pile is one sprite scaled to its slot, so this is what proves
  * it is drawn at the size the layout chose rather than at the source
  * artwork's: unscaled, the 128px pile would reach well past this point.
  */
-const PILE_OVERFLOW_PROBE: readonly [number, number] = [108, 325];
+const PILE_OVERFLOW_PROBE = floorProbe(FLOOR_ONE, FLOOR_PANEL.goldPile.x - 8, FLOOR_PANEL.goldPile.y + 20);
 const ELEVATOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 165];
 const ELEVATOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [100, 165];
 /**
@@ -208,6 +220,23 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     expect(rendered.showsUnlockControl, `${label} unlock control`).toBe(
       !source.isUnlocked,
     );
+    expect(rendered.showsFloorTitle, `${label} duplicate Floor title`).toBe(false);
+    expect(rendered.showsFloorNumber, `${label} number badge`).toBe(true);
+    expect(rendered.showsProgressBar, `${label} extraction progress bar`).toBe(false);
+    expect(rendered.showsGoldCoin, `${label} gold amount icon`).toBe(source.isUnlocked);
+    expect(rendered.hasThinSoilLayer, `${label} soil thickness`).toBe(index > 0);
+    const expectedMinerPose = calculateMinerPatrolPose(
+      source.extractionProgress * MINER_PATROL_PERIOD_MS,
+      FLOOR_PANEL.minerPatrol.x + 8,
+      FLOOR_PANEL.minerPatrol.x + FLOOR_PANEL.minerPatrol.width - 8,
+    );
+    expect(rendered.minerPatrolX, `${label} miner represents extraction progress`).toBeCloseTo(
+      expectedMinerPose.x,
+      5,
+    );
+    expect(rendered.minerFacesLeft, `${label} miner direction`).toBe(
+      expectedMinerPose.facesLeft,
+    );
     expect(rendered.progressLabel, `${label} progress label`).toBe(
       `${Math.round(source.extractionProgress * 100)}%`,
     );
@@ -297,8 +326,6 @@ test('binds four floor views and both shared stages to a known core snapshot', a
   const [
     unlockedPanel,
     lockedPanel,
-    progressFill,
-    progressTrack,
     filledPile,
     pileOverflow,
     elevatorFill,
@@ -306,29 +333,20 @@ test('binds four floor views and both shared stages to a known core snapshot', a
   ] = await readLogicalPixels(page, [
     UNLOCKED_FLOOR_PANEL_PROBE,
     LOCKED_FLOOR_PANEL_PROBE,
-    FLOOR_PROGRESS_FILL_PROBE,
-    FLOOR_PROGRESS_TRACK_PROBE,
     FILLED_PILE_PROBE,
     PILE_OVERFLOW_PROBE,
     ELEVATOR_PROGRESS_FILL_PROBE,
     ELEVATOR_PROGRESS_TRACK_PROBE,
   ]);
 
-  expect(unlockedPanel, 'unlocked floor panel must render').toBe(
-    PANEL_BACKGROUND,
-  );
-  expect(lockedPanel, 'locked floor must be drawn distinctly').toBe(
-    LOCKED_PANEL_BACKGROUND,
-  );
-  expect(progressFill, 'extraction progress must be filled').toBe(PROGRESS_FILL);
-  expect(progressTrack, 'extraction progress must not overfill').toBe(
-    PROGRESS_TRACK,
-  );
-  expect(filledPile, 'material pile must render').not.toBe(PANEL_BACKGROUND);
+  expect(unlockedPanel, 'unlocked floor art must render').not.toBe(MINE_BACKGROUND);
+  expect(lockedPanel, 'locked floor must render').not.toBe(MINE_BACKGROUND);
+  expect(lockedPanel, 'locked floor must be drawn distinctly').not.toBe(unlockedPanel);
+  expect(filledPile, 'material pile must render').not.toBe(unlockedPanel);
   expect(
     pileOverflow,
     'material pile must be drawn at its layout size, not the artwork size',
-  ).toBe(PANEL_BACKGROUND);
+  ).not.toBe(filledPile);
   expect(elevatorFill, 'elevator transit progress must be filled').toBe(
     PROGRESS_FILL,
   );

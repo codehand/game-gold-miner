@@ -1,0 +1,3 @@
+Built-in image generation using elevator.png as the identity/style reference and 2x2-layout-guide.png as geometry only.
+
+Four-frame seamless working-elevator loop in a 2x2 grid. Keep the navy-steel cage rooted and identical; animate only the attached gold pulley, cable flex, and small indicator pulse. Preserve the clean-HD cartoon palette, outline, view, scale, and bottom anchor. Solid #FF00FF background. No borders, scenery, tracks, characters, cargo, text, UI, logos, signatures, or edge crossing.

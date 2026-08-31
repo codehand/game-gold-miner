@@ -10,6 +10,14 @@
 export const HUD_BACKGROUND = '#132238';
 export const SURFACE_BACKGROUND = '#20334a';
 export const MINE_BACKGROUND = '#101827';
+/** Warm surface soil separating the above-ground yard from the mine. */
+export const SURFACE_GROUND = '#8a5a32';
+/** Structural steel around the shared underground elevator. */
+export const SHAFT_BACKGROUND = '#172536';
+export const SHAFT_RAIL = '#6688aa';
+export const SHAFT_BEAM = '#304a66';
+export const TUNNEL_ROCK = '#22344a';
+export const TUNNEL_FLOOR = '#8a5a32';
 export const PANEL_BACKGROUND = '#2c4260';
 /** Locked mine floors are drawn distinctly, not merely dimmed by alpha. */
 export const LOCKED_PANEL_BACKGROUND = '#182334';

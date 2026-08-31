@@ -1,0 +1,45 @@
+{
+  "note": "SpriteCook review candidates. NOT wired into the game; public/assets/placeholder/ is untouched.",
+  "project": {
+    "name": "Cat Mine Idle",
+    "id": "129b950a-ab9a-47a9-8cbc-f4356cc1b8ac"
+  },
+  "assets": [
+    {
+      "asset_id": "ddae3b2f-ac09-41e0-96b1-bab7928d7a95",
+      "label": "miner-cat (current placeholder, uploaded as reference)",
+      "sha12": "uploaded-from-public/assets/placeholder/miner-cat.png"
+    },
+    {
+      "asset_id": "bcadda06-9a8b-4f8c-a323-ba3b426c1f15",
+      "label": "miner-cat v2 still",
+      "sha12": "5775d5af6652",
+      "local": "miner-cat-v2.png",
+      "size": "858x858",
+      "model": "gpt-image-2 / 1K / medium",
+      "credits": 9,
+      "reference_asset_id": "ddae3b2f-ac09-41e0-96b1-bab7928d7a95"
+    },
+    {
+      "asset_id": "39274743-e2bc-40b3-8139-f0e76e8c1d02",
+      "label": "miner-cat v2 dig animation (4 frames, 640x640, 8fps)",
+      "local": "dig-v2.webp / dig-v2-sheet.png (2560x640, 1x4)",
+      "derived": "dig-v2-sheet-2x2-128.png (256x256, 2x2 - matches game pipeline)",
+      "credits": 20,
+      "source_asset_id": "bcadda06-9a8b-4f8c-a323-ba3b426c1f15",
+      "review_note": "raise-only motion, no downward strike; not loop-ready"
+    },
+    {
+      "asset_id": "2fd67bb0-0880-46a5-a8d2-5c452dfabd73",
+      "label": "floor-1 layout mockup (concept only, not shipped)",
+      "local": "floor-mockup/floor1-mockup.png (2048x1152, 16:9)",
+      "derived": "floor-mockup/floor1-at-real-panel-size.png (272x116)",
+      "credits": 7,
+      "model": "gpt-image-2 2K medium",
+      "style_asset_ids": [
+        "bcadda06-9a8b-4f8c-a323-ba3b426c1f15"
+      ],
+      "review_note": "concept only; bakes in miner/cart/gold-pile which are live sprites driven by game state"
+    }
+  ]
+}

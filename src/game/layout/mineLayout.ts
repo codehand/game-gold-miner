@@ -24,9 +24,21 @@ export const SURFACE_HEIGHT = 164;
 export const MINE_MIN_HEIGHT = 200;
 
 export const MINE_CONTENT_PADDING = 10;
-export const MINE_CONTENT_INSET_X = 12;
-export const FLOOR_SLOT_HEIGHT = 116;
-export const FLOOR_SLOT_GAP = 10;
+/** Left-side elevator shaft that visually connects the surface to every floor. */
+export const MINE_SHAFT_INSET_X = 8;
+export const MINE_SHAFT_WIDTH = 48;
+export const MINE_SHAFT_FLOOR_GAP = 8;
+export const MINE_SHAFT_RAIL_INSET = 11;
+export const MINE_SHAFT_RAIL_WIDTH = 4;
+export const MINE_SHAFT_CABIN_SIZE = 36;
+export const MINE_SHAFT_PLAQUE_WIDTH = 26;
+export const MINE_SHAFT_PLAQUE_HEIGHT = 24;
+/** Mine-floor panels begin to the right of the shared elevator shaft. */
+export const MINE_CONTENT_INSET_X =
+  MINE_SHAFT_INSET_X + MINE_SHAFT_WIDTH + MINE_SHAFT_FLOOR_GAP;
+export const MINE_CONTENT_RIGHT_INSET = 8;
+export const FLOOR_SLOT_HEIGHT = 132;
+export const FLOOR_SLOT_GAP = 8;
 
 /** Base-game floor count; deeper mines are out of scope. */
 export const MINE_FLOOR_COUNT = 4;
@@ -120,8 +132,36 @@ export function calculateFloorSlotRegion(
   return {
     x: MINE_CONTENT_INSET_X,
     y: MINE_CONTENT_PADDING + floorIndex * (FLOOR_SLOT_HEIGHT + FLOOR_SLOT_GAP),
-    width: width - MINE_CONTENT_INSET_X * 2,
+    width: width - MINE_CONTENT_INSET_X - MINE_CONTENT_RIGHT_INSET,
     height: FLOOR_SLOT_HEIGHT,
+  };
+}
+
+/** Vertical elevator-shaft region, relative to the mine-content origin. */
+export function calculateMineShaftRegion(
+  width: number = GAME_WIDTH,
+  floorCount: number = MINE_FLOOR_COUNT,
+): LayoutRegion {
+  assertPositiveDimension(width, 'width');
+  assertFloorCount(floorCount);
+
+  if (MINE_SHAFT_INSET_X + MINE_SHAFT_WIDTH > width) {
+    throw new Error('Mine width is too narrow for the elevator shaft.');
+  }
+
+  if (MINE_SHAFT_CABIN_SIZE > MINE_SHAFT_WIDTH) {
+    throw new Error('Elevator cabin must fit inside the elevator shaft.');
+  }
+
+  if (MINE_SHAFT_RAIL_INSET * 2 + MINE_SHAFT_RAIL_WIDTH > MINE_SHAFT_WIDTH) {
+    throw new Error('Elevator rails must fit inside the elevator shaft.');
+  }
+
+  return {
+    x: MINE_SHAFT_INSET_X,
+    y: MINE_CONTENT_PADDING,
+    width: MINE_SHAFT_WIDTH,
+    height: calculateMineContentHeight(floorCount) - MINE_CONTENT_PADDING * 2,
   };
 }
 

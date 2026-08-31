@@ -2,6 +2,9 @@ import Phaser from 'phaser';
 
 import { createBacklogTextures } from '../assets/backlogTextures';
 import {
+  PLACEHOLDER_ANIMATION_ASSETS,
+  PLACEHOLDER_ANIMATION_FRAME_SIZE,
+  PLACEHOLDER_ANIMATION_TEXTURES,
   PLACEHOLDER_ASSETS,
   PLACEHOLDER_TEXTURES,
 } from '../assets/placeholderAssets';
@@ -15,13 +18,19 @@ import {
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,
+  calculateMineShaftRegion,
   regionContainsPoint,
   toFillColor,
   FONT_FAMILY,
   MINE_BACKGROUND,
   MINE_FLOOR_COUNT,
+  MINE_SHAFT_CABIN_SIZE,
+  MINE_SHAFT_PLAQUE_HEIGHT,
+  MINE_SHAFT_PLAQUE_WIDTH,
+  SHAFT_BEAM,
   serializeRegion,
   SURFACE_BACKGROUND,
+  SURFACE_GROUND,
   TEXT_MUTED,
   type LayoutRegion,
   type MineLayout,
@@ -34,6 +43,7 @@ import {
   beginMineScrollGesture,
   createMineScrollState,
   createPurchaseFeedback,
+  calculateGeneratedAssetFrame,
   describeMineScroll,
   describePurchaseFeedback,
   dragMineScroll,
@@ -75,6 +85,8 @@ const SURFACE_PANEL_BOTTOM_INSET = 10;
 
 const COLOR_SURFACE_BACKGROUND = toFillColor(SURFACE_BACKGROUND);
 const COLOR_MINE_BACKGROUND = toFillColor(MINE_BACKGROUND);
+const COLOR_SURFACE_GROUND = toFillColor(SURFACE_GROUND);
+const COLOR_SHAFT_BEAM = toFillColor(SHAFT_BEAM);
 
 /**
  * One priced control as a browser test sees it: what it shows, plus where it
@@ -129,6 +141,9 @@ export class BootScene extends Phaser.Scene {
   /** The camera the mine content is drawn through, needed to place presses. */
   #mineCamera: Phaser.Cameras.Scene2D.Camera | null = null;
   #mineRegion: LayoutRegion | null = null;
+  #shaftRegion: LayoutRegion | null = null;
+  #shaftElevator: Phaser.GameObjects.Image | null = null;
+  #shaftCargoCat: Phaser.GameObjects.Sprite | null = null;
   /** Scroll offset and tap-versus-drag state for the mine; null before `create`. */
   #scroll: MineScrollState | null = null;
 
@@ -150,6 +165,13 @@ export class BootScene extends Phaser.Scene {
   public preload(): void {
     for (const [key, path] of PLACEHOLDER_ASSETS) {
       this.load.image(key, path);
+    }
+
+    for (const [key, path] of PLACEHOLDER_ANIMATION_ASSETS) {
+      this.load.spritesheet(key, path, {
+        frameWidth: PLACEHOLDER_ANIMATION_FRAME_SIZE,
+        frameHeight: PLACEHOLDER_ANIMATION_FRAME_SIZE,
+      });
     }
   }
 
@@ -426,6 +448,28 @@ export class BootScene extends Phaser.Scene {
 
     this.#elevatorView?.applyAnimation(this.#animationTimeMs);
     this.#warehouseView?.applyAnimation(this.#animationTimeMs);
+
+    const shaft = this.#shaftRegion;
+    const elevator = this.#shaftElevator;
+    const cargoCat = this.#shaftCargoCat;
+
+    if (shaft !== null && elevator !== null && cargoCat !== null) {
+      const topY = shaft.y + MINE_SHAFT_CABIN_SIZE / 2;
+      const bottomY = shaft.y + shaft.height - MINE_SHAFT_CABIN_SIZE / 2;
+      const stage = this.#viewModel.elevator;
+      const elevatorY = stage.isRunning
+        ? bottomY - (bottomY - topY) * stage.progress
+        : topY;
+
+      elevator
+        .setY(elevatorY);
+      cargoCat
+        .setFrame(
+          stage.isRunning ? calculateGeneratedAssetFrame(this.#animationTimeMs, 4, 220) : 0,
+        )
+        .setY(elevatorY + 3)
+        .setVisible(stage.isRunning || stage.queueSteps > 0);
+    }
   }
 
   #createHud(region: LayoutRegion): Phaser.GameObjects.Container {
@@ -448,7 +492,18 @@ export class BootScene extends Phaser.Scene {
     );
     layer.add(
       this.add
-        .text(SURFACE_PANEL_INSET, 8, 'Surface', {
+        .rectangle(
+          0,
+          region.height - 18,
+          region.width,
+          18,
+          COLOR_SURFACE_GROUND,
+        )
+        .setOrigin(0, 0),
+    );
+    layer.add(
+      this.add
+        .text(SURFACE_PANEL_INSET, 8, 'Surface operations', {
           color: TEXT_MUTED,
           fontFamily: FONT_FAMILY,
           fontSize: '12px',
@@ -465,7 +520,7 @@ export class BootScene extends Phaser.Scene {
         height: panelHeight,
       },
       {
-        textureKey: PLACEHOLDER_TEXTURES.elevator,
+        textureKey: PLACEHOLDER_ANIMATION_TEXTURES.elevatorPulley,
         onUpgrade: () => {
           this.#requestPurchase(this.#viewModel.elevator.upgradeControl);
         },
@@ -480,7 +535,7 @@ export class BootScene extends Phaser.Scene {
         height: panelHeight,
       },
       {
-        textureKey: PLACEHOLDER_TEXTURES.warehouse,
+        textureKey: PLACEHOLDER_ANIMATION_TEXTURES.warehouseReceive,
         onUpgrade: () => {
           this.#requestPurchase(this.#viewModel.warehouse.upgradeControl);
         },
@@ -495,9 +550,72 @@ export class BootScene extends Phaser.Scene {
   /** Mine content taller than its camera viewport, so the area must scroll. */
   #createMineContent(width: number): Phaser.GameObjects.Container {
     const content = this.add.container(0, 0);
+    const contentHeight = calculateMineContentHeight(MINE_FLOOR_COUNT);
+    const shaft = calculateMineShaftRegion(width, MINE_FLOOR_COUNT);
+
+    const background = this.add
+      .rectangle(0, 0, width, contentHeight, COLOR_MINE_BACKGROUND)
+      .setOrigin(0, 0);
+    const shaftBackground = this.add
+      .image(shaft.x, shaft.y, PLACEHOLDER_TEXTURES.elevatorShaft)
+      .setOrigin(0, 0)
+      .setDisplaySize(shaft.width, shaft.height);
+
+    const shaftLabels = Array.from({ length: MINE_FLOOR_COUNT }, (_, index) => {
+      const slot = calculateFloorSlotRegion(index, width);
+      const plaque = this.add
+        .rectangle(
+          shaft.x + shaft.width / 2,
+          slot.y + slot.height / 2,
+          MINE_SHAFT_PLAQUE_WIDTH,
+          MINE_SHAFT_PLAQUE_HEIGHT,
+          COLOR_SHAFT_BEAM,
+        )
+        .setOrigin(0.5, 0.5);
+      const label = this.add
+        .text(
+          shaft.x + shaft.width / 2,
+          slot.y + slot.height / 2,
+          String(index + 1),
+          {
+            color: TEXT_MUTED,
+            fontFamily: FONT_FAMILY,
+            fontSize: '13px',
+            fontStyle: 'bold',
+          },
+        )
+        .setOrigin(0.5, 0.5);
+
+      return [plaque, label] as const;
+    }).flat();
+
+    this.#shaftRegion = shaft;
+    this.#shaftElevator = this.add
+      .image(
+        shaft.x + shaft.width / 2,
+        shaft.y + MINE_SHAFT_CABIN_SIZE / 2,
+        PLACEHOLDER_TEXTURES.elevatorCabin,
+      )
+      .setDisplaySize(MINE_SHAFT_CABIN_SIZE, MINE_SHAFT_CABIN_SIZE);
+    this.#shaftCargoCat = this.add
+      .sprite(
+        shaft.x + shaft.width / 2,
+        shaft.y + MINE_SHAFT_CABIN_SIZE / 2 + 3,
+        PLACEHOLDER_ANIMATION_TEXTURES.elevatorCargoCat,
+        0,
+      )
+      .setDisplaySize(25, 25)
+      .setVisible(false);
+
+    content.add([
+      background,
+      shaftBackground,
+      ...shaftLabels,
+    ]);
 
     this.#floorViews = Array.from({ length: MINE_FLOOR_COUNT }, (_, index) => {
       return new MineFloorView(this, calculateFloorSlotRegion(index, width), {
+        hasThinSoilLayer: index > 0,
         // Resolved from the current snapshot at press time, not captured here:
         // the control's price and target change as the mine does.
         onUpgrade: () => {
@@ -509,6 +627,8 @@ export class BootScene extends Phaser.Scene {
       });
     });
     content.add(this.#floorViews.map((view) => view.root));
+    content.add(this.#shaftElevator);
+    content.add(this.#shaftCargoCat);
 
     return content;
   }

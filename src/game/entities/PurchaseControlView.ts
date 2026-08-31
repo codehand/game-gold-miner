@@ -42,7 +42,7 @@ export interface RenderedPurchaseControlState {
  * `stacked` puts the price under the action for the roomier mine-floor button;
  * `inline` puts it at the opposite end of the short shared-stage bar.
  */
-export type PurchaseControlLayout = 'stacked' | 'inline';
+export type PurchaseControlLayout = 'stacked' | 'inline' | 'floor-level';
 
 export interface PurchaseControlViewOptions {
   /** Where the control sits inside its parent view's container. */
@@ -84,34 +84,56 @@ const ICON_DISABLED_ALPHA = 0.45;
  */
 export class PurchaseControlView {
   readonly #background: Phaser.GameObjects.Rectangle;
+  readonly #hitArea: Phaser.GameObjects.Rectangle;
   readonly #icon: Phaser.GameObjects.Image;
   readonly #action: Phaser.GameObjects.Text;
   readonly #cost: Phaser.GameObjects.Text;
   readonly #feedback: Phaser.GameObjects.Text;
   readonly #objects: readonly Phaser.GameObjects.GameObject[];
+  readonly #iconSize: number;
   /** The last bound model, restored when a press result expires. */
   #control: PurchaseControlViewModel | null = null;
   #feedbackModel: PurchaseFeedbackViewModel | null = null;
+  #displayOverride: { readonly action: string; readonly cost: string } | null = null;
 
   public constructor(scene: Phaser.Scene, options: PurchaseControlViewOptions) {
     const { region, layout } = options;
+    const isFloorLevel = layout === 'floor-level';
+    this.#iconSize = isFloorLevel ? 10 : ICON_SIZE;
 
     // The drawn rectangle is also the hit area, so the size that has to be
     // thumb-sized is this one. Checked here rather than in each owning view:
     // every button on the screen is one of these.
     assertTouchTargetRegion(region, 'A purchase control');
 
-    this.#background = scene.add
-      .rectangle(region.x, region.y, region.width, region.height, COLOR_ENABLED)
+    const visualRegion = isFloorLevel
+      ? {
+          x: region.x + (region.width - 30) / 2,
+          y: region.y + (region.height - 34) / 2,
+          width: 30,
+          height: 34,
+        }
+      : region;
+
+    // The compact floor badge is visually smaller than its thumb-safe input
+    // area. The nearly transparent rectangle remains hit-testable.
+    this.#hitArea = scene.add
+      .rectangle(region.x, region.y, region.width, region.height, 0xffffff, 0.001)
       .setOrigin(0, 0);
-    // The rectangle carries the hit area, so the pressable region is exactly
-    // the drawn one. Hiding it also removes it from input, because Phaser skips
-    // invisible objects when hit-testing.
-    this.#background
+    this.#hitArea
       .setInteractive({ useHandCursor: true })
       .on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, options.onPress);
+    this.#background = scene.add
+      .rectangle(
+        visualRegion.x,
+        visualRegion.y,
+        visualRegion.width,
+        visualRegion.height,
+        COLOR_ENABLED,
+      )
+      .setOrigin(0, 0);
 
-    const centerX = region.x + region.width / 2;
+    const centerX = visualRegion.x + visualRegion.width / 2;
     // The stacked layout centres its labels on the space left of the icon, not
     // on the button, so a wide action word cannot overlap the icon beside it.
     const labelCenterX =
@@ -119,14 +141,26 @@ export class PurchaseControlView {
 
     this.#icon = scene.add
       .image(
-        region.x + INSET_X + ICON_SIZE / 2,
-        region.y + region.height / 2,
+        isFloorLevel
+          ? centerX
+          : region.x + INSET_X + ICON_SIZE / 2,
+        isFloorLevel
+          ? visualRegion.y + 5
+          : region.y + region.height / 2,
         PLACEHOLDER_TEXTURES.upgrade,
       )
-      .setDisplaySize(ICON_SIZE, ICON_SIZE);
+      .setDisplaySize(this.#iconSize, this.#iconSize);
 
     this.#action =
-      layout === 'stacked'
+      isFloorLevel
+        ? this.#createText(
+            scene,
+            centerX,
+            visualRegion.y + visualRegion.height * 0.47,
+            7,
+            0.5,
+          )
+        : layout === 'stacked'
         ? this.#createText(
             scene,
             labelCenterX,
@@ -142,7 +176,15 @@ export class PurchaseControlView {
             0,
           );
     this.#cost =
-      layout === 'stacked'
+      isFloorLevel
+        ? this.#createText(
+            scene,
+            centerX,
+            visualRegion.y + visualRegion.height * 0.76,
+            10,
+            0.5,
+          )
+        : layout === 'stacked'
         ? this.#createText(
             scene,
             labelCenterX,
@@ -160,18 +202,25 @@ export class PurchaseControlView {
     this.#feedback = this.#createText(
       scene,
       centerX,
-      region.y + region.height / 2,
-      11,
+      visualRegion.y + visualRegion.height / 2,
+      isFloorLevel ? 7 : 11,
       0.5,
     );
 
     this.#objects = [
+      this.#hitArea,
       this.#background,
       this.#icon,
       this.#action,
       this.#cost,
       this.#feedback,
     ];
+    this.#render();
+  }
+
+  /** Overrides presentation without changing the priced command underneath. */
+  public applyDisplayOverride(action: string, cost: string): void {
+    this.#displayOverride = { action, cost };
     this.#render();
   }
 
@@ -193,7 +242,7 @@ export class PurchaseControlView {
   }
 
   public describeRenderedState(): RenderedPurchaseControlState {
-    const bounds = this.#background.getBounds();
+    const bounds = this.#hitArea.getBounds();
 
     return {
       isVisible: this.#background.visible,
@@ -227,6 +276,7 @@ export class PurchaseControlView {
     const visible = control !== null;
 
     this.#background.setVisible(visible);
+    this.#hitArea.setVisible(visible);
     this.#icon.setVisible(visible && feedback === null);
     this.#feedback.setVisible(visible && feedback !== null);
     this.#action.setVisible(visible && feedback === null);
@@ -246,7 +296,9 @@ export class PurchaseControlView {
         : PLACEHOLDER_TEXTURES.upgrade;
 
     if (this.#icon.texture.key !== iconTexture) {
-      this.#icon.setTexture(iconTexture).setDisplaySize(ICON_SIZE, ICON_SIZE);
+      this.#icon
+        .setTexture(iconTexture)
+        .setDisplaySize(this.#iconSize, this.#iconSize);
     }
 
     const iconAlpha = control.isEnabled ? 1 : ICON_DISABLED_ALPHA;
@@ -255,8 +307,8 @@ export class PurchaseControlView {
       this.#icon.setAlpha(iconAlpha);
     }
 
-    this.#action.setText(control.actionLabel);
-    this.#cost.setText(control.costLabel);
+    this.#action.setText(this.#displayOverride?.action ?? control.actionLabel);
+    this.#cost.setText(this.#displayOverride?.cost ?? control.costLabel);
     this.#feedback.setText(feedback?.label ?? '');
     setTextColor(
       this.#action,
@@ -293,6 +345,7 @@ export class PurchaseControlView {
         fontSize: `${fontSize}px`,
         fontStyle: 'bold',
       })
+      .setResolution(2)
       .setOrigin(originX, 0.5);
   }
 }

@@ -1,0 +1,3 @@
+Built-in image generation using miner-cat.png as the identity/style reference and 2x2-layout-guide.png as geometry only.
+
+Four-frame seamless pickaxe digging loop in a 2x2 grid: ready, downward swing, low impact/recoil, recovery. Preserve the original orange tabby miner, navy helmet and overalls, teal lamp, warm-gold accents, clean-HD cartoon rendering, stable feet line, camera distance, scale, and compact attached pickaxe. Solid #FF00FF background. No borders, scenery, dust, detached effects, text, UI, logos, signatures, or edge crossing.

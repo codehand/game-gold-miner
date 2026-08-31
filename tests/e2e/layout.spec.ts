@@ -3,7 +3,6 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   HUD_BACKGROUND,
   MINE_BACKGROUND,
-  PANEL_BACKGROUND,
   SURFACE_BACKGROUND,
 } from '../../src/game/layout';
 
@@ -188,8 +187,8 @@ for (const viewport of VIEWPORTS) {
     expect(mineGutterPixel, 'fixed layers must not repeat inside the mine').toBe(
       MINE_BACKGROUND,
     );
-    expect(minePanelPixel, 'floor slots must actually render').toBe(
-      PANEL_BACKGROUND,
+    expect(minePanelPixel, 'floor slots must actually render').not.toBe(
+      MINE_BACKGROUND,
     );
 
     expect(browserErrors).toEqual([]);

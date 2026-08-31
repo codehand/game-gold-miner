@@ -5,6 +5,7 @@ import {
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,
+  calculateMineShaftRegion,
   regionContainsPoint,
   serializeRegion,
   toFillColor,
@@ -16,8 +17,12 @@ import {
   HUD_BACKGROUND,
   MINE_CONTENT_INSET_X,
   MINE_CONTENT_PADDING,
+  MINE_CONTENT_RIGHT_INSET,
   MINE_FLOOR_COUNT,
   MINE_MIN_HEIGHT,
+  MINE_SHAFT_FLOOR_GAP,
+  MINE_SHAFT_INSET_X,
+  MINE_SHAFT_WIDTH,
   MIN_TOUCH_TARGET_PX,
   LOCKED_PANEL_BACKGROUND,
   MATERIAL_BACKLOG_FILL,
@@ -146,7 +151,9 @@ describe('scrollable mine content', () => {
       const slot = calculateFloorSlotRegion(index);
 
       expect(slot.x).toBe(MINE_CONTENT_INSET_X);
-      expect(slot.width).toBe(GAME_WIDTH - MINE_CONTENT_INSET_X * 2);
+      expect(slot.width).toBe(
+        GAME_WIDTH - MINE_CONTENT_INSET_X - MINE_CONTENT_RIGHT_INSET,
+      );
       expect(slot.height).toBe(FLOOR_SLOT_HEIGHT);
       expect(slot.y).toBeGreaterThanOrEqual(previousBottom);
       expect(slot.y + slot.height).toBeLessThanOrEqual(contentHeight);
@@ -156,6 +163,20 @@ describe('scrollable mine content', () => {
 
     expect(calculateFloorSlotRegion(1).y - calculateFloorSlotRegion(0).y).toBe(
       FLOOR_SLOT_HEIGHT + FLOOR_SLOT_GAP,
+    );
+  });
+
+  it('reserves one continuous left shaft beside every underground floor', () => {
+    const shaft = calculateMineShaftRegion();
+    const firstFloor = calculateFloorSlotRegion(0);
+    const lastFloor = calculateFloorSlotRegion(MINE_FLOOR_COUNT - 1);
+
+    expect(shaft.x).toBe(MINE_SHAFT_INSET_X);
+    expect(shaft.width).toBe(MINE_SHAFT_WIDTH);
+    expect(firstFloor.x - (shaft.x + shaft.width)).toBe(MINE_SHAFT_FLOOR_GAP);
+    expect(shaft.y).toBeLessThanOrEqual(firstFloor.y);
+    expect(shaft.y + shaft.height).toBeGreaterThanOrEqual(
+      lastFloor.y + lastFloor.height,
     );
   });
 

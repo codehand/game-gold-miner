@@ -1,0 +1,8 @@
+{
+  "enabledPlugins": {
+    "spritecook@spritecook": true,
+    "stitch-build@google-labs-code-stitch-skills": true,
+    "stitch-design@google-labs-code-stitch-skills": true,
+    "stitch-utilities@google-labs-code-stitch-skills": true
+  }
+}

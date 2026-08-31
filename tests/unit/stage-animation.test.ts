@@ -5,11 +5,15 @@ import {
   assertAnimationSpeedMultiplier,
   calculateConveyorOffsetPx,
   calculateCycleMarkerOffsetPx,
+  calculateGeneratedAssetFrame,
   calculateMinerSwingOffsetPx,
+  calculateMinerPatrolPose,
   ANIMATION_TIME_WRAP_MS,
   CONVEYOR_CYCLE_MS,
+  GENERATED_ASSET_FRAME_DURATION_MS,
   MAX_ANIMATION_FRAME_MS,
   MINER_SWING_PERIOD_MS,
+  MINER_PATROL_PERIOD_MS,
 } from '../../src/game/view-model';
 
 describe('cosmetic animation clock', () => {
@@ -74,6 +78,47 @@ describe('miner swing', () => {
   it('rejects an invalid time or amplitude', () => {
     expect(() => calculateMinerSwingOffsetPx(-1, 6)).toThrow(/finite non-negative/);
     expect(() => calculateMinerSwingOffsetPx(0, -6)).toThrow(/finite non-negative/);
+  });
+});
+
+describe('miner floor patrol', () => {
+  it('walks right, turns, walks left, and loops at the approved bounds', () => {
+    expect(calculateMinerPatrolPose(0, 100, 170)).toEqual({
+      x: 100,
+      facesLeft: false,
+    });
+    expect(calculateMinerPatrolPose(MINER_PATROL_PERIOD_MS / 2, 100, 170)).toEqual({
+      x: 170,
+      facesLeft: true,
+    });
+    expect(calculateMinerPatrolPose(MINER_PATROL_PERIOD_MS * 0.75, 100, 170)).toEqual({
+      x: 135,
+      facesLeft: true,
+    });
+    expect(calculateMinerPatrolPose(MINER_PATROL_PERIOD_MS, 100, 170)).toEqual({
+      x: 100,
+      facesLeft: false,
+    });
+  });
+
+  it('rejects invalid patrol bounds', () => {
+    expect(() => calculateMinerPatrolPose(0, 170, 100)).toThrow(/finite and ordered/);
+    expect(() => calculateMinerPatrolPose(-1, 100, 170)).toThrow(/finite non-negative/);
+  });
+});
+
+describe('generated asset frames', () => {
+  it('walks four sprite-sheet frames and loops on cosmetic time only', () => {
+    expect(calculateGeneratedAssetFrame(0)).toBe(0);
+    expect(calculateGeneratedAssetFrame(GENERATED_ASSET_FRAME_DURATION_MS)).toBe(1);
+    expect(calculateGeneratedAssetFrame(GENERATED_ASSET_FRAME_DURATION_MS * 3)).toBe(3);
+    expect(calculateGeneratedAssetFrame(GENERATED_ASSET_FRAME_DURATION_MS * 4)).toBe(0);
+  });
+
+  it('rejects invalid frame contracts', () => {
+    expect(() => calculateGeneratedAssetFrame(-1)).toThrow(/finite non-negative/);
+    expect(() => calculateGeneratedAssetFrame(0, 0)).toThrow(/positive integer/);
+    expect(() => calculateGeneratedAssetFrame(0, 4, 0)).toThrow(/finite positive/);
   });
 });
 

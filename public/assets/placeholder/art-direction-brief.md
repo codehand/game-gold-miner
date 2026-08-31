@@ -7,7 +7,8 @@
 - Runtime sprites: 128×128 RGBA PNGs, displayed between 14 and 54 logical pixels.
 - Filtering: smooth scaling is intentional for the clean-HD cartoon source.
 - Camera: side/three-quarter sprites with a shared upper-left highlight.
-- Animation: runtime transforms only; no sprite-sheet animation is authoritative.
+- Animation: three original 4-frame sheets use 128×128 cells. Frame selection and
+  transforms run on the cosmetic clock only; no sprite-sheet animation is authoritative.
 
 ## Visual system
 
@@ -18,6 +19,10 @@
 - Orange and cream make the miner distinct from the blue mine equipment.
 - Locked objects stay dark blue with a gold keyhole; enabled upgrades use a gold arrow.
 - English labels, prices, progress, focus, and interaction states remain code-native.
+- The surface reads as a connected operations yard, the left underground column is one
+  continuous steel elevator shaft, and four timber-lined tunnel floors sit to its right.
+- Motion is short and workmanlike: a compact pick swing, a rotating pulley/cabin indicator,
+  and a warehouse shutter receiving one crate without detached effects.
 
 ## Acceptance target
 

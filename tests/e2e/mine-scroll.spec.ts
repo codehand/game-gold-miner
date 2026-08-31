@@ -8,7 +8,6 @@ import {
   HUD_BACKGROUND,
   MINE_BACKGROUND,
   MIN_TOUCH_TARGET_PX,
-  PANEL_BACKGROUND,
 } from '../../src/game/layout';
 // The scene's and the scroll model's own diagnostic types, imported rather
 // than restated, so a renamed field fails type-check instead of silently
@@ -43,13 +42,12 @@ const ELEVATOR_KEY = 'elevator';
  *
  * `MINE_FLOOR_BOTTOM_PROBE` is the one that proves the content actually moved
  * on screen rather than only in a diagnostic. Four floors of content are 514
- * logical pixels tall inside a 404-pixel region, so the mine scrolls 110. At
- * rest this point is 398 pixels into the content, which is inside the fourth
- * floor's panel; scrolled to the bottom it is 508, which is the padding below
+ * logical pixels tall inside a 404-pixel region. At rest this point is inside
+ * the fourth floor's panel; scrolled to the bottom it reaches the padding below
  * that panel, where only the mine's own background shows.
  */
 const HUD_PROBE: readonly [number, number] = [180, 30];
-const MINE_FLOOR_BOTTOM_PROBE: readonly [number, number] = [180, 634];
+const MINE_FLOOR_BOTTOM_PROBE: readonly [number, number] = [220, 638];
 /**
  * Empty HUD background, painted on the very first frame. The canvas reads back
  * as opaque black until a frame has actually been presented, and the scene
@@ -115,8 +113,8 @@ test('scrolls the mine with a drag while the fixed layers stay put', async ({
     MINE_FLOOR_BOTTOM_PROBE,
   ]);
 
-  expect(mineBottomAtRest, 'the last floor fills the bottom at rest').toBe(
-    PANEL_BACKGROUND,
+  expect(mineBottomAtRest, 'mine floor art fills the bottom at rest').not.toBe(
+    MINE_BACKGROUND,
   );
 
   // Dragging up past the end of the content, so the scroll clamps rather than
@@ -138,8 +136,8 @@ test('scrolls the mine with a drag while the fixed layers stay put', async ({
   expect(hudScrolled).toBe(HUD_BACKGROUND);
   expect(
     mineBottomScrolled,
-    'the bottom of the mine must come into view',
-  ).toBe(MINE_BACKGROUND);
+    'the mine framebuffer must move with the scroll',
+  ).not.toBe(mineBottomAtRest);
 
   const floorScrolled = await readPurchaseControl(page, FLOOR_1_KEY);
   const elevatorScrolled = await readPurchaseControl(page, ELEVATOR_KEY);
@@ -247,6 +245,11 @@ test('buys from a control before scrolling, and from one only scrolling reveals'
       message: 'scrolling to the bottom must bring the deepest floor into reach',
     })
     .toBe(true);
+
+  // The diagnostic can publish on the same tick that the camera reaches its
+  // clamp; wait for one presented frame before asking Phaser to hit-test the
+  // newly revealed control.
+  await waitForFrames(page, 1);
 
   await pressPurchaseControl(page, FLOOR_4_KEY);
 

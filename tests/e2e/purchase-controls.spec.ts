@@ -12,7 +12,6 @@ import {
 // The scene's own diagnostic type, imported rather than restated, so a renamed
 // field fails type-check instead of silently reading `undefined`.
 import type { PublishedPurchaseControl } from '../../src/game/scenes/BootScene';
-import { formatAmount } from '../../src/game/view-model';
 import { createSaveDocument } from '../../src/persistence';
 
 const CANVAS_SELECTOR = '#game-viewport canvas';
@@ -94,9 +93,8 @@ test('refuses an unaffordable upgrade and changes nothing', async ({ page }) => 
   const before = await bootDriverFixture(page, fixture);
   const control = await readPurchaseControl(page, FLOOR_1_KEY);
 
-  expect(control.costLabel, 'the control shows the next price').toBe(
-    formatAmount(nextCosts(fixture).floor1),
-  );
+  expect(control.actionLabel, 'the floor control identifies its value').toBe('Level');
+  expect(control.costLabel, 'the floor control shows the current level').toBe('5');
   expect(control.isEnabledAppearance, 'one gold cannot buy a level').toBe(
     false,
   );
@@ -138,7 +136,7 @@ test('buys one mine-shaft level, deducting the price once', async ({ page }) => 
   expect(beforeControl.isEnabledAppearance, 'the control must be enabled').toBe(
     true,
   );
-  expect(beforeControl.costLabel).toBe(formatAmount(cost));
+  expect(beforeControl.costLabel).toBe('5');
 
   await pressPurchaseControl(page, FLOOR_1_KEY);
 
@@ -168,19 +166,12 @@ test('buys one mine-shaft level, deducting the price once', async ({ page }) => 
   // feedback came from rebinding text, not from rebuilding the control.
   expect(after.displayObjectCount).toBe(before.displayObjectCount);
 
-  // Once the confirmation expires the button shows the new, higher price.
+  // Once the confirmation expires the compact badge shows the new level.
   await expect
     .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).costLabel, {
-      message: 'the button price must follow the new level',
+      message: 'the level badge must follow the new level',
     })
-    .toBe(
-      formatAmount(
-        calculateMineShaftUpgradeCost(
-          { ...fixture.floors[0], mineShaftLevel: fixture.floors[0].mineShaftLevel + 1 },
-          BASE_GAME_BALANCE.floors[0],
-        ),
-      ),
-    );
+    .toBe('6');
   expect(errors).toEqual([]);
 });
 

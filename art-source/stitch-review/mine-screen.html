@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Cat Mine Idle</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Space+Grotesk:wght@100..900&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#c1ddff",
+                        "on-error": "#450900",
+                        "inverse-on-surface": "#4d5567",
+                        "tertiary-fixed": "#abcffa",
+                        "secondary-fixed": "#85f5ec",
+                        "on-surface-variant": "#a3abbf",
+                        "surface-container-low": "#0a1324",
+                        "tertiary-container": "#abcffa",
+                        "tertiary-fixed-dim": "#9dc1eb",
+                        "surface": "#060e1d",
+                        "primary-fixed": "#fbc444",
+                        "secondary-fixed-dim": "#76e7dd",
+                        "on-tertiary": "#2a4f73",
+                        "on-primary-container": "#2f2000",
+                        "primary-fixed-dim": "#ecb637",
+                        "secondary-container": "#006a64",
+                        "on-tertiary-container": "#204669",
+                        "surface-container-high": "#152033",
+                        "surface-variant": "#1a263b",
+                        "on-secondary": "#005c57",
+                        "surface-container": "#101a2b",
+                        "surface-dim": "#060e1d",
+                        "primary-dim": "#ecb637",
+                        "surface-container-lowest": "#000000",
+                        "error-container": "#b92902",
+                        "on-primary": "#584000",
+                        "surface-container-highest": "#1a263b",
+                        "on-error-container": "#ffd2c8",
+                        "on-primary-fixed": "#402d00",
+                        "inverse-primary": "#7a5a00",
+                        "error": "#ff7351",
+                        "on-surface": "#dee5fb",
+                        "on-tertiary-fixed-variant": "#2a4f73",
+                        "outline-variant": "#404859",
+                        "error-dim": "#d53d18",
+                        "primary": "#fbc444",
+                        "tertiary-dim": "#9dc1eb",
+                        "on-tertiary-fixed": "#033255",
+                        "secondary-dim": "#76e7dd",
+                        "surface-tint": "#fbc444",
+                        "primary-container": "#cb9816",
+                        "on-secondary-fixed-variant": "#006761",
+                        "outline": "#6e7588",
+                        "inverse-surface": "#f9f9ff",
+                        "on-background": "#dee5fb",
+                        "secondary": "#85f5ec",
+                        "on-secondary-fixed": "#004844",
+                        "on-primary-fixed-variant": "#644800",
+                        "on-secondary-container": "#dbfffa",
+                        "background": "#060e1d",
+                        "surface-bright": "#202c43",
+                        "mine-bg": "#101827",
+                        "hud-bg": "#132238",
+                        "surface-strip": "#20334a",
+                        "floor-panel": "#2c4260",
+                        "floor-locked": "#182334",
+                        "shaft-bg": "#172536",
+                        "shaft-rails": "#6688aa",
+                        "tunnel-rock": "#22344a",
+                        "tunnel-soil": "#8a5a32",
+                        "accent-gold": "#f4bd3e",
+                        "progress-fill": "#2ea9a1",
+                        "progress-track": "#131c2c",
+                        "btn-blue": "#41658a",
+                        "btn-disabled": "#24344b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "display": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #101827; color: #f9fafb; margin: 0; overflow-x: hidden; }
+        .h-viewport { height: 100dvh; max-height: 640px; }
+        .w-viewport { width: 100vw; max-width: 360px; margin: 0 auto; position: relative; }
+        
+        .zone-hud { height: 11%; }
+        .zone-surface { height: 26%; }
+        .zone-mine { height: 63%; overflow-y: auto; overflow-x: hidden; }
+        
+        /* Custom scrollbar for mine */
+        .zone-mine::-webkit-scrollbar { width: 4px; }
+        .zone-mine::-webkit-scrollbar-track { background: #101827; }
+        .zone-mine::-webkit-scrollbar-thumb { background: #41658a; border-radius: 4px; }
+    </style>
+</head>
+<body class="flex justify-center items-center min-h-screen bg-black">
+<div class="w-viewport h-viewport bg-mine-bg flex flex-col shadow-2xl overflow-hidden relative border border-outline-variant rounded-lg">
+<!-- Zone 1: HUD -->
+<div class="zone-hud bg-hud-bg border-b-2 border-accent-gold flex items-center justify-between px-4 shrink-0 z-10 relative">
+<div class="flex flex-col">
+<span class="text-on-surface-variant text-xs font-label uppercase tracking-wider font-bold">Gold</span>
+<span class="text-accent-gold font-headline text-xl font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-lg" style="font-variation-settings: 'FILL' 1;">monetization_on</span>
+                    14.6K
+                </span>
+</div>
+<div class="flex flex-col items-end">
+<span class="text-on-surface-variant text-xs font-label uppercase tracking-wider font-bold">Income /s</span>
+<span class="text-on-surface font-headline text-xl font-bold flex items-center gap-1">
+                    182.4
+                    <span class="material-symbols-outlined text-lg text-progress-fill" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+</span>
+</div>
+</div>
+<!-- Zone 2: Surface Strip -->
+<div class="zone-surface bg-surface-strip shrink-0 flex flex-col p-2 z-10 relative border-b-4 border-mine-bg shadow-md">
+<div class="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest mb-1 px-1">Surface Operations</div>
+<div class="flex gap-2 h-full pb-1">
+<!-- Elevator Panel -->
+<div class="flex-1 bg-floor-panel rounded-md border border-outline-variant flex flex-col p-1.5 relative overflow-hidden">
+<div class="flex justify-between items-start mb-1 z-10">
+<span class="font-headline text-sm font-bold text-on-surface">Elevator</span>
+<span class="bg-surface-container-low text-accent-gold text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">Idle</span>
+</div>
+<div class="flex-1 flex items-center justify-center mb-1 relative">
+<div class="absolute inset-0 opacity-20 bg-[url('placeholder')] bg-cover bg-center mix-blend-overlay" data-alt="Dark abstract industrial metallic texture pattern background suitable for elevator panel backdrop"></div>
+<img class="h-[90%] object-contain z-10 drop-shadow-md" data-alt="2D isometric illustration of a steampunk-style industrial elevator mechanism with gears and a cage" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCjS_8wo_VnyBs67z407eowgM4Rbv4WsUhmwHR1_JGQoYLTkL_1L1oRsKXGEZqCN8lahCNUKVOGddvwcFqI_DtnbFTTGkn_6Na_VzhgDxewMkEllt_Sxher3Sz0u5pPdO-SsSzwArvApjjQThdWP58LsovebfZsBECw8rKfrLZwIRg8ax887jsBUIzRx3F7ddQUqp63hOMn00Cw2gcJg5kQ1kTAISnPojpKBNXG-7yG98vSAvO3_qB2zZeEIxsAURWQ-43puKxZZwy4"/>
+</div>
+<div class="h-1.5 bg-progress-track rounded-full mb-1.5 overflow-hidden border border-surface-container-lowest">
+<div class="h-full bg-progress-fill w-1/4 rounded-full relative">
+<div class="absolute right-0 top-0 bottom-0 w-1 bg-white"></div>
+</div>
+</div>
+<button class="bg-btn-blue hover:bg-blue-600 active:scale-95 transition-all text-white text-xs font-bold py-1.5 rounded flex items-center justify-center gap-1 h-8 shadow-[0_2px_0_#2a425b]">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span>
+                        1.2K
+                    </button>
+</div>
+<!-- Warehouse Panel -->
+<div class="flex-1 bg-floor-panel rounded-md border border-outline-variant flex flex-col p-1.5 relative overflow-hidden">
+<div class="flex justify-between items-start mb-1 z-10">
+<span class="font-headline text-sm font-bold text-on-surface">Warehouse</span>
+<span class="bg-surface-container-low text-progress-fill text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">Active</span>
+</div>
+<div class="flex-1 flex items-center justify-center mb-1 relative">
+<div class="absolute inset-0 opacity-20 bg-[url('placeholder')] bg-cover bg-center mix-blend-overlay" data-alt="Dark abstract crate and box storage pattern background suitable for warehouse panel backdrop"></div>
+<img class="h-[90%] object-contain z-10 drop-shadow-md" data-alt="2D isometric illustration of an industrial warehouse building with a closed garage door and shipping crates outside" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB8S77kQ3LzNhNcvyxGCbBJTD9jYaLnTCSIYudpIICm9I0JHDd8vqQ3P7gLUxajfzI0JHKEU3KGbG_DDkdYSXGVqp-aI8PVru-0wvbJ-oFrhzrqVqFWGwbHIDdra8vxyO1pjsAC99cNWnwPoQy5joGeV_NwU2hJj1VqYJjLgRQ-xQTFs5tPJtVhCgOy8mAV1bjdFkNmDKGtI73cH5ckHtljqMQl3ELBauC5TP-4jNo1leQbRVSKJRG_OelM-TijBBCFcT5PofOJz_i1"/>
+</div>
+<div class="h-1.5 bg-progress-track rounded-full mb-1.5 overflow-hidden border border-surface-container-lowest">
+<div class="h-full bg-progress-fill w-3/4 rounded-full relative">
+<div class="absolute right-0 top-0 bottom-0 w-1 bg-white"></div>
+</div>
+</div>
+<button class="bg-btn-blue hover:bg-blue-600 active:scale-95 transition-all text-white text-xs font-bold py-1.5 rounded flex items-center justify-center gap-1 h-8 shadow-[0_2px_0_#2a425b]">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span>
+                        1.2K
+                    </button>
+</div>
+</div>
+</div>
+<!-- Zone 3: Mine Scrollable Area -->
+<div class="zone-mine flex relative pb-8">
+<!-- Left Shaft -->
+<div class="w-[13%] bg-shaft-bg border-r-2 border-surface-container-lowest shrink-0 relative">
+<!-- Rails -->
+<div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-1.5 bg-shaft-rails border-x border-surface-container-highest"></div>
+<!-- Shaft horizontal beams -->
+<div class="absolute top-10 inset-x-0 h-1 bg-[#304a66]"></div>
+<div class="absolute top-40 inset-x-0 h-1 bg-[#304a66]"></div>
+<div class="absolute top-70 inset-x-0 h-1 bg-[#304a66]"></div>
+<!-- Elevator Cabin (Visual only) -->
+<div class="absolute top-12 left-1/2 -translate-x-1/2 w-8 h-10 bg-accent-gold border-2 border-surface-container-lowest rounded-sm shadow-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-surface-container-lowest text-xs">unfold_more</span>
+</div>
+</div>
+<!-- Right Floors -->
+<div class="flex-1 flex flex-col">
+<!-- Floor 1 (Unlocked) -->
+<div class="h-[120px] bg-floor-panel relative border-b-4 border-mine-bg flex flex-col overflow-hidden">
+<!-- Top rock decoration -->
+<div class="absolute top-0 inset-x-0 h-4 bg-tunnel-rock border-b border-surface-container-lowest opacity-70"></div>
+<!-- Bottom soil decoration -->
+<div class="absolute bottom-0 inset-x-0 h-8 bg-tunnel-soil border-t border-surface-container-lowest opacity-50"></div>
+<div class="flex-1 p-2 flex flex-col justify-between z-10 relative mt-2">
+<!-- Header -->
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-2">
+<div class="bg-accent-gold text-on-primary-container w-5 h-5 rounded flex items-center justify-center font-bold text-xs shadow-sm">1</div>
+<div>
+<div class="font-headline text-sm font-bold text-on-surface leading-tight">Mine Shaft 1</div>
+<div class="text-[10px] text-on-surface-variant font-bold uppercase">Lv 12</div>
+</div>
+</div>
+<span class="bg-surface-container-high text-progress-fill text-[9px] px-1.5 py-0.5 rounded border border-outline-variant font-bold uppercase shadow-sm">Digging</span>
+</div>
+<!-- Content Area -->
+<div class="flex items-end justify-between -mb-1">
+<div class="flex-1 flex justify-center items-center h-12 relative">
+<img class="h-16 absolute bottom-0 left-4 drop-shadow-lg" data-alt="2D cartoon illustration of an orange cat wearing a yellow hard hat and overalls swinging a pickaxe at some floating rocks" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6oqoSuFO9XSpedlk-Ckd0XTio-U_f7z74nPpDYEjuih_aphzxdNsC3ijOEKpoX3sPylvTIAIrDkxDkKTu9VFNHn1nZTSCoXH1stFRoiwQwM41GOOVE41kRnxnd3casIPT13P7rGR_kY7CMRhDdUiSMbx9SkrLRaYEcpdG98TlPO0YtueXn8R1_tEEg0CeMaaUh9UNnha_bSpdIBhpOGdnnfO1e4fzJ6MPBVAtgh3cbfjRNz1Q3HhK-EiC5el4fXxP-2pW94cNq0DE"/>
+</div>
+<div class="flex flex-col items-end gap-1">
+<button class="bg-btn-blue hover:bg-blue-600 active:scale-95 transition-all text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 shadow-[0_2px_0_#2a425b] w-20 justify-center h-8">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span>
+                                    450
+                                </button>
+</div>
+</div>
+<!-- Progress -->
+<div class="relative w-full h-3 mt-2 flex items-center group">
+<div class="absolute inset-0 bg-progress-track rounded-full border border-surface-container-lowest overflow-hidden">
+<div class="h-full bg-progress-fill w-[60%] relative">
+<div class="absolute right-0 top-0 bottom-0 w-1 bg-white"></div>
+</div>
+</div>
+<span class="absolute right-2 text-[8px] font-bold text-white drop-shadow-md z-10">60%</span>
+</div>
+</div>
+</div>
+<!-- Floor 2 (Unlocked) -->
+<div class="h-[120px] bg-floor-panel relative border-b-4 border-mine-bg flex flex-col overflow-hidden">
+<div class="absolute top-0 inset-x-0 h-4 bg-tunnel-rock border-b border-surface-container-lowest opacity-70"></div>
+<div class="absolute bottom-0 inset-x-0 h-8 bg-tunnel-soil border-t border-surface-container-lowest opacity-50"></div>
+<div class="flex-1 p-2 flex flex-col justify-between z-10 relative mt-2">
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-2">
+<div class="bg-accent-gold text-on-primary-container w-5 h-5 rounded flex items-center justify-center font-bold text-xs shadow-sm">2</div>
+<div>
+<div class="font-headline text-sm font-bold text-on-surface leading-tight">Mine Shaft 2</div>
+<div class="text-[10px] text-on-surface-variant font-bold uppercase">Lv 4</div>
+</div>
+</div>
+<span class="bg-surface-container-high text-progress-fill text-[9px] px-1.5 py-0.5 rounded border border-outline-variant font-bold uppercase shadow-sm">Digging</span>
+</div>
+<div class="flex items-end justify-between -mb-1">
+<div class="flex-1 flex justify-center items-center h-12 relative">
+<!-- Same image used for demo purposes, varying size slightly -->
+<img class="h-14 absolute bottom-0 left-6 drop-shadow-lg scale-x-[-1]" data-alt="2D cartoon illustration of an orange cat wearing a yellow hard hat and overalls swinging a pickaxe at some floating rocks" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6oqoSuFO9XSpedlk-Ckd0XTio-U_f7z74nPpDYEjuih_aphzxdNsC3ijOEKpoX3sPylvTIAIrDkxDkKTu9VFNHn1nZTSCoXH1stFRoiwQwM41GOOVE41kRnxnd3casIPT13P7rGR_kY7CMRhDdUiSMbx9SkrLRaYEcpdG98TlPO0YtueXn8R1_tEEg0CeMaaUh9UNnha_bSpdIBhpOGdnnfO1e4fzJ6MPBVAtgh3cbfjRNz1Q3HhK-EiC5el4fXxP-2pW94cNq0DE"/>
+</div>
+<div class="flex flex-col items-end gap-1">
+<button class="bg-btn-blue hover:bg-blue-600 active:scale-95 transition-all text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 shadow-[0_2px_0_#2a425b] w-20 justify-center h-8">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span>
+                                    2.1K
+                                </button>
+</div>
+</div>
+<div class="relative w-full h-3 mt-2 flex items-center">
+<div class="absolute inset-0 bg-progress-track rounded-full border border-surface-container-lowest overflow-hidden">
+<div class="h-full bg-progress-fill w-[15%] relative">
+<div class="absolute right-0 top-0 bottom-0 w-1 bg-white"></div>
+</div>
+</div>
+<span class="absolute right-2 text-[8px] font-bold text-white drop-shadow-md z-10">15%</span>
+</div>
+</div>
+</div>
+<!-- Floor 3 (Locked) -->
+<div class="h-[120px] bg-floor-locked relative flex flex-col overflow-hidden opacity-90 grayscale-[20%]">
+<div class="absolute inset-0 bg-[url('placeholder')] bg-cover opacity-10 mix-blend-overlay" data-alt="Dark rough stone and dirt texture pattern representing an unexcavated mine shaft area"></div>
+<div class="absolute top-0 inset-x-0 h-4 bg-tunnel-rock border-b border-surface-container-lowest opacity-40"></div>
+<div class="flex-1 p-3 flex flex-col items-center justify-center z-10 relative gap-2 text-center">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-outline text-lg">lock</span>
+<div class="font-headline text-sm font-bold text-outline">Mine Shaft 3</div>
+</div>
+<div class="bg-surface-container-low text-error text-[10px] px-2 py-1 rounded font-bold uppercase border border-error/20">
+                            Needs Floor 2 Lv 7
+                        </div>
+<button class="bg-btn-disabled text-on-surface-variant text-xs font-bold px-4 py-2 rounded flex items-center justify-center gap-1 mt-1 cursor-not-allowed w-28 border border-outline-variant h-9">
+<span class="material-symbols-outlined text-[14px]">lock_open</span>
+                            7.5K
+                        </button>
+</div>
+</div>
+<!-- Spacer for scrolling -->
+<div class="h-10 bg-mine-bg"></div>
+</div>
+</div>
+</div>
+</body></html>

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "family": "step-32-original-placeholder-presentation",
   "generatedAt": "2026-08-30",
-  "sourceTool": "OpenAI built-in image generation",
-  "processor": "generate2dsprite chroma-key and 3x3 slicing pipeline",
+  "sourceTool": "OpenAI built-in image generation; miner-cat regenerated with SpriteCook (see assets[].source)",
+  "processor": "generate2dsprite chroma-key, 3x3 prop slicing, and 2x2 animation slicing pipeline",
   "sourcePrompt": "art-source/placeholder/source/prompt-used.txt",
   "sourceImage": "art-source/placeholder/source/cat-mine-placeholder-pack-raw.png",
   "pipelineMetadata": "art-source/placeholder/sprite-pack/pipeline-meta.json",
@@ -14,7 +14,7 @@
     "attributionRequired": false
   },
   "assets": [
-    { "id": "miner-cat", "path": "public/assets/placeholder/miner-cat.png", "size": "128x128", "role": "unlocked floor miner", "status": "step-32-placeholder" },
+    { "id": "miner-cat", "path": "public/assets/placeholder/miner-cat.png", "size": "128x128", "role": "unlocked floor miner", "status": "step-32-placeholder", "source": { "tool": "SpriteCook", "model": "gpt-image-2 1K medium", "assetId": "bcadda06-9a8b-4f8c-a323-ba3b426c1f15", "referenceAssetId": "ddae3b2f-ac09-41e0-96b1-bab7928d7a95", "master": "art-source/spritecook-review/miner-cat/miner-cat-v2.png" } },
     { "id": "elevator", "path": "public/assets/placeholder/elevator.png", "size": "128x128", "role": "shared elevator", "status": "step-32-placeholder" },
     { "id": "warehouse", "path": "public/assets/placeholder/warehouse.png", "size": "128x128", "role": "shared warehouse", "status": "step-32-placeholder" },
     { "id": "gold-pile", "path": "public/assets/placeholder/gold-pile.png", "size": "128x128", "role": "floor material queue", "status": "step-32-placeholder" },
@@ -23,5 +23,44 @@
     { "id": "gold-coin", "path": "public/assets/placeholder/gold-coin.png", "size": "128x128", "role": "spendable gold HUD", "status": "step-32-placeholder" },
     { "id": "mine-cart", "path": "public/assets/placeholder/mine-cart.png", "size": "128x128", "role": "income HUD", "status": "step-32-placeholder" },
     { "id": "ore-crate", "path": "public/assets/placeholder/ore-crate.png", "size": "128x128", "role": "shared-stage queued material", "status": "step-32-placeholder" }
+  ],
+  "animationAssets": [
+    {
+      "id": "miner-dig-sheet",
+      "path": "public/assets/placeholder/animated/miner-dig-sheet.png",
+      "grid": "2x2",
+      "frameSize": "128x128",
+      "frameCount": 4,
+      "role": "unlocked-floor digging loop",
+      "status": "step-32a-animation-pack",
+      "source": "art-source/spritecook-review/miner-cat/dig-v2-sheet.png",
+      "sourceTool": "SpriteCook animate_game_art (4 frames, 640x640, 8fps, detailed)",
+      "sourceAssetId": "39274743-e2bc-40b3-8139-f0e76e8c1d02",
+      "baseAssetId": "bcadda06-9a8b-4f8c-a323-ba3b426c1f15",
+      "reframing": "union-bbox crop, premultiplied LANCZOS downscale, baseline y=117 to match the Step 32A pack",
+      "qc": { "emptyFrames": 0, "outputEdgeTouchFrames": 0, "pasteClampedFrames": 0 }
+    },
+    {
+      "id": "elevator-pulley-sheet",
+      "path": "public/assets/placeholder/animated/elevator-pulley-sheet.png",
+      "grid": "2x2",
+      "frameSize": "128x128",
+      "frameCount": 4,
+      "role": "surface machinery and moving shaft cabin loop",
+      "status": "step-32a-animation-pack",
+      "source": "art-source/placeholder-animation/elevator-pulley",
+      "qc": { "emptyFrames": 0, "outputEdgeTouchFrames": 0, "pasteClampedFrames": 0 }
+    },
+    {
+      "id": "warehouse-receive-sheet",
+      "path": "public/assets/placeholder/animated/warehouse-receive-sheet.png",
+      "grid": "2x2",
+      "frameSize": "128x128",
+      "frameCount": 4,
+      "role": "surface warehouse receiving loop",
+      "status": "step-32a-animation-pack",
+      "source": "art-source/placeholder-animation/warehouse-receive",
+      "qc": { "emptyFrames": 0, "outputEdgeTouchFrames": 0, "pasteClampedFrames": 0 }
+    }
   ]
 }

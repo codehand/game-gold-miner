@@ -1,0 +1,10 @@
+ROLE/PURPOSE: replacement production sprite for the mine-floor gold queue.
+SUBJECT: one low, wide, irregular mound of varied gold ore nuggets.
+VIEW: three-quarter side view, isolated and fully contained.
+ART DIRECTION: match layout1.png with softer rounded facets, warm yellow-to-orange shading, restrained dark outline, small bright highlights, and a subtle grounding shadow.
+GAME-SCALE READ: clean silhouette and only the largest facets must survive at roughly 44x32 logical pixels.
+TECHNICAL OUTPUT: transparent background, one object, normalized to a 128x128 RGBA runtime sprite.
+LOCKS: preserve the project's warm-gold palette and clean-HD cartoon rendering.
+EXCLUDE: coins, containers, cats, text, UI, frames, scenery, signatures, cropped edges.
+
+Generated with OpenAI built-in image generation using the prior gold-pile sprite as the edit target and layout1.png as the approved art-direction reference. Postprocessed with generate2dsprite into a 128x128 transparent sprite; strict QC reported zero empty frames, output-edge contacts, and paste clamps.

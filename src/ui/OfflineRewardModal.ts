@@ -1,4 +1,5 @@
 import type { PendingOfflineReward } from '../core';
+import { formatAmount } from '../game/view-model/formatAmount';
 
 export const OFFLINE_REWARD_SAVE_FAILURE_MESSAGE =
   'Your reward could not be saved. Please try again.';
@@ -44,7 +45,7 @@ export function showOfflineRewardModal(
   const reward = document.createElement('p');
   reward.className = 'offline-reward-amount';
   reward.dataset.testid = 'offline-reward-amount';
-  reward.textContent = `${options.pendingReward.reward.serialize()} gold`;
+  reward.textContent = `${formatAmount(options.pendingReward.reward)} gold`;
 
   const status = document.createElement('p');
   status.className = 'offline-reward-status';

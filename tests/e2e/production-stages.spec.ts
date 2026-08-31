@@ -16,6 +16,9 @@ import type {
 } from '../../src/game/entities';
 import {
   CYCLE_MARKER_FILL,
+  calculateFloorSlotRegion,
+  calculateMineFloorPanelLayout,
+  calculateMineLayout,
   HUD_BACKGROUND,
   MATERIAL_BACKLOG_FILL,
   PANEL_BACKGROUND,
@@ -40,8 +43,17 @@ const FIXTURE_TIMESTAMP_MS = FIXED_TIME.getTime();
  * store stays 360x640, so these logical coordinates hold at any host viewport.
  * Each point sits where the sampled object is the topmost drawn thing.
  */
-const FLOOR_ONE_PILE_BOTTOM_PROBE: readonly [number, number] = [78, 325];
-const FLOOR_ONE_PILE_TOP_PROBE: readonly [number, number] = [78, 311];
+const FLOOR_PANEL = calculateMineFloorPanelLayout();
+const FLOOR_ONE = calculateFloorSlotRegion(0);
+const MINE_Y = calculateMineLayout().mine.y;
+const FLOOR_ONE_PILE_BOTTOM_PROBE: readonly [number, number] = [
+  FLOOR_ONE.x + FLOOR_PANEL.goldPile.x + FLOOR_PANEL.goldPile.width / 2,
+  MINE_Y + FLOOR_ONE.y + FLOOR_PANEL.goldPile.y + FLOOR_PANEL.goldPile.height - 8,
+];
+const FLOOR_ONE_PILE_TOP_PROBE: readonly [number, number] = [
+  FLOOR_ONE.x + FLOOR_PANEL.goldPile.x + FLOOR_PANEL.goldPile.width / 2,
+  MINE_Y + FLOOR_ONE.y + FLOOR_PANEL.goldPile.y + FLOOR_PANEL.goldPile.height / 2,
+];
 const ELEVATOR_QUEUE_BLOCK_PROBE: readonly [number, number] = [28, 155];
 const WAREHOUSE_QUEUE_BLOCK_PROBE: readonly [number, number] = [200, 155];
 const ELEVATOR_TRACK_START_PROBE: readonly [number, number] = [22, 165];
@@ -183,6 +195,7 @@ test('shows an idle transport and warehouse while extraction is the slowest stag
   // Nothing is queued downstream, so both shared stages report themselves idle
   // and neither conveyor runs.
   expect(elevator).toMatchObject({
+    assetFrame: 0,
     queueSteps: 0,
     statusLabel: 'Idle',
     showsConveyor: false,
@@ -190,24 +203,26 @@ test('shows an idle transport and warehouse while extraction is the slowest stag
     cycleMarkerOffsetPx: 0,
   });
   expect(warehouse).toMatchObject({
+    assetFrame: 0,
     queueSteps: 0,
     statusLabel: 'Idle',
     showsConveyor: false,
     progressFillWidth: 0,
   });
 
-  // The clearest statement of the separation: with the core paused the pick
-  // keeps swinging from the cosmetic clock, while the extraction indicator the
-  // core owns does not move at all.
+  // The walking frames stay cosmetic, but the miner's position is now the
+  // authoritative extraction indicator and therefore freezes with the core.
   await expect
-    .poll(
-      async () => (await readRenderedFloors(page))[0].minerSwingOffsetPx,
-      { message: 'the placeholder miner must animate while the core is paused' },
-    )
-    .not.toBe(floorOne.minerSwingOffsetPx);
+    .poll(async () => (await readRenderedFloors(page))[0].minerAssetFrame, {
+      message: 'the generated digging sheet must advance while the core is paused',
+    })
+    .not.toBe(floorOne.minerAssetFrame);
 
   const [stillPaused] = await readRenderedFloors(page);
 
+  expect(stillPaused.minerPatrolX, 'a paused core must freeze miner travel').toBe(
+    floorOne.minerPatrolX,
+  );
   expect(stillPaused.progressLabel, 'a paused core must not extract').toBe('60%');
   expect(stillPaused.progressFillWidth, 'a paused core must not extract').toBe(
     floorOne.progressFillWidth,
@@ -240,12 +255,12 @@ test('shows a full pile on every shaft while transport is the slowest stage', as
   const [elevator, warehouse] = await readRenderedSharedStages(page);
 
   // The waiting material is the bottleneck signal: every shaft holds a whole
-  // elevator trip, so the pile is full and named as a backlog.
+  // elevator trip. The asset itself stays gold and no status text covers it.
   floors.forEach((floor, index) => {
     const label = `floor ${index + 1}`;
 
     expect(floor.materialPileSteps, `${label} pile`).toBe(MAX_MATERIAL_PILE_STEPS);
-    expect(floor.backlogLabel, `${label} backlog`).toBe('Backed up');
+    expect(floor.backlogLabel, `${label} backlog overlay`).toBeNull();
     expect(floor.isPileBackedUp, `${label} backlog colour`).toBe(true);
   });
 
@@ -253,6 +268,7 @@ test('shows a full pile on every shaft while transport is the slowest stage', as
   // authoritative transit progress.
   expect(elevator.statusLabel, 'elevator status').toBe('In transit');
   expect(elevator.showsConveyor, 'elevator conveyor').toBe(true);
+  expect(elevator.assetFrame, 'elevator generated animation frame').toBeGreaterThanOrEqual(0);
   expect(
     elevator.progressFillWidth / elevator.progressTrackWidth,
     'elevator transit bar',
@@ -277,12 +293,8 @@ test('shows a full pile on every shaft while transport is the slowest stage', as
     ],
   );
 
-  expect(pileBottom, 'a backed-up pile must render in the backlog colour').toBe(
-    MATERIAL_BACKLOG_FILL,
-  );
-  expect(pileTop, 'a backed-up pile must be drawn to full height').toBe(
-    MATERIAL_BACKLOG_FILL,
-  );
+  expect(pileBottom, 'a backed-up pile keeps the approved gold asset').not.toBe(MATERIAL_BACKLOG_FILL);
+  expect(pileTop, 'a backed-up pile keeps the approved gold asset').not.toBe(MATERIAL_BACKLOG_FILL);
   // At half a transit the marker has left the start of the track, so the pair
   // of probes proves it is placed from authoritative progress rather than
   // parked at one end.
@@ -306,7 +318,7 @@ test('shows a full pile on every shaft while transport is the slowest stage', as
  * renderer, and `BootScene` reports which one it got, so this run pins the
  * fallback and reads the same pixels the WebGL run does.
  */
-test('marks a backlog in the backlog colour under the Canvas renderer', async ({
+test('keeps the approved gold pile under the Canvas renderer', async ({
   page,
 }) => {
   const errors = collectBrowserErrors(page);
@@ -337,12 +349,8 @@ test('marks a backlog in the backlog colour under the Canvas renderer', async ({
     ],
   );
 
-  expect(pileBottom, 'a backed-up pile must render in the backlog colour').toBe(
-    MATERIAL_BACKLOG_FILL,
-  );
-  expect(pileTop, 'a backed-up pile must be drawn to full height').toBe(
-    MATERIAL_BACKLOG_FILL,
-  );
+  expect(pileBottom, 'Canvas keeps the approved gold asset').not.toBe(MATERIAL_BACKLOG_FILL);
+  expect(pileTop, 'Canvas keeps the approved gold asset').not.toBe(MATERIAL_BACKLOG_FILL);
   // The stage downstream is not backed up, so it must still be drawn in the
   // artwork's own colours: recolouring everything would say as little as
   // recolouring nothing.
