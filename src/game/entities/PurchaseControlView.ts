@@ -9,6 +9,7 @@ import {
   CONTROL_REFUSED_BACKGROUND,
   CONTROL_SUCCESS_BACKGROUND,
   FONT_FAMILY,
+  FONT_STYLE_BOLD,
   TEXT_ACCENT,
   TEXT_DISABLED,
   TEXT_PRIMARY,
@@ -36,6 +37,8 @@ export interface RenderedPurchaseControlState {
    * screen space, which is what a browser test needs to press it.
    */
   readonly worldBounds: LayoutRegion;
+  /** The visible chrome, which may be smaller than the thumb-safe hit area. */
+  readonly visualWorldBounds: LayoutRegion;
 }
 
 /**
@@ -70,6 +73,7 @@ const STACKED_ACTION_Y_RATIO = 0.32;
 const STACKED_COST_Y_RATIO = 0.7;
 /** A control the player cannot pay for dims its icon along with its text. */
 const ICON_DISABLED_ALPHA = 0.45;
+const FLOOR_LEVEL_VISUAL_OFFSET_X = 5;
 
 /**
  * One priced button, shared by every purchase on the screen: each mine shaft's
@@ -108,7 +112,10 @@ export class PurchaseControlView {
 
     const visualRegion = isFloorLevel
       ? {
-          x: region.x + (region.width - 30) / 2,
+          x:
+            region.x +
+            (region.width - 30) / 2 +
+            FLOOR_LEVEL_VISUAL_OFFSET_X,
           y: region.y + (region.height - 34) / 2,
           width: 30,
           height: 34,
@@ -243,6 +250,7 @@ export class PurchaseControlView {
 
   public describeRenderedState(): RenderedPurchaseControlState {
     const bounds = this.#hitArea.getBounds();
+    const visualBounds = this.#background.getBounds();
 
     return {
       isVisible: this.#background.visible,
@@ -255,6 +263,12 @@ export class PurchaseControlView {
         y: bounds.y,
         width: bounds.width,
         height: bounds.height,
+      },
+      visualWorldBounds: {
+        x: visualBounds.x,
+        y: visualBounds.y,
+        width: visualBounds.width,
+        height: visualBounds.height,
       },
     };
   }
@@ -343,7 +357,7 @@ export class PurchaseControlView {
         color: TEXT_PRIMARY,
         fontFamily: FONT_FAMILY,
         fontSize: `${fontSize}px`,
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setResolution(2)
       .setOrigin(originX, 0.5);

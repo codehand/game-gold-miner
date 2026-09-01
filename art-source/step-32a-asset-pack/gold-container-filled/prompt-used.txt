@@ -1,0 +1,7 @@
+Built-in image generation, 2026-08-31.
+
+Create the filled-state counterpart of the existing empty mine cart, preserving
+its silhouette, wheels, perspective, wood palette, and baseline. Add bright
+chunky gold nuggets heaped just above the rim in the approved layout1/gold-pile
+shape language. One centred prop on flat #FF00FF; no loose ground pile, cat,
+UI, text, scenery, border, signature, or watermark.

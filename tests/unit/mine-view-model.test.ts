@@ -276,6 +276,10 @@ describe('bottleneck signals', () => {
     const carrying = createViewModel(state).elevator;
     const idle = createViewModel({
       ...state,
+      floors: state.floors.map((floor) => ({
+        ...floor,
+        materialQueue: GameNumber.from(0),
+      })),
       elevator: {
         ...state.elevator,
         transitProgress: 0,
@@ -290,7 +294,7 @@ describe('bottleneck signals', () => {
       // A full car is one full trip, not a backlog: transport pressure shows
       // up as full floor piles, which the elevator itself cannot report.
       isBackedUp: false,
-      statusLabel: 'In transit',
+      statusLabel: 'Collecting',
     });
     expect(idle).toMatchObject({
       queueSteps: 0,

@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   HUD_BACKGROUND,
   MINE_BACKGROUND,
-  SURFACE_BACKGROUND,
+  MINE_SHAFT_INSET_X,
 } from '../../src/game/layout';
 
 interface Rect {
@@ -45,8 +45,10 @@ const CANVAS_SELECTOR = '#game-viewport canvas';
  * which is the only part of the surface region its own background still owns.
  */
 const HUD_PROBE: readonly [number, number] = [180, 30];
-const SURFACE_PROBE: readonly [number, number] = [300, 85];
-const MINE_GUTTER_PROBE: readonly [number, number] = [6, 254];
+// Between the elevator badge and the right-flush warehouse. The earlier point
+// at x=300 is now intentionally occupied by the warehouse Level control.
+const SURFACE_PROBE: readonly [number, number] = [190, 85];
+const MINE_GUTTER_PROBE: readonly [number, number] = [MINE_SHAFT_INSET_X / 2, 254];
 const MINE_PANEL_PROBE: readonly [number, number] = [180, 254];
 
 test.beforeEach(async ({ page }) => {
@@ -181,9 +183,20 @@ for (const viewport of VIEWPORTS) {
         MINE_PANEL_PROBE,
       ]);
     expect(hudPixel, 'HUD background must not be overdrawn').toBe(HUD_BACKGROUND);
-    expect(surfacePixel, 'surface background must not be overdrawn').toBe(
-      SURFACE_BACKGROUND,
-    );
+    const surfaceChannels = surfacePixel
+      .slice(1)
+      .match(/.{2}/g)
+      ?.map((channel) => Number.parseInt(channel, 16));
+
+    expect(surfaceChannels, 'surface landscape pixel must be RGB').toHaveLength(3);
+    expect(
+      surfaceChannels?.[2],
+      'surface landscape sky must not be overdrawn',
+    ).toBeGreaterThan(surfaceChannels?.[0] ?? Number.POSITIVE_INFINITY);
+    expect(
+      surfaceChannels?.[2],
+      'surface landscape remains blue behind the stages',
+    ).toBeGreaterThan(surfaceChannels?.[1] ?? Number.POSITIVE_INFINITY);
     expect(mineGutterPixel, 'fixed layers must not repeat inside the mine').toBe(
       MINE_BACKGROUND,
     );

@@ -10,6 +10,8 @@ import {
   CONVEYOR_FILL,
   CYCLE_MARKER_FILL,
   FONT_FAMILY,
+  FONT_STYLE_BOLD,
+  FONT_STYLE_SEMIBOLD,
   MIN_TOUCH_TARGET_PX,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
@@ -100,6 +102,10 @@ export interface SharedStageViewOptions {
   readonly textureKey:
     | typeof PLACEHOLDER_ANIMATION_TEXTURES.elevatorPulley
     | typeof PLACEHOLDER_ANIMATION_TEXTURES.warehouseReceive;
+  /** Lets the surface elevator expose its tower artwork below the data labels. */
+  readonly backgroundAlpha?: number;
+  /** The tower replaces the legacy pulley thumbnail in the elevator panel. */
+  readonly showStageSprite?: boolean;
 }
 
 /**
@@ -140,18 +146,20 @@ export class SharedStageView {
 
     const background = scene.add
       .rectangle(0, 0, region.width, region.height, COLOR_PANEL)
-      .setOrigin(0, 0);
+      .setOrigin(0, 0)
+      .setAlpha(options.backgroundAlpha ?? 1);
 
     this.#stageSprite = scene.add
       .sprite(STAGE_SPRITE_X, STAGE_SPRITE_Y, options.textureKey, 0)
-      .setDisplaySize(STAGE_SPRITE_SIZE, STAGE_SPRITE_SIZE);
+      .setDisplaySize(STAGE_SPRITE_SIZE, STAGE_SPRITE_SIZE)
+      .setVisible(options.showStageSprite ?? true);
 
     this.#title = scene.add
       .text(50, 6, '', {
         color: TEXT_PRIMARY,
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(0, 0);
     this.#level = scene.add
@@ -159,7 +167,7 @@ export class SharedStageView {
         color: TEXT_ACCENT,
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(1, 0);
     this.#capacity = scene.add
@@ -167,6 +175,7 @@ export class SharedStageView {
         color: TEXT_MUTED,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
+        fontStyle: FONT_STYLE_SEMIBOLD,
       })
       .setOrigin(0, 0);
     this.#queue = scene.add
@@ -174,14 +183,15 @@ export class SharedStageView {
         color: TEXT_MUTED,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
+        fontStyle: FONT_STYLE_SEMIBOLD,
       })
       .setOrigin(0, 0);
     this.#status = scene.add
-      .text(region.width - PANEL_INSET_X, 38, '', {
+      .text(region.width - PANEL_INSET_X, 24, '', {
         color: TEXT_MUTED,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(1, 0);
 
@@ -229,6 +239,7 @@ export class SharedStageView {
         color: TEXT_MUTED,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
+        fontStyle: FONT_STYLE_SEMIBOLD,
       })
       .setOrigin(1, 0);
 

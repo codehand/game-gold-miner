@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { GameNumber } from '../../src/core';
 import {
   ABBREVIATION_TIER_SUFFIXES,
+  describeAmountTier,
   formatAmount,
   SMALL_NEGATIVE_AMOUNT_LABEL,
   SMALL_POSITIVE_AMOUNT_LABEL,
@@ -23,30 +24,35 @@ describe('abbreviated amount formatting', () => {
     expect(format(999)).toBe('999');
   });
 
-  it('abbreviates each magnitude tier as K, M, B, and T', () => {
-    expect(format(1_000)).toBe('1K');
-    expect(format(1_234)).toBe('1.2K');
-    expect(format(12_345)).toBe('12.3K');
-    expect(format(999_999)).toBe('999.9K');
-    expect(format(1_000_000)).toBe('1M');
-    expect(format(2_500_000_000)).toBe('2.5B');
-    expect(format('3.75e12')).toBe('3.7T');
+  it('abbreviates every named tier with lowercase symbols', () => {
+    expect(format(1_000)).toBe('1.0k');
+    expect(format(1_234)).toBe('1.2k');
+    expect(format(12_345)).toBe('12.3k');
+    expect(format(999_999)).toBe('999.9k');
+    expect(format(1_000_000)).toBe('1.0m');
+    expect(format(2_500_000_000)).toBe('2.5b');
+    expect(format('3.75e12')).toBe('3.7t');
+    expect(format('1e15')).toBe('1.0qa');
+    expect(format('1e18')).toBe('1.0qi');
+    expect(format('1e21')).toBe('1.0sx');
+    expect(format('1e24')).toBe('1.0sp');
+    expect(format('1e27')).toBe('1.0oc');
+    expect(format('1e30')).toBe('1.0no');
+    expect(format('1e33')).toBe('1.0dc');
   });
 
   it('continues with alphabetic suffixes past the named tiers', () => {
-    // The tier after `T` is the first alphabetic pair, and the game design
-    // document's own examples are the reference for this run.
-    expect(format('1e15')).toBe('1aa');
-    expect(format('1.46e16')).toBe('14.6aa');
-    expect(format('7.2e18')).toBe('7.2ab');
-    expect(format('1e21')).toBe('1ac');
-    expect(format('1e30')).toBe('1af');
+    expect(format('1e36')).toBe('1.0aa');
+    expect(format('1.46e37')).toBe('14.6aa');
+    expect(format('7.2e39')).toBe('7.2ab');
+    expect(format('1e75')).toBe('1.0an');
+    expect(format('1e111')).toBe('1.0az');
   });
 
   it('walks the alphabet without repeating or skipping a suffix', () => {
     const suffixes = Array.from({ length: 40 }, (_, index) => {
       // One tier apart, so consecutive suffixes are produced in order.
-      return format(`1e${15 + index * 3}`).slice(1);
+      return format(`1e${36 + index * 3}`).slice(3);
     });
 
     expect(suffixes.slice(0, 4)).toEqual(['aa', 'ab', 'ac', 'ad']);
@@ -57,9 +63,9 @@ describe('abbreviated amount formatting', () => {
   it('formats magnitudes far beyond the safe numeric range', () => {
     // `Number` collapses these to `Infinity`, so a formatter reading through
     // it would print the same thing for every one of them.
-    expect(format('1e309')).toBe('1du');
-    expect(format('5.5e400')).toBe('55ey');
-    expect(format('1e1000')).toBe('10mq');
+    expect(format('1e309')).toBe('1.0dn');
+    expect(format('5.5e400')).toBe('55.0er');
+    expect(format('1e1000')).toBe('10.0mj');
     // Past the alphabetic run the serialized scientific form is shown rather
     // than an unbounded run of letters.
     expect(format('1e60000')).toBe('1e+60000');
@@ -72,7 +78,7 @@ describe('abbreviated amount formatting', () => {
     expect(format(12.34)).toBe('12.3');
     expect(format(12.39)).toBe('12.3');
     expect(format(999.99)).toBe('999.9');
-    expect(format(1_999.9)).toBe('1.9K');
+    expect(format(1_999.9)).toBe('1.9k');
   });
 
   it('overstates by no more than the truncation tolerance', () => {
@@ -103,7 +109,7 @@ describe('abbreviated amount formatting', () => {
 
   it('stays total for values the game itself never produces', () => {
     expect(format(-5.5)).toBe('-5.5');
-    expect(format(-1_500)).toBe('-1.5K');
+    expect(format(-1_500)).toBe('-1.5k');
     expect(format(-0.05)).toBe(SMALL_NEGATIVE_AMOUNT_LABEL);
   });
 
@@ -136,6 +142,21 @@ describe('abbreviated amount formatting', () => {
   });
 
   it('exposes the named tiers it abbreviates with', () => {
-    expect(ABBREVIATION_TIER_SUFFIXES).toEqual(['', 'K', 'M', 'B', 'T']);
+    expect(ABBREVIATION_TIER_SUFFIXES).toEqual([
+      '',
+      'k',
+      'm',
+      'b',
+      't',
+      'qa',
+      'qi',
+      'sx',
+      'sp',
+      'oc',
+      'no',
+      'dc',
+    ]);
+    expect(describeAmountTier(12)).toBe('aa');
+    expect(() => describeAmountTier(-1)).toThrow(/non-negative safe integer/);
   });
 });

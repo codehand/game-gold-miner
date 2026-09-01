@@ -1,0 +1,20 @@
+Use case: stylized-concept
+Asset type: warehouse-manager NPC idle animation sheet for Cat Mine Idle
+Input images: unloader-idle sheet for anatomy, proportions, rendering, outline,
+camera distance, 2x2 layout, and feet line; warehouse icon for palette accents
+Primary request: exactly four idle frames in a clean 2x2 grid
+Subject: friendly light-gray-and-cream warehouse supervisor cat wearing a navy
+work vest, warm-gold safety cap and neckerchief, holding a compact blank
+clipboard. Large expressive head, short rounded limbs, clear tail, calm and
+competent expression; distinct from the white unloader and orange miner.
+Motion: neutral stance; blink/breathe; glance at clipboard with paw raised;
+return toward neutral with small tail sway.
+View: full-body frontal three-quarter view from slightly above, facing slightly
+left toward the loading bay.
+Grid: same identity, camera distance, standing scale, center, and feet line in
+all four cells; full subject inside central 62 percent with magenta margin.
+Technical output: solid #FF00FF background; no other cats, detached effects,
+text, clipboard writing, labels, UI, scenery, floor shadow, borders, watermark,
+or cropped edges.
+
+Generated with the OpenAI built-in image generation tool on 2026-09-01.

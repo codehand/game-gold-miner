@@ -9,7 +9,10 @@ import {
   calculateMineFloorPanelLayout,
   BADGE_BACKGROUND,
   FONT_FAMILY,
+  FONT_STYLE_BOLD,
+  FONT_STYLE_SEMIBOLD,
   LOCKED_PANEL_BACKGROUND,
+  MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
   PANEL_BACKGROUND,
   PROGRESS_FILL,
   PROGRESS_TRACK,
@@ -23,7 +26,6 @@ import {
 import {
   calculateMinerPatrolPose,
   calculateGeneratedAssetFrame,
-  MAX_MATERIAL_PILE_STEPS,
   MINER_PATROL_PERIOD_MS,
   type MineFloorViewModel,
   type PurchaseFeedbackViewModel,
@@ -44,7 +46,11 @@ export interface RenderedFloorState {
   readonly progressFillWidth: number;
   readonly progressTrackWidth: number;
   readonly materialQueueLabel: string;
+  /** Queue fullness from the snapshot; the decorative pile no longer encodes it. */
   readonly materialPileSteps: number;
+  /** Fixed environmental gold pile shown on every unlocked floor. */
+  readonly showsGoldPile: boolean;
+  readonly goldPileDisplaySize: number;
   /** `Backed up` while a whole elevator trip of material is waiting. */
   readonly backlogLabel: string | null;
   /** True when one elevator load is waiting; the approved pile stays gold. */
@@ -53,6 +59,7 @@ export interface RenderedFloorState {
   readonly showsFloorNumber: boolean;
   readonly showsProgressBar: boolean;
   readonly showsGoldCoin: boolean;
+  readonly isGoldContainerFilled: boolean;
   readonly hasThinSoilLayer: boolean;
   readonly showsMiner: boolean;
   /**
@@ -89,13 +96,8 @@ const COLOR_BADGE = toFillColor(BADGE_BACKGROUND);
 const COLOR_PROGRESS_TRACK = toFillColor(PROGRESS_TRACK);
 const COLOR_PROGRESS_FILL = toFillColor(PROGRESS_FILL);
 const PROGRESS_TRACK_HEIGHT = 6;
-const MINER_SIZE = 54;
 const LOCK_ICON_SIZE = 44;
-const PILE_MAX_SIZE = 52;
-/** A single queued step still has to read as a pile, not as a speck. */
-const PILE_MIN_SCALE = 0.55;
-const PILE_SCALE_RANGE = 1 - PILE_MIN_SCALE;
-const UNLOADER_SIZE = 58;
+const GOLD_PILE_DISPLAY_SIZE = 52;
 
 export interface MineFloorViewOptions {
   /** Called when the shaft-upgrade control is pressed. */
@@ -132,6 +134,7 @@ export class MineFloorView {
   readonly #miner: Phaser.GameObjects.Sprite;
   readonly #unloader: Phaser.GameObjects.Sprite;
   readonly #goldContainer: Phaser.GameObjects.Image;
+  readonly #goldContainerSize: { readonly width: number; readonly height: number };
   readonly #goldCoin: Phaser.GameObjects.Image;
   readonly #lockIcon: Phaser.GameObjects.Image;
   readonly #goldPile: Phaser.GameObjects.Image;
@@ -149,6 +152,7 @@ export class MineFloorView {
   readonly #minerEndX: number;
   readonly #minerRestY: number;
   #extractionProgress = 0;
+  #materialPileSteps = 0;
   #isPileBackedUp = false;
   readonly #hasThinSoilLayer: boolean;
 
@@ -163,6 +167,10 @@ export class MineFloorView {
     this.#minerStartX = panel.minerPatrol.x + 8;
     this.#minerEndX = panel.minerPatrol.x + panel.minerPatrol.width - 8;
     this.#minerRestY = panel.minerPatrol.y + panel.minerPatrol.height / 2;
+    this.#goldContainerSize = {
+      width: panel.goldContainer.width,
+      height: panel.goldContainer.height,
+    };
     this.#root = scene.add.container(region.x, region.y);
 
     this.#background = scene.add
@@ -192,8 +200,8 @@ export class MineFloorView {
       .text(panel.floorBadge.x + panel.floorBadge.width / 2, panel.floorBadge.y + panel.floorBadge.height / 2, '', {
         color: TEXT_ACCENT,
         fontFamily: FONT_FAMILY,
-        fontSize: '16px',
-        fontStyle: 'bold',
+        fontSize: '10.5px',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(0.5, 0.5);
 
@@ -202,7 +210,7 @@ export class MineFloorView {
         color: TEXT_PRIMARY,
         fontFamily: FONT_FAMILY,
         fontSize: '15px',
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(0, 0);
     this.#level = scene.add
@@ -210,6 +218,7 @@ export class MineFloorView {
         color: TEXT_MUTED,
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
+        fontStyle: FONT_STYLE_SEMIBOLD,
       })
       .setOrigin(0, 0);
 
@@ -233,7 +242,7 @@ export class MineFloorView {
           color: TEXT_DISABLED,
           fontFamily: FONT_FAMILY,
           fontSize: '11px',
-          fontStyle: 'bold',
+          fontStyle: FONT_STYLE_BOLD,
         },
       )
       .setOrigin(0.5, 0.5);
@@ -245,7 +254,10 @@ export class MineFloorView {
         PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
         0,
       )
-      .setDisplaySize(MINER_SIZE, MINER_SIZE);
+      .setDisplaySize(
+        MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+        MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+      );
     this.#unloader = scene.add
       .sprite(
         panel.unloaderCat.x + panel.unloaderCat.width / 2,
@@ -253,7 +265,10 @@ export class MineFloorView {
         PLACEHOLDER_ANIMATION_TEXTURES.unloaderIdle,
         0,
       )
-      .setDisplaySize(UNLOADER_SIZE, UNLOADER_SIZE);
+      .setDisplaySize(
+        MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+        MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+      );
     this.#goldContainer = scene.add
       .image(
         panel.goldContainer.x + panel.goldContainer.width / 2,
@@ -266,14 +281,14 @@ export class MineFloorView {
       .setDisplaySize(LOCK_ICON_SIZE, LOCK_ICON_SIZE);
     this.#goldPile = scene.add
       .image(panel.goldPile.x + panel.goldPile.width / 2, panel.goldPile.y + panel.goldPile.height / 2, PLACEHOLDER_TEXTURES.goldPile)
-      .setDisplaySize(pileDisplaySize(0), pileDisplaySize(0));
+      .setDisplaySize(GOLD_PILE_DISPLAY_SIZE, GOLD_PILE_DISPLAY_SIZE);
     const queueLineY = panel.goldContainer.y - 8;
     this.#materialQueue = scene.add
       .text(panel.goldContainer.x + 18, queueLineY, '', {
         color: TEXT_ACCENT,
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(0, 0.5);
     this.#goldCoin = scene.add
@@ -288,7 +303,7 @@ export class MineFloorView {
         color: TEXT_WARNING,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(0, 0);
 
@@ -319,6 +334,7 @@ export class MineFloorView {
           color: TEXT_MUTED,
           fontFamily: FONT_FAMILY,
           fontSize: '11px',
+          fontStyle: FONT_STYLE_SEMIBOLD,
         },
       )
       .setOrigin(0, 0);
@@ -328,7 +344,7 @@ export class MineFloorView {
         color: TEXT_WARNING,
         fontFamily: FONT_FAMILY,
         fontSize: '11px',
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(0, 0);
 
@@ -411,11 +427,24 @@ export class MineFloorView {
     // nearby status label communicates the bottleneck without recolouring art.
     this.#isPileBackedUp = floor.isMaterialBackedUp;
 
-    const pileSize = pileDisplaySize(floor.materialPileSteps);
+    this.#materialPileSteps = floor.materialPileSteps;
+
+    const containerTexture = floor.materialPileSteps > 0
+      ? PLACEHOLDER_TEXTURES.goldContainerFilled
+      : PLACEHOLDER_TEXTURES.goldContainer;
+
+    if (this.#goldContainer.texture.key !== containerTexture) {
+      this.#goldContainer
+        .setTexture(containerTexture)
+        .setDisplaySize(
+          this.#goldContainerSize.width,
+          this.#goldContainerSize.height,
+        );
+    }
 
     this.#goldPile
-      .setVisible(floor.isUnlocked && floor.materialPileSteps > 0)
-      .setDisplaySize(pileSize, pileSize);
+      .setVisible(floor.isUnlocked)
+      .setDisplaySize(GOLD_PILE_DISPLAY_SIZE, GOLD_PILE_DISPLAY_SIZE);
     this.#materialQueue
       .setText(floor.materialQueueLabel)
       .setVisible(floor.isUnlocked);
@@ -506,9 +535,9 @@ export class MineFloorView {
       progressFillWidth: this.#progressFill.width,
       progressTrackWidth: this.#progressTrack.width,
       materialQueueLabel: this.#materialQueue.text,
-      materialPileSteps: this.#goldPile.visible
-        ? pileStepsFromDisplaySize(this.#goldPile.displayWidth)
-        : 0,
+      materialPileSteps: this.#materialPileSteps,
+      showsGoldPile: this.#goldPile.visible,
+      goldPileDisplaySize: this.#goldPile.displayWidth,
       backlogLabel: this.#backlog.visible ? this.#backlog.text : null,
       isPileBackedUp:
         this.#isPileBackedUp,
@@ -516,6 +545,9 @@ export class MineFloorView {
       showsFloorNumber: this.#badgeLabel.visible,
       showsProgressBar: this.#progressTrack.visible,
       showsGoldCoin: this.#goldCoin.visible,
+      isGoldContainerFilled:
+        this.#goldContainer.visible &&
+        this.#goldContainer.texture.key === PLACEHOLDER_TEXTURES.goldContainerFilled,
       hasThinSoilLayer: this.#hasThinSoilLayer,
       showsMiner: this.#miner.visible,
       minerSwingOffsetPx: this.#miner.y - this.#minerRestY,
@@ -534,23 +566,4 @@ export class MineFloorView {
         this.#background.fillColor === COLOR_LOCKED_PANEL,
     };
   }
-}
-
-/** How wide the pile sprite is drawn for a queue of `steps` steps. */
-function pileDisplaySize(steps: number): number {
-  return (
-    PILE_MAX_SIZE *
-    (PILE_MIN_SCALE + (steps / MAX_MATERIAL_PILE_STEPS) * PILE_SCALE_RANGE)
-  );
-}
-
-/**
- * Inverse of `pileDisplaySize`, so the read-back measures the sprite that was
- * actually drawn rather than echoing the snapshot back at the test.
- */
-function pileStepsFromDisplaySize(displayWidth: number): number {
-  return Math.round(
-    ((displayWidth / PILE_MAX_SIZE - PILE_MIN_SCALE) / PILE_SCALE_RANGE) *
-      MAX_MATERIAL_PILE_STEPS,
-  );
 }

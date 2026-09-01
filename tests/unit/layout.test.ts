@@ -11,6 +11,9 @@ import {
   toFillColor,
   FLOOR_SLOT_GAP,
   FLOOR_SLOT_HEIGHT,
+  FONT_FAMILY,
+  FONT_STYLE_BOLD,
+  FONT_STYLE_SEMIBOLD,
   GAME_HEIGHT,
   GAME_WIDTH,
   HUD_HEIGHT,
@@ -19,8 +22,11 @@ import {
   MINE_CONTENT_PADDING,
   MINE_CONTENT_RIGHT_INSET,
   MINE_FLOOR_COUNT,
+  MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
   MINE_MIN_HEIGHT,
   MINE_SHAFT_FLOOR_GAP,
+  MINE_SHAFT_CABIN_SIZE,
+  MINE_SHAFT_CARGO_CAT_SIZE,
   MINE_SHAFT_INSET_X,
   MINE_SHAFT_WIDTH,
   MIN_TOUCH_TARGET_PX,
@@ -30,7 +36,21 @@ import {
   PROGRESS_FILL,
   PROGRESS_TRACK,
   SURFACE_BACKGROUND,
+  SURFACE_ELEVATOR_STOP_X,
+  SURFACE_ELEVATOR_LEVEL_CONTROL,
+  SURFACE_ELEVATOR_TOWER_CENTER_X,
+  SURFACE_GOLD_POUR_X,
+  SURFACE_HAULER_END_X,
+  SURFACE_HAULER_START_X,
   SURFACE_HEIGHT,
+  SURFACE_WAREHOUSE_CENTER_X,
+  SURFACE_WAREHOUSE_CENTER_Y,
+  SURFACE_WAREHOUSE_HEIGHT,
+  SURFACE_WAREHOUSE_MANAGER_SIZE,
+  SURFACE_WAREHOUSE_MANAGER_X,
+  SURFACE_WAREHOUSE_MANAGER_Y,
+  SURFACE_WAREHOUSE_WIDTH,
+  SURFACE_WAREHOUSE_LEVEL_CONTROL,
 } from '../../src/game/layout';
 
 describe('portrait layout geometry', () => {
@@ -41,6 +61,70 @@ describe('portrait layout geometry', () => {
     expect(layout.height).toBe(640);
     expect(GAME_WIDTH).toBe(360);
     expect(GAME_HEIGHT).toBe(640);
+  });
+
+  it('uses Fredoka semibold and bold throughout game text', () => {
+    expect(FONT_FAMILY).toBe('Fredoka, sans-serif');
+    expect(FONT_STYLE_SEMIBOLD).toBe('600');
+    expect(FONT_STYLE_BOLD).toBe('700');
+  });
+
+  it('balances both floor characters to the elevator cat visual scale', () => {
+    expect(MINE_FLOOR_CHARACTER_DISPLAY_SIZE).toBe(75);
+    expect(MINE_FLOOR_CHARACTER_DISPLAY_SIZE).toBeGreaterThan(
+      MINE_SHAFT_CARGO_CAT_SIZE,
+    );
+  });
+
+  it('aligns the surface cabin to the tower bay rather than its asymmetric chute', () => {
+    expect(SURFACE_ELEVATOR_STOP_X).toBe(
+      MINE_SHAFT_INSET_X + MINE_SHAFT_WIDTH / 2,
+    );
+    expect(SURFACE_ELEVATOR_STOP_X).toBeLessThan(
+      SURFACE_ELEVATOR_TOWER_CENTER_X,
+    );
+  });
+
+  it('places thumb-safe shared-stage level controls at the approved landmarks', () => {
+    assertTouchTargetRegion(
+      SURFACE_ELEVATOR_LEVEL_CONTROL,
+      'Elevator level control',
+    );
+    assertTouchTargetRegion(
+      SURFACE_WAREHOUSE_LEVEL_CONTROL,
+      'Warehouse level control',
+    );
+
+    expect(SURFACE_ELEVATOR_LEVEL_CONTROL.x).toBe(106);
+    expect(SURFACE_ELEVATOR_LEVEL_CONTROL.y).toBe(48);
+    expect(
+      SURFACE_ELEVATOR_LEVEL_CONTROL.x - SURFACE_GOLD_POUR_X,
+      'elevator control hugs the discharge outlet instead of floating away',
+    ).toBe(1);
+    expect(
+      SURFACE_WAREHOUSE_LEVEL_CONTROL.x +
+        SURFACE_WAREHOUSE_LEVEL_CONTROL.width / 2,
+      'warehouse control is centred over the building',
+    ).toBe(SURFACE_WAREHOUSE_CENTER_X - 5);
+    expect(SURFACE_WAREHOUSE_LEVEL_CONTROL.y).toBe(0);
+  });
+
+  it('runs the surface delivery cart from the chute toward the warehouse', () => {
+    expect(SURFACE_HAULER_START_X).toBeGreaterThan(
+      SURFACE_ELEVATOR_TOWER_CENTER_X,
+    );
+    expect(SURFACE_HAULER_START_X).toBeLessThan(SURFACE_HAULER_END_X);
+    expect(SURFACE_HAULER_END_X).toBeLessThan(SURFACE_WAREHOUSE_CENTER_X);
+  });
+
+  it('keeps the generated warehouse and its manager inside the surface strip', () => {
+    expect(SURFACE_WAREHOUSE_CENTER_X - SURFACE_WAREHOUSE_WIDTH / 2).toBeGreaterThanOrEqual(0);
+    expect(SURFACE_WAREHOUSE_CENTER_X + SURFACE_WAREHOUSE_WIDTH / 2).toBeLessThanOrEqual(GAME_WIDTH);
+    expect(SURFACE_WAREHOUSE_CENTER_X + SURFACE_WAREHOUSE_WIDTH / 2).toBe(GAME_WIDTH);
+    expect(SURFACE_WAREHOUSE_CENTER_Y - SURFACE_WAREHOUSE_HEIGHT / 2).toBeGreaterThanOrEqual(0);
+    expect(SURFACE_WAREHOUSE_CENTER_Y + SURFACE_WAREHOUSE_HEIGHT / 2).toBeLessThanOrEqual(SURFACE_HEIGHT);
+    expect(SURFACE_WAREHOUSE_MANAGER_X).toBeGreaterThan(0);
+    expect(SURFACE_WAREHOUSE_MANAGER_Y + SURFACE_WAREHOUSE_MANAGER_SIZE / 2).toBeLessThanOrEqual(SURFACE_HEIGHT);
   });
 
   it('places a fixed HUD, a surface strip, and the mine area in order', () => {
@@ -132,6 +216,10 @@ describe('scrollable mine content', () => {
     expect(calculateMineContentHeight(1)).toBe(
       MINE_CONTENT_PADDING * 2 + FLOOR_SLOT_HEIGHT,
     );
+    expect(calculateMineContentHeight(MINE_FLOOR_COUNT)).toBe(548);
+    expect(
+      calculateMineContentHeight(MINE_FLOOR_COUNT) - calculateMineLayout().mine.height,
+    ).toBe(144);
   });
 
   it('rejects invalid floor counts', () => {
@@ -164,6 +252,10 @@ describe('scrollable mine content', () => {
     expect(calculateFloorSlotRegion(1).y - calculateFloorSlotRegion(0).y).toBe(
       FLOOR_SLOT_HEIGHT + FLOOR_SLOT_GAP,
     );
+    expect(FLOOR_SLOT_GAP).toBe(0);
+    expect(calculateFloorSlotRegion(1).y).toBe(
+      calculateFloorSlotRegion(0).y + FLOOR_SLOT_HEIGHT,
+    );
   });
 
   it('reserves one continuous left shaft beside every underground floor', () => {
@@ -178,6 +270,10 @@ describe('scrollable mine content', () => {
     expect(shaft.y + shaft.height).toBeGreaterThanOrEqual(
       lastFloor.y + lastFloor.height,
     );
+    expect(MINE_SHAFT_WIDTH).toBe(64);
+    expect(MINE_SHAFT_CABIN_SIZE).toBe(62);
+    expect(MINE_SHAFT_CARGO_CAT_SIZE).toBe(50);
+    expect(MINE_SHAFT_CABIN_SIZE).toBeLessThanOrEqual(shaft.width);
   });
 
   it('rejects invalid floor indexes', () => {

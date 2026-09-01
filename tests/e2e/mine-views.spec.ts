@@ -22,8 +22,6 @@ import {
   calculateMineLayout,
   MINE_BACKGROUND,
   HUD_BACKGROUND,
-  PROGRESS_FILL,
-  PROGRESS_TRACK,
 } from '../../src/game/layout';
 import {
   calculateMaterialPileSteps,
@@ -65,8 +63,6 @@ const FILLED_PILE_PROBE = floorProbe(FLOOR_ONE, FLOOR_PANEL.goldPile.x + 24, FLO
  * artwork's: unscaled, the 128px pile would reach well past this point.
  */
 const PILE_OVERFLOW_PROBE = floorProbe(FLOOR_ONE, FLOOR_PANEL.goldPile.x - 8, FLOOR_PANEL.goldPile.y + 20);
-const ELEVATOR_PROGRESS_FILL_PROBE: readonly [number, number] = [40, 165];
-const ELEVATOR_PROGRESS_TRACK_PROBE: readonly [number, number] = [100, 165];
 /**
  * Empty HUD background, painted on the very first frame. The canvas reads back
  * as opaque black until a frame has actually been presented, and the scene
@@ -224,6 +220,8 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     expect(rendered.showsFloorNumber, `${label} number badge`).toBe(true);
     expect(rendered.showsProgressBar, `${label} extraction progress bar`).toBe(false);
     expect(rendered.showsGoldCoin, `${label} gold amount icon`).toBe(source.isUnlocked);
+    expect(rendered.showsGoldPile, `${label} fixed gold decoration`).toBe(source.isUnlocked);
+    expect(rendered.goldPileDisplaySize, `${label} fixed gold decoration size`).toBe(52);
     expect(rendered.hasThinSoilLayer, `${label} soil thickness`).toBe(index > 0);
     const expectedMinerPose = calculateMinerPatrolPose(
       source.extractionProgress * MINER_PATROL_PERIOD_MS,
@@ -281,6 +279,12 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     '0',
     '0',
   ]);
+  expect(floors.map(({ isGoldContainerFilled }) => isGoldContainerFilled)).toEqual([
+    true,
+    true,
+    false,
+    false,
+  ]);
   // The floors must actually differ, or the per-floor checks above would pass
   // with every view bound to the same floor.
   expect(new Set(floors.map(({ materialPileSteps }) => materialPileSteps)).size)
@@ -312,11 +316,10 @@ test('binds four floor views and both shared stages to a known core snapshot', a
   );
 
   // Real pixels prove the views are drawn, that locked floors look different
-  // from unlocked ones, and that the bars and the pile follow the snapshot.
+  // from unlocked ones, and that the fixed decorative pile reaches the canvas.
   // The dataset above reports what the view objects hold, not what reached the
-  // framebuffer. How far the pile grows with the queue is the dataset's job:
-  // `materialPileSteps` is measured back off the drawn sprite, and the floors
-  // above are already required to disagree on it.
+  // framebuffer. Queue fullness remains available separately through
+  // `materialPileSteps`; it no longer changes this environmental decoration.
   await expect
     .poll(async () => (await readLogicalPixels(page, [RENDERED_FRAME_PROBE]))[0], {
       message: 'the canvas never presented a frame',
@@ -328,15 +331,11 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     lockedPanel,
     filledPile,
     pileOverflow,
-    elevatorFill,
-    elevatorTrack,
   ] = await readLogicalPixels(page, [
     UNLOCKED_FLOOR_PANEL_PROBE,
     LOCKED_FLOOR_PANEL_PROBE,
     FILLED_PILE_PROBE,
     PILE_OVERFLOW_PROBE,
-    ELEVATOR_PROGRESS_FILL_PROBE,
-    ELEVATOR_PROGRESS_TRACK_PROBE,
   ]);
 
   expect(unlockedPanel, 'unlocked floor art must render').not.toBe(MINE_BACKGROUND);
@@ -347,13 +346,6 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     pileOverflow,
     'material pile must be drawn at its layout size, not the artwork size',
   ).not.toBe(filledPile);
-  expect(elevatorFill, 'elevator transit progress must be filled').toBe(
-    PROGRESS_FILL,
-  );
-  expect(elevatorTrack, 'elevator transit progress must not overfill').toBe(
-    PROGRESS_TRACK,
-  );
-
   expect(browserErrors).toEqual([]);
 });
 

@@ -59,7 +59,7 @@ describe('warehouse conversion', () => {
       BASE_GAME_BALANCE,
       TIMESTAMP_MS,
     );
-    const beforeDelivery = advanceFor(initialState, 4_400);
+    const beforeDelivery = advanceFor(initialState, 4_600);
 
     expect(beforeDelivery.gold.equals(initialState.gold)).toBe(true);
     expect(beforeDelivery.warehouse.inputQueue.equals(10)).toBe(true);

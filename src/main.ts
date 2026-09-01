@@ -40,6 +40,15 @@ const SAVE_HEARTBEAT_MS = 30_000;
 void startApplication();
 
 async function startApplication(): Promise<void> {
+  await Promise.all([
+    document.fonts.load('600 16px Fredoka'),
+    document.fonts.load('700 16px Fredoka'),
+  ]);
+
+  if (disposed) {
+    return;
+  }
+
   const loadResult = await loadActiveGame(
     persistence,
     BASE_GAME_BALANCE,

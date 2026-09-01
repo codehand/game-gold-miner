@@ -14,15 +14,31 @@ import type {
   RenderedFloorState,
   RenderedSharedStageState,
 } from '../../src/game/entities';
+import { PLACEHOLDER_TEXTURES } from '../../src/game/assets/placeholderAssets';
 import {
-  CYCLE_MARKER_FILL,
   calculateFloorSlotRegion,
   calculateMineFloorPanelLayout,
   calculateMineLayout,
   HUD_BACKGROUND,
   MATERIAL_BACKLOG_FILL,
+  MINE_SHAFT_CABIN_SIZE,
+  MINE_SHAFT_CARGO_CAT_SIZE,
   PANEL_BACKGROUND,
-  PROGRESS_FILL,
+  SURFACE_ELEVATOR_STOP_X,
+  SURFACE_ELEVATOR_STOP_Y,
+  SURFACE_ELEVATOR_TOWER_CENTER_X,
+  SURFACE_ELEVATOR_TOWER_HEIGHT,
+  SURFACE_ELEVATOR_TOWER_WIDTH,
+  SURFACE_HAULER_END_X,
+  SURFACE_HAULER_CART_SIZE,
+  SURFACE_HAULER_START_X,
+  SURFACE_WAREHOUSE_CENTER_X,
+  SURFACE_WAREHOUSE_CENTER_Y,
+  SURFACE_WAREHOUSE_HEIGHT,
+  SURFACE_WAREHOUSE_MANAGER_SIZE,
+  SURFACE_WAREHOUSE_MANAGER_X,
+  SURFACE_WAREHOUSE_MANAGER_Y,
+  SURFACE_WAREHOUSE_WIDTH,
 } from '../../src/game/layout';
 import { MAX_MATERIAL_PILE_STEPS } from '../../src/game/view-model';
 import { createSaveDocument } from '../../src/persistence';
@@ -54,10 +70,10 @@ const FLOOR_ONE_PILE_TOP_PROBE: readonly [number, number] = [
   FLOOR_ONE.x + FLOOR_PANEL.goldPile.x + FLOOR_PANEL.goldPile.width / 2,
   MINE_Y + FLOOR_ONE.y + FLOOR_PANEL.goldPile.y + FLOOR_PANEL.goldPile.height / 2,
 ];
-const ELEVATOR_QUEUE_BLOCK_PROBE: readonly [number, number] = [28, 155];
-const WAREHOUSE_QUEUE_BLOCK_PROBE: readonly [number, number] = [200, 155];
-const ELEVATOR_TRACK_START_PROBE: readonly [number, number] = [22, 165];
-const ELEVATOR_TRACK_MIDPOINT_PROBE: readonly [number, number] = [76, 165];
+const WAREHOUSE_BUILDING_PROBE: readonly [number, number] = [
+  SURFACE_WAREHOUSE_CENTER_X,
+  calculateMineLayout().surface.y + SURFACE_WAREHOUSE_CENTER_Y,
+];
 /**
  * Empty HUD background, painted on the very first frame whatever the fixture
  * holds. The canvas reads back as opaque black until a frame has actually been
@@ -112,6 +128,7 @@ function createTransportLimitedState(): GameState {
     }),
     elevator: {
       ...base.elevator,
+      roundRobinCursor: -1,
       transitProgress: 0.5,
       carriedMaterial: GameNumber.from(50),
     },
@@ -165,6 +182,23 @@ function createWarehouseLimitedState(): GameState {
   };
 }
 
+function createWarehouseLevelState(level: number): GameState {
+  const state = createTransportLimitedState();
+
+  return {
+    ...state,
+    warehouse: {
+      ...state.warehouse,
+      level,
+      capacity: calculateLevelEffect(
+        BASE_GAME_BALANCE.warehouse.baseCapacity,
+        level,
+        BASE_GAME_BALANCE.warehouse.upgrade,
+      ),
+    },
+  };
+}
+
 function withFloor(
   floor: MineFloorState,
   overrides: Partial<MineFloorState>,
@@ -189,6 +223,8 @@ test('shows an idle transport and warehouse while extraction is the slowest stag
     'extraction progress bar',
   ).toBeCloseTo(0.6, 5);
   expect(floorOne.materialPileSteps, 'floor pile').toBe(0);
+  expect(floorOne.showsGoldPile, 'fixed decorative gold pile').toBe(true);
+  expect(floorOne.goldPileDisplaySize, 'fixed decorative gold pile size').toBe(52);
   expect(floorOne.backlogLabel, 'floor backlog').toBeNull();
   expect(floorOne.showsMiner, 'placeholder miner').toBe(true);
 
@@ -228,22 +264,10 @@ test('shows an idle transport and warehouse while extraction is the slowest stag
     floorOne.progressFillWidth,
   );
 
-  const [emptyElevatorQueue, markerAtStart] = await readLogicalPixels(page, [
-    ELEVATOR_QUEUE_BLOCK_PROBE,
-    ELEVATOR_TRACK_START_PROBE,
-  ]);
-
-  expect(emptyElevatorQueue, 'an idle elevator must draw no queue block').toBe(
-    PANEL_BACKGROUND,
-  );
-  expect(markerAtStart, 'the cycle marker must sit at the start of its track').toBe(
-    CYCLE_MARKER_FILL,
-  );
-
   expect(errors).toEqual([]);
 });
 
-test('shows a full pile on every shaft while transport is the slowest stage', async ({
+test('reports a full floor queue while transport is the slowest stage', async ({
   page,
 }) => {
   const errors = collectBrowserErrors(page);
@@ -255,18 +279,20 @@ test('shows a full pile on every shaft while transport is the slowest stage', as
   const [elevator, warehouse] = await readRenderedSharedStages(page);
 
   // The waiting material is the bottleneck signal: every shaft holds a whole
-  // elevator trip. The asset itself stays gold and no status text covers it.
+  // elevator trip. The fixed environmental mound stays gold and visible.
   floors.forEach((floor, index) => {
     const label = `floor ${index + 1}`;
 
-    expect(floor.materialPileSteps, `${label} pile`).toBe(MAX_MATERIAL_PILE_STEPS);
+    expect(floor.materialPileSteps, `${label} queue fullness`).toBe(MAX_MATERIAL_PILE_STEPS);
+    expect(floor.showsGoldPile, `${label} fixed gold mound`).toBe(true);
+    expect(floor.goldPileDisplaySize, `${label} fixed gold mound size`).toBe(52);
     expect(floor.backlogLabel, `${label} backlog overlay`).toBeNull();
     expect(floor.isPileBackedUp, `${label} backlog colour`).toBe(true);
   });
 
   // Transport itself is working, not stalled, and its indicator follows the
   // authoritative transit progress.
-  expect(elevator.statusLabel, 'elevator status').toBe('In transit');
+  expect(elevator.statusLabel, 'elevator status').toBe('Returning');
   expect(elevator.showsConveyor, 'elevator conveyor').toBe(true);
   expect(elevator.assetFrame, 'elevator generated animation frame').toBeGreaterThanOrEqual(0);
   expect(
@@ -283,29 +309,267 @@ test('shows a full pile on every shaft while transport is the slowest stage', as
   expect(warehouse.statusLabel, 'warehouse status').toBe('Converting');
   expect(warehouse.isQueueBackedUp, 'warehouse backlog').toBe(false);
 
-  const [pileBottom, pileTop, trackStart, trackMidpoint] = await readLogicalPixels(
+  const [pileBottom, pileTop] = await readLogicalPixels(
     page,
     [
       FLOOR_ONE_PILE_BOTTOM_PROBE,
       FLOOR_ONE_PILE_TOP_PROBE,
-      ELEVATOR_TRACK_START_PROBE,
-      ELEVATOR_TRACK_MIDPOINT_PROBE,
     ],
   );
 
   expect(pileBottom, 'a backed-up pile keeps the approved gold asset').not.toBe(MATERIAL_BACKLOG_FILL);
   expect(pileTop, 'a backed-up pile keeps the approved gold asset').not.toBe(MATERIAL_BACKLOG_FILL);
-  // At half a transit the marker has left the start of the track, so the pair
-  // of probes proves it is placed from authoritative progress rather than
-  // parked at one end.
-  expect(trackStart, 'transit progress must be filled behind the marker').toBe(
-    PROGRESS_FILL,
-  );
-  expect(trackMidpoint, 'the cycle marker must follow transit progress').toBe(
-    CYCLE_MARKER_FILL,
+  expect(errors).toEqual([]);
+});
+
+test('loads a surface cart beneath the chute and pushes it toward the warehouse', async ({
+  page,
+}) => {
+  await bootPausedFixture(page, createTransportLimitedState());
+
+  type SurfaceHaulerReadBack = {
+    surfaceHauler: {
+      cartX: number;
+      cartWidth: number;
+      cartHeight: number;
+      cartTexture: string;
+      catX: number;
+      catFlipX: boolean;
+      activeCatCount: number;
+      assistants: readonly {
+        visible: boolean;
+        x: number;
+        y: number;
+        flipX: boolean;
+      }[];
+      goldPourVisible: boolean;
+    };
+  };
+
+  await expect.poll(async () => {
+    const animation = await readJsonAttribute<SurfaceHaulerReadBack>(
+      page,
+      'data-animation',
+    );
+
+    return animation.surfaceHauler.goldPourVisible;
+  }, {
+    message: 'gold pours only when the cart is parked beneath a loaded chute',
+    timeout: 6_500,
+  }).toBe(true);
+
+  const loading = await readJsonAttribute<SurfaceHaulerReadBack>(
+    page,
+    'data-animation',
   );
 
-  expect(errors).toEqual([]);
+  expect(loading.surfaceHauler.cartX).toBe(SURFACE_HAULER_START_X);
+  expect(loading.surfaceHauler.cartWidth).toBe(SURFACE_HAULER_CART_SIZE);
+  expect(loading.surfaceHauler.cartHeight).toBe(SURFACE_HAULER_CART_SIZE);
+  expect(loading.surfaceHauler.catX).toBeLessThan(loading.surfaceHauler.cartX);
+  expect(loading.surfaceHauler.catFlipX).toBe(false);
+
+  await expect.poll(async () => {
+    const animation = await readJsonAttribute<SurfaceHaulerReadBack>(
+      page,
+      'data-animation',
+    );
+
+    return animation.surfaceHauler.cartX;
+  }, {
+    message: 'the filled cart eases from the chute toward the warehouse',
+    timeout: 6_500,
+  }).toBeGreaterThan(SURFACE_HAULER_START_X + 20);
+
+  const delivering = await readJsonAttribute<SurfaceHaulerReadBack>(
+    page,
+    'data-animation',
+  );
+
+  expect(delivering.surfaceHauler.cartX).toBeLessThanOrEqual(
+    SURFACE_HAULER_END_X,
+  );
+  expect(delivering.surfaceHauler.cartTexture).toBe(
+    PLACEHOLDER_TEXTURES.goldContainerFilled,
+  );
+  expect(delivering.surfaceHauler.cartWidth).toBe(SURFACE_HAULER_CART_SIZE);
+  expect(delivering.surfaceHauler.cartHeight).toBe(SURFACE_HAULER_CART_SIZE);
+  expect(delivering.surfaceHauler.goldPourVisible).toBe(false);
+});
+
+test('adds one visible transport cat at each ten warehouse levels', async ({
+  page,
+}) => {
+  await bootPausedFixture(page, createWarehouseLevelState(20));
+
+  type SurfaceHaulerCrewReadBack = {
+    surfaceHauler: {
+      catX: number;
+      catY: number;
+      catFlipX: boolean;
+      activeCatCount: number;
+      assistants: readonly {
+        visible: boolean;
+        x: number;
+        y: number;
+        flipX: boolean;
+      }[];
+    };
+  };
+
+  await expect.poll(async () => {
+    const animation = await readJsonAttribute<SurfaceHaulerCrewReadBack>(
+      page,
+      'data-animation',
+    );
+
+    return animation.surfaceHauler.activeCatCount;
+  }, {
+    message: 'warehouse level 20 reveals the base worker plus two assistants',
+  }).toBe(3);
+
+  const animation = await readJsonAttribute<SurfaceHaulerCrewReadBack>(
+    page,
+    'data-animation',
+  );
+  const visibleAssistants = animation.surfaceHauler.assistants.filter(
+    (assistant) => assistant.visible,
+  );
+
+  expect(visibleAssistants).toHaveLength(2);
+  expect(new Set(visibleAssistants.map((assistant) => (
+    `${assistant.x},${assistant.y}`
+  ))).size).toBe(2);
+  expect(visibleAssistants.every((assistant) => (
+    assistant.x !== animation.surfaceHauler.catX ||
+    assistant.y !== animation.surfaceHauler.catY
+  ))).toBe(true);
+  expect(new Set([
+    animation.surfaceHauler.catFlipX,
+    ...visibleAssistants.map((assistant) => assistant.flipX),
+  ]).size, 'phase-shifted cats may face different route directions').toBe(2);
+});
+
+test('stops the enlarged elevator beside the floor gold container', async ({
+  page,
+}) => {
+  const fixture = createTransportLimitedState();
+
+  await bootPausedFixture(page, {
+    ...fixture,
+    elevator: {
+      ...fixture.elevator,
+      roundRobinCursor: -1,
+      transitProgress: 0,
+    },
+  });
+
+  const animation = await readJsonAttribute<{
+    elevatorCabin: {
+      centerY: number;
+      width: number;
+      height: number;
+    };
+    elevatorCargoCat: {
+      centerY: number;
+      width: number;
+      height: number;
+    };
+  }>(page, 'data-animation');
+  const floor = calculateFloorSlotRegion(0);
+  const expectedStopY = floor.y + FLOOR_PANEL.elevatorStopY;
+
+  expect(animation.elevatorCabin.centerY, 'cabin stop aligns with cart').toBe(
+    expectedStopY,
+  );
+  expect(animation.elevatorCabin.width, 'larger cabin width').toBe(
+    MINE_SHAFT_CABIN_SIZE,
+  );
+  expect(animation.elevatorCabin.height, 'larger cabin height').toBe(
+    MINE_SHAFT_CABIN_SIZE,
+  );
+  expect(animation.elevatorCargoCat.centerY, 'cargo cat follows cabin').toBe(
+    expectedStopY + 3,
+  );
+  expect(animation.elevatorCargoCat.width, 'larger cargo cat width').toBe(
+    MINE_SHAFT_CARGO_CAT_SIZE,
+  );
+});
+
+test('returns through the surface boundary and stops inside the elevator tower', async ({
+  page,
+}) => {
+  await bootPausedFixture(page, createExtractionLimitedState());
+
+  const animation = await readJsonAttribute<{
+    elevatorTower: {
+      centerX: number;
+      centerY: number;
+      width: number;
+      height: number;
+    };
+    surfaceElevatorCabin: {
+      centerX: number;
+      centerY: number;
+      width: number;
+      height: number;
+    };
+    warehouseBuilding: {
+      centerX: number;
+      centerY: number;
+      width: number;
+      height: number;
+    };
+    warehouseManager: {
+      centerX: number;
+      centerY: number;
+      width: number;
+      height: number;
+      frame: number;
+      flipX: boolean;
+    };
+    surfaceLandscape: {
+      texture: string;
+      centerX: number;
+      centerY: number;
+      width: number;
+      height: number;
+    };
+  }>(page, 'data-animation');
+
+  expect(animation.elevatorTower, 'generated surface headhouse').toMatchObject({
+    centerX: SURFACE_ELEVATOR_TOWER_CENTER_X,
+    width: SURFACE_ELEVATOR_TOWER_WIDTH,
+    height: SURFACE_ELEVATOR_TOWER_HEIGHT,
+  });
+  expect(animation.surfaceLandscape, 'blue-sky surface backdrop').toEqual({
+    texture: PLACEHOLDER_TEXTURES.surfaceLandscape,
+    centerX: 180,
+    centerY: 82,
+    width: 360,
+    height: 164,
+  });
+  expect(animation.surfaceElevatorCabin, 'cabin rests inside headhouse bay').toMatchObject({
+    centerX: SURFACE_ELEVATOR_STOP_X,
+    centerY: SURFACE_ELEVATOR_STOP_Y,
+    width: MINE_SHAFT_CABIN_SIZE,
+    height: MINE_SHAFT_CABIN_SIZE,
+  });
+  expect(animation.warehouseBuilding, 'generated warehouse replaces the legacy card').toEqual({
+    centerX: SURFACE_WAREHOUSE_CENTER_X,
+    centerY: SURFACE_WAREHOUSE_CENTER_Y,
+    width: SURFACE_WAREHOUSE_WIDTH,
+    height: SURFACE_WAREHOUSE_HEIGHT,
+  });
+  expect(animation.warehouseManager, 'warehouse manager stands at its loading bay').toMatchObject({
+    centerX: SURFACE_WAREHOUSE_MANAGER_X,
+    centerY: SURFACE_WAREHOUSE_MANAGER_Y,
+    width: SURFACE_WAREHOUSE_MANAGER_SIZE,
+    height: SURFACE_WAREHOUSE_MANAGER_SIZE,
+  });
+  expect(animation.warehouseManager.frame).toBeGreaterThanOrEqual(0);
+  expect(animation.warehouseManager.frame).toBeLessThan(4);
+  expect(animation.warehouseManager.flipX, 'warehouse cat looks toward the elevator').toBe(true);
 });
 
 /**
@@ -345,7 +609,7 @@ test('keeps the approved gold pile under the Canvas renderer', async ({
     [
       FLOOR_ONE_PILE_BOTTOM_PROBE,
       FLOOR_ONE_PILE_TOP_PROBE,
-      WAREHOUSE_QUEUE_BLOCK_PROBE,
+      WAREHOUSE_BUILDING_PROBE,
     ],
   );
 
@@ -354,10 +618,10 @@ test('keeps the approved gold pile under the Canvas renderer', async ({
   // The stage downstream is not backed up, so it must still be drawn in the
   // artwork's own colours: recolouring everything would say as little as
   // recolouring nothing.
-  expect(warehouseQueueBlock, 'a clear queue must keep its artwork').not.toBe(
+  expect(warehouseQueueBlock, 'Canvas keeps the warehouse artwork').not.toBe(
     MATERIAL_BACKLOG_FILL,
   );
-  expect(warehouseQueueBlock, 'a clear queue must still render').not.toBe(
+  expect(warehouseQueueBlock, 'the warehouse building must still render').not.toBe(
     PANEL_BACKGROUND,
   );
 
@@ -375,14 +639,14 @@ test('shows a full warehouse queue while conversion is the slowest stage', async
   const floors = await readRenderedFloors(page);
   const [elevator, warehouse] = await readRenderedSharedStages(page);
 
-  // A faster elevator keeps the shafts clear, so no floor claims a backlog.
+  // A faster elevator keeps the queues clear, so no floor claims a backlog.
   floors.forEach((floor, index) => {
     expect(floor.materialPileSteps, `floor ${index + 1} pile`).toBe(1);
     expect(floor.backlogLabel, `floor ${index + 1} backlog`).toBeNull();
     expect(floor.isPileBackedUp, `floor ${index + 1} backlog colour`).toBe(false);
   });
 
-  expect(elevator.statusLabel, 'elevator status').toBe('In transit');
+  expect(elevator.statusLabel, 'elevator status').toBe('Collecting');
   expect(elevator.isQueueBackedUp, 'elevator backlog').toBe(false);
 
   // The backlog has moved to the warehouse input queue.
@@ -395,14 +659,13 @@ test('shows a full warehouse queue while conversion is the slowest stage', async
   ).toBeCloseTo(fixture.warehouse.conversionProgress, 5);
 
   const [warehouseQueueBlock, floorPile] = await readLogicalPixels(page, [
-    WAREHOUSE_QUEUE_BLOCK_PROBE,
+    WAREHOUSE_BUILDING_PROBE,
     FLOOR_ONE_PILE_BOTTOM_PROBE,
   ]);
 
-  expect(
-    warehouseQueueBlock,
-    'a backed-up warehouse queue must render in the backlog colour',
-  ).toBe(MATERIAL_BACKLOG_FILL);
+  expect(warehouseQueueBlock, 'the generated warehouse must remain visible').not.toBe(
+    PANEL_BACKGROUND,
+  );
   // The two piles must be told apart on screen, or "where the backlog is"
   // would not be readable at all.
   expect(floorPile, 'a clear shaft must keep its generated gold artwork').not.toBe(

@@ -122,7 +122,7 @@ describe('purchase control view model', () => {
       ),
     );
     // Level 120 at a 1.15 growth rate is well past a plain numeral.
-    expect(control?.costLabel).toMatch(/^[\d.]+[KMBT]$/);
+    expect(control?.costLabel).toMatch(/^[\d.]+(?:k|m|b|t)$/);
   });
 
   it('affords a control at exactly its price, and not one unit below', () => {

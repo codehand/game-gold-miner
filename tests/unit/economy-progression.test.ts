@@ -77,8 +77,8 @@ describe('economy progression simulation', () => {
         .map(({ elapsedMs, targetId }) => ({ elapsedMs, targetId })),
     ).toEqual([
       { elapsedMs: 45_000, targetId: 'floor-2' },
-      { elapsedMs: 139_000, targetId: 'floor-3' },
-      { elapsedMs: 317_000, targetId: 'floor-4' },
+      { elapsedMs: 175_000, targetId: 'floor-3' },
+      { elapsedMs: 533_000, targetId: 'floor-4' },
     ]);
     expect(report.events.some(({ type }) => type.endsWith('upgrade'))).toBe(true);
     expect(rates.effectiveProductionPerSecond.greaterThan(0)).toBe(true);

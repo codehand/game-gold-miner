@@ -436,7 +436,7 @@ async function bootScrollFixture(page: Page): Promise<CoreStateReadBack> {
   );
   await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute(
     'data-purchase-controls',
-    /Upgrade/,
+    /"key":"elevator"/,
   );
 
   return readCoreState(page);

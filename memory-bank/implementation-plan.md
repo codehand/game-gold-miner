@@ -56,7 +56,7 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 ### Step 8: Define authoritative game state
 
-**Instructions:** Model the global gold balance, last update timestamp, save version, four floor states, one shared elevator state, and one shared warehouse state. Each floor tracks lock status, mine-shaft level, extraction progress, local material queue, and production totals. The elevator tracks level, capacity, round-robin cursor, transit progress, and carried material. The warehouse tracks level, capacity, input queue, and conversion progress. Exclude animation-only state.
+**Instructions:** Model the global gold balance, last update timestamp, save version, four floor states, one shared elevator state, and one shared warehouse state. Each floor tracks lock status, mine-shaft level, extraction progress, local material queue, and production totals. The elevator tracks level, capacity, a signed route cursor (retaining the legacy `roundRobinCursor` field name), transit progress, and carried material. The warehouse tracks level, capacity, input queue, and conversion progress. Exclude animation-only state.
 
 **Test:** Create a fresh state from configuration and assert that only floor one is unlocked, all progress values are valid, and serialized state contains no renderer objects or functions.
 
@@ -74,9 +74,9 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 ### Step 11: Implement the shared elevator
 
-**Instructions:** Move material from floor queues to the warehouse queue through one timed shared elevator. Select floors round-robin from top to bottom, skip empty or locked floors, idle when no material exists, and respect elevator capacity.
+**Instructions:** Move material from floor queues to the warehouse queue through one shared elevator. Starting at the surface, visit every unlocked floor from top to bottom, load up to the remaining capacity at each stop, continue deeper while capacity remains, then return to the surface when full or after the deepest unlocked floor. Make travel slower as carried load increases and idle when no material exists.
 
-**Test:** Verify an empty elevator produces nothing, limited capacity leaves excess material behind, round-robin selection prevents a busy floor from starving others, and multiple cycles preserve total material without duplication or loss.
+**Test:** Verify an empty elevator produces nothing, pickup occurs only after arrival, every unlocked floor is visited in order while capacity remains, limited capacity leaves excess material behind, a full car returns immediately, heavier loads take longer, and multiple routes preserve total material without duplication or loss.
 
 ### Step 12: Implement warehouse conversion
 
@@ -182,7 +182,7 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 ### Step 28: Connect the HUD
 
-**Instructions:** Display spendable gold and estimated mine income per second using English labels. Format values as K/M/B/T before continuing with alphabetic suffixes for larger magnitudes. Update the HUD from snapshots/events without recreating text objects every frame.
+**Instructions:** Display spendable gold and estimated mine income per second using English labels. Format values with lowercase `k/m/b/t/qa/qi/sx/sp/oc/no/dc`, then continue with `aa` from `10^36` and the alphabetic sequence for larger magnitudes. Update the HUD from snapshots/events without recreating text objects every frame.
 
 **Test:** Feed representative values from zero through very large magnitudes and verify stable formatting. Complete a warehouse cycle and confirm the HUD matches authoritative gold.
 
@@ -210,7 +210,14 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 **Test:** Perform a visual review at 100% and reduced mobile scale. Confirm every gameplay object remains distinguishable and no third-party protected asset is included in `public/assets/`.
 
-**Step 32A approved revision:** Implement the locked `layout1.png` floor composition and first asset pack: walking miner with runtime direction flip, unloading attendant plus separate gold container, floor background and gold pile, and separate shaft/cabin/cargo-cat elevator visuals. This remains inside Step 32 and must pass the Step 32 validation gate before Step 33 starts.
+**Step 32A approved revision:** Implement the locked `layout1.png` floor composition and first asset pack: walking miner with runtime direction flip, unloading attendant plus empty/filled gold-container states, edge-to-edge floor backgrounds and a fixed decorative gold pile on every unlocked floor, and separate shaft/cabin/cargo-cat elevator visuals. Cabin stops align with the gold-container centre and use cosmetic easing at every stop; its return route crosses the mine boundary on the same fixed X axis and ends inside a generated surface headhouse with a top gold hopper and right discharge chute. Position the asymmetric tower so its open bay shares the underground shaft axis. The surface uses an original low-contrast blue-sky landscape behind the headhouse, invariant-size empty/filled delivery cart, worker cat, and right-flush warehouse. Runtime texture swaps must reapply one semantic cart display box so differing source resolutions cannot change apparent size. The headhouse and warehouse replace their legacy cards; compact code-rendered level/upgrade badges retain 44×50 touch targets and existing commands. This does not implement deferred Manager gameplay. Use self-hosted Fredoka SemiBold/Bold, icon-led HUD resources, one-decimal abbreviated tiers, and balanced character bounds. This remains inside Step 32 and must pass its validation gate before Step 33 starts.
+
+**Step 32A warehouse crew revision:** Keep one base surface-hauler cat and reveal
+one additional presentation-only assistant at each warehouse level multiple of
+10, capped at ten assistants plus the lead at level 100. Arrange assistants in
+independently phase-shifted route positions with shallow personal lane offsets,
+reuse the current hauler sheet, and do not change throughput, authoritative
+state, or save schema.
 
 ## Phase 6 — Integration and Base-Game Exit Criteria
 

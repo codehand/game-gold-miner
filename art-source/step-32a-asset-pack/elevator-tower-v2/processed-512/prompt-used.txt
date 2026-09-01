@@ -1,0 +1,18 @@
+Edit target: the supplied elevator headhouse game asset.
+Output on a perfectly flat, uniform, exact solid magenta #FF00FF background
+for chroma-key processing.
+
+Primary change only: add a compact steel-blue horizontal mounting bracket
+immediately to the right of the yellow gold discharge tray, aligned with the
+tray or slightly higher, never below. The bracket must visually connect to the
+chute/tray assembly and provide a clean mounting area for a separate
+code-rendered Level/Upgrade badge.
+
+Preserve the existing tower identity and geometry: open elevator bay and its
+centerline, top gold hopper, gold contents, roof, steel-blue frame, warm timber,
+segmented right-side chute, yellow tray, front-facing orthographic camera,
+chunky friendly 2D mobile-game style, proportions and lighting.
+
+Constraints: no text, no numbers, no icons, no characters, no extra machinery,
+no watermark. Keep the full structure inside the canvas with generous solid
+magenta padding and crisp edges.

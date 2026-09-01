@@ -108,8 +108,50 @@ describe('Step 32 original placeholder assets', () => {
     ) as PlaceholderAssetManifest;
 
     expect(pack.family).toBe('step-32a-layout1-production-pack');
-    expect(pack.assets).toHaveLength(5);
-    expect(pack.animationAssets).toHaveLength(3);
+    expect(pack.assets).toHaveLength(9);
+    expect(pack.assets).toContainEqual(
+      expect.objectContaining({
+        id: 'elevator-tower',
+        size: '512x512',
+        role: expect.stringContaining('gold hopper'),
+      }),
+    );
+    expect(pack.assets).toContainEqual(
+      expect.objectContaining({
+        id: 'surface-landscape',
+        size: '720x328',
+        role: expect.stringContaining('blue-sky'),
+      }),
+    );
+    expect(pack.assets).toContainEqual(
+      expect.objectContaining({
+        id: 'warehouse-building',
+        size: '512x512',
+        role: expect.stringContaining('loading bay'),
+      }),
+    );
+    expect(pack.animationAssets).toHaveLength(6);
+    expect(pack.animationAssets).toContainEqual(
+      expect.objectContaining({
+        id: 'warehouse-manager-idle-sheet',
+        frameCount: 4,
+        role: expect.stringContaining('supervisor cat'),
+      }),
+    );
+    expect(pack.animationAssets).toContainEqual(
+      expect.objectContaining({
+        id: 'surface-hauler-cat-sheet',
+        frameCount: 4,
+        role: expect.stringContaining('delivery cart'),
+      }),
+    );
+    expect(pack.animationAssets).toContainEqual(
+      expect.objectContaining({
+        id: 'surface-gold-pour-sheet',
+        frameCount: 4,
+        role: expect.stringContaining('cart loads'),
+      }),
+    );
     expect(pack.animationAssets.every((asset) => {
       return (
         asset.frameCount === PLACEHOLDER_ANIMATION_FRAME_COUNT &&

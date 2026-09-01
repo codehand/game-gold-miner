@@ -67,11 +67,11 @@ test('shows abbreviated gold and the mine income estimate', async ({ page }) => 
   const hud = await readRenderedHud(page);
   const rates = calculateMineProductionRates(fixture, BASE_GAME_BALANCE);
 
-  expect(hud.goldLabel, 'gold caption').toBe('Gold');
-  expect(hud.incomeLabel, 'income caption').toBe('Income /s');
+  expect(hud.goldLabel, 'gold icon replaces its caption').toBe('');
+  expect(hud.incomeLabel, 'income icon replaces its caption').toBe('');
   // 1.46e16 gold: past every named tier, so it must reach the alphabetic run
   // rather than fall back to a serialized exponent.
-  expect(hud.goldValueLabel, 'abbreviated gold').toBe('14.6aa');
+  expect(hud.goldValueLabel, 'abbreviated gold').toBe('14.6qa');
   expect(hud.goldValueLabel).toBe(formatAmount(fixture.gold));
   // Derived through the same core calculation the HUD uses, so a balance
   // change cannot silently invalidate the expectation.
@@ -259,7 +259,7 @@ async function waitForBootedScene(page: Page): Promise<void> {
   );
   await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute(
     'data-hud-view',
-    /Income \/s/,
+    /"goldValueLabel":/,
   );
 }
 

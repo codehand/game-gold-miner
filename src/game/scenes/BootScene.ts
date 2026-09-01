@@ -11,27 +11,51 @@ import {
 import {
   HudView,
   MineFloorView,
+  PurchaseControlView,
   SharedStageView,
   type RenderedPurchaseControlState,
 } from '../entities';
 import {
   calculateFloorSlotRegion,
+  calculateMineFloorPanelLayout,
   calculateMineContentHeight,
   calculateMineLayout,
   calculateMineShaftRegion,
   regionContainsPoint,
   toFillColor,
-  FONT_FAMILY,
   MINE_BACKGROUND,
   MINE_FLOOR_COUNT,
   MINE_SHAFT_CABIN_SIZE,
-  MINE_SHAFT_PLAQUE_HEIGHT,
-  MINE_SHAFT_PLAQUE_WIDTH,
-  SHAFT_BEAM,
+  MINE_SHAFT_CARGO_CAT_SIZE,
   serializeRegion,
+  SURFACE_ELEVATOR_STOP_X,
+  SURFACE_ELEVATOR_STOP_Y,
+  SURFACE_ELEVATOR_LEVEL_CONTROL,
+  SURFACE_ELEVATOR_TOWER_CENTER_X,
+  SURFACE_ELEVATOR_TOWER_CENTER_Y,
+  SURFACE_ELEVATOR_TOWER_HEIGHT,
+  SURFACE_ELEVATOR_TOWER_WIDTH,
+  SURFACE_GOLD_POUR_HEIGHT,
+  SURFACE_GOLD_POUR_WIDTH,
+  SURFACE_GOLD_POUR_X,
+  SURFACE_GOLD_POUR_Y,
+  SURFACE_HAULER_CART_SIZE,
+  SURFACE_HAULER_CART_Y,
+  SURFACE_HAULER_CAT_GAP,
+  SURFACE_HAULER_CAT_SIZE,
+  SURFACE_HAULER_END_X,
+  SURFACE_HAULER_START_X,
+  SURFACE_WAREHOUSE_CENTER_X,
+  SURFACE_WAREHOUSE_CENTER_Y,
+  SURFACE_WAREHOUSE_HEIGHT,
+  SURFACE_WAREHOUSE_MANAGER_SIZE,
+  SURFACE_WAREHOUSE_MANAGER_X,
+  SURFACE_WAREHOUSE_MANAGER_Y,
+  SURFACE_WAREHOUSE_WIDTH,
+  SURFACE_WAREHOUSE_LEVEL_CONTROL,
+  SURFACE_HEIGHT,
   SURFACE_BACKGROUND,
   SURFACE_GROUND,
-  TEXT_MUTED,
   type LayoutRegion,
   type MineLayout,
 } from '../layout';
@@ -44,12 +68,18 @@ import {
   createMineScrollState,
   createPurchaseFeedback,
   calculateGeneratedAssetFrame,
+  calculateSurfaceHaulerAssistantOffset,
+  calculateSurfaceHaulerAssistantPose,
+  calculateSurfaceHaulerCount,
+  calculateSurfaceHaulerPose,
   describeMineScroll,
   describePurchaseFeedback,
   dragMineScroll,
   endMineScrollGesture,
+  easeElevatorTravelProgress,
   scrollMineByWheel,
   DEFAULT_ANIMATION_SPEED_MULTIPLIER,
+  SURFACE_HAULER_ASSISTANT_COUNT,
   type MineScrollPointer,
   type MineScrollState,
   type MineViewModel,
@@ -86,7 +116,6 @@ const SURFACE_PANEL_BOTTOM_INSET = 10;
 const COLOR_SURFACE_BACKGROUND = toFillColor(SURFACE_BACKGROUND);
 const COLOR_MINE_BACKGROUND = toFillColor(MINE_BACKGROUND);
 const COLOR_SURFACE_GROUND = toFillColor(SURFACE_GROUND);
-const COLOR_SHAFT_BEAM = toFillColor(SHAFT_BEAM);
 
 /**
  * One priced control as a browser test sees it: what it shows, plus where it
@@ -135,6 +164,8 @@ export class BootScene extends Phaser.Scene {
   #floorViews: readonly MineFloorView[] = [];
   #elevatorView: SharedStageView | null = null;
   #warehouseView: SharedStageView | null = null;
+  #surfaceElevatorUpgradeControl: PurchaseControlView | null = null;
+  #surfaceWarehouseUpgradeControl: PurchaseControlView | null = null;
   #animationSpeedMultiplier: number;
   #animationTimeMs = 0;
   #lastViewDiagnosticMs = Number.NEGATIVE_INFINITY;
@@ -144,6 +175,16 @@ export class BootScene extends Phaser.Scene {
   #shaftRegion: LayoutRegion | null = null;
   #shaftElevator: Phaser.GameObjects.Image | null = null;
   #shaftCargoCat: Phaser.GameObjects.Sprite | null = null;
+  #surfaceElevatorTower: Phaser.GameObjects.Image | null = null;
+  #surfaceLandscape: Phaser.GameObjects.Image | null = null;
+  #surfaceElevator: Phaser.GameObjects.Image | null = null;
+  #surfaceCargoCat: Phaser.GameObjects.Sprite | null = null;
+  #surfaceWarehouse: Phaser.GameObjects.Image | null = null;
+  #warehouseManager: Phaser.GameObjects.Sprite | null = null;
+  #surfaceHaulerCart: Phaser.GameObjects.Image | null = null;
+  #surfaceHaulerCat: Phaser.GameObjects.Sprite | null = null;
+  #surfaceHaulerAssistants: readonly Phaser.GameObjects.Sprite[] = [];
+  #surfaceGoldPour: Phaser.GameObjects.Sprite | null = null;
   /** Scroll offset and tap-versus-drag state for the mine; null before `create`. */
   #scroll: MineScrollState | null = null;
 
@@ -279,6 +320,20 @@ export class BootScene extends Phaser.Scene {
     });
     this.#elevatorView.applySnapshot(viewModel.elevator);
     this.#warehouseView.applySnapshot(viewModel.warehouse);
+    this.#surfaceElevatorUpgradeControl?.applySnapshot(
+      viewModel.elevator.upgradeControl,
+    );
+    this.#surfaceElevatorUpgradeControl?.applyDisplayOverride(
+      'Level',
+      String(viewModel.elevator.level),
+    );
+    this.#surfaceWarehouseUpgradeControl?.applySnapshot(
+      viewModel.warehouse.upgradeControl,
+    );
+    this.#surfaceWarehouseUpgradeControl?.applyDisplayOverride(
+      'Level',
+      String(viewModel.warehouse.level),
+    );
   }
 
   /**
@@ -407,6 +462,12 @@ export class BootScene extends Phaser.Scene {
     this.#warehouseView?.applyUpgradeFeedback(
       this.#describeFeedback(this.#viewModel.warehouse.upgradeControl, nowMs),
     );
+    this.#surfaceElevatorUpgradeControl?.applyFeedback(
+      this.#describeFeedback(this.#viewModel.elevator.upgradeControl, nowMs),
+    );
+    this.#surfaceWarehouseUpgradeControl?.applyFeedback(
+      this.#describeFeedback(this.#viewModel.warehouse.upgradeControl, nowMs),
+    );
   }
 
   /**
@@ -448,27 +509,182 @@ export class BootScene extends Phaser.Scene {
 
     this.#elevatorView?.applyAnimation(this.#animationTimeMs);
     this.#warehouseView?.applyAnimation(this.#animationTimeMs);
+    this.#warehouseManager?.setFrame(
+      calculateGeneratedAssetFrame(this.#animationTimeMs, 4, 240),
+    );
+
+    const haulerCart = this.#surfaceHaulerCart;
+    const haulerCat = this.#surfaceHaulerCat;
+    const haulerAssistants = this.#surfaceHaulerAssistants;
+    const goldPour = this.#surfaceGoldPour;
+
+    if (haulerCart !== null && haulerCat !== null && goldPour !== null) {
+      const pose = calculateSurfaceHaulerPose(
+        this.#animationTimeMs,
+        this.#viewModel.elevator.isRunning ||
+          this.#viewModel.elevator.queueSteps > 0 ||
+          this.#viewModel.warehouse.queueSteps > 0,
+      );
+      const cartX = Phaser.Math.Linear(
+        SURFACE_HAULER_START_X,
+        SURFACE_HAULER_END_X,
+        pose.routeProgress,
+      );
+      const catX = cartX + (pose.facesLeft
+        ? SURFACE_HAULER_CAT_GAP
+        : -SURFACE_HAULER_CAT_GAP);
+
+      haulerCart
+        .setTexture(
+          pose.cartIsFilled
+            ? PLACEHOLDER_TEXTURES.goldContainerFilled
+            : PLACEHOLDER_TEXTURES.goldContainer,
+        )
+        .setPosition(cartX, SURFACE_HAULER_CART_Y)
+        // `setTexture` restores the source's native dimensions. The empty cart
+        // is 128 px and the filled variant is 256 px, so reapply one semantic
+        // display box after every swap to prevent visible pulsing.
+        .setDisplaySize(SURFACE_HAULER_CART_SIZE, SURFACE_HAULER_CART_SIZE);
+      haulerCat
+        .setFrame(pose.frame)
+        .setFlipX(pose.facesLeft)
+        .setPosition(catX, SURFACE_HAULER_CART_Y - 1);
+      const activeHaulerCount = calculateSurfaceHaulerCount(
+        this.#viewModel.warehouse.level,
+      );
+
+      for (const [index, assistant] of haulerAssistants.entries()) {
+        const isActive = index < activeHaulerCount - 1;
+
+        if (!isActive) {
+          assistant.setVisible(false);
+          continue;
+        }
+
+        const assistantPose = calculateSurfaceHaulerAssistantPose(
+          this.#animationTimeMs,
+          this.#viewModel.elevator.isRunning ||
+            this.#viewModel.elevator.queueSteps > 0 ||
+            this.#viewModel.warehouse.queueSteps > 0,
+          index,
+          activeHaulerCount,
+        );
+        const assistantRouteX = Phaser.Math.Linear(
+          SURFACE_HAULER_START_X,
+          SURFACE_HAULER_END_X,
+          assistantPose.routeProgress,
+        );
+        const assistantX = assistantRouteX + (assistantPose.facesLeft
+          ? SURFACE_HAULER_CAT_GAP
+          : -SURFACE_HAULER_CAT_GAP);
+        const offset = calculateSurfaceHaulerAssistantOffset(
+          index,
+          assistantPose.facesLeft,
+        );
+
+        assistant
+          .setVisible(true)
+          .setFrame(assistantPose.frame)
+          .setFlipX(assistantPose.facesLeft)
+          .setPosition(
+            assistantX + offset.x,
+            SURFACE_HAULER_CART_Y - 1 + offset.y,
+          );
+      }
+      goldPour
+        .setFrame(pose.frame)
+        .setVisible(pose.goldPourVisible);
+    }
 
     const shaft = this.#shaftRegion;
     const elevator = this.#shaftElevator;
     const cargoCat = this.#shaftCargoCat;
+    const surfaceElevator = this.#surfaceElevator;
+    const surfaceCargoCat = this.#surfaceCargoCat;
 
-    if (shaft !== null && elevator !== null && cargoCat !== null) {
-      const topY = shaft.y + MINE_SHAFT_CABIN_SIZE / 2;
-      const bottomY = shaft.y + shaft.height - MINE_SHAFT_CABIN_SIZE / 2;
+    if (
+      shaft !== null &&
+      elevator !== null &&
+      cargoCat !== null &&
+      surfaceElevator !== null &&
+      surfaceCargoCat !== null
+    ) {
+      const shaftCenterX = shaft.x + shaft.width / 2;
+      const scrollY = this.#mineCamera?.scrollY ?? 0;
+      // The route now terminates inside the fixed headhouse rather than at the
+      // mine-camera boundary. Converting the screen-space tower stop back into
+      // mine-world coordinates keeps it fixed while the underground view scrolls.
+      const surfaceStopWorldY =
+        scrollY + SURFACE_ELEVATOR_STOP_Y - SURFACE_HEIGHT;
       const stage = this.#viewModel.elevator;
-      const elevatorY = stage.isRunning
-        ? bottomY - (bottomY - topY) * stage.progress
-        : topY;
+      const floorIndex = stage.elevatorFloorIndex;
+      let elevatorY = surfaceStopWorldY;
+
+      if (floorIndex !== null && stage.elevatorDirection !== 'idle') {
+        const visualProgress = easeElevatorTravelProgress(stage.progress);
+        const floorCenterY = (() => {
+          const slot = calculateFloorSlotRegion(floorIndex, this.scale.width);
+          const panel = calculateMineFloorPanelLayout(slot.width, slot.height);
+          return slot.y + panel.elevatorStopY;
+        })();
+
+        if (stage.elevatorDirection === 'descending') {
+          const previousY = floorIndex === 0
+            ? surfaceStopWorldY
+            : (() => {
+                const slot = calculateFloorSlotRegion(
+                  floorIndex - 1,
+                  this.scale.width,
+                );
+                const panel = calculateMineFloorPanelLayout(
+                  slot.width,
+                  slot.height,
+                );
+                return slot.y + panel.elevatorStopY;
+              })();
+          elevatorY = previousY + (floorCenterY - previousY) * visualProgress;
+        } else {
+          elevatorY =
+            floorCenterY + (surfaceStopWorldY - floorCenterY) * visualProgress;
+        }
+      }
+
+      const surfaceLocalY = SURFACE_HEIGHT + elevatorY - scrollY;
+      const towerEntryProgress = Phaser.Math.Clamp(
+        (SURFACE_HEIGHT - surfaceLocalY) /
+          (SURFACE_HEIGHT - SURFACE_ELEVATOR_STOP_Y),
+        0,
+        1,
+      );
+      // The cabin shares one X coordinate with the underground shaft and the
+      // surface bay. Only Y changes, so entering the tower can never drift
+      // diagonally even though the tower artwork has an asymmetric chute.
+      const elevatorX = shaftCenterX;
+      const cargoVisible = stage.isRunning || stage.queueSteps > 0;
+      const cargoFrame = stage.isRunning
+        ? calculateGeneratedAssetFrame(this.#animationTimeMs, 4, 220)
+        : 0;
+      const surfaceAlpha = easeElevatorTravelProgress(
+        Phaser.Math.Clamp(towerEntryProgress * 3, 0, 1),
+      );
 
       elevator
-        .setY(elevatorY);
+        .setPosition(elevatorX, elevatorY);
       cargoCat
-        .setFrame(
-          stage.isRunning ? calculateGeneratedAssetFrame(this.#animationTimeMs, 4, 220) : 0,
-        )
-        .setY(elevatorY + 3)
-        .setVisible(stage.isRunning || stage.queueSteps > 0);
+        .setFrame(cargoFrame)
+        .setPosition(elevatorX, elevatorY + 3)
+        .setVisible(cargoVisible);
+      // These twins are clipped to the surface strip. Together with the mine
+      // camera's clip they form one continuous cabin across the boundary.
+      surfaceElevator
+        .setPosition(elevatorX, surfaceLocalY)
+        .setAlpha(surfaceAlpha)
+        .setVisible(towerEntryProgress > 0);
+      surfaceCargoCat
+        .setFrame(cargoFrame)
+        .setPosition(elevatorX, surfaceLocalY + 3)
+        .setAlpha(surfaceAlpha)
+        .setVisible(cargoVisible && towerEntryProgress > 0);
     }
   }
 
@@ -490,6 +706,63 @@ export class BootScene extends Phaser.Scene {
         .rectangle(0, 0, region.width, region.height, COLOR_SURFACE_BACKGROUND)
         .setOrigin(0, 0),
     );
+    this.#surfaceLandscape = this.add
+      .image(
+        region.width / 2,
+        region.height / 2,
+        PLACEHOLDER_TEXTURES.surfaceLandscape,
+      )
+      .setDisplaySize(region.width, region.height);
+    layer.add(this.#surfaceLandscape);
+
+    this.#surfaceElevator = this.add
+      .image(
+        SURFACE_ELEVATOR_STOP_X,
+        SURFACE_ELEVATOR_STOP_Y,
+        PLACEHOLDER_TEXTURES.elevatorCabin,
+      )
+      .setDisplaySize(MINE_SHAFT_CABIN_SIZE, MINE_SHAFT_CABIN_SIZE);
+    this.#surfaceCargoCat = this.add
+      .sprite(
+        SURFACE_ELEVATOR_STOP_X,
+        SURFACE_ELEVATOR_STOP_Y + 3,
+        PLACEHOLDER_ANIMATION_TEXTURES.elevatorCargoCat,
+        0,
+      )
+      .setDisplaySize(MINE_SHAFT_CARGO_CAT_SIZE, MINE_SHAFT_CARGO_CAT_SIZE)
+      .setVisible(false);
+    this.#surfaceElevatorTower = this.add
+      .image(
+        SURFACE_ELEVATOR_TOWER_CENTER_X,
+        SURFACE_ELEVATOR_TOWER_CENTER_Y,
+        PLACEHOLDER_TEXTURES.elevatorTower,
+      )
+      .setDisplaySize(
+        SURFACE_ELEVATOR_TOWER_WIDTH,
+        SURFACE_ELEVATOR_TOWER_HEIGHT,
+      )
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        this.#requestPurchase(this.#viewModel.elevator.upgradeControl);
+      });
+    this.#surfaceWarehouse = this.add
+      .image(
+        SURFACE_WAREHOUSE_CENTER_X,
+        SURFACE_WAREHOUSE_CENTER_Y,
+        PLACEHOLDER_TEXTURES.warehouseBuilding,
+      )
+      .setDisplaySize(SURFACE_WAREHOUSE_WIDTH, SURFACE_WAREHOUSE_HEIGHT)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        this.#requestPurchase(this.#viewModel.warehouse.upgradeControl);
+      });
+
+    layer.add([
+      this.#surfaceElevator,
+      this.#surfaceCargoCat,
+      this.#surfaceElevatorTower,
+      this.#surfaceWarehouse,
+    ]);
     layer.add(
       this.add
         .rectangle(
@@ -501,16 +774,79 @@ export class BootScene extends Phaser.Scene {
         )
         .setOrigin(0, 0),
     );
-    layer.add(
-      this.add
-        .text(SURFACE_PANEL_INSET, 8, 'Surface operations', {
-          color: TEXT_MUTED,
-          fontFamily: FONT_FAMILY,
-          fontSize: '12px',
-        })
-        .setOrigin(0, 0),
+    this.#surfaceHaulerCart = this.add
+      .image(
+        SURFACE_HAULER_START_X,
+        SURFACE_HAULER_CART_Y,
+        PLACEHOLDER_TEXTURES.goldContainer,
+      )
+      .setDisplaySize(SURFACE_HAULER_CART_SIZE, SURFACE_HAULER_CART_SIZE);
+    this.#surfaceHaulerCat = this.add
+      .sprite(
+        SURFACE_HAULER_START_X - SURFACE_HAULER_CAT_GAP,
+        SURFACE_HAULER_CART_Y - 1,
+        PLACEHOLDER_ANIMATION_TEXTURES.surfaceHaulerCat,
+        0,
+      )
+      .setDisplaySize(SURFACE_HAULER_CAT_SIZE, SURFACE_HAULER_CAT_SIZE);
+    this.#surfaceHaulerAssistants = Array.from(
+      { length: SURFACE_HAULER_ASSISTANT_COUNT },
+      () => this.add
+        .sprite(
+          SURFACE_HAULER_START_X - SURFACE_HAULER_CAT_GAP,
+          SURFACE_HAULER_CART_Y - 1,
+          PLACEHOLDER_ANIMATION_TEXTURES.surfaceHaulerCat,
+          0,
+        )
+        .setDisplaySize(SURFACE_HAULER_CAT_SIZE, SURFACE_HAULER_CAT_SIZE)
+        .setVisible(false),
     );
-
+    this.#surfaceGoldPour = this.add
+      .sprite(
+        SURFACE_GOLD_POUR_X,
+        SURFACE_GOLD_POUR_Y,
+        PLACEHOLDER_ANIMATION_TEXTURES.surfaceGoldPour,
+        0,
+      )
+      .setDisplaySize(SURFACE_GOLD_POUR_WIDTH, SURFACE_GOLD_POUR_HEIGHT)
+      .setVisible(false);
+    layer.add([
+      this.#surfaceHaulerCart,
+      ...this.#surfaceHaulerAssistants,
+      this.#surfaceHaulerCat,
+      this.#surfaceGoldPour,
+    ]);
+    this.#warehouseManager = this.add
+      .sprite(
+        SURFACE_WAREHOUSE_MANAGER_X,
+        SURFACE_WAREHOUSE_MANAGER_Y,
+        PLACEHOLDER_ANIMATION_TEXTURES.warehouseManager,
+        0,
+      )
+      .setDisplaySize(
+        SURFACE_WAREHOUSE_MANAGER_SIZE,
+        SURFACE_WAREHOUSE_MANAGER_SIZE,
+      )
+      .setFlipX(true);
+    layer.add(this.#warehouseManager);
+    this.#surfaceElevatorUpgradeControl = new PurchaseControlView(this, {
+      region: SURFACE_ELEVATOR_LEVEL_CONTROL,
+      layout: 'floor-level',
+      onPress: () => {
+        this.#requestPurchase(this.#viewModel.elevator.upgradeControl);
+      },
+    });
+    this.#surfaceWarehouseUpgradeControl = new PurchaseControlView(this, {
+      region: SURFACE_WAREHOUSE_LEVEL_CONTROL,
+      layout: 'floor-level',
+      onPress: () => {
+        this.#requestPurchase(this.#viewModel.warehouse.upgradeControl);
+      },
+    });
+    layer.add([
+      ...this.#surfaceElevatorUpgradeControl.objects,
+      ...this.#surfaceWarehouseUpgradeControl.objects,
+    ]);
     this.#elevatorView = new SharedStageView(
       this,
       {
@@ -521,11 +857,17 @@ export class BootScene extends Phaser.Scene {
       },
       {
         textureKey: PLACEHOLDER_ANIMATION_TEXTURES.elevatorPulley,
+        backgroundAlpha: 0.55,
+        showStageSprite: false,
         onUpgrade: () => {
           this.#requestPurchase(this.#viewModel.elevator.upgradeControl);
         },
       },
     );
+    // The generated headhouse is now the elevator's surface representation.
+    // Keep the bound view as a read-back/purchase model, but never draw the
+    // legacy stage card over the tower. Tapping the tower requests its upgrade.
+    this.#elevatorView.root.setVisible(false);
     this.#warehouseView = new SharedStageView(
       this,
       {
@@ -541,6 +883,10 @@ export class BootScene extends Phaser.Scene {
         },
       },
     );
+    // The generated building and manager replace the legacy warehouse card.
+    // The bound view remains the data/read-back model, while tapping the
+    // building invokes the same upgrade command.
+    this.#warehouseView.root.setVisible(false);
 
     layer.add([this.#elevatorView.root, this.#warehouseView.root]);
 
@@ -561,34 +907,6 @@ export class BootScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDisplaySize(shaft.width, shaft.height);
 
-    const shaftLabels = Array.from({ length: MINE_FLOOR_COUNT }, (_, index) => {
-      const slot = calculateFloorSlotRegion(index, width);
-      const plaque = this.add
-        .rectangle(
-          shaft.x + shaft.width / 2,
-          slot.y + slot.height / 2,
-          MINE_SHAFT_PLAQUE_WIDTH,
-          MINE_SHAFT_PLAQUE_HEIGHT,
-          COLOR_SHAFT_BEAM,
-        )
-        .setOrigin(0.5, 0.5);
-      const label = this.add
-        .text(
-          shaft.x + shaft.width / 2,
-          slot.y + slot.height / 2,
-          String(index + 1),
-          {
-            color: TEXT_MUTED,
-            fontFamily: FONT_FAMILY,
-            fontSize: '13px',
-            fontStyle: 'bold',
-          },
-        )
-        .setOrigin(0.5, 0.5);
-
-      return [plaque, label] as const;
-    }).flat();
-
     this.#shaftRegion = shaft;
     this.#shaftElevator = this.add
       .image(
@@ -604,13 +922,12 @@ export class BootScene extends Phaser.Scene {
         PLACEHOLDER_ANIMATION_TEXTURES.elevatorCargoCat,
         0,
       )
-      .setDisplaySize(25, 25)
+      .setDisplaySize(MINE_SHAFT_CARGO_CAT_SIZE, MINE_SHAFT_CARGO_CAT_SIZE)
       .setVisible(false);
 
     content.add([
       background,
       shaftBackground,
-      ...shaftLabels,
     ]);
 
     this.#floorViews = Array.from({ length: MINE_FLOOR_COUNT }, (_, index) => {
@@ -688,15 +1005,15 @@ export class BootScene extends Phaser.Scene {
       }
     });
 
-    for (const [stage, view] of [
-      [this.#viewModel.elevator, this.#elevatorView],
-      [this.#viewModel.warehouse, this.#warehouseView],
+    for (const [stage, control] of [
+      [this.#viewModel.elevator, this.#surfaceElevatorUpgradeControl],
+      [this.#viewModel.warehouse, this.#surfaceWarehouseUpgradeControl],
     ] as const) {
-      if (view === null) {
+      if (control === null) {
         continue;
       }
 
-      const state = view.describeUpgradeControl();
+      const state = control.describeRenderedState();
 
       published.push({
         ...state,
@@ -783,6 +1100,90 @@ export class BootScene extends Phaser.Scene {
     canvas.dataset.animation = JSON.stringify({
       speedMultiplier: this.#animationSpeedMultiplier,
       animationTimeMs: this.#animationTimeMs,
+      elevatorCabin: this.#shaftElevator === null
+        ? null
+        : {
+            centerY: this.#shaftElevator.y,
+            width: this.#shaftElevator.displayWidth,
+            height: this.#shaftElevator.displayHeight,
+          },
+      elevatorCargoCat: this.#shaftCargoCat === null
+        ? null
+        : {
+            centerY: this.#shaftCargoCat.y,
+            width: this.#shaftCargoCat.displayWidth,
+            height: this.#shaftCargoCat.displayHeight,
+          },
+      elevatorTower: this.#surfaceElevatorTower === null
+        ? null
+        : {
+            centerX: this.#surfaceElevatorTower.x,
+            centerY: this.#surfaceElevatorTower.y,
+            width: this.#surfaceElevatorTower.displayWidth,
+            height: this.#surfaceElevatorTower.displayHeight,
+          },
+      surfaceElevatorCabin: this.#surfaceElevator === null
+        ? null
+        : {
+            centerX: this.#surfaceElevator.x,
+            centerY: this.#surfaceElevator.y,
+            width: this.#surfaceElevator.displayWidth,
+            height: this.#surfaceElevator.displayHeight,
+          },
+      warehouseBuilding: this.#surfaceWarehouse === null
+        ? null
+        : {
+            centerX: this.#surfaceWarehouse.x,
+            centerY: this.#surfaceWarehouse.y,
+            width: this.#surfaceWarehouse.displayWidth,
+            height: this.#surfaceWarehouse.displayHeight,
+          },
+      warehouseManager: this.#warehouseManager === null
+        ? null
+        : {
+            centerX: this.#warehouseManager.x,
+            centerY: this.#warehouseManager.y,
+            width: this.#warehouseManager.displayWidth,
+            height: this.#warehouseManager.displayHeight,
+            frame: Number(this.#warehouseManager.frame.name),
+            flipX: this.#warehouseManager.flipX,
+          },
+      surfaceHauler: this.#surfaceHaulerCart === null ||
+          this.#surfaceHaulerCat === null ||
+          this.#surfaceGoldPour === null
+        ? null
+        : {
+            cartX: this.#surfaceHaulerCart.x,
+            cartY: this.#surfaceHaulerCart.y,
+            cartWidth: this.#surfaceHaulerCart.displayWidth,
+            cartHeight: this.#surfaceHaulerCart.displayHeight,
+            cartTexture: this.#surfaceHaulerCart.texture.key,
+            catX: this.#surfaceHaulerCat.x,
+            catY: this.#surfaceHaulerCat.y,
+            catFrame: Number(this.#surfaceHaulerCat.frame.name),
+            catFlipX: this.#surfaceHaulerCat.flipX,
+            activeCatCount: 1 + this.#surfaceHaulerAssistants.filter(
+              (assistant) => assistant.visible,
+            ).length,
+            assistants: this.#surfaceHaulerAssistants.map((assistant) => ({
+              visible: assistant.visible,
+              x: assistant.x,
+              y: assistant.y,
+              frame: Number(assistant.frame.name),
+              flipX: assistant.flipX,
+            })),
+            goldPourVisible: this.#surfaceGoldPour.visible,
+            goldPourFrame: Number(this.#surfaceGoldPour.frame.name),
+          },
+      surfaceLandscape: this.#surfaceLandscape === null
+        ? null
+        : {
+            texture: this.#surfaceLandscape.texture.key,
+            centerX: this.#surfaceLandscape.x,
+            centerY: this.#surfaceLandscape.y,
+            width: this.#surfaceLandscape.displayWidth,
+            height: this.#surfaceLandscape.displayHeight,
+          },
     });
 
     if (this.#scroll !== null) {

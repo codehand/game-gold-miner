@@ -18,6 +18,15 @@ describe('approved mine-floor panel layout', () => {
     expect(layout.minerPatrol.x).toBeLessThan(layout.goldPile.x);
     expect(layout.levelControl.x + layout.levelControl.width).toBe(278);
     expect(layout.goldPile.x + layout.goldPile.width / 2).toBe(232);
+    expect(layout.floorBadge).toEqual({
+      x: 14.5,
+      y: 38.5,
+      width: 17,
+      height: 17,
+    });
+    expect(layout.elevatorStopY).toBe(
+      layout.goldContainer.y + layout.goldContainer.height / 2,
+    );
   });
 
   it('keeps the miner inside the centre corridor and props below the level control', () => {
@@ -37,6 +46,13 @@ describe('approved mine-floor panel layout', () => {
     expect(layout.levelControl.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(layout.unlockControl).toEqual({ x: 372, y: 100, width: 184, height: 88 });
     expect(layout.goldContainer).toEqual({ x: 16, y: 156, width: 96, height: 84 });
+    expect(layout.floorBadge).toEqual({
+      x: 29,
+      y: 77,
+      width: 34,
+      height: 34,
+    });
+    expect(layout.elevatorStopY).toBe(198);
   });
 
   it('rejects invalid panel dimensions', () => {

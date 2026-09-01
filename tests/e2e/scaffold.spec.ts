@@ -17,6 +17,21 @@ test('boots one Phaser canvas and scene across a reload', async ({ page }) => {
   await expect(page).toHaveTitle('Cat Mine Idle');
   await assertSingleBoot(page);
   await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
+  await expect.poll(async () => {
+    return page.evaluate(async () => {
+      await document.fonts.ready;
+
+      return {
+        bold: document.fonts.check('700 16px Fredoka'),
+        family: getComputedStyle(document.body).fontFamily,
+        semibold: document.fonts.check('600 16px Fredoka'),
+      };
+    });
+  }).toEqual({
+    bold: true,
+    family: 'Fredoka, sans-serif',
+    semibold: true,
+  });
 
   await page.reload();
   await assertSingleBoot(page);
@@ -61,7 +76,7 @@ test('presents, claims, persists, and cannot duplicate offline rewards', async (
   await expect(modal).toBeVisible();
   await expect(page.getByTestId('offline-reward-time')).toHaveText('2h credited');
   await expect(page.getByTestId('offline-reward-amount')).toHaveText(
-    '18K gold',
+    '18k gold',
   );
 
   await page.getByTestId('offline-reward-claim').click();

@@ -12,7 +12,7 @@
 
 > **Phạm vi tham chiếu:** Video chỉ dài khoảng 8,56 giây nên không thể xác nhận 100% mọi luật, công thức và màn hình. Tài liệu này tách phần quan sát trực tiếp khỏi phần suy luận cần kiểm chứng. Khi phát triển sản phẩm thật, nên dùng tên, hình ảnh, âm thanh và UI nguyên bản để tránh sao chép tài sản sở hữu trí tuệ.
 
-> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung thu vàng theo round-robin và một warehouse dùng chung chuyển vàng thành số dư. Mine shaft, elevator và warehouse được nâng cấp độc lập. Manager, boost, gift drop và bottom navigation được triển khai sau base-game milestone.
+> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chất hàng cho tới khi đầy hoặc hết tầng rồi quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Manager, boost, gift drop và bottom navigation được triển khai sau base-game milestone.
 
 ## 2. Trải nghiệm cốt lõi
 
@@ -153,6 +153,18 @@ MVP chỉ dùng tiền ảo nội bộ, không blockchain, NFT, quy đổi tiề
 - Elevator dùng chung bắt đầu với sức chứa `50` và chu kỳ `1,5s`; warehouse dùng chung có sức chứa `60` và chu kỳ `1,2s`.
 - Chi phí nâng cấp tăng theo hệ số `1,15`; sản lượng tầng tăng `1,10`; sức chứa elevator/warehouse tăng `1,12`.
 - Mọi hạng mục nâng cấp dùng mốc cấp `10/25/50/100` với multiplier `x2/x2/x3/x4`.
+- Trong Step 32A, warehouse được thể hiện bằng depot mở và một mèo giám sát
+  cầm clipboard có idle loop. Nhân vật này chỉ là presentation, không thay đổi
+  quyết định base game tự động chạy không cần gameplay Manager.
+- Luồng bề mặt Step 32A thể hiện vật liệu từ tháp sang warehouse bằng xe đẩy:
+  xe rỗng dừng dưới máng, vàng chỉ đổ khi elevator/warehouse đang giữ vật liệu,
+  mèo công nhân đẩy xe đầy sang kho rồi đưa xe rỗng quay lại. Đây là animation
+  presentation-only; simulation vẫn chuyển vật liệu trực tiếp theo core.
+- Đội vận chuyển phản ánh level warehouse mà không đổi throughput: luôn có một
+  mèo cơ bản, sau đó mỗi 10 level warehouse thêm một mèo hỗ trợ. Vì vậy level
+  10/20/.../100 hiển thị tổng cộng 2/3/.../11 mèo; level trên 100 vẫn giữ đội
+  tối đa 11 mèo. Mỗi mèo có pha di chuyển riêng trên tuyến surface và lệch làn
+  nhẹ, thay vì sao chép vị trí mèo chính, để đội hình ít che nhau.
 
 Các giá trị này đã đạt mục tiêu mô phỏng tự động ở Step 19: mở cả bốn tầng (tầng 4 ở giây 317), chạm multiplier nhưng không tăng mất kiểm soát tới cấp 100 trong mười phút, và không kẹt tiến trình. Chúng vẫn là cân bằng tạm thời cho tới khi được kiểm chứng bằng playtest thực tế.
 
@@ -197,8 +209,31 @@ Các giá trị này đã đạt mục tiêu mô phỏng tự động ở Step 1
 ## 8. Phong cách hình ảnh và âm thanh
 
 - 2D cartoon, màu sáng, hình khối tròn và dễ đọc trên màn hình nhỏ.
+- Typography dùng Fredoka SemiBold/Bold tự host; HUD tài nguyên dùng icon + số,
+  không lặp lại caption `Gold` hoặc `Income /s`.
 - Nhân vật mèo đầu lớn, chuyển động ngắn và lặp mượt.
-- Mỗi tầng gồm nền đất cắt lớp, đường hầm tối, đống vàng và xe goòng.
+- Mỗi tầng gồm nền đất cắt lớp liền mạch với tầng kế tiếp, đường hầm tối,
+  đống vàng trang trí luôn hiển thị cố định ở mọi tầng đã mở, và xe goòng có
+  trạng thái rỗng/đầy theo hàng chờ thực tế.
+- Xe goòng nhận hàng có trạng thái rỗng/đầy; cabin elevator giảm tốc trực quan
+  khi vào mỗi điểm dừng và mèo cargo đọc rõ ở cùng thang nhân vật với mèo tầng.
+- Cabin đi xuyên qua ranh giới mỏ để dừng trong tháp mặt đất; đầu tháp có bồn
+  chứa vàng và một máng xả vàng nhô sang phải. Cabin giữ nguyên trục X của shaft
+  trên toàn đường đi; asset tháp được căn theo cửa bay để cabin đi thẳng đứng.
+  Tháp thay cho card elevator cũ.
+- Khu surface dùng nền cảnh quan bầu trời xanh, mây tròn, núi/cây xa và đồng cỏ
+  ít tương phản để đọc rõ tháp, xe, mèo và warehouse ở tiền cảnh.
+- Xe vận chuyển surface giữ nguyên một footprint 46×46 ở cả trạng thái rỗng và
+  đầy; đổi trạng thái vật liệu không được phóng to hoặc thu nhỏ xe.
+- Warehouse mặt đất nhỏ gọn, sát mép phải; mèo giám sát đứng trước kho và nhìn
+  sang trái về phía luồng hàng từ elevator.
+- Nút `Level` kiêm nâng cấp của warehouse nằm trên mái. Nút tương ứng của tháp
+  elevator nằm ngay bên phải máng xả, ngang hoặc cao hơn máng và không nằm dưới
+  máng; cả hai giữ chrome nhỏ nhưng vùng chạm tối thiểu 44×50 px.
+- Mọi suffix số trong game viết thường. Chuỗi tier là `k`, `m`, `b`, `t`,
+  `qa`, `qi`, `sx`, `sp`, `oc`, `no`, `dc` cho `10³` đến `10³³`, sau đó
+  `aa` tại `10³⁶`, `ab` tại `10³⁹`, ... `az` tại `10¹¹¹`. Số viết tắt chính
+  giữ một chữ số thập phân, ví dụ `2.0m`; offline reward giữ tối đa hai chữ số.
 - Animation tối thiểu: đào, chạy/mang hàng, xe chạy, vàng rơi, tăng cấp và mở quà.
 - Nhạc nền vui nhẹ; SFX riêng cho cuốc, xe goòng, đồng xu, nâng cấp và quà.
 

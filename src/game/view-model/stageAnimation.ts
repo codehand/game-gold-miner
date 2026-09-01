@@ -15,10 +15,227 @@ export const DEFAULT_ANIMATION_SPEED_MULTIPLIER = 1;
 export const GENERATED_ASSET_FRAME_COUNT = 4;
 export const GENERATED_ASSET_FRAME_DURATION_MS = 160;
 export const MINER_PATROL_PERIOD_MS = 3_200;
+/** One load, delivery, unload, and return lap across the surface. */
+export const SURFACE_HAULER_PERIOD_MS = 5_200;
+/** One base worker, plus one visible assistant per ten warehouse levels. */
+export const SURFACE_HAULER_LEVEL_INTERVAL = 10;
+export const SURFACE_HAULER_MAX_WAREHOUSE_LEVEL = 100;
+export const SURFACE_HAULER_MAX_COUNT = 11;
+export const SURFACE_HAULER_ASSISTANT_COUNT = SURFACE_HAULER_MAX_COUNT - 1;
+
+export interface SurfaceHaulerAssistantOffset {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface SurfaceHaulerAssistantPose extends SurfaceHaulerPose {
+  readonly animationTimeOffsetMs: number;
+}
+
+export type SurfaceHaulerPhase =
+  | 'idle'
+  | 'loading'
+  | 'delivering'
+  | 'unloading'
+  | 'returning';
+
+export interface SurfaceHaulerPose {
+  readonly phase: SurfaceHaulerPhase;
+  /** Normalized left-to-right position between chute and warehouse. */
+  readonly routeProgress: number;
+  readonly facesLeft: boolean;
+  readonly cartIsFilled: boolean;
+  readonly goldPourVisible: boolean;
+  readonly frame: number;
+}
 
 export interface MinerPatrolPose {
   readonly x: number;
   readonly facesLeft: boolean;
+}
+
+/**
+ * Presentation-only worker count derived from warehouse progression.
+ *
+ * Level 1 starts with one worker. Levels 10, 20, ... 100 reveal one more
+ * assistant each, and levels beyond the current cap keep the level-100 crew.
+ */
+export function calculateSurfaceHaulerCount(warehouseLevel: number): number {
+  if (!Number.isSafeInteger(warehouseLevel) || warehouseLevel < 1) {
+    throw new Error('Warehouse level must be a positive safe integer.');
+  }
+
+  const cappedLevel = Math.min(
+    warehouseLevel,
+    SURFACE_HAULER_MAX_WAREHOUSE_LEVEL,
+  );
+
+  return 1 + Math.floor(cappedLevel / SURFACE_HAULER_LEVEL_INTERVAL);
+}
+
+/**
+ * Stagger assistants behind the lead worker in two shallow rows.
+ * The formation mirrors when the crew returns so helpers never stack exactly.
+ */
+export function calculateSurfaceHaulerAssistantOffset(
+  assistantIndex: number,
+  facesLeft: boolean,
+): SurfaceHaulerAssistantOffset {
+  if (
+    !Number.isSafeInteger(assistantIndex) ||
+    assistantIndex < 0 ||
+    assistantIndex >= SURFACE_HAULER_ASSISTANT_COUNT
+  ) {
+    throw new Error('Surface hauler assistant index is outside the crew.');
+  }
+
+  const column = assistantIndex % 3 + 1;
+  const row = assistantIndex % 2 + 1;
+  const direction = facesLeft ? 1 : -1;
+
+  return {
+    x: direction * column * 8,
+    y: -row * 10,
+  };
+}
+
+/**
+ * Gives each assistant its own point in the delivery loop.
+ *
+ * Active workers are evenly phase-shifted around the route instead of copying
+ * the lead cat's transform. When no cargo exists, assistants wait at evenly
+ * spaced route positions and retain independently offset cosmetic frames.
+ */
+export function calculateSurfaceHaulerAssistantPose(
+  animationTimeMs: number,
+  hasCargo: boolean,
+  assistantIndex: number,
+  activeHaulerCount: number,
+): SurfaceHaulerAssistantPose {
+  assertAnimationTime(animationTimeMs);
+
+  if (
+    !Number.isSafeInteger(activeHaulerCount) ||
+    activeHaulerCount < 2 ||
+    activeHaulerCount > SURFACE_HAULER_MAX_COUNT
+  ) {
+    throw new Error('Active surface hauler count is outside the crew.');
+  }
+
+  if (
+    !Number.isSafeInteger(assistantIndex) ||
+    assistantIndex < 0 ||
+    assistantIndex >= activeHaulerCount - 1
+  ) {
+    throw new Error('Active surface hauler assistant index is outside the crew.');
+  }
+
+  const animationTimeOffsetMs = SURFACE_HAULER_PERIOD_MS *
+    (assistantIndex + 1) / activeHaulerCount;
+  const offsetTimeMs = animationTimeMs + animationTimeOffsetMs;
+
+  if (!hasCargo) {
+    return {
+      phase: 'idle',
+      routeProgress: (assistantIndex + 1) / activeHaulerCount,
+      facesLeft: false,
+      cartIsFilled: false,
+      goldPourVisible: false,
+      frame: calculateGeneratedAssetFrame(offsetTimeMs, 4, 180),
+      animationTimeOffsetMs,
+    };
+  }
+
+  return {
+    ...calculateSurfaceHaulerPose(offsetTimeMs, true),
+    animationTimeOffsetMs,
+  };
+}
+
+/**
+ * Smooth start and arrival for one authoritative elevator leg.
+ *
+ * The endpoints and total leg duration still come from the core. This only
+ * remaps the rendered position with zero visual velocity at both stops, so the
+ * cabin settles instead of snapping through floors and tiring the eye.
+ */
+export function easeElevatorTravelProgress(progress: number): number {
+  if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
+    throw new Error('Elevator travel progress must be in [0, 1].');
+  }
+
+  return progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+}
+
+/**
+ * Cosmetic surface-delivery loop driven by whether a shared stage holds gold.
+ *
+ * The cart waits empty when the simulation has no material. With material it
+ * fills under the chute, eases to the warehouse, unloads, and returns empty.
+ * No value from this pose is fed back into production or persistence.
+ */
+export function calculateSurfaceHaulerPose(
+  animationTimeMs: number,
+  hasCargo: boolean,
+): SurfaceHaulerPose {
+  assertAnimationTime(animationTimeMs);
+
+  if (!hasCargo) {
+    return {
+      phase: 'idle',
+      routeProgress: 0,
+      facesLeft: false,
+      cartIsFilled: false,
+      goldPourVisible: false,
+      frame: 0,
+    };
+  }
+
+  const phase = (animationTimeMs % SURFACE_HAULER_PERIOD_MS) /
+    SURFACE_HAULER_PERIOD_MS;
+  const frame = calculateGeneratedAssetFrame(animationTimeMs, 4, 180);
+
+  if (phase < 0.2) {
+    return {
+      phase: 'loading',
+      routeProgress: 0,
+      facesLeft: false,
+      cartIsFilled: phase >= 0.12,
+      goldPourVisible: true,
+      frame,
+    };
+  }
+
+  if (phase < 0.62) {
+    return {
+      phase: 'delivering',
+      routeProgress: easeElevatorTravelProgress((phase - 0.2) / 0.42),
+      facesLeft: false,
+      cartIsFilled: true,
+      goldPourVisible: false,
+      frame,
+    };
+  }
+
+  if (phase < 0.74) {
+    return {
+      phase: 'unloading',
+      routeProgress: 1,
+      facesLeft: true,
+      cartIsFilled: phase < 0.68,
+      goldPourVisible: false,
+      frame,
+    };
+  }
+
+  return {
+    phase: 'returning',
+    routeProgress: 1 - easeElevatorTravelProgress((phase - 0.74) / 0.26),
+    facesLeft: true,
+    cartIsFilled: false,
+    goldPourVisible: false,
+    frame,
+  };
 }
 
 /** Ping-pong walk along one floor, with a direction flip at each end. */
@@ -75,9 +292,9 @@ export const CONVEYOR_CYCLE_MS = 900;
 
 /**
  * Cosmetic time wraps here to stay in comfortable floating-point range. The
- * value is a whole multiple of both cycle lengths, so the wrap is seamless.
+ * value is a whole multiple of every cosmetic loop, so the wrap is seamless.
  */
-export const ANIMATION_TIME_WRAP_MS = 7_200_000;
+export const ANIMATION_TIME_WRAP_MS = 7_488_000;
 
 const TAU = Math.PI * 2;
 

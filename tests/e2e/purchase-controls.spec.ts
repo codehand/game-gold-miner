@@ -12,6 +12,11 @@ import {
 // The scene's own diagnostic type, imported rather than restated, so a renamed
 // field fails type-check instead of silently reading `undefined`.
 import type { PublishedPurchaseControl } from '../../src/game/scenes/BootScene';
+import {
+  calculateMineLayout,
+  SURFACE_ELEVATOR_LEVEL_CONTROL,
+  SURFACE_WAREHOUSE_LEVEL_CONTROL,
+} from '../../src/game/layout';
 import { createSaveDocument } from '../../src/persistence';
 
 const CANVAS_SELECTOR = '#game-viewport canvas';
@@ -183,6 +188,34 @@ test('buys the shared elevator and warehouse from their own controls', async ({
   const costs = nextCosts(fixture);
 
   const before = await bootDriverFixture(page, fixture);
+  const elevatorControl = await readPurchaseControl(page, ELEVATOR_KEY);
+  const warehouseControl = await readPurchaseControl(page, WAREHOUSE_KEY);
+  const surfaceY = calculateMineLayout().surface.y;
+
+  expect(elevatorControl).toMatchObject({
+    actionLabel: 'Level',
+    costLabel: String(before.elevatorLevel),
+    isPressable: true,
+    screenBounds: {
+      x: SURFACE_ELEVATOR_LEVEL_CONTROL.x,
+      y: surfaceY + SURFACE_ELEVATOR_LEVEL_CONTROL.y,
+      width: SURFACE_ELEVATOR_LEVEL_CONTROL.width,
+      height: SURFACE_ELEVATOR_LEVEL_CONTROL.height,
+    },
+  });
+  expect(warehouseControl).toMatchObject({
+    actionLabel: 'Level',
+    costLabel: String(before.warehouseLevel),
+    isPressable: true,
+    screenBounds: {
+      x: SURFACE_WAREHOUSE_LEVEL_CONTROL.x,
+      y: surfaceY + SURFACE_WAREHOUSE_LEVEL_CONTROL.y,
+      width: SURFACE_WAREHOUSE_LEVEL_CONTROL.width,
+      height: SURFACE_WAREHOUSE_LEVEL_CONTROL.height,
+    },
+  });
+  expect(elevatorControl.visualWorldBounds).toMatchObject({ width: 30, height: 34 });
+  expect(warehouseControl.visualWorldBounds).toMatchObject({ width: 30, height: 34 });
 
   await pressPurchaseControl(page, ELEVATOR_KEY);
   await expect
@@ -344,7 +377,7 @@ async function bootDriverFixture(
   );
   await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute(
     'data-purchase-controls',
-    /Upgrade/,
+    /"key":"elevator"/,
   );
 
   return readCoreState(page);

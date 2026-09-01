@@ -248,8 +248,8 @@ describe('stage upgrades', () => {
       throw new Error('Expected elevator purchase to succeed.');
     }
 
-    const baseTransit = advanceSimulation(stockedFloorState, 100);
-    const upgradedTransit = advanceSimulation(elevatorResult.state, 100);
+    const baseTransit = advanceFor(stockedFloorState, 800);
+    const upgradedTransit = advanceFor(elevatorResult.state, 800);
 
     expect(baseTransit.elevator.carriedMaterial.equals(50)).toBe(true);
     expect(Number(upgradedTransit.elevator.carriedMaterial.toJSON())).toBeCloseTo(

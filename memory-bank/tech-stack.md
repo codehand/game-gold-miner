@@ -18,6 +18,7 @@ Stack phù hợp nhất cho game này là **TypeScript + Phaser 4 + Vite**, xây
 | Unit test | **Vitest** |
 | E2E test | **Playwright** |
 | Asset | Sprite atlas WebP/PNG + JSON |
+| Typography | Self-hosted Fredoka 600/700 via `@fontsource/fredoka` |
 | Deployment MVP | Cloudflare Pages hoặc Vercel |
 | Backend production | Node.js + Fastify + PostgreSQL |
 | Leaderboard/cache | Redis, chỉ bổ sung khi thật sự cần |

@@ -2,9 +2,8 @@
  * Pure HUD snapshot.
  *
  * The fixed top HUD carries the two numbers the whole screen is about: what
- * the player can spend, and how fast the mine is actually earning. Both labels
- * and both values are derived here, so they are unit-testable in Node and the
- * scene only paints strings it is handed.
+ * the player can spend, and how fast the mine is actually earning. The icon
+ * supplies each number's meaning, so the review-approved HUD omits captions.
  */
 
 import type { BaseGameBalanceConfig } from '../../config';
@@ -12,10 +11,10 @@ import { calculateMineProductionRates, type GameState } from '../../core';
 import { formatAmount } from './formatAmount';
 
 export interface HudViewModel {
-  /** English caption above the spendable balance. */
+  /** Empty after the icon-only Step 32A HUD review. */
   readonly goldLabel: string;
   readonly goldValueLabel: string;
-  /** English caption above the mine's estimated earnings per second. */
+  /** Empty after the icon-only Step 32A HUD review. */
   readonly incomeLabel: string;
   readonly incomeValueLabel: string;
 }
@@ -27,9 +26,9 @@ export function createHudViewModel(
   const rates = calculateMineProductionRates(state, balance);
 
   return {
-    goldLabel: 'Gold',
+    goldLabel: '',
     goldValueLabel: formatAmount(state.gold),
-    incomeLabel: 'Income /s',
+    incomeLabel: '',
     // The effective rate, already capped at the chain's slowest stage, so the
     // HUD estimates what the mine can deliver rather than what the shafts
     // could extract if transport and conversion were free.

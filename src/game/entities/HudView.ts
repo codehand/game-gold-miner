@@ -5,6 +5,8 @@ import {
   toFillColor,
   DIVIDER,
   FONT_FAMILY,
+  FONT_STYLE_BOLD,
+  FONT_STYLE_SEMIBOLD,
   HUD_BACKGROUND,
   TEXT_ACCENT,
   TEXT_MUTED,
@@ -33,7 +35,7 @@ const HUD_INSET_X = 16;
 const HUD_TEXT_INSET_X = 42;
 const HUD_ICON_Y = 38;
 const LABEL_Y = 16;
-const VALUE_Y = 32;
+const VALUE_Y = 26;
 const DIVIDER_HEIGHT = 2;
 
 /**
@@ -132,6 +134,7 @@ export class HudView {
         color: TEXT_MUTED,
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
+        fontStyle: FONT_STYLE_SEMIBOLD,
       })
       .setOrigin(originX, 0);
   }
@@ -146,7 +149,7 @@ export class HudView {
         color: TEXT_ACCENT,
         fontFamily: FONT_FAMILY,
         fontSize: '20px',
-        fontStyle: 'bold',
+        fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(originX, 0);
   }

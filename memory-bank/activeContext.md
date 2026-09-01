@@ -99,7 +99,7 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Added reusable `MineFloorView` and `SharedStageView` entities in `src/game/entities/`. Each owns its game objects, changes only through `applySnapshot`, and reports what it actually shows through `describeRenderedState`.
 - `BootScene` now takes the loaded snapshot at construction, builds four floor views into the scrollable mine slots and two stage views into the surface strip, and exposes `applySnapshot` for the live snapshots Step 27 will push.
 - Locked floors are drawn in their own `#1a2333` panel colour with a `Locked` badge, muted text, no placeholder miner, and no upgrade control; unlocked floors keep the `#27364b` panel.
-- The material pile is a discrete four-step stack measured against one elevator trip, so a full pile is the visible signal that the shared elevator has become the bottleneck.
+- The material queue is derived as a discrete four-step diagnostic measured against one elevator trip; the fixed far-right mound is environmental art and does not encode this value.
 - Amount display is deliberately provisional (`formatAmount` rounds to one decimal and leaves very large values serialized); Step 28 replaces it with the shared abbreviated K/M/B/T formatter.
 - The browser test seeds a known version-1 save whose four floors differ in lock state, level, progress, and queued material, then compares the rendered values read back from the view objects against that snapshot, backed by eight pixel probes.
 - Six deliberate mutations were confirmed to fail with named assertions, including one where the views hold correct values but never reach the framebuffer — which only the pixel probes catch.
@@ -118,7 +118,7 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Reversed the direction of the render loop from Step 26's push to a pull. `BootScene.update` asks the source for the newest snapshot every frame; the public `applySnapshot` is gone, because a pushed snapshot would be overwritten by the next frame anyway.
 - Added `src/game/view-model/stageAnimation.ts`, the cosmetic clock: frame accumulation capped at 250 ms and scaled by a validated `animationSpeedMultiplier`, wrapping at a whole multiple of both the 800 ms miner swing and the 900 ms conveyor cycle, plus the progress-driven cycle-marker offset.
 - Gave each production stage its own indicator and its own queued material. Floors gained a swinging pick and a `Backed up` label; both shared stages gained discrete queue blocks, an `Idle` / `In transit` / `Converting` / `Backed up` status, a marker travelling the cycle track, and conveyor dashes that run only while the stage holds material.
-- A full pile switches to `MATERIAL_BACKLOG_FILL`, so where the chain is waiting is readable without reading a number. The elevator deliberately never reports a backlog: a full car is one full trip, and transport pressure belongs on the floor piles.
+- A full queue still derives `isMaterialBackedUp` for stage diagnostics. The elevator deliberately never reports a backlog: a full car is one full trip, and transport pressure belongs to the floor queue/cart state rather than the fixed mound.
 - Each pile measures against the capacity of whichever stage removes it — floor piles against the elevator, the warehouse queue against the warehouse — so the same amount reads differently in the two places, correctly.
 - Reworked the offline-claim retry. It used to cache a post-claim state candidate; with the mine now producing while the modal is open, that candidate would discard whatever was mined between a failed write and the retry. A consumed-once flag replaces it, so the retry saves current state and still adds the reward exactly once.
 - Browser diagnostics are now published on a 100 ms cadence rather than on every rebind, because displayed progress changes every frame and an unthrottled read-back would serialize the whole screen 60 times a second purely for tests.
@@ -164,9 +164,11 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Keep MVP client-only and exclude monetization, blockchain, and social systems.
 - Treat balance values in the GDD as starting hypotheses requiring playtests.
 - Use English UI at a 360×640 logical resolution with no deferred bottom navigation.
-- Run production automatically through four mine shafts, one shared round-robin elevator, and one shared warehouse.
+- Run production automatically through four mine shafts, one shared sequential-stop elevator, and one shared warehouse.
 - Upgrade mine shafts, elevator, and warehouse independently while preserving progress percentage.
-- Use saved-rate offline rewards, K/M/B/T number formatting, Phaser 4.2.1, and a mid-range Android Chrome performance baseline.
+- Use saved-rate offline rewards, lowercase `k/m/b/t/qa/qi/sx/sp/oc/no/dc`
+  tiers followed by `aa` from `10^36`, Phaser 4.2.1, and a mid-range Android
+  Chrome performance baseline.
 - Start with 100 gold; provisional floor unlock costs are 250, 1,500, and 7,500, gated by prior-floor levels 5, 5, and 7.
 - Use a 1.15 upgrade-cost growth rate, 1.10 mine-yield growth, and 1.12 shared-stage capacity growth until the Step 19 economy simulation and playtesting refine them.
 - Represent runtime gold, material quantities, yields, and costs through `GameNumber`; keep abbreviated display formatting outside the arithmetic abstraction.
@@ -174,8 +176,8 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Advance foreground simulation in deterministic 100 ms ticks, carry sub-tick remainder in authoritative state, and credit at most 1,000 ms of simulation per update while consuming the full wall-clock delta.
 - Calculate mine-shaft yield as base yield multiplied by the configured output-growth rate for each level above one and every cumulative milestone multiplier reached at the current level.
 - Deposit completed extraction only into the producing floor's material queue and total-extracted counter; spendable gold changes only after later transport and warehouse stages.
-- Treat `roundRobinCursor` as the next floor index to scan; wrap top-to-bottom, advance it after a successful pickup, and leave it unchanged while idle.
-- Remove material from a floor and increment its transported total at elevator pickup; deliver carried material only when transit completes, adding it to `warehouse.inputQueue` without changing gold.
+- Treat non-negative `roundRobinCursor` as the downward target floor and negative `-(index + 1)` as the upward origin floor; zero with no waiting/carried material is surface idle.
+- Remove material from a floor and increment its transported total only when the cabin arrives; visit each unlocked floor while capacity remains, slow travel as load rises, and deliver carried material only at the surface without changing gold directly.
 - During every fixed tick, advance every unlocked floor's extraction first, then the shared elevator, then the shared warehouse; newly produced and delivered material is eligible for the next stage in that same tick.
 - Convert warehouse material to gold at a 1:1 ratio only on a completed configured cycle; leave excess input queued for later cycles and reset progress when no input remains.
 - Keep locked floors fully inert while all unlocked production stages run automatically without managers or player taps.
@@ -223,7 +225,7 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Treat a frozen host clock as a paused mine that still renders, and a backwards clock as crediting nothing until real time catches up.
 - Treat a gap in the render loop as elapsed time to be simulated, never as one oversized frame: walk it in credited-size slices, bound the walk so resuming cannot freeze the tab, and consume the timestamp in full whether or not the time was credited.
 - Drive every stage indicator from authoritative progress and every decoration from a separate validated cosmetic clock, gated on whether the stage holds material.
-- Render queued material wherever it can accumulate, measured against the capacity of the stage that removes it, and colour a full pile as a backlog.
+- Render queue state wherever material accumulates, measured against the capacity of the stage that removes it, without hiding or rescaling fixed environmental decoration.
 - Never report a bottleneck a stage cannot observe from its own state.
 - Guard a one-time claim with a consumed-once flag rather than a cached state candidate once the world keeps changing behind the modal.
 - Publish read-back diagnostics on a 100 ms cadence rather than every frame, and keep the forced publish at boot and on external binds.
@@ -261,7 +263,7 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 
 - Implemented the approved `art-source/spritecook-review/layout-proposal/layout1.png`
   composition inside Step 32. The shaft is 48 px wide, each floor is 288×132,
-  mine content is 572 px tall, and maximum scroll is 168 px; HUD, surface, and
+  mine content was initially 572 px tall with 168 px maximum scroll; HUD, surface, and
   mine viewport geometry remain unchanged.
 - Added pure `mineFloorPanel.ts` geometry for the timer/title area, receiving
   container, unloading cat, miner patrol corridor, gold pile, far-right level
@@ -278,9 +280,8 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Strict QC reports zero empty frames, output-edge contacts, and paste clamps.
   The first miner/unloader sheets failed the feet-anchor gate and were regenerated;
   accepted anchor-Y standard deviations are 0.0449, 0.0424, and 0.0299.
-- All gameplay state, production timing, text, progress, controls, and purchase
-  behavior remain code-native and unchanged. The pack is awaiting user visual
-  validation and is not yet marked final production art.
+- Gameplay state, text, controls, and purchase behavior remain code-native. The
+  pack is awaiting user visual validation and is not yet marked final production art.
 - Applied the six Step 32A annotation fixes on 2026-08-31: floor extraction bars
   and duplicate `Floor N` headings are hidden; miner travel now follows
   authoritative extraction progress while walk frames stay cosmetic; queued
@@ -292,17 +293,148 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Follow-up annotations further reduced the level control to its minimum
   thumb-safe footprint, raised the gold pile clear of the floor seam, and
   extended miner travel from the unloading cat to the pile before turning.
-- A second annotation pass uses the shared abbreviated amount formatter in the
-  offline-reward modal, restores a number-only floor badge without restoring
+- A second annotation pass gives the offline-reward modal a two-decimal,
+  stable-`k` formatter (`1213.12k`), restores a number-only floor badge without restoring
   `Floor N`, aligns the queue coin and amount on one baseline, and replaces the
   coarse pile with a new layout1-referenced 128×128 RGBA sprite. The visible
   level badge is now 30×34 with resolution-2 text inside an unchanged 44×50
   hit target. The revised pile passed strict sprite QC and native-scale browser
-  inspection. Step 33 remains blocked pending user validation.
+  inspection. All 290 unit and 27 Chromium E2E tests pass; Step 33 remains
+  blocked pending user validation.
+- The latest elevator annotations remove duplicate floor-number plaques from
+  the shaft and replace instant round-robin pickup with a physical route. The
+  cabin starts at the surface, stops at each unlocked floor in order, loads its
+  remaining capacity on arrival, continues downward while room remains, then
+  returns when full or after the deepest floor. Load increases leg duration up
+  to 75% at full capacity; the cabin and cargo cat follow the same authoritative
+  direction, floor, and progress. Save format version 1 is retained by encoding
+  descent with non-negative legacy `roundRobinCursor` values and ascent with
+  negative values. All 292 unit tests, 27 Chromium E2E tests, lint, and the
+  production build pass. Step 33 remains blocked pending user validation.
+- The latest visual alignment pass moves every cabin stop from the generic
+  floor-slot centre to the semantic centre of that floor's gold container. The
+  shaft remains 48 px wide while the cabin grows from 36 to 46 px and its cargo
+  cat from 25 to 32 px, using the existing 128 px sources at a sharper readable
+  scale. The number-only floor badge grows about 30%, from 26×26 with 16 px text
+  to 34×34 with 21 px text, while its centre remains fixed and the separate
+  `Level N` control remains unchanged. Unit geometry pins these values and
+  direct browser inspection confirms the cabin/cart alignment without overlap.
+  All 292 unit tests and 28 Chromium E2E tests pass with lint and production
+  build. Step 33 remains blocked pending user validation.
+- The latest annotation follow-up scales the number-only floor badge to exactly
+  60% of its prior reviewed size: 20.4×20.4 with 12.6 px text, centred on the
+  same anchor. The 30×34 visible `Level N` chrome moves 5 px right inside its
+  unchanged 44×50 hit target, preserving touch safety. The browser view, all
+  292 unit tests, all 28 Chromium E2E tests, lint, and the production build
+  pass. Step 33 remains blocked pending user validation.
+- The newest elevator/cart review adds three generated runtime assets: a
+  256×256 cabin v2 with a wider interior, a larger four-frame cargo-cat v2,
+  and a 256×256 gold-filled cart state. The shaft grows to 64 px, the cabin to
+  62 px, and the cargo cat to 50 px while the approved floor stays 288×132.
+  A pure smootherstep mapping eases the cabin into and out of every stop without
+  changing authoritative route timing or production. Any positive floor queue
+  switches its receiving cart from empty to filled. The number-only floor badge
+  is now half of the annotated 34 px size (17×17 with 10.5 px text). Strict
+  asset QC, direct browser inspection, 294 unit tests, 28 Chromium E2E tests,
+  lint, and the production build pass. Step 33 remains blocked.
+- The newest typography/character-scale review self-hosts Fredoka 600 and 700,
+  waits for both weights before constructing the Phaser canvas, and uses only
+  SemiBold/Bold game text. The redundant `Gold` and `Income /s` captions are
+  empty while their icons and live values remain. Both floor-character sprite
+  frames now draw at 75 px; their roughly 59% occupied frame height matches the
+  50 px elevator cat's roughly 88% occupied height. Direct review at 434×934,
+  296 unit tests, 28 Chromium E2E tests, lint, and build pass. Step 33 remains
+  blocked.
+- The surface-elevator review adds a generated 512×512 transparent headhouse
+  with a visible gold hopper and a segmented right-side discharge chute. The
+  cabin route now continues above the mine boundary to a fixed stop at
+  `(55, 118)` inside the tower bay. A presentation-only fixed-layer twin fades
+  across the camera seam; authoritative timing, load behavior, and save schema
+  remain unchanged. The legacy elevator card and `Surface operations` caption
+  are no longer drawn over the tower; tapping the tower retains the elevator
+  upgrade action. Abbreviated whole tiers now keep one decimal (`2.0M`) across
+  HUD, floor, stage, and price labels. All 296 unit tests and 29 Chromium E2E
+  tests pass with lint and build. Step 33 remains blocked.
+- The latest floor-continuity review decouples the far-right gold mound from
+  queue fullness: every unlocked floor always draws the approved mound at a
+  fixed 52×52 display size, while only the left receiving cart swaps between
+  empty and filled states. `materialPileSteps` remains an authoritative
+  diagnostic and no longer scales or hides the environmental art. Floor-slot
+  gap is now zero, so four 288×132 slots plus 10 px top/bottom padding produce
+  548 px of mine content and 144 px maximum scroll. Direct canvas inspection,
+  296 unit tests, 29 Chromium E2E tests, lint, and build pass. Step 33 remains
+  blocked.
+- The latest surface-warehouse review replaces the remaining warehouse card
+  with an original 512×512 open loading depot and a strict four-frame warehouse
+  supervisor idle sheet. The building is the warehouse upgrade target; its
+  hidden `SharedStageView` remains the authoritative read-back/purchase model.
+  The supervisor is presentation-only and does not introduce the deferred
+  gameplay Manager system. Because the elevator tower includes a right-side
+  chute, its semantic cabin bay is left of the texture's full-image centre; the
+  surface stop moves from `(55, 118)` to `(48, 118)` to align with that bay.
+  Direct canvas inspection, 298 unit tests, all 29 Chromium E2E tests, lint,
+  build, and diff checks pass.
+- The newest alignment review removes the final diagonal surface movement.
+  Cabin X is now the shared shaft axis `36` for every underground and surface
+  pose; the tower moves 12 px left so its bay, rather than its asymmetric
+  texture centre, sits on that same axis. The warehouse display shrinks from
+  164×158 to 140×140, is flush with the right edge at x=360, and its 56 px
+  supervisor is mirrored to look left toward the production flow. Direct
+  browser review, 298 unit tests, all 29 Chromium E2E tests, lint, and build
+  pass. Save/database schema version 1 is unchanged.
+- The shared-stage upgrade affordance review adds explicit compact `Level N`
+  badges to both surface assets. Warehouse chrome is centred above the roof;
+  elevator chrome sits immediately right of the discharge tray, level with or
+  slightly above it. Each keeps 30×34 visible chrome inside a 44×50 touch
+  region and routes through the existing elevator/warehouse purchase command.
+  Elevator tower v2 adds a steel-blue mounting bracket for that badge without
+  baking functional text into the raster. Direct mobile-browser review, strict
+  asset QC, 299 unit tests, all 29 Chromium E2E tests, lint, and build pass.
+  Save/database schema version 1 remains unchanged.
+- The surface-delivery annotation follow-up moves the elevator level hit region
+  from `(124,58,44,50)` to `(106,53,44,50)`, placing its 30×34 visible chrome
+  immediately beside the discharge outlet and slightly above the tray bottom.
+  Two new strict four-frame sheets add a right-facing worker cat and a vertical
+  gold-pour effect. A presentation-only 5.2-second loop parks an empty cart at
+  x=112 beneath the chute, shows the pour only while shared-stage material is
+  available, eases the filled cart toward the warehouse at x=220, unloads, and
+  returns empty with the cat mirrored. The loop reads snapshot state but never
+  writes production, gold, save data, or schema. Direct browser review, 304
+  unit tests, the targeted Chromium regression, lint, build, and diff checks
+  pass; all 30 Chromium E2E tests pass.
+- The latest surface polish locks both empty and filled delivery-cart textures
+  to the same 46×46 display box after every runtime texture swap, fixing the
+  128 px empty source and 256 px filled source from visibly changing scale.
+  The elevator badge moves another 5 px up to `(106,48,44,50)`. A new original
+  720×328 blue-sky landscape plate renders at 360×164 behind the tower,
+  delivery route, and warehouse while the existing ground strip stays in
+  front. Native browser review confirms the empty/filled cart size, sky
+  composition, and raised badge. The landscape passes exact-size raster QA;
+  304 unit tests, all 30 Chromium E2E tests, lint, build, and diff checks pass.
+  Save/database schema version 1 remains unchanged and Step 33 stays blocked.
+- The latest warehouse-hauler crew pass keeps one lead cat at every level and
+  reveals one pooled assistant at warehouse levels `10/20/.../100`, producing
+  2/3/.../11 visible cats. Ten assistants reuse the current strict hauler sheet,
+  vary their cosmetic frames, and follow the same cart in two shallow mirrored
+  rows so they do not stack exactly. Count and formation remain pure view-model
+  logic; throughput, economy, authoritative/save state, IndexedDB schema
+  version 1, and the Step 33 gate are unchanged. All 307 unit tests and 31
+  Chromium E2E tests pass.
+- The latest motion/notation pass replaces the assistant formation's copied
+  lead transform with evenly phase-shifted route poses. At Warehouse level 10,
+  live canvas diagnostics show the lead at x≈85 facing right while its assistant
+  is near x≈256 facing left, with separate frames and a 10 px lane offset. The
+  shared amount-tier resolver now uses lowercase `k/m/b/t/qa/qi/sx/sp/oc/no/dc`
+  and starts `aa` at `10^36`; the offline reward overlay shares the same tiers
+  while retaining its two-decimal precision. Economy, save schema version 1,
+  and Step 33 remain unchanged. All 309 unit tests and 31 Chromium E2E tests
+  pass.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 32A layout and first animation asset pack.
+1. Wait for the user to validate the Step 32A layout, surface elevator tower,
+   shared-stage level controls, generated warehouse/supervisor, and first
+   animation asset pack.
 2. Begin Step 33 only after explicit user authorization.
 4. Keep all later steps blocked behind their preceding validation gates.
 5. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
@@ -310,11 +442,11 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Confirmed as deliberate that a backgrounded tab is credited at full pipeline rate while a closed one is credited through the 50% offline efficiency, so the same two-hour absence is worth about twice as much with the tab left open. Documented the asymmetry on `MAX_CATCH_UP_MS` and pinned the ratio in `tests/unit/simulation-time.test.ts`, verified by mutation to fail if either side changes.
 - Extracted the `Text.setColor` repaint guard into a shared `setTextColor` helper and applied it to the mine-floor and shared-stage views, which were repainting fourteen captions per simulation tick to produce the colours already on screen.
 - Recorded the measured worst-case catch-up cost — 72,000 ticks in roughly 50 ms with four floors open on a development machine — on `MAX_CATCH_UP_MS`, so a future change to the cap can weigh the resume hitch it buys.
-- Observed but did not change: with all four floors open the real pipeline delivers about 90% of `calculateMineProductionRates().effectiveProductionPerSecond`, steady across 15-minute, 1-hour, and 2-hour windows, because round-robin pickup and per-cycle capacities quantize what the analytic rate assumes is continuous. The HUD income estimate and the saved offline rate snapshot both inherit that overstatement.
+- The analytic `calculateMineProductionRates` estimate remains route-agnostic. The live sequential elevator includes distance and weight, so deep-floor catch-up can fall below the saved offline-rate estimate; the simulation-time regression now checks broad safety bounds instead of the obsolete single-leg 2× ratio.
 
 ## Open Questions
 
 - Validation and refinement of the provisional balance curve through Step 19 and playtesting.
-- Whether `calculateMineProductionRates` should model the round-robin and per-cycle quantization that makes real four-floor throughput about 10% below its estimate, or whether the estimate stays an upper bound the HUD and the offline snapshot both accept.
+- Whether `calculateMineProductionRates` should model sequential route distance and load-sensitive leg timing, or whether the estimate stays a route-agnostic upper bound used by the HUD and offline snapshot.
 - Final art-production workflow and original visual identity.
 - Target Telegram launch requirements beyond the prototype.

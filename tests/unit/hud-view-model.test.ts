@@ -33,11 +33,11 @@ function expectedIncomeLabel(state: GameState): string {
 }
 
 describe('hud view model', () => {
-  it('labels the spendable balance and the income estimate in English', () => {
+  it('uses resource icons without duplicate HUD captions', () => {
     const hud = readHud(createFreshState());
 
-    expect(hud.goldLabel).toBe('Gold');
-    expect(hud.incomeLabel).toBe('Income /s');
+    expect(hud.goldLabel).toBe('');
+    expect(hud.incomeLabel).toBe('');
   });
 
   it('shows the authoritative gold balance', () => {
@@ -48,7 +48,10 @@ describe('hud view model', () => {
     );
     expect(
       readHud({ ...state, gold: GameNumber.from(4_212.7) }).goldValueLabel,
-    ).toBe('4.2K');
+    ).toBe('4.2k');
+    expect(
+      readHud({ ...state, gold: GameNumber.from(2_000_000) }).goldValueLabel,
+    ).toBe('2.0m');
   });
 
   it('abbreviates a balance far past the safe numeric range', () => {
@@ -56,7 +59,7 @@ describe('hud view model', () => {
 
     expect(
       readHud({ ...state, gold: GameNumber.from('1.46e16') }).goldValueLabel,
-    ).toBe('14.6aa');
+    ).toBe('14.6qa');
   });
 
   it('estimates income from the mine rate, not from the shafts alone', () => {

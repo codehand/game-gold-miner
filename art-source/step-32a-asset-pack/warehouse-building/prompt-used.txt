@@ -1,0 +1,20 @@
+Use case: stylized-concept
+Asset type: production 2D game prop for the surface warehouse in Cat Mine Idle
+Input images: existing small warehouse icon for blue-steel roof, timber frame,
+gold tray, and three-quarter readability; elevator tower for project-native
+rendering, materials, outline, lighting, and detail density
+Primary request: one large surface warehouse/depot for the right half of the
+360x640 portrait viewport, readable near 150x155 logical pixels
+Subject: compact near-square warehouse with broad blue-steel roof, chunky
+timber-and-steel supports, large open loading bay, visible gold crates inside,
+and a short gold output tray at the lower front-right. Leave room at the lower
+front-left for a separate manager-cat sprite.
+View: mostly frontal three-quarter view from slightly above.
+Art direction: original clean-HD cartoon mobile-game asset; rounded chunky
+silhouette, crisp dark navy outlines, two or three value bands, minimal texture
+noise, upper-left warm light, steel blue, timber, and warm gold accents.
+Technical output: one complete object on solid #FF00FF magenta; no character,
+text, labels, numbers, UI, progress bar, logo, scenery, duplicates, watermark,
+or cropped edges.
+
+Generated with the OpenAI built-in image generation tool on 2026-09-01.

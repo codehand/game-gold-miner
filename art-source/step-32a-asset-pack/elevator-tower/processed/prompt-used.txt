@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: production 2D game prop for the above-ground elevator headhouse in Cat Mine Idle
+Primary request: revise the elevator tower so its top contains a visible enclosed gold receiving bin/hopper, and its upper-right side has a short angular discharge chute ending in a downward-facing gold outlet, following the provided functional reference
+Input images: the previous tower draft supplies the blue-steel/timber style and tall open cabin bay; the user reference supplies the top storage chamber plus right-side discharge chute; elevator-cabin-v2.png supplies the exact cabin material/style
+Scene/backdrop: 100% solid flat #FF00FF magenta only, including the large open cabin doorway/interior void so it becomes transparent after chroma-key cleanup
+Subject: exactly one front-facing orthographic surface elevator tower. Keep a large unobstructed central open bay for the existing cabin to enter from below and stop inside. Above the bay, add a compact enclosed gold storage hopper/bin with a visible pile of gold. From the hopper's upper-right side, add one short segmented metal chute projecting right and bending downward to a gold discharge mouth. Keep two rails open through the bottom.
+Style: project-native clean HD 2D mobile game asset, crisp readable silhouette, smooth painted surfaces, controlled highlights, low texture noise, not pixel art
+Composition: one complete tall object centered slightly left to leave room for the right chute, full tower and chute visible, generous magenta padding, no ground plate or scenery
+Palette: navy and teal-blue steel, warm brown timber, restrained gold accents
+Constraints: hopper and chute readable at mobile scale; central doorway entirely magenta/empty; bottom open for the cabin; no cabin, cat, text, numbers, labels, UI, duplicate tower, border, watermark, or cropped edges
+
+Generated with the built-in image generation tool on 2026-08-31.

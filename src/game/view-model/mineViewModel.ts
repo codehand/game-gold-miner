@@ -19,6 +19,7 @@ import {
   calculateElevatorUpgradeCost,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,
+  describeElevatorRoute,
   describeFloorUnlock,
   type ElevatorState,
   type FloorUnlockAvailability,
@@ -59,10 +60,10 @@ export interface MineFloorViewModel {
   readonly extractionProgress: number;
   readonly extractionProgressLabel: string;
   readonly materialQueueLabel: string;
-  /** Pile height in `[0, MAX_MATERIAL_PILE_STEPS]`. */
+  /** Queue-fullness diagnostic in `[0, MAX_MATERIAL_PILE_STEPS]`. */
   readonly materialPileSteps: number;
   /**
-   * A full pile means at least one elevator trip of material is waiting, so
+   * A full queue means at least one elevator trip of material is waiting, so
    * this floor's output is held up by transport rather than by extraction.
    */
   readonly isMaterialBackedUp: boolean;
@@ -96,11 +97,13 @@ export interface SharedStageViewModel {
   readonly isRunning: boolean;
   /** True once a full cycle of input is waiting; the elevator never backs up. */
   readonly isBackedUp: boolean;
-  /** `Idle`, `In transit`, `Converting`, or `Backed up`. */
+  /** `Idle`, `Collecting`, `Returning`, `Converting`, or `Backed up`. */
   readonly statusLabel: string;
   /** Normalized transit or conversion progress in `[0, 1)`. */
   readonly progress: number;
   readonly progressLabel: string;
+  readonly elevatorDirection: 'idle' | 'descending' | 'ascending' | null;
+  readonly elevatorFloorIndex: number | null;
   /** A shared stage is always upgradeable, so this is never `null`. */
   readonly upgradeControl: PurchaseControlViewModel;
 }
@@ -135,6 +138,11 @@ export interface SharedStageViewModelInput<TStage> {
   readonly gold: GameNumber;
 }
 
+export interface ElevatorViewModelInput
+  extends SharedStageViewModelInput<ElevatorState> {
+  readonly floors: readonly MineFloorState[];
+}
+
 /**
  * Balance data is required because the HUD's income estimate is derived from
  * the same production rates the core calculates, never from observed frames,
@@ -158,6 +166,7 @@ export function createMineViewModel(
     }),
     elevator: createElevatorViewModel({
       stage: state.elevator,
+      floors: state.floors,
       config: balance.elevator,
       gold: state.gold,
     }),
@@ -220,15 +229,17 @@ export function createMineFloorViewModel({
 
 export function createElevatorViewModel({
   stage: elevator,
+  floors,
   config,
   gold,
-}: SharedStageViewModelInput<ElevatorState>): SharedStageViewModel {
+}: ElevatorViewModelInput): SharedStageViewModel {
   assertNormalizedProgress(elevator.transitProgress, 'elevator transit');
   assertDisplayableLevel(elevator.level, 'elevator');
 
   // A full car is a full trip, not a backlog: the elevator's own queue never
   // grows past one load. Transport pressure shows up as full floor piles.
-  const isRunning = elevator.carriedMaterial.greaterThan(0);
+  const route = describeElevatorRoute(elevator, floors);
+  const isRunning = route.direction !== 'idle';
 
   return {
     id: 'elevator',
@@ -243,9 +254,16 @@ export function createElevatorViewModel({
     ),
     isRunning,
     isBackedUp: false,
-    statusLabel: isRunning ? 'In transit' : 'Idle',
+    statusLabel:
+      route.direction === 'descending'
+        ? 'Collecting'
+        : route.direction === 'ascending'
+          ? 'Returning'
+          : 'Idle',
     progress: elevator.transitProgress,
     progressLabel: formatProgress(elevator.transitProgress),
+    elevatorDirection: route.direction,
+    elevatorFloorIndex: route.floorIndex,
     upgradeControl: createUpgradeControlViewModel(
       { type: 'elevator' },
       calculateElevatorUpgradeCost(elevator, config),
@@ -282,6 +300,8 @@ export function createWarehouseViewModel({
     statusLabel: describeWarehouseStatus(isRunning, isBackedUp),
     progress: warehouse.conversionProgress,
     progressLabel: formatProgress(warehouse.conversionProgress),
+    elevatorDirection: null,
+    elevatorFloorIndex: null,
     upgradeControl: createUpgradeControlViewModel(
       { type: 'warehouse' },
       calculateWarehouseUpgradeCost(warehouse, config),
@@ -291,11 +311,11 @@ export function createWarehouseViewModel({
 }
 
 /**
- * Discrete height of one waiting pile, measured against the capacity of the
- * stage that removes it in a single cycle. A full pile therefore means a whole
- * cycle of material is already waiting, which is the visible bottleneck signal:
- * floor piles measure against the shared elevator, and the warehouse input
- * queue measures against the warehouse.
+ * Discrete queue-fullness steps measured against the capacity of the stage
+ * that removes material in one cycle. A full value means a whole cycle is
+ * already waiting: floor queues measure against the shared elevator and the
+ * warehouse input queue measures against the warehouse. Views may expose this
+ * through cart/queue state without resizing fixed environmental decoration.
  */
 export function calculateMaterialPileSteps(
   materialQueue: GameNumber,

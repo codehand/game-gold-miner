@@ -135,7 +135,7 @@ describe('milestone multipliers', () => {
         carriedMaterial: GameNumber.from(0),
       },
     };
-    const pickedUp = advanceSimulation(pickupState, 100);
+    const pickedUp = advanceFor(pickupState, 800);
 
     expect(elevatorResult.state.elevator.level).toBe(10);
     expect(elevatorResult.state.elevator.transitProgress).toBe(0.4);

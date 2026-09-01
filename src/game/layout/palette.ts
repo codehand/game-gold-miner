@@ -46,7 +46,9 @@ export const TEXT_ACCENT = '#f4bd3e';
 export const TEXT_DISABLED = '#6b7280';
 export const TEXT_WARNING = '#f87171';
 
-export const FONT_FAMILY = 'Arial, sans-serif';
+export const FONT_FAMILY = 'Fredoka, sans-serif';
+export const FONT_STYLE_SEMIBOLD = '600';
+export const FONT_STYLE_BOLD = '700';
 
 /** Converts a `#rrggbb` string into the 24-bit integer Phaser fills take. */
 export function toFillColor(hex: string): number {

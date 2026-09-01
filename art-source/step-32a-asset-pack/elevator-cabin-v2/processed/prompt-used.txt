@@ -1,0 +1,7 @@
+Built-in image generation, 2026-08-31.
+
+Create one enlarged, front-facing, empty mine elevator cabin from the existing
+Step 32A cabin and approved layout1 reference. Preserve the navy/steel-blue and
+warm-gold clean-HD cartoon identity, enlarge the open interior, keep the object
+inside the central 82%, and use a flat #FF00FF background. No cat, gold, UI,
+text, scenery, border, signature, or watermark.

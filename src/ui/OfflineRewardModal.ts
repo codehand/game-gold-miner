@@ -1,5 +1,5 @@
-import type { PendingOfflineReward } from '../core';
-import { formatAmount } from '../game/view-model/formatAmount';
+import type { GameNumber, PendingOfflineReward } from '../core';
+import { describeAmountTier } from '../game/view-model';
 
 export const OFFLINE_REWARD_SAVE_FAILURE_MESSAGE =
   'Your reward could not be saved. Please try again.';
@@ -45,7 +45,7 @@ export function showOfflineRewardModal(
   const reward = document.createElement('p');
   reward.className = 'offline-reward-amount';
   reward.dataset.testid = 'offline-reward-amount';
-  reward.textContent = `${formatAmount(options.pendingReward.reward)} gold`;
+  reward.textContent = `${formatOfflineRewardAmount(options.pendingReward.reward)} gold`;
 
   const status = document.createElement('p');
   status.className = 'offline-reward-status';
@@ -104,6 +104,38 @@ export function showOfflineRewardModal(
   claimButton.focus();
 
   return { destroy };
+}
+
+/**
+ * Offline rewards keep two useful decimals while sharing the lowercase tier
+ * sequence used everywhere else in the game.
+ */
+export function formatOfflineRewardAmount(value: GameNumber): string {
+  const { mantissa, exponent } = value;
+
+  if (mantissa === 0) {
+    return '0';
+  }
+
+  const tier = Math.max(0, Math.floor(exponent / 3));
+  const suffix = describeAmountTier(tier);
+
+  if (suffix === null) {
+    return value.serialize();
+  }
+
+  const displayExponent = exponent - tier * 3;
+
+  // Reachable offline rewards stay far below this guard. For an extreme save,
+  // scientific notation remains finite and preferable to Infinity.
+  if (displayExponent > 300) {
+    return value.serialize();
+  }
+
+  const displayed = mantissa * 10 ** displayExponent;
+  const fixed = displayed.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+
+  return `${fixed}${suffix}`;
 }
 
 export function formatCreditedDuration(durationMs: number): string {

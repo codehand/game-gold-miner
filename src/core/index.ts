@@ -58,6 +58,14 @@ export {
   SIMULATION_STEP_MS,
 } from './simulation/advanceSimulation';
 export {
+  advanceElevator,
+  calculateElevatorLegDurationMs,
+  describeElevatorRoute,
+  FULL_ELEVATOR_LOAD_SLOWDOWN,
+  type ElevatorRoute,
+  type ElevatorRouteDirection,
+} from './simulation/advanceElevator';
+export {
   catchUpSimulation,
   MAX_CATCH_UP_MS,
 } from './simulation/catchUpSimulation';

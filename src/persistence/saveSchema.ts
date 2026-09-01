@@ -395,21 +395,15 @@ function validateElevator(
 
   assertIntegerRange(
     elevator.roundRobinCursor,
-    0,
+    -config.floors.length,
     config.floors.length,
     `${path}.roundRobinCursor`,
   );
   assertRange(elevator.transitProgress, 0, 1, `${path}.transitProgress`);
-  const carriedMaterial = parseGameNumber(
+  parseGameNumber(
     elevator.carriedMaterial,
     `${path}.carriedMaterial`,
   );
-
-  if (carriedMaterial.equals(0) && elevator.transitProgress !== 0) {
-    throw new SaveDocumentError(
-      `${path}.transitProgress must be zero without carried material.`,
-    );
-  }
 }
 
 function validateWarehouse(

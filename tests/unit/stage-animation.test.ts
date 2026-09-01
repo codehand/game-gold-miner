@@ -8,12 +8,18 @@ import {
   calculateGeneratedAssetFrame,
   calculateMinerSwingOffsetPx,
   calculateMinerPatrolPose,
+  calculateSurfaceHaulerAssistantOffset,
+  calculateSurfaceHaulerAssistantPose,
+  calculateSurfaceHaulerCount,
+  calculateSurfaceHaulerPose,
+  easeElevatorTravelProgress,
   ANIMATION_TIME_WRAP_MS,
   CONVEYOR_CYCLE_MS,
   GENERATED_ASSET_FRAME_DURATION_MS,
   MAX_ANIMATION_FRAME_MS,
   MINER_SWING_PERIOD_MS,
   MINER_PATROL_PERIOD_MS,
+  SURFACE_HAULER_PERIOD_MS,
 } from '../../src/game/view-model';
 
 describe('cosmetic animation clock', () => {
@@ -40,6 +46,8 @@ describe('cosmetic animation clock', () => {
     expect(advanceAnimationTimeMs(ANIMATION_TIME_WRAP_MS - 10, 30, 1)).toBe(20);
     expect(ANIMATION_TIME_WRAP_MS % MINER_SWING_PERIOD_MS).toBe(0);
     expect(ANIMATION_TIME_WRAP_MS % CONVEYOR_CYCLE_MS).toBe(0);
+    expect(ANIMATION_TIME_WRAP_MS % MINER_PATROL_PERIOD_MS).toBe(0);
+    expect(ANIMATION_TIME_WRAP_MS % SURFACE_HAULER_PERIOD_MS).toBe(0);
   });
 
   it('rejects an invalid speed multiplier or accumulated time', () => {
@@ -52,6 +60,21 @@ describe('cosmetic animation clock', () => {
     expect(() => advanceAnimationTimeMs(-1, 16, 1)).toThrow(
       /finite non-negative/,
     );
+  });
+});
+
+describe('elevator travel easing', () => {
+  it('keeps exact stops while slowing visually near both ends of a leg', () => {
+    expect(easeElevatorTravelProgress(0)).toBe(0);
+    expect(easeElevatorTravelProgress(0.25)).toBeLessThan(0.25);
+    expect(easeElevatorTravelProgress(0.5)).toBeCloseTo(0.5, 10);
+    expect(easeElevatorTravelProgress(0.75)).toBeGreaterThan(0.75);
+    expect(easeElevatorTravelProgress(1)).toBe(1);
+  });
+
+  it('rejects progress outside one authoritative leg', () => {
+    expect(() => easeElevatorTravelProgress(-0.01)).toThrow(/\[0, 1\]/);
+    expect(() => easeElevatorTravelProgress(1.01)).toThrow(/\[0, 1\]/);
   });
 });
 
@@ -119,6 +142,129 @@ describe('generated asset frames', () => {
     expect(() => calculateGeneratedAssetFrame(-1)).toThrow(/finite non-negative/);
     expect(() => calculateGeneratedAssetFrame(0, 0)).toThrow(/positive integer/);
     expect(() => calculateGeneratedAssetFrame(0, 4, 0)).toThrow(/finite positive/);
+  });
+});
+
+describe('surface hauler loop', () => {
+  it('reveals one assistant every ten warehouse levels through level 100', () => {
+    expect(calculateSurfaceHaulerCount(1)).toBe(1);
+    expect(calculateSurfaceHaulerCount(9)).toBe(1);
+    expect(calculateSurfaceHaulerCount(10)).toBe(2);
+    expect(calculateSurfaceHaulerCount(20)).toBe(3);
+    expect(calculateSurfaceHaulerCount(99)).toBe(10);
+    expect(calculateSurfaceHaulerCount(100)).toBe(11);
+    expect(calculateSurfaceHaulerCount(101)).toBe(11);
+  });
+
+  it('arranges assistants in mirrored rows instead of exact overlap', () => {
+    expect(calculateSurfaceHaulerAssistantOffset(0, false)).toEqual({
+      x: -8,
+      y: -10,
+    });
+    expect(calculateSurfaceHaulerAssistantOffset(4, false)).toEqual({
+      x: -16,
+      y: -10,
+    });
+    expect(calculateSurfaceHaulerAssistantOffset(5, true)).toEqual({
+      x: 24,
+      y: -20,
+    });
+  });
+
+  it('phase-shifts every active assistant onto an independent route pose', () => {
+    const lead = calculateSurfaceHaulerPose(0, true);
+    const firstAssistant = calculateSurfaceHaulerAssistantPose(0, true, 0, 3);
+    const secondAssistant = calculateSurfaceHaulerAssistantPose(0, true, 1, 3);
+
+    expect(lead.phase).toBe('loading');
+    expect(firstAssistant.phase).toBe('delivering');
+    expect(secondAssistant.phase).toBe('unloading');
+    expect(firstAssistant.animationTimeOffsetMs).toBeCloseTo(
+      SURFACE_HAULER_PERIOD_MS / 3,
+    );
+    expect(secondAssistant.animationTimeOffsetMs).toBeCloseTo(
+      SURFACE_HAULER_PERIOD_MS * 2 / 3,
+    );
+  });
+
+  it('parks idle assistants apart while keeping independent frames', () => {
+    const firstAssistant = calculateSurfaceHaulerAssistantPose(0, false, 0, 3);
+    const secondAssistant = calculateSurfaceHaulerAssistantPose(0, false, 1, 3);
+
+    expect(firstAssistant.routeProgress).toBeCloseTo(1 / 3);
+    expect(secondAssistant.routeProgress).toBeCloseTo(2 / 3);
+    expect(firstAssistant.frame).not.toBe(secondAssistant.frame);
+  });
+
+  it('rejects invalid warehouse levels and assistant indexes', () => {
+    expect(() => calculateSurfaceHaulerCount(0)).toThrow(/positive safe integer/);
+    expect(() => calculateSurfaceHaulerCount(1.5)).toThrow(/positive safe integer/);
+    expect(() => calculateSurfaceHaulerAssistantOffset(-1, false)).toThrow(
+      /outside the crew/,
+    );
+    expect(() => calculateSurfaceHaulerAssistantOffset(10, false)).toThrow(
+      /outside the crew/,
+    );
+    expect(() => calculateSurfaceHaulerAssistantPose(0, true, 0, 1)).toThrow(
+      /count is outside the crew/,
+    );
+    expect(() => calculateSurfaceHaulerAssistantPose(0, true, 2, 3)).toThrow(
+      /assistant index is outside the crew/,
+    );
+  });
+
+  it('waits empty beneath the chute when neither shared stage holds gold', () => {
+    expect(calculateSurfaceHaulerPose(4_000, false)).toEqual({
+      phase: 'idle',
+      routeProgress: 0,
+      facesLeft: false,
+      cartIsFilled: false,
+      goldPourVisible: false,
+      frame: 0,
+    });
+  });
+
+  it('pours only while the cart is parked beneath a loaded tower', () => {
+    const loading = calculateSurfaceHaulerPose(
+      SURFACE_HAULER_PERIOD_MS * 0.1,
+      true,
+    );
+    const delivering = calculateSurfaceHaulerPose(
+      SURFACE_HAULER_PERIOD_MS * 0.4,
+      true,
+    );
+
+    expect(loading).toMatchObject({
+      phase: 'loading',
+      routeProgress: 0,
+      cartIsFilled: false,
+      goldPourVisible: true,
+    });
+    expect(delivering.phase).toBe('delivering');
+    expect(delivering.routeProgress).toBeGreaterThan(0);
+    expect(delivering.routeProgress).toBeLessThan(1);
+    expect(delivering.cartIsFilled).toBe(true);
+    expect(delivering.goldPourVisible).toBe(false);
+  });
+
+  it('returns the empty cart with the worker facing left', () => {
+    const returning = calculateSurfaceHaulerPose(
+      SURFACE_HAULER_PERIOD_MS * 0.85,
+      true,
+    );
+
+    expect(returning.phase).toBe('returning');
+    expect(returning.routeProgress).toBeGreaterThan(0);
+    expect(returning.routeProgress).toBeLessThan(1);
+    expect(returning.facesLeft).toBe(true);
+    expect(returning.cartIsFilled).toBe(false);
+    expect(returning.goldPourVisible).toBe(false);
+  });
+
+  it('rejects invalid animation time', () => {
+    expect(() => calculateSurfaceHaulerPose(-1, true)).toThrow(
+      /finite non-negative/,
+    );
   });
 });
 

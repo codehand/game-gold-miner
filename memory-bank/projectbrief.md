@@ -25,7 +25,7 @@ Accounts, production backend, payments, ads, blockchain, NFTs, Play-to-Earn, lea
 
 ## Base-Game Milestone
 
-The current base-game milestone precedes the full MVP. It uses English UI and automatic production without managers. It includes four mine shafts, one shared round-robin elevator, one shared warehouse, independent upgrades for all three stages, local saves, and capped offline rewards. Managers, boosts, gift drops, navigation tabs, audio, and Telegram integration follow only after the base-game milestone passes.
+The current base-game milestone precedes the full MVP. It uses English UI and automatic production without gameplay managers. It includes four mine shafts, one shared sequential-stop elevator whose speed decreases with load and returns into a surface headhouse with a gold hopper/discharge chute, and one shared warehouse presented as an open depot with a cosmetic supervisor cat. An original blue-sky landscape establishes the outdoor surface; a presentation-only crew moves one invariant-size empty/filled cart from the chute toward the warehouse. The crew starts with one cat and gains one independently animated cosmetic assistant every ten warehouse levels through level 100. All abbreviated units are lowercase. Compact code-rendered `Level N` controls upgrade the surface stages. Independent upgrades, local saves, and capped offline rewards remain core; managers, boosts, gifts, audio, and Telegram integration remain deferred.
 
 ## Source of Truth
 

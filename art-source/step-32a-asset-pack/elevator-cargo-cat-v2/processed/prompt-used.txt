@@ -1,0 +1,7 @@
+Built-in image generation, 2026-08-31.
+
+Regenerate the orange elevator cargo cat as an exact 2x2 four-frame idle loop,
+using the existing cargo cat, unloader scale, and approved layout1 style as
+references. Preserve identity, blue cap, gold crate, camera distance, stable
+feet line, and full-body scale. Each body occupies the central 72% of its cell
+on flat #FF00FF with no borders, UI, text, scenery, or detached effects.

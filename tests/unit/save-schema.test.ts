@@ -265,6 +265,34 @@ describe('versioned save schema', () => {
     )).toThrow(/level effect/);
   });
 
+  it('accepts signed elevator routes and rejects cursors outside the mine', () => {
+    const document = createValidDocument();
+    const returning = {
+      ...document,
+      state: {
+        ...document.state,
+        elevator: {
+          ...document.state.elevator,
+          roundRobinCursor: -1,
+          transitProgress: 0.5,
+          carriedMaterial: '0',
+        },
+      },
+    };
+
+    expect(() => validateSaveDocument(returning, BASE_GAME_BALANCE)).not.toThrow();
+
+    for (const roundRobinCursor of [-5, 4]) {
+      expect(() => validateSaveDocument({
+        ...document,
+        state: {
+          ...document.state,
+          elevator: { ...document.state.elevator, roundRobinCursor },
+        },
+      }, BASE_GAME_BALANCE)).toThrow(/roundRobinCursor/);
+    }
+  });
+
   it('rejects production on locked floors and non-sequential unlocks', () => {
     const document = createValidDocument();
     const lockedProduction = {

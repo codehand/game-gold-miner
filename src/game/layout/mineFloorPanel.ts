@@ -3,10 +3,19 @@ import { MIN_TOUCH_TARGET_PX, type LayoutRegion } from './mineLayout';
 /** Approved 288x132 floor composition from layout1.png. */
 export const MINE_FLOOR_PANEL_REFERENCE_WIDTH = 288;
 export const MINE_FLOOR_PANEL_REFERENCE_HEIGHT = 132;
+/**
+ * The older floor sheets occupy about 59% of a frame while the elevator cat
+ * occupies about 88%; 75 px makes their visible bodies match its 50 px draw.
+ */
+export const MINE_FLOOR_CHARACTER_DISPLAY_SIZE = 75;
+const FLOOR_BADGE_REFERENCE_SIZE = 34;
+const FLOOR_BADGE_REVIEW_SCALE = 0.5;
 
 export interface MineFloorPanelLayout {
   readonly timer: LayoutRegion;
   readonly floorBadge: LayoutRegion;
+  /** Cabin centre when it is stopped beside this floor's gold container. */
+  readonly elevatorStopY: number;
   readonly title: LayoutRegion;
   readonly status: LayoutRegion;
   readonly goldContainer: LayoutRegion;
@@ -39,13 +48,23 @@ export function calculateMineFloorPanelLayout(
     width: regionWidth * sx,
     height: regionHeight * sy,
   });
+  const goldContainer = region(8, 78, 48, 42);
+  const floorBadgeSize = FLOOR_BADGE_REFERENCE_SIZE * FLOOR_BADGE_REVIEW_SCALE;
+  const floorBadgeCenter = { x: 23, y: 47 };
 
   const layout = {
     timer: region(10, 7, 82, 22),
-    floorBadge: region(10, 34, 26, 26),
+    // Review pass: half of the annotated 34px badge, with its centre unchanged.
+    floorBadge: region(
+      floorBadgeCenter.x - floorBadgeSize / 2,
+      floorBadgeCenter.y - floorBadgeSize / 2,
+      floorBadgeSize,
+      floorBadgeSize,
+    ),
+    elevatorStopY: goldContainer.y + goldContainer.height / 2,
     title: region(42, 34, 130, 28),
     status: region(224, 8, 54, 16),
-    goldContainer: region(8, 78, 48, 42),
+    goldContainer,
     unloaderCat: region(48, 59, 58, 62),
     // Travel spans from the unloading cat to the gold pile before turning.
     minerPatrol: region(100, 60, 112, 62),

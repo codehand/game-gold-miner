@@ -2,8 +2,8 @@
  * Abbreviated display formatting for every amount the screen shows.
  *
  * An idle-game balance outgrows ordinary numerals within minutes, so amounts
- * are shown against magnitude suffixes: `K`, `M`, `B`, `T`, and then the
- * alphabetic pairs the game design document specifies (`14.6aa`, `7.2ab`).
+ * are shown against lowercase magnitude suffixes: `k`, `m`, `b`, `t`, the
+ * named large tiers through `dc`, and then alphabetic pairs (`aa`, `ab`, ...).
  * Formatting lives here rather than on `GameNumber` so arithmetic and
  * presentation stay separable, and here rather than in the scene so it is
  * unit-testable in Node.
@@ -16,7 +16,20 @@
 import type { GameNumber } from '../../core';
 
 /** Magnitude suffixes below the alphabetic run; each spans a factor of 1,000. */
-export const ABBREVIATION_TIER_SUFFIXES = ['', 'K', 'M', 'B', 'T'] as const;
+export const ABBREVIATION_TIER_SUFFIXES = [
+  '',
+  'k',
+  'm',
+  'b',
+  't',
+  'qa',
+  'qi',
+  'sx',
+  'sp',
+  'oc',
+  'no',
+  'dc',
+] as const;
 
 /** Shown instead of `0` for an amount that is small but genuinely present. */
 export const SMALL_POSITIVE_AMOUNT_LABEL = '<0.1';
@@ -24,7 +37,7 @@ export const SMALL_POSITIVE_AMOUNT_LABEL = '<0.1';
 export const SMALL_NEGATIVE_AMOUNT_LABEL = '>-0.1';
 
 const ALPHABETIC_TIER_LETTERS = 'abcdefghijklmnopqrstuvwxyz';
-/** Alphabetic suffixes start at two letters, so `T` is followed by `aa`. */
+/** Alphabetic suffixes start at two letters after the named `dc` tier. */
 const MIN_ALPHABETIC_TIER_LENGTH = 2;
 /**
  * Bound on suffix growth. Three letters carry 18,252 tiers — beyond 1e54000,
@@ -49,8 +62,8 @@ const DISPLAY_SCALE = 10 ** DISPLAY_DECIMALS;
 const TRUNCATION_TOLERANCE = 1e-9;
 
 /**
- * Formats one amount for display: at most one decimal place, then the suffix
- * for its magnitude.
+ * Formats one amount for display: one stable decimal place for abbreviated
+ * tiers, then the suffix for its magnitude; ordinary integers stay unpadded.
  *
  * The displayed digits are truncated rather than rounded, because a balance
  * that reads higher than it is would promise an upgrade the player cannot
@@ -68,7 +81,7 @@ export function formatAmount(value: GameNumber): string {
   // Values below 1,000 carry no suffix, so a negative exponent must not select
   // one; it lowers the displayed digits instead.
   const tier = Math.max(0, Math.floor(exponent / TIER_EXPONENT_SPAN));
-  const suffix = describeTier(tier);
+  const suffix = describeAmountTier(tier);
 
   if (suffix === null) {
     return value.serialize();
@@ -88,18 +101,25 @@ export function formatAmount(value: GameNumber): string {
   }
 
   const digits = Number.isInteger(displayed)
-    ? String(displayed)
+    ? suffix === ''
+      ? String(displayed)
+      : displayed.toFixed(DISPLAY_DECIMALS)
     : displayed.toFixed(DISPLAY_DECIMALS);
 
   return `${isNegative ? '-' : ''}${digits}${suffix}`;
 }
+
 
 function truncate(value: number): number {
   return Math.floor(value * DISPLAY_SCALE + TRUNCATION_TOLERANCE) / DISPLAY_SCALE;
 }
 
 /** The suffix for one magnitude tier, or `null` past the alphabetic run. */
-function describeTier(tier: number): string | null {
+export function describeAmountTier(tier: number): string | null {
+  if (!Number.isSafeInteger(tier) || tier < 0) {
+    throw new Error('Amount tier must be a non-negative safe integer.');
+  }
+
   if (tier < ABBREVIATION_TIER_SUFFIXES.length) {
     return ABBREVIATION_TIER_SUFFIXES[tier];
   }

@@ -1,3 +1,6 @@
+@import '@fontsource/fredoka/600.css';
+@import '@fontsource/fredoka/700.css';
+
 :root {
   /* Letterbox around the fitted 360x640 canvas, darker than the mine area. */
   background: #030712;
@@ -12,6 +15,8 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow: hidden;
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 600;
 }
 
 /*
@@ -65,7 +70,8 @@ body {
   background: #1f2937;
   box-shadow: 0 24px 70px rgb(0 0 0 / 45%);
   color: #f9fafb;
-  font-family: Arial, sans-serif;
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -98,7 +104,7 @@ body {
   margin-top: 8px;
   color: #fde68a;
   font-size: 32px;
-  font-weight: 800;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
@@ -119,7 +125,7 @@ body {
   cursor: pointer;
   font: inherit;
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .offline-reward-claim:focus-visible {

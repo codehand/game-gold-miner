@@ -211,6 +211,11 @@ test('blocks a premature unlock, then opens the floor and keeps it open', async 
 
   expect(revealed.screenBounds.width, 'the Level badge uses its compact width').toBe(44);
   expect(revealed.screenBounds.height, 'the Level badge stays thumb-sized').toBe(50);
+  expect(
+    revealed.visualWorldBounds.x - revealed.worldBounds.x,
+    'the visible Level badge is shifted slightly right inside its hit target',
+  ).toBe(12);
+  expect(revealed.visualWorldBounds.width, 'the visible Level badge stays crisp and compact').toBe(30);
   expect(revealed.actionLabel).toBe('Level');
   expect(revealed.costLabel).toBe('1');
   // Without this the press below could be refused for gold and the level

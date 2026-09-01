@@ -25,20 +25,49 @@ export const MINE_MIN_HEIGHT = 200;
 
 export const MINE_CONTENT_PADDING = 10;
 /** Left-side elevator shaft that visually connects the surface to every floor. */
-export const MINE_SHAFT_INSET_X = 8;
-export const MINE_SHAFT_WIDTH = 48;
-export const MINE_SHAFT_FLOOR_GAP = 8;
+export const MINE_SHAFT_INSET_X = 4;
+export const MINE_SHAFT_WIDTH = 64;
+export const MINE_SHAFT_FLOOR_GAP = 4;
 export const MINE_SHAFT_RAIL_INSET = 11;
 export const MINE_SHAFT_RAIL_WIDTH = 4;
-export const MINE_SHAFT_CABIN_SIZE = 36;
-export const MINE_SHAFT_PLAQUE_WIDTH = 26;
-export const MINE_SHAFT_PLAQUE_HEIGHT = 24;
+/** Near-full-width cabin: the 128 px source remains sharp at this scale. */
+export const MINE_SHAFT_CABIN_SIZE = 62;
+export const MINE_SHAFT_CARGO_CAT_SIZE = 50;
+/** Fixed surface headhouse aligned with the underground shaft. */
+export const SURFACE_ELEVATOR_TOWER_WIDTH = 150;
+export const SURFACE_ELEVATOR_TOWER_HEIGHT = SURFACE_HEIGHT;
+export const SURFACE_ELEVATOR_TOWER_CENTER_X = 57;
+export const SURFACE_ELEVATOR_TOWER_CENTER_Y = SURFACE_HEIGHT / 2;
+/** One vertical rail axis from the underground shaft through the surface bay. */
+export const SURFACE_ELEVATOR_STOP_X =
+  MINE_SHAFT_INSET_X + MINE_SHAFT_WIDTH / 2;
+export const SURFACE_ELEVATOR_STOP_Y = 118;
+/** Generated warehouse building and its manager, relative to the surface strip. */
+export const SURFACE_WAREHOUSE_CENTER_X = 290;
+export const SURFACE_WAREHOUSE_CENTER_Y = 88;
+export const SURFACE_WAREHOUSE_WIDTH = 140;
+export const SURFACE_WAREHOUSE_HEIGHT = 140;
+export const SURFACE_WAREHOUSE_MANAGER_X = 258;
+export const SURFACE_WAREHOUSE_MANAGER_Y = 132;
+export const SURFACE_WAREHOUSE_MANAGER_SIZE = 56;
+/** Surface cart route: load beneath the chute, then stop at the warehouse bay. */
+export const SURFACE_HAULER_START_X = 112;
+export const SURFACE_HAULER_END_X = 220;
+export const SURFACE_HAULER_CART_Y = 134;
+export const SURFACE_HAULER_CART_SIZE = 46;
+export const SURFACE_HAULER_CAT_SIZE = 52;
+export const SURFACE_HAULER_CAT_GAP = 28;
+export const SURFACE_GOLD_POUR_X = 105;
+export const SURFACE_GOLD_POUR_Y = 111;
+export const SURFACE_GOLD_POUR_WIDTH = 26;
+export const SURFACE_GOLD_POUR_HEIGHT = 48;
 /** Mine-floor panels begin to the right of the shared elevator shaft. */
 export const MINE_CONTENT_INSET_X =
   MINE_SHAFT_INSET_X + MINE_SHAFT_WIDTH + MINE_SHAFT_FLOOR_GAP;
-export const MINE_CONTENT_RIGHT_INSET = 8;
+export const MINE_CONTENT_RIGHT_INSET = 0;
 export const FLOOR_SLOT_HEIGHT = 132;
-export const FLOOR_SLOT_GAP = 8;
+/** Floor art tiles edge-to-edge so the brown mine backdrop stays continuous. */
+export const FLOOR_SLOT_GAP = 0;
 
 /** Base-game floor count; deeper mines are out of scope. */
 export const MINE_FLOOR_COUNT = 4;
@@ -53,6 +82,24 @@ export const MINE_FLOOR_COUNT = 4;
  * fitting a fixed design rather than something a single control can fix.
  */
 export const MIN_TOUCH_TARGET_PX = 44;
+
+/**
+ * Thumb-safe regions for the compact code-rendered shared-stage level badges.
+ * The elevator badge sits immediately right of the discharge tray and never
+ * below it; the warehouse badge overlaps the roofline from above.
+ */
+export const SURFACE_ELEVATOR_LEVEL_CONTROL: LayoutRegion = {
+  x: 106,
+  y: 48,
+  width: MIN_TOUCH_TARGET_PX,
+  height: 50,
+};
+export const SURFACE_WAREHOUSE_LEVEL_CONTROL: LayoutRegion = {
+  x: 263,
+  y: 0,
+  width: MIN_TOUCH_TARGET_PX,
+  height: 50,
+};
 
 export interface LayoutRegion {
   readonly x: number;
@@ -151,6 +198,10 @@ export function calculateMineShaftRegion(
 
   if (MINE_SHAFT_CABIN_SIZE > MINE_SHAFT_WIDTH) {
     throw new Error('Elevator cabin must fit inside the elevator shaft.');
+  }
+
+  if (MINE_SHAFT_CARGO_CAT_SIZE > MINE_SHAFT_CABIN_SIZE) {
+    throw new Error('Elevator cargo cat must fit inside the cabin.');
   }
 
   if (MINE_SHAFT_RAIL_INSET * 2 + MINE_SHAFT_RAIL_WIDTH > MINE_SHAFT_WIDTH) {

@@ -42,18 +42,26 @@ describe('concurrent production pipeline', () => {
         extractionProgress: index === 0 ? 0.95 : floor.extractionProgress,
       })),
     };
-    const transported = advanceSimulation(extractionBoundary, 100);
+    const approaching = advanceSimulation(extractionBoundary, 100);
+
+    expect(approaching.floors[0].materialQueue.equals(10)).toBe(true);
+    expect(approaching.floors[0].totalExtracted.equals(10)).toBe(true);
+    expect(approaching.elevator.carriedMaterial.equals(0)).toBe(true);
+    expect(approaching.elevator.transitProgress).toBeCloseTo(2 / 15);
+
+    const transported = advanceFor(approaching, 700);
 
     expect(transported.floors[0].materialQueue.equals(0)).toBe(true);
-    expect(transported.floors[0].totalExtracted.equals(10)).toBe(true);
     expect(transported.elevator.carriedMaterial.equals(10)).toBe(true);
-    expect(transported.elevator.transitProgress).toBeCloseTo(1 / 15);
+    expect(transported.elevator.roundRobinCursor).toBe(-1);
+    expect(transported.elevator.transitProgress).toBe(0);
 
     const deliveryBoundary: GameState = {
       ...initialState,
       elevator: {
         ...initialState.elevator,
-        transitProgress: 14 / 15,
+        roundRobinCursor: -1,
+        transitProgress: 0.95,
         carriedMaterial: GameNumber.from(50),
       },
     };
