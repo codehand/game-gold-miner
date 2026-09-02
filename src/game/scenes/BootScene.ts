@@ -183,6 +183,7 @@ export class BootScene extends Phaser.Scene {
   #warehouseManager: Phaser.GameObjects.Sprite | null = null;
   #surfaceHaulerCart: Phaser.GameObjects.Image | null = null;
   #surfaceHaulerCat: Phaser.GameObjects.Sprite | null = null;
+  #surfaceHaulerAssistantCarts: readonly Phaser.GameObjects.Image[] = [];
   #surfaceHaulerAssistants: readonly Phaser.GameObjects.Sprite[] = [];
   #surfaceGoldPour: Phaser.GameObjects.Sprite | null = null;
   /** Scroll offset and tap-versus-drag state for the mine; null before `create`. */
@@ -515,6 +516,7 @@ export class BootScene extends Phaser.Scene {
 
     const haulerCart = this.#surfaceHaulerCart;
     const haulerCat = this.#surfaceHaulerCat;
+    const haulerAssistantCarts = this.#surfaceHaulerAssistantCarts;
     const haulerAssistants = this.#surfaceHaulerAssistants;
     const goldPour = this.#surfaceGoldPour;
 
@@ -554,10 +556,12 @@ export class BootScene extends Phaser.Scene {
       );
 
       for (const [index, assistant] of haulerAssistants.entries()) {
+        const assistantCart = haulerAssistantCarts[index];
         const isActive = index < activeHaulerCount - 1;
 
         if (!isActive) {
           assistant.setVisible(false);
+          assistantCart?.setVisible(false);
           continue;
         }
 
@@ -574,21 +578,33 @@ export class BootScene extends Phaser.Scene {
           SURFACE_HAULER_END_X,
           assistantPose.routeProgress,
         );
-        const assistantX = assistantRouteX + (assistantPose.facesLeft
-          ? SURFACE_HAULER_CAT_GAP
-          : -SURFACE_HAULER_CAT_GAP);
         const offset = calculateSurfaceHaulerAssistantOffset(
           index,
           assistantPose.facesLeft,
         );
+        const assistantCartX = assistantRouteX + offset.x;
+        const assistantCartY = SURFACE_HAULER_CART_Y + offset.y;
+        const assistantX = assistantCartX + (assistantPose.facesLeft
+          ? SURFACE_HAULER_CAT_GAP
+          : -SURFACE_HAULER_CAT_GAP);
+
+        assistantCart
+          ?.setVisible(true)
+          .setTexture(
+            assistantPose.cartIsFilled
+              ? PLACEHOLDER_TEXTURES.goldContainerFilled
+              : PLACEHOLDER_TEXTURES.goldContainer,
+          )
+          .setPosition(assistantCartX, assistantCartY)
+          .setDisplaySize(SURFACE_HAULER_CART_SIZE, SURFACE_HAULER_CART_SIZE);
 
         assistant
           .setVisible(true)
           .setFrame(assistantPose.frame)
           .setFlipX(assistantPose.facesLeft)
           .setPosition(
-            assistantX + offset.x,
-            SURFACE_HAULER_CART_Y - 1 + offset.y,
+            assistantX,
+            assistantCartY - 1,
           );
       }
       goldPour
@@ -789,6 +805,17 @@ export class BootScene extends Phaser.Scene {
         0,
       )
       .setDisplaySize(SURFACE_HAULER_CAT_SIZE, SURFACE_HAULER_CAT_SIZE);
+    this.#surfaceHaulerAssistantCarts = Array.from(
+      { length: SURFACE_HAULER_ASSISTANT_COUNT },
+      () => this.add
+        .image(
+          SURFACE_HAULER_START_X,
+          SURFACE_HAULER_CART_Y,
+          PLACEHOLDER_TEXTURES.goldContainer,
+        )
+        .setDisplaySize(SURFACE_HAULER_CART_SIZE, SURFACE_HAULER_CART_SIZE)
+        .setVisible(false),
+    );
     this.#surfaceHaulerAssistants = Array.from(
       { length: SURFACE_HAULER_ASSISTANT_COUNT },
       () => this.add
@@ -812,6 +839,7 @@ export class BootScene extends Phaser.Scene {
       .setVisible(false);
     layer.add([
       this.#surfaceHaulerCart,
+      ...this.#surfaceHaulerAssistantCarts,
       ...this.#surfaceHaulerAssistants,
       this.#surfaceHaulerCat,
       this.#surfaceGoldPour,
@@ -1165,12 +1193,21 @@ export class BootScene extends Phaser.Scene {
             activeCatCount: 1 + this.#surfaceHaulerAssistants.filter(
               (assistant) => assistant.visible,
             ).length,
-            assistants: this.#surfaceHaulerAssistants.map((assistant) => ({
+            activeCartCount: 1 + this.#surfaceHaulerAssistantCarts.filter(
+              (cart) => cart.visible,
+            ).length,
+            assistants: this.#surfaceHaulerAssistants.map((assistant, index) => ({
               visible: assistant.visible,
               x: assistant.x,
               y: assistant.y,
               frame: Number(assistant.frame.name),
               flipX: assistant.flipX,
+              cartVisible: this.#surfaceHaulerAssistantCarts[index]?.visible ?? false,
+              cartX: this.#surfaceHaulerAssistantCarts[index]?.x ?? 0,
+              cartY: this.#surfaceHaulerAssistantCarts[index]?.y ?? 0,
+              cartWidth: this.#surfaceHaulerAssistantCarts[index]?.displayWidth ?? 0,
+              cartHeight: this.#surfaceHaulerAssistantCarts[index]?.displayHeight ?? 0,
+              cartTexture: this.#surfaceHaulerAssistantCarts[index]?.texture.key ?? '',
             })),
             goldPourVisible: this.#surfaceGoldPour.visible,
             goldPourFrame: Number(this.#surfaceGoldPour.frame.name),

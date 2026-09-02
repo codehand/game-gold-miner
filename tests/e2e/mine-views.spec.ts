@@ -275,7 +275,7 @@ test('binds four floor views and both shared stages to a known core snapshot', a
   ]);
   expect(floors.map(({ materialQueueLabel }) => materialQueueLabel)).toEqual([
     '40',
-    '20.5',
+    '20.50',
     '0',
     '0',
   ]);
@@ -346,6 +346,90 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     pileOverflow,
     'material pile must be drawn at its layout size, not the artwork size',
   ).not.toBe(filledPile);
+  expect(browserErrors).toEqual([]);
+});
+
+test('reveals the same level-derived miner crew progression on every floor', async ({
+  page,
+}) => {
+  const browserErrors: string[] = [];
+
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      browserErrors.push(message.text());
+    }
+  });
+  page.on('pageerror', (error) => {
+    browserErrors.push(error.message);
+  });
+
+  await page.route('**/src/main.ts*', async (route) => {
+    await route.fulfill({
+      body: `
+        import { createGame, createMineViewModel } from '/src/game/index.ts';
+        import { createInitialGameState } from '/src/core/index.ts';
+        import { BASE_GAME_BALANCE } from '/src/config/index.ts';
+
+        const levels = [1, 50, 100, 200];
+        const base = createInitialGameState(
+          BASE_GAME_BALANCE,
+          ${FIXTURE_TIMESTAMP_MS},
+        );
+        const state = {
+          ...base,
+          floors: base.floors.map((floor, index) => ({
+            ...floor,
+            isUnlocked: true,
+            mineShaftLevel: levels[index],
+            extractionProgress: 0.25,
+          })),
+        };
+        const source = {
+          snapshot: createMineViewModel(state, BASE_GAME_BALANCE),
+          advance: () => source.snapshot,
+          purchaseUpgrade: () => 'unavailable',
+        };
+
+        createGame(document.querySelector('#game-viewport'), source);
+      `,
+      contentType: 'application/javascript',
+    });
+  });
+
+  await page.goto('/');
+
+  await expect(page.locator(CANVAS_SELECTOR)).toHaveCount(1);
+  expect(browserErrors).toEqual([]);
+
+  await expect
+    .poll(async () => {
+      const serialized = await page
+        .locator(CANVAS_SELECTOR)
+        .getAttribute('data-floor-views');
+
+      if (serialized === null) {
+        return [];
+      }
+
+      const floors = JSON.parse(serialized) as RenderedFloorState[];
+
+      return floors.map(({ activeMinerCount }) => activeMinerCount);
+    }, {
+      message: 'each floor reveals its miner crew at the same level thresholds',
+    })
+    .toEqual([1, 2, 3, 5]);
+
+  const floors = await readRenderedFloors(page);
+
+  floors.forEach((floor, index) => {
+    expect(floor.minerCrew, `floor ${index + 1} visible miner read-back`)
+      .toHaveLength([1, 2, 3, 5][index]);
+    expect(
+      new Set(floor.minerCrew.map(({ x, y }) => `${x.toFixed(2)}:${y.toFixed(2)}`)).size,
+      `floor ${index + 1} miners occupy independent poses`,
+    ).toBe(floor.minerCrew.length);
+  });
+
   expect(browserErrors).toEqual([]);
 });
 

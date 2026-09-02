@@ -48,10 +48,10 @@ describe('hud view model', () => {
     );
     expect(
       readHud({ ...state, gold: GameNumber.from(4_212.7) }).goldValueLabel,
-    ).toBe('4.2k');
+    ).toBe('4.21k');
     expect(
       readHud({ ...state, gold: GameNumber.from(2_000_000) }).goldValueLabel,
-    ).toBe('2.0m');
+    ).toBe('2.00m');
   });
 
   it('abbreviates a balance far past the safe numeric range', () => {
@@ -59,7 +59,21 @@ describe('hud view model', () => {
 
     expect(
       readHud({ ...state, gold: GameNumber.from('1.46e16') }).goldValueLabel,
-    ).toBe('14.6qa');
+    ).toBe('14.60qa');
+  });
+
+  it('shows the gold currently carried by the elevator', () => {
+    const state = createFreshState();
+    const carrying: GameState = {
+      ...state,
+      elevator: {
+        ...state.elevator,
+        carriedMaterial: GameNumber.from(12_345.67),
+      },
+    };
+
+    expect(readHud(state).elevatorValueLabel).toBe('0');
+    expect(readHud(carrying).elevatorValueLabel).toBe('12.34k');
   });
 
   it('estimates income from the mine rate, not from the shafts alone', () => {

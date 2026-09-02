@@ -15,6 +15,12 @@ export const DEFAULT_ANIMATION_SPEED_MULTIPLIER = 1;
 export const GENERATED_ASSET_FRAME_COUNT = 4;
 export const GENERATED_ASSET_FRAME_DURATION_MS = 160;
 export const MINER_PATROL_PERIOD_MS = 3_200;
+/** One base miner, plus one visible assistant per fifty floor levels. */
+export const MINE_FLOOR_MINER_LEVEL_INTERVAL = 50;
+export const MINE_FLOOR_MINER_MAX_LEVEL = 200;
+export const MINE_FLOOR_MINER_MAX_COUNT = 5;
+export const MINE_FLOOR_MINER_ASSISTANT_COUNT =
+  MINE_FLOOR_MINER_MAX_COUNT - 1;
 /** One load, delivery, unload, and return lap across the surface. */
 export const SURFACE_HAULER_PERIOD_MS = 5_200;
 /** One base worker, plus one visible assistant per ten warehouse levels. */
@@ -52,6 +58,75 @@ export interface SurfaceHaulerPose {
 export interface MinerPatrolPose {
   readonly x: number;
   readonly facesLeft: boolean;
+}
+
+export interface MineFloorMinerAssistantPose extends MinerPatrolPose {
+  readonly yOffset: number;
+  readonly animationTimeOffsetMs: number;
+}
+
+/** Presentation-only miner count derived from one floor's shaft level. */
+export function calculateMineFloorMinerCount(mineShaftLevel: number): number {
+  if (!Number.isSafeInteger(mineShaftLevel) || mineShaftLevel < 1) {
+    throw new Error('Mine-shaft level must be a positive safe integer.');
+  }
+
+  const cappedLevel = Math.min(mineShaftLevel, MINE_FLOOR_MINER_MAX_LEVEL);
+
+  return 1 + Math.floor(cappedLevel / MINE_FLOOR_MINER_LEVEL_INTERVAL);
+}
+
+/**
+ * Places one assistant on an independently phased patrol with a shallow lane.
+ * Core extraction progress still drives every route; these offsets only keep
+ * a growing cosmetic crew readable inside the same floor corridor.
+ */
+export function calculateMineFloorMinerAssistantPose(
+  extractionProgress: number,
+  assistantIndex: number,
+  activeMinerCount: number,
+  startX: number,
+  endX: number,
+): MineFloorMinerAssistantPose {
+  if (
+    !Number.isFinite(extractionProgress) ||
+    extractionProgress < 0 ||
+    extractionProgress >= 1
+  ) {
+    throw new Error('Extraction progress must be in [0, 1).');
+  }
+
+  if (
+    !Number.isSafeInteger(activeMinerCount) ||
+    activeMinerCount < 2 ||
+    activeMinerCount > MINE_FLOOR_MINER_MAX_COUNT
+  ) {
+    throw new Error('Active mine-floor miner count is outside the crew.');
+  }
+
+  if (
+    !Number.isSafeInteger(assistantIndex) ||
+    assistantIndex < 0 ||
+    assistantIndex >= activeMinerCount - 1
+  ) {
+    throw new Error('Active mine-floor assistant index is outside the crew.');
+  }
+
+  const progressOffset = (assistantIndex + 1) / (activeMinerCount + 1);
+  const assistantProgress = (extractionProgress + progressOffset) % 1;
+  const animationTimeOffsetMs = progressOffset * MINER_PATROL_PERIOD_MS;
+  const patrol = calculateMinerPatrolPose(
+    assistantProgress * MINER_PATROL_PERIOD_MS,
+    startX,
+    endX,
+  );
+  const laneMagnitude = 4 + Math.floor(assistantIndex / 2) * 3;
+
+  return {
+    ...patrol,
+    yOffset: assistantIndex % 2 === 0 ? -laneMagnitude : laneMagnitude,
+    animationTimeOffsetMs,
+  };
 }
 
 /**

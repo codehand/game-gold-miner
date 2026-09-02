@@ -170,6 +170,23 @@
   offline rewards reuse the tier resolver with up to two decimals. Throughput,
   economy, save/database schema version 1, and Step 33 are unchanged. All 309
   unit tests and 31 Chromium E2E tests pass.
+- Step 32A per-cat-cart/HUD-precision follow-up: every visible surface hauler
+  now owns one pooled cart that follows the same independent route pose and
+  retains the invariant 46×46 empty/filled display box. The HUD centre slot
+  shows authoritative elevator-carried gold. The main shared formatter now
+  retains two decimals (`3.40m`, `203.40`) while keeping lowercase tiers and
+  truncation semantics. Economy, throughput, save document version 1,
+  IndexedDB schema version 1, and Step 33 remain unchanged. Automated evidence:
+  310 unit tests, 31 Chromium E2E tests, lint, and production build pass.
+- Step 32A mine-floor miner crew follow-up: each unlocked floor now pools one
+  base miner plus four assistants and reveals totals of 1/2/3/4/5 at shaft
+  levels 1/50/100/150/200, capped at five above level 200. Assistants use
+  independent progress-driven patrol phases, shallow lanes, facing, and frame
+  offsets, and rendered diagnostics expose every active pose. The same pure
+  threshold function applies to all floor instances. This remains cosmetic;
+  extraction, throughput, economy, save document version 1, IndexedDB schema
+  version 1, and Step 33 are unchanged. Automated evidence: 313 unit tests, 32
+  Chromium E2E tests, lint, and production build pass.
 
 ## Implementation Step Status
 
@@ -206,7 +223,7 @@
 | 29 — Connect upgrade controls | Complete | User validated the passing Step 29 checks and authorized Step 30. |
 | 30 — Connect floor unlock controls | Complete | User validated the passing Step 30 checks and authorized Step 31. |
 | 31 — Add mine scrolling and one-thumb input | Complete | User validated Step 31 and authorized Step 32. |
-| 32 — Add original placeholder presentation | Implemented with Step 32A annotation revision / awaiting user validation | The approved edge-to-edge mine, blue-sky surface landscape, invariant-size empty/filled carts, Fredoka typography, lowercase large-number tiers, compact level chrome, plaque-free 64 px shaft, eased 62 px cabin, 50 px cargo cat, sequential load-sensitive route, straight-axis headhouse entry, right-flush warehouse, and independently phase-shifted 1–11 cat surface crew are integrated; 309 unit tests and all 31 Chromium E2E tests pass. |
+| 32 — Add original placeholder presentation | Implemented with Step 32A annotation revision / awaiting user validation | The approved edge-to-edge mine, blue-sky surface landscape, one invariant-size empty/filled cart per visible surface cat, Fredoka typography, lowercase two-decimal large-number tiers, centre HUD elevator cargo, compact level chrome, plaque-free 64 px shaft, eased 62 px cabin, 50 px cargo cat, sequential load-sensitive route, straight-axis headhouse entry, right-flush warehouse, independently phase-shifted 1–11 cat surface crew, and level-derived 1–5 miner crews on every floor are integrated; 313 unit tests and all 32 Chromium E2E tests pass. |
 | 33 — Add the complete player-journey E2E test | Not started / blocked | Must not begin until the user validates Step 32. |
 
 ## Not Started

@@ -336,11 +336,17 @@ test('loads a surface cart beneath the chute and pushes it toward the warehouse'
       catX: number;
       catFlipX: boolean;
       activeCatCount: number;
+      activeCartCount: number;
       assistants: readonly {
         visible: boolean;
         x: number;
         y: number;
         flipX: boolean;
+        cartVisible: boolean;
+        cartX: number;
+        cartY: number;
+        cartWidth: number;
+        cartHeight: number;
       }[];
       goldPourVisible: boolean;
     };
@@ -408,11 +414,17 @@ test('adds one visible transport cat at each ten warehouse levels', async ({
       catY: number;
       catFlipX: boolean;
       activeCatCount: number;
+      activeCartCount: number;
       assistants: readonly {
         visible: boolean;
         x: number;
         y: number;
         flipX: boolean;
+        cartVisible: boolean;
+        cartX: number;
+        cartY: number;
+        cartWidth: number;
+        cartHeight: number;
       }[];
     };
   };
@@ -437,6 +449,17 @@ test('adds one visible transport cat at each ten warehouse levels', async ({
   );
 
   expect(visibleAssistants).toHaveLength(2);
+  expect(animation.surfaceHauler.activeCartCount).toBe(
+    animation.surfaceHauler.activeCatCount,
+  );
+  expect(visibleAssistants.every((assistant) => (
+    assistant.cartVisible &&
+    assistant.cartWidth === SURFACE_HAULER_CART_SIZE &&
+    assistant.cartHeight === SURFACE_HAULER_CART_SIZE
+  )), 'every visible cat owns one invariant-size cart').toBe(true);
+  expect(new Set(visibleAssistants.map((assistant) => (
+    `${assistant.cartX},${assistant.cartY}`
+  ))).size, 'each assistant cart has its own route position').toBe(2);
   expect(new Set(visibleAssistants.map((assistant) => (
     `${assistant.x},${assistant.y}`
   ))).size).toBe(2);

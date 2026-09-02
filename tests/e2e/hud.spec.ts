@@ -29,6 +29,10 @@ function createLargeBalanceState(): GameState {
   return {
     ...base,
     gold: GameNumber.from('1.46e16'),
+    elevator: {
+      ...base.elevator,
+      carriedMaterial: GameNumber.from(42.12),
+    },
     floors: base.floors.map((floor, index) => {
       return {
         ...floor,
@@ -71,8 +75,9 @@ test('shows abbreviated gold and the mine income estimate', async ({ page }) => 
   expect(hud.incomeLabel, 'income icon replaces its caption').toBe('');
   // 1.46e16 gold: past every named tier, so it must reach the alphabetic run
   // rather than fall back to a serialized exponent.
-  expect(hud.goldValueLabel, 'abbreviated gold').toBe('14.6qa');
+  expect(hud.goldValueLabel, 'abbreviated gold').toBe('14.60qa');
   expect(hud.goldValueLabel).toBe(formatAmount(fixture.gold));
+  expect(hud.elevatorValueLabel, 'gold carried by the elevator').toBe('42.12');
   // Derived through the same core calculation the HUD uses, so a balance
   // change cannot silently invalidate the expectation.
   expect(hud.incomeValueLabel, 'income estimate').toBe(

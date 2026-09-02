@@ -2,6 +2,7 @@ export { HudView, type RenderedHudState } from './HudView';
 export {
   MineFloorView,
   type MineFloorViewOptions,
+  type RenderedMineFloorMinerState,
   type RenderedFloorState,
 } from './MineFloorView';
 export {

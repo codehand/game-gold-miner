@@ -6,6 +6,8 @@ import {
   calculateConveyorOffsetPx,
   calculateCycleMarkerOffsetPx,
   calculateGeneratedAssetFrame,
+  calculateMineFloorMinerAssistantPose,
+  calculateMineFloorMinerCount,
   calculateMinerSwingOffsetPx,
   calculateMinerPatrolPose,
   calculateSurfaceHaulerAssistantOffset,
@@ -127,6 +129,44 @@ describe('miner floor patrol', () => {
   it('rejects invalid patrol bounds', () => {
     expect(() => calculateMinerPatrolPose(0, 170, 100)).toThrow(/finite and ordered/);
     expect(() => calculateMinerPatrolPose(-1, 100, 170)).toThrow(/finite non-negative/);
+  });
+
+  it('adds one presentation miner every fifty floor levels through level 200', () => {
+    expect(calculateMineFloorMinerCount(1)).toBe(1);
+    expect(calculateMineFloorMinerCount(49)).toBe(1);
+    expect(calculateMineFloorMinerCount(50)).toBe(2);
+    expect(calculateMineFloorMinerCount(99)).toBe(2);
+    expect(calculateMineFloorMinerCount(100)).toBe(3);
+    expect(calculateMineFloorMinerCount(150)).toBe(4);
+    expect(calculateMineFloorMinerCount(200)).toBe(5);
+    expect(calculateMineFloorMinerCount(201)).toBe(5);
+  });
+
+  it('phase-shifts floor assistants into shallow independent patrol lanes', () => {
+    const crew = Array.from({ length: 4 }, (_, assistantIndex) =>
+      calculateMineFloorMinerAssistantPose(
+        0.25,
+        assistantIndex,
+        5,
+        100,
+        212,
+      ));
+
+    expect(new Set(crew.map(({ x, yOffset }) => `${x}:${yOffset}`)).size).toBe(4);
+    expect(crew.map(({ yOffset }) => yOffset)).toEqual([-4, 4, -7, 7]);
+    expect(new Set(crew.map(({ animationTimeOffsetMs }) => animationTimeOffsetMs)).size)
+      .toBe(4);
+  });
+
+  it('rejects invalid mine-floor crew inputs', () => {
+    expect(() => calculateMineFloorMinerCount(0)).toThrow(/positive safe integer/);
+    expect(() => calculateMineFloorMinerCount(1.5)).toThrow(/positive safe integer/);
+    expect(() => calculateMineFloorMinerAssistantPose(1, 0, 2, 100, 212))
+      .toThrow(/\[0, 1\)/);
+    expect(() => calculateMineFloorMinerAssistantPose(0.2, 0, 1, 100, 212))
+      .toThrow(/count is outside the crew/);
+    expect(() => calculateMineFloorMinerAssistantPose(0.2, 2, 3, 100, 212))
+      .toThrow(/assistant index is outside the crew/);
   });
 });
 

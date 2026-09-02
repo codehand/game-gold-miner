@@ -187,7 +187,7 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
 - Derive milestone effects from the current level rather than storing grant state, so each threshold activates once and reloads cannot apply it twice.
 - Unlock floors 2–4 only in sequence after the immediately previous unlocked mine shaft reaches levels 5, 5, and 7 respectively and the configured 250/1,500/7,500 gold cost can be paid.
 - Initialize a successfully opened floor at its configured starting level with zero progress, queues, and totals; preserve unrelated floors, shared stages, and simulation metadata.
-- Format every displayed amount through one shared function, so a value never reads one way in the HUD and another in the mine.
+- Format every displayed amount through one shared two-decimal function, so a value never reads one way in the HUD and another in the mine.
 - Truncate a displayed balance rather than rounding it: a number that reads higher than it is promises a purchase the player cannot make.
 - Read a magnitude through `GameNumber`'s own mantissa and exponent, never through `Number`, which collapses everything past its range to the same value.
 - Estimate income from the core's bottleneck-capped effective rate, never from aggregate extraction and never from what the renderer observed.
@@ -429,6 +429,22 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
   while retaining its two-decimal precision. Economy, save schema version 1,
   and Step 33 remain unchanged. All 309 unit tests and 31 Chromium E2E tests
   pass.
+- The latest HUD/crew annotation pass gives every visible surface transport
+  cat its own pooled 46×46 cart bound to that cat's independent route pose.
+  The centre HUD slot now shows authoritative `elevator.carriedMaterial` with
+  an elevator icon, while the shared formatter retains two decimal places on
+  main-screen non-integer and abbreviated values (`3.40m`, `203.40`). Core
+  throughput, economy, save document version 1, IndexedDB schema version 1,
+  and the Step 33 gate remain unchanged.
+- The latest mine-floor crew annotation pass gives every unlocked floor one
+  base miner and adds one pooled assistant at levels 50/100/150/200, producing
+  1/2/3/4/5 visible miners and holding five above level 200. Assistants share
+  authoritative extraction progress but use separate patrol phases, shallow
+  lanes, facings, and cosmetic frames. The rule is identical for all four
+  floor views and remains presentation-only: extraction throughput, economy,
+  save document version 1, IndexedDB schema version 1, and the Step 33 gate are
+  unchanged. All 313 unit tests and 32 Chromium E2E tests pass with lint and
+  production build.
 
 ## Next Steps
 

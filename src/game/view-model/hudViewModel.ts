@@ -14,6 +14,8 @@ export interface HudViewModel {
   /** Empty after the icon-only Step 32A HUD review. */
   readonly goldLabel: string;
   readonly goldValueLabel: string;
+  /** Gold currently carried by the shared elevator. */
+  readonly elevatorValueLabel: string;
   /** Empty after the icon-only Step 32A HUD review. */
   readonly incomeLabel: string;
   readonly incomeValueLabel: string;
@@ -28,6 +30,7 @@ export function createHudViewModel(
   return {
     goldLabel: '',
     goldValueLabel: formatAmount(state.gold),
+    elevatorValueLabel: formatAmount(state.elevator.carriedMaterial),
     incomeLabel: '',
     // The effective rate, already capped at the chain's slowest stage, so the
     // HUD estimates what the mine can deliver rather than what the shafts

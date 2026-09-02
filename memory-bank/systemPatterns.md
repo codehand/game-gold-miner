@@ -70,6 +70,13 @@ Persistence and Platform Adapters
   reached assistants, phase-shift each worker around the cosmetic route, and
   apply shallow personal lane offsets so progression is readable without
   copying transforms or changing production throughput.
+- Reuse that workforce rule per mine floor: one base miner plus one assistant
+  every 50 shaft levels through level 200. Apply the same pure count function to
+  every floor view, cap the pool at five visible miners, and keep all assistant
+  poses downstream of authoritative extraction progress.
+- Pool one cart beside every pooled surface worker and bind both objects to the
+  same independent route pose. A visible cat without its own visible cart, or
+  multiple cats sharing the lead cart, violates the workforce presentation.
 - Keep one lowercase magnitude-tier resolver shared by every number surface,
   including DOM overlays, so HUD, prices, queues, income, and offline rewards
   cannot disagree about suffix boundaries.

@@ -24,8 +24,11 @@ import {
   type LayoutRegion,
 } from '../layout';
 import {
+  calculateMineFloorMinerAssistantPose,
+  calculateMineFloorMinerCount,
   calculateMinerPatrolPose,
   calculateGeneratedAssetFrame,
+  MINE_FLOOR_MINER_ASSISTANT_COUNT,
   MINER_PATROL_PERIOD_MS,
   type MineFloorViewModel,
   type PurchaseFeedbackViewModel,
@@ -35,6 +38,13 @@ import {
   type RenderedPurchaseControlState,
 } from './PurchaseControlView';
 import { setTextColor } from './setTextColor';
+
+export interface RenderedMineFloorMinerState {
+  readonly x: number;
+  readonly y: number;
+  readonly facesLeft: boolean;
+  readonly assetFrame: number;
+}
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedFloorState {
@@ -71,6 +81,10 @@ export interface RenderedFloorState {
   readonly minerAssetFrame: number;
   readonly minerFacesLeft: boolean;
   readonly minerPatrolX: number;
+  /** Visible base miner plus every level-derived assistant on this floor. */
+  readonly activeMinerCount: number;
+  /** Measured poses prove the visible miners are independently positioned. */
+  readonly minerCrew: readonly RenderedMineFloorMinerState[];
   /** Locked floors have no shaft to upgrade, so they show no control. */
   readonly showsUpgradeControl: boolean;
   /** The control's own read-back: price, enabled state, and press feedback. */
@@ -132,6 +146,7 @@ export class MineFloorView {
   readonly #status: Phaser.GameObjects.Text;
   readonly #statusBackground: Phaser.GameObjects.Rectangle;
   readonly #miner: Phaser.GameObjects.Sprite;
+  readonly #minerAssistants: readonly Phaser.GameObjects.Sprite[];
   readonly #unloader: Phaser.GameObjects.Sprite;
   readonly #goldContainer: Phaser.GameObjects.Image;
   readonly #goldContainerSize: { readonly width: number; readonly height: number };
@@ -152,6 +167,7 @@ export class MineFloorView {
   readonly #minerEndX: number;
   readonly #minerRestY: number;
   #extractionProgress = 0;
+  #activeMinerCount = 0;
   #materialPileSteps = 0;
   #isPileBackedUp = false;
   readonly #hasThinSoilLayer: boolean;
@@ -258,6 +274,21 @@ export class MineFloorView {
         MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
         MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
       );
+    this.#minerAssistants = Array.from(
+      { length: MINE_FLOOR_MINER_ASSISTANT_COUNT },
+      () => scene.add
+        .sprite(
+          this.#minerStartX,
+          this.#minerRestY,
+          PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+          0,
+        )
+        .setDisplaySize(
+          MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+          MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+        )
+        .setVisible(false),
+    );
     this.#unloader = scene.add
       .sprite(
         panel.unloaderCat.x + panel.unloaderCat.width / 2,
@@ -374,6 +405,7 @@ export class MineFloorView {
       this.#status,
       this.#goldContainer,
       this.#unloader,
+      ...this.#minerAssistants,
       this.#miner,
       this.#lockIcon,
       this.#goldPile,
@@ -416,7 +448,13 @@ export class MineFloorView {
     this.#status.setText(floor.statusLabel ?? '').setVisible(locked);
     this.#statusBackground.setVisible(locked);
 
-    this.#miner.setVisible(floor.isUnlocked);
+    this.#activeMinerCount = floor.isUnlocked
+      ? calculateMineFloorMinerCount(floor.mineShaftLevel)
+      : 0;
+    this.#miner.setVisible(this.#activeMinerCount > 0);
+    this.#minerAssistants.forEach((assistant, index) => {
+      assistant.setVisible(index < this.#activeMinerCount - 1);
+    });
     this.#unloader.setVisible(floor.isUnlocked);
     this.#goldContainer.setVisible(floor.isUnlocked);
     this.#goldCoin.setVisible(floor.isUnlocked);
@@ -507,8 +545,32 @@ export class MineFloorView {
 
     this.#miner
       .setFrame(calculateGeneratedAssetFrame(animationTimeMs))
+      .setY(this.#minerRestY)
       .setX(pose.x)
       .setFlipX(pose.facesLeft);
+    this.#minerAssistants.forEach((assistant, index) => {
+      if (index >= this.#activeMinerCount - 1) {
+        return;
+      }
+
+      const assistantPose = calculateMineFloorMinerAssistantPose(
+        this.#extractionProgress,
+        index,
+        this.#activeMinerCount,
+        this.#minerStartX,
+        this.#minerEndX,
+      );
+
+      assistant
+        .setFrame(calculateGeneratedAssetFrame(
+          animationTimeMs + assistantPose.animationTimeOffsetMs,
+        ))
+        .setPosition(
+          assistantPose.x,
+          this.#minerRestY + assistantPose.yOffset,
+        )
+        .setFlipX(assistantPose.facesLeft);
+    });
     this.#unloader.setFrame(calculateGeneratedAssetFrame(animationTimeMs, 4, 220));
   }
 
@@ -525,6 +587,14 @@ export class MineFloorView {
   public describeRenderedState(): RenderedFloorState {
     const upgradeControl = this.describeUpgradeControl();
     const unlockControl = this.describeUnlockControl();
+    const minerCrew = [this.#miner, ...this.#minerAssistants]
+      .filter((miner) => miner.visible)
+      .map((miner) => ({
+        x: miner.x,
+        y: miner.y,
+        facesLeft: miner.flipX,
+        assetFrame: Number(miner.frame.name),
+      }));
 
     return {
       floorLabel: this.#title.text,
@@ -554,6 +624,8 @@ export class MineFloorView {
       minerAssetFrame: Number(this.#miner.frame.name),
       minerFacesLeft: this.#miner.flipX,
       minerPatrolX: this.#miner.x,
+      activeMinerCount: minerCrew.length,
+      minerCrew,
       showsUpgradeControl: upgradeControl.isVisible,
       upgradeControl,
       showsUnlockControl: unlockControl.isVisible,

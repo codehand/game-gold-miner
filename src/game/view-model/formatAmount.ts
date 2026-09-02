@@ -32,9 +32,9 @@ export const ABBREVIATION_TIER_SUFFIXES = [
 ] as const;
 
 /** Shown instead of `0` for an amount that is small but genuinely present. */
-export const SMALL_POSITIVE_AMOUNT_LABEL = '<0.1';
+export const SMALL_POSITIVE_AMOUNT_LABEL = '<0.01';
 /** Its mirror. No game amount is negative; the formatter stays total anyway. */
-export const SMALL_NEGATIVE_AMOUNT_LABEL = '>-0.1';
+export const SMALL_NEGATIVE_AMOUNT_LABEL = '>-0.01';
 
 const ALPHABETIC_TIER_LETTERS = 'abcdefghijklmnopqrstuvwxyz';
 /** Alphabetic suffixes start at two letters after the named `dc` tier. */
@@ -47,7 +47,7 @@ const MIN_ALPHABETIC_TIER_LENGTH = 2;
 const MAX_ALPHABETIC_TIER_LENGTH = 3;
 
 const TIER_EXPONENT_SPAN = 3;
-const DISPLAY_DECIMALS = 1;
+const DISPLAY_DECIMALS = 2;
 const DISPLAY_SCALE = 10 ** DISPLAY_DECIMALS;
 /**
  * Truncation runs on a value that has already been through floating-point
@@ -62,7 +62,7 @@ const DISPLAY_SCALE = 10 ** DISPLAY_DECIMALS;
 const TRUNCATION_TOLERANCE = 1e-9;
 
 /**
- * Formats one amount for display: one stable decimal place for abbreviated
+ * Formats one amount for display: two stable decimal places for abbreviated
  * tiers, then the suffix for its magnitude; ordinary integers stay unpadded.
  *
  * The displayed digits are truncated rather than rounded, because a balance
@@ -100,10 +100,8 @@ export function formatAmount(value: GameNumber): string {
     return isNegative ? SMALL_NEGATIVE_AMOUNT_LABEL : SMALL_POSITIVE_AMOUNT_LABEL;
   }
 
-  const digits = Number.isInteger(displayed)
-    ? suffix === ''
-      ? String(displayed)
-      : displayed.toFixed(DISPLAY_DECIMALS)
+  const digits = Number.isInteger(displayed) && suffix === ''
+    ? String(displayed)
     : displayed.toFixed(DISPLAY_DECIMALS);
 
   return `${isNegative ? '-' : ''}${digits}${suffix}`;
