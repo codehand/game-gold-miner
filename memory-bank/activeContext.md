@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 32 and the approved Step 32A layout/animation revision are implemented with passing automated validation. The project is paused at the required stop gate while the user validates the new `layout1.png` floor composition and first asset pack. Step 33 has not started and must not begin without explicit authorization.
+Implementation Plan Step 34 is implemented with passing automated validation and awaits user review. The user explicitly authorized Step 34 after Step 33 and prohibited any Step 35 work. Step 35 has not started and must not begin without explicit authorization.
 
 ## Recent Changes
 
@@ -445,15 +445,48 @@ Implementation Plan Step 32 and the approved Step 32A layout/animation revision 
   save document version 1, IndexedDB schema version 1, and the Step 33 gate are
   unchanged. All 313 unit tests and 32 Chromium E2E tests pass with lint and
   production build.
+- The user validated Step 32/32A and authorized Step 33 on 2026-09-02.
+- Step 33 added `tests/e2e/player-journey.spec.ts`, which runs the same real-UI
+  journey twice in separate clean browser contexts. Each run earns gold through
+  controlled wall-clock progression, buys mine-shaft/elevator/warehouse levels,
+  opens floors 2 and 3, reaches a level-10 milestone, persists the newest state,
+  reloads, claims a one-hour offline reward, reloads again, and proves the
+  interval cannot be claimed twice. Both runs must match the policy-derived
+  version-1 documents exactly and emit no console or page errors.
+- Step 33 exposed a long-run precision defect: repeated fractional elevator
+  pickups could accumulate `totalTransported` one final digit above
+  `totalExtracted` (about `1e-10` after six minutes), causing a legitimate save
+  to fail validation. Elevator pickup now clamps the accumulated transport total
+  to its authoritative extracted upper bound, and a ten-minute regression keeps
+  the full economy progression saveable.
+- Step 33 automated evidence: 314 unit tests, 33 Chromium E2E tests, lint,
+  production build, and `git diff --check` pass. Step 34 remains untouched.
+- The user authorized Step 34 on 2026-09-02 and explicitly required work to
+  stop before Step 35.
+- Step 34 now advances authoritative state to the lifecycle event's injected
+  wall-clock boundary before creating the hidden/pagehide document. This closes
+  a gap where `savedAtTimestampMs` could consume the final foreground interval
+  without simulating it or leaving it eligible for offline income.
+- Added a validated synchronous lifecycle journal at localStorage key
+  `cat-mine-idle:lifecycle-save-v1`. IndexedDB remains authoritative; the
+  journal only protects a pagehide write from document teardown, is selected
+  only when it is a newer valid version-1 document, and is cleared after the
+  same-or-newer snapshot reaches IndexedDB.
+- Added `tests/e2e/lifecycle-persistence.spec.ts`: one controlled-clock scenario
+  proves hidden/visible play matches an uninterrupted 50-second session exactly;
+  another performs real abrupt navigation, recovers the journal, settles the
+  30-second offline interval before presenting it, claims once, and reloads
+  without duplication or browser errors.
+- Step 34 automated evidence: 318 unit tests, 35 Chromium E2E tests, lint,
+  strict production build, and `git diff --check` pass. Save document and
+  IndexedDB schema versions remain 1. Step 35 is untouched.
 
 ## Next Steps
 
-1. Wait for the user to validate the Step 32A layout, surface elevator tower,
-   shared-stage level controls, generated warehouse/supervisor, and first
-   animation asset pack.
-2. Begin Step 33 only after explicit user authorization.
-4. Keep all later steps blocked behind their preceding validation gates.
-5. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
+1. Wait for the user to review and validate Step 34.
+2. Do not begin Step 35 without explicit user authorization.
+3. Keep all later steps blocked behind their preceding validation gates.
+4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 - Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.
 - Confirmed as deliberate that a backgrounded tab is credited at full pipeline rate while a closed one is credited through the 50% offline efficiency, so the same two-hour absence is worth about twice as much with the tab left open. Documented the asymmetry on `MAX_CATCH_UP_MS` and pinned the ratio in `tests/unit/simulation-time.test.ts`, verified by mutation to fail if either side changes.
 - Extracted the `Text.setColor` repaint guard into a shared `setTextColor` helper and applied it to the mine-floor and shared-stage views, which were repainting fourteen captions per simulation tick to produce the colours already on screen.

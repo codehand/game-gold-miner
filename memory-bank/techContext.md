@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 31 are complete. Step 32 and the approved Step 32A annotation revision are implemented with passing automated checks and await user validation; Step 33 has not started. The edge-to-edge 288×132 floors, 64 px shaft, 62 px cabin, and 50 px cargo cat retain their approved geometry. The surface now renders an original 720×328 RGB blue-sky/mountain/meadow plate at 360×164 behind all stage art. The elevator badge region is `(106,48,44,50)`, five pixels higher than the prior pass and tightly beside the chute; warehouse remains `(263,0,44,50)`. The presentation-only worker/cart loop keeps both the 128 px empty source and 256 px filled source in one invariant 46×46 display box, loads beneath the chute at x=112, delivers toward x=220, and returns empty. One base transport cat is joined by one pooled assistant every ten warehouse levels, capped at eleven cats at level 100; each visible cat owns an independently posed 46×46 cart, and each assistant has an evenly shifted route phase and shallow lane offset instead of copying the lead cat. The HUD centre shows authoritative elevator-carried gold. Main-screen values retain two decimals, and every numeric suffix is lowercase following `k/m/b/t/qa/qi/sx/sp/oc/no/dc`, then `aa` from `10^36`. A left-facing 56 px supervisor idles at the loading bay. Self-hosted Fredoka 600/700, economy, and save/IndexedDB schema version 1 are unchanged; no relational/server database or physics system exists.
+Steps 1 through 33 are complete. Step 34 lifecycle persistence is implemented with passing automated checks and awaits user validation; Step 35 has not started and is explicitly blocked. Lifecycle events now advance state to their timestamp before saving, and a validated synchronous localStorage journal protects abrupt navigation until IndexedDB catches up. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -27,6 +27,8 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Vitest 4.1.11 runs Node-based unit tests from `tests/unit/`.
 - Dexie 4.4.5 implements the browser IndexedDB adapter; `fake-indexeddb` 6.2.5 provides deterministic close/reopen and failure-independent unit coverage without changing production runtime behavior.
 - Playwright 1.62.1 runs Chromium E2E tests from `tests/e2e/` and starts a fixed-port Vite test server automatically.
+- `tests/e2e/player-journey.spec.ts` uses Playwright's controlled clock, two newly created browser contexts, published screen-space control diagnostics, and the real Dexie repository. It deletes `cat-mine-idle` before each run, checks rendered progress after every press, waits for the final debounced save, leaves the running page before advancing the offline clock, and validates exact policy-derived documents before and after one claim.
+- `tests/e2e/lifecycle-persistence.spec.ts` uses a mutable injected wall clock and real browser navigation. It pins exact hidden/visible equivalence against uninterrupted simulation and proves pagehide journal recovery, IndexedDB cleanup, offline settlement, claim, and reload are exact-once and error-free.
 - `@fontsource/fredoka` 5.3.x self-hosts weights 600 and 700; startup waits for both browser fonts before creating Phaser canvas text.
 - ESLint applies additional rules to `src/core/**/*.ts` that reject Phaser, persistence/platform imports, and browser globals; the Vitest suite probes these rules through the repository's real flat configuration.
 - Phaser is configured without a physics property. Its E2E diagnostics identify the selected renderer and count boot-scene starts without making presentation state authoritative.
@@ -37,6 +39,7 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Foreground simulation advances in 100 ms fixed ticks, stores a monotonically increasing tick plus sub-tick remainder in authoritative state, and credits at most 1,000 ms per update. Valid elapsed time must be finite and non-negative; the full elapsed duration advances `lastUpdateTimestampMs` even when credited simulation time is capped.
 - Each unlocked floor advances extraction from the base balance's cycle duration. Completed cycles add `baseYield × outputGrowthRate^(level - 1) × cumulativeMilestoneMultiplier` to local material and total-extracted `GameNumber` values, preserve normalized overflow progress, and do not alter spendable gold or downstream stage state.
 - The shared elevator leaves the surface when any unlocked floor has material, stops at each unlocked floor from top to bottom, loads only on arrival and only up to remaining `GameNumber` capacity, then returns when full or after the deepest stop. One empty floor leg is half the configured 1,500 ms cycle; load scales travel time linearly up to 75% slower at full capacity, and ascent also scales by floor distance. Surface arrival alone transfers material into `warehouse.inputQueue`; neither pickup nor delivery changes gold.
+- Elevator pickup clamps the accumulated per-floor `totalTransported` to `totalExtracted`. This corrects sub-nanounit arithmetic-history drift after many fractional trips while preserving the exact authoritative/save invariant and material movement.
 - The warehouse advances only while input exists, retains material during its configured 1,200 ms progress, consumes at most authoritative capacity on completion, and adds the converted amount 1:1 to global gold and cumulative delivered gold. Excess input remains queued and empty queues reset progress.
 - Each fixed tick advances every floor's extraction in configured order, then the shared elevator, then the shared warehouse. Newly extracted and delivered material can enter the following stage in the same tick; locked floors remain inert and no manager or player tap is required.
 - Theoretical floor extraction rates use configured yield, current level growth, cumulative milestones, and cycle duration. The effective mine rate is the minimum of aggregate unlocked extraction and the current milestone-aware elevator/warehouse capacity per second; rates do not mutate or extend authoritative state.
@@ -108,14 +111,16 @@ Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and o
 
 There are no secondary indexes, foreign keys, relationships, or other object stores. One logical record is maintained by `put` at the fixed key. Dexie version 1 creates the store with schema `id`; no earlier IndexedDB schema or migration exists.
 
+**Lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1` stores at most one JSON-encoded, validated `SaveDocumentV1`. It is a synchronous pagehide recovery record, not an authoritative second save. A newer valid journal wins during load and is deleted after the same-or-newer snapshot commits to IndexedDB; malformed values are discarded.
+
 If a database is introduced, replace this statement with the complete authoritative schema: every table, column, data type, default, nullable rule, primary/foreign key, unique/check constraint, index, and relationship. Update this section in the same change as each migration; do not leave schema details only in migration files.
 
 ## Verified Commands
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: three hundred thirteen tests pass, including mine-floor miner thresholds/cap and phased assistant lanes, two-decimal lowercase named/alphabetic tier boundaries, authoritative elevator-cargo HUD output, independent surface-hauler positions, warehouse crew thresholds/cap, landscape provenance, and strict animation QC checks.
-- `npm run test:e2e`: all thirty-two Chromium tests pass, including identical 1/2/3/5 floor-miner counts at levels 1/50/100/200 with distinct poses, the warehouse-level-20 three-cat crew with one distinct 46×46 cart per cat, the centre elevator-cargo HUD value, two-decimal lowercase HUD amounts, blue-sky framebuffer probes across four viewports, and the delivery loop.
+- `npm run test`: three hundred eighteen tests pass, including unavailable-journal fallback, lifecycle recovery, and the ten-minute fractional-transport save-invariant regression.
+- `npm run test:e2e`: all thirty-five Chromium tests pass, including the Step 33 journey plus Step 34 hidden/visible and abrupt-navigation scenarios.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 
 ## Conventions

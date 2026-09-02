@@ -166,6 +166,9 @@ function withFloorQueues(
       ...floor,
       isUnlocked: unlockedIndexes.includes(index),
       materialQueue: GameNumber.from(queues[index] ?? 0),
+      // A seeded queue is previously extracted material; keeping the fixture
+      // authoritative lets the runtime enforce transported <= extracted.
+      totalExtracted: GameNumber.from(queues[index] ?? 0),
     })),
   };
 }

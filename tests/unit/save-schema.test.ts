@@ -90,6 +90,22 @@ describe('versioned save schema', () => {
     );
   });
 
+  it('keeps a long fractional transport journey inside save invariants', () => {
+    const state = simulateEconomyProgression(10 * 60 * 1_000, TIMESTAMP_MS).state;
+
+    for (const floor of state.floors) {
+      expect(
+        floor.totalTransported.lessThanOrEqualTo(floor.totalExtracted),
+        `${floor.id} cannot transport more than it extracted`,
+      ).toBe(true);
+    }
+    expect(() => createSaveDocument(
+      state,
+      BASE_GAME_BALANCE,
+      state.lastUpdateTimestampMs,
+    )).not.toThrow();
+  });
+
   it('routes the current version through the migration entry point unchanged', () => {
     const document = createValidDocument();
 

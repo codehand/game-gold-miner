@@ -9,7 +9,11 @@ import {
   loadActiveGame,
   SavePersistenceCoordinator,
 } from './persistence';
-import { bindSaveLifecycle } from './platform/web';
+import {
+  bindSaveLifecycle,
+  LifecycleSafeActiveSaveRepository,
+  WebLifecycleSaveJournal,
+} from './platform/web';
 import { showOfflineRewardModal, type OfflineRewardModal } from './ui';
 
 const app = getRequiredElement('#app', 'Application root');
@@ -17,7 +21,16 @@ const gameViewport = getRequiredElement('#game-viewport', 'Game viewport');
 
 validateBaseGameBalance(BASE_GAME_BALANCE);
 
-const repository = new DexieActiveSaveRepository();
+const indexedRepository = new DexieActiveSaveRepository();
+const lifecycleJournal = new WebLifecycleSaveJournal(
+  getAvailableLocalStorage(),
+  BASE_GAME_BALANCE,
+);
+const repository = new LifecycleSafeActiveSaveRepository(
+  indexedRepository,
+  lifecycleJournal,
+  BASE_GAME_BALANCE,
+);
 const persistence = new SavePersistenceCoordinator(repository);
 let game: ReturnType<typeof createGame> | null = null;
 let offlineRewardModal: OfflineRewardModal | null = null;
@@ -82,7 +95,17 @@ async function startApplication(): Promise<void> {
   game = createGame(gameViewport, driver);
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
-    () => createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now()),
+    () => {
+      // A lifecycle event can land between rendered frames. Bring the
+      // authoritative state exactly to the event's wall-clock boundary before
+      // stamping the document; otherwise `savedAtTimestampMs` would consume
+      // that final foreground interval without either simulating it now or
+      // making it eligible for offline income after a reload.
+      driver.advance();
+
+      return createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now());
+    },
+    { journal: lifecycleJournal },
   );
 
   // Skips the write entirely while authoritative state has not moved — a
@@ -151,7 +174,7 @@ if (import.meta.hot) {
     }
 
     persistence.cancelScheduledSave();
-    repository.close();
+    indexedRepository.close();
     game?.destroy(true);
   });
 }
@@ -164,4 +187,12 @@ function getRequiredElement(selector: string, name: string): HTMLElement {
   }
 
   return element;
+}
+
+function getAvailableLocalStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }

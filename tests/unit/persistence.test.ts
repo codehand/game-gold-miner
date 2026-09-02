@@ -130,11 +130,18 @@ describe('save persistence coordination', () => {
     });
     const page = new FakeLifecycleTarget();
     const visibility = new FakeVisibilityTarget();
+    const journalDocuments: SaveDocumentV1[] = [];
     const document = createProgressedDocument();
     const unbind = bindSaveLifecycle(
       coordinator,
       () => document,
-      { page, visibility },
+      {
+        page,
+        visibility,
+        journal: {
+          write: (candidate) => journalDocuments.push(candidate),
+        },
+      },
     );
 
     visibility.visibilityState = 'visible';
@@ -146,10 +153,12 @@ describe('save persistence coordination', () => {
     visibility.dispatch('visibilitychange');
     await coordinator.flush();
     expect(repository.storedDocuments).toEqual([document]);
+    expect(journalDocuments).toEqual([document]);
 
     page.dispatch('pagehide');
     await coordinator.flush();
     expect(repository.storedDocuments).toEqual([document, document]);
+    expect(journalDocuments).toEqual([document, document]);
 
     unbind();
     page.dispatch('pagehide');

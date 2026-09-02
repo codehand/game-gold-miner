@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 31 are complete. Step 32 and its approved Step 32A layout/animation revision are implemented with passing automated checks and await user validation. The production-oriented pack adds semantic floor art, level-derived 1–5 miner crews on every floor, a cargo-cat cabin backed by a sequential load-sensitive route, a compact surface headhouse, and an open warehouse depot with a cosmetic supervisor cat. Step 33 and all later work remain blocked. Save-document and IndexedDB schema versions remain 1 and are documented below; there is no relational or server database.
+Steps 1 through 33 are complete. Step 34 lifecycle persistence is implemented with passing automated checks and awaits user validation. Controlled-clock coverage proves hidden/visible catch-up equals uninterrupted foreground play and real abrupt navigation recovers a validated emergency journal before settling offline time exactly once. Step 35 is explicitly untouched and blocked. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -19,7 +19,7 @@ Steps 1 through 31 are complete. Step 32 and its approved Step 32A layout/animat
 | `package.json`, `package-lock.json`, `tsconfig.json` | Locked dependencies, strict compiler settings, and verified development/build/test scripts. |
 | `eslint.config.mjs` | Flat lint configuration for TypeScript, configuration files, and the Node simulator script. |
 | `vitest.config.ts`, `tests/unit/` | Node-based unit-test configuration and scaffold baseline coverage. |
-| `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, and browser smoke coverage. |
+| `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, browser smoke coverage, the Step 33 two-profile deterministic player journey, and Step 34 lifecycle equivalence/abrupt-navigation coverage. |
 | `tests/unit/architecture.test.ts` | Regression coverage proving the core, layout, view-model, and simulation-driver boundaries accept pure TypeScript and reject renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
 | `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer with both stage views, and the mine content layer with four floor views; pulls the newest snapshot from its source on every frame, advances the separate cosmetic animation clock from the frame delta, clips the mine through a dedicated camera viewport, and records startup, renderer, layout, rendered-view, HUD, and animation diagnostics on the game canvas. |
@@ -43,6 +43,7 @@ Steps 1 through 31 are complete. Step 32 and its approved Step 32A layout/animat
 | `src/persistence/SavePersistenceCoordinator.ts` | Debounced writes, forced flushing, retry retention, and non-throwing load/save diagnostics. |
 | `src/persistence/loadActiveGame.ts` | Valid-save restoration plus typed malformed/incompatible-save recovery into a fresh state with a safe diagnostic payload snapshot. |
 | `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document and forces a flush when supported. |
+| `src/platform/web/WebLifecycleSaveJournal.ts` | Validated synchronous pagehide journal plus an active-save repository decorator that selects a newer valid lifecycle snapshot and clears it after IndexedDB catches up. |
 | `src/ui/OfflineRewardModal.ts` | Accessible DOM modal for credited offline duration, raw `GameNumber` reward display, claim/save progress, and retryable persistence failure feedback. |
 
 ## Current File Responsibilities
@@ -114,7 +115,7 @@ Every unlocked floor advances extraction on each fixed tick using its configured
 
 ## Elevator Transport Contract
 
-When any unlocked floor has waiting material, the shared elevator departs the surface toward floor one, stops at every unlocked floor in top-to-bottom order, and loads the lesser of that floor's queue and its remaining capacity only after arrival. It continues deeper while capacity remains; once full or after the deepest unlocked floor it returns directly to the surface and transfers `carriedMaterial` into `warehouse.inputQueue`. One floor of empty travel is half the configured 1,500 ms cycle; each leg is multiplied by `1 + loadRatio × 0.75`, and the return leg also scales by its floor distance. Excess remains at its source floor and elevator operations never change gold directly. The legacy field name `roundRobinCursor` is retained for save-version compatibility: non-negative `i` means descending toward floor index `i`, while negative `-(i + 1)` means returning from that floor.
+When any unlocked floor has waiting material, the shared elevator departs the surface toward floor one, stops at every unlocked floor in top-to-bottom order, and loads the lesser of that floor's queue and its remaining capacity only after arrival. It continues deeper while capacity remains; once full or after the deepest unlocked floor it returns directly to the surface and transfers `carriedMaterial` into `warehouse.inputQueue`. One floor of empty travel is half the configured 1,500 ms cycle; each leg is multiplied by `1 + loadRatio × 0.75`, and the return leg also scales by its floor distance. Excess remains at its source floor and elevator operations never change gold directly. The legacy field name `roundRobinCursor` is retained for save-version compatibility: non-negative `i` means descending toward floor index `i`, while negative `-(i + 1)` means returning from that floor. Because fractional extraction and transport totals reach the numeric backend through different arithmetic histories, pickup clamps accumulated `totalTransported` to `totalExtracted`; this preserves the exact save invariant at the natural upper boundary without creating or moving additional material.
 
 ## Warehouse Conversion Contract
 
@@ -139,6 +140,16 @@ Floors 2–4 unlock only through an immutable purchase command. The target must 
 ## Economy Progression Simulation Contract
 
 The pure Step 19 balance harness starts from fresh authoritative state and advances production in deterministic one-second decisions for a default ten-minute session. An eligible affordable next floor unlock takes priority; once a prerequisite is reached but its unlock is not yet affordable, the policy preserves gold until it can pay the cost. Otherwise it evaluates every currently affordable stage upgrade by recalculating effective production per second after the hypothetical purchase and selects the greatest improvement. Exact ties prefer the shaft needed for the next unlock, then configured floor/elevator/warehouse order. The report returns the final state and an immutable action trace with elapsed time, target, exact cost, and modeled rate improvement. This harness does not run in the player-facing update loop.
+
+## Complete Player Journey E2E Contract
+
+`tests/e2e/player-journey.spec.ts` converts the Step 19 action trace into real canvas presses rather than applying core commands directly in the browser. A test-process replay derives the exact expected version-1 save document and next rendered level for every decision. Each browser run starts by deleting `cat-mine-idle`, boots the real application, advances the injected wall clock to each policy timestamp, scrolls a control into view when necessary, and presses its published screen-space rectangle. The journey stops after it has bought every production-stage upgrade type, opened floors 2 and 3, and reached the first level-10 milestone.
+
+The newest debounced save must equal the policy-derived authoritative document exactly. The context then leaves the running app at that timestamp, advances the controlled clock by one hour while away, reopens the app, verifies and claims the calculated offline reward through the DOM modal, reloads again at the same instant, and proves the interval was consumed. The entire journey runs twice in separate clean browser contexts; both pre-offline and post-claim documents must be byte-for-byte structurally equal to their expected documents and to each other, with no console or page errors.
+
+## Lifecycle Persistence Contract
+
+Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-1 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
 
 ## Save Document Schema — Version 1
 
@@ -300,3 +311,11 @@ Starting gold is 100. Every upgradeable stage uses milestones at levels 10/25/50
 | `saves` | `document` | structured-clone-compatible `SaveDocumentV1` object | Required, non-null | Must pass version-1 migration and validation before runtime deserialization. |
 
 The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no prior IndexedDB version or data migration exists.
+
+**Synchronous lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1`.
+
+| Key | Value | Lifetime / relationship |
+|---|---|---|
+| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV1` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+
+The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.

@@ -124,10 +124,22 @@ function loadAtFloor(state: GameState, floorIndex: number): GameState {
       return currentFloor;
     }
 
+    const materialQueue = currentFloor.materialQueue.subtract(pickedUp);
+    const accumulatedTransported = currentFloor.totalTransported.add(pickedUp);
+
     return {
       ...currentFloor,
-      materialQueue: currentFloor.materialQueue.subtract(pickedUp),
-      totalTransported: currentFloor.totalTransported.add(pickedUp),
+      materialQueue,
+      // The same fractional yields reach these totals through different add /
+      // subtract histories. After many trips the numeric backend can place the
+      // accumulated transported value one final digit above total extracted
+      // when the queue drains (for example by 1e-10 after six minutes). The
+      // elevator cannot transport material that was never extracted, so keep
+      // the authoritative invariant exact at its natural upper boundary.
+      totalTransported: minimum(
+        accumulatedTransported,
+        currentFloor.totalExtracted,
+      ),
     };
   });
   const nextFloorIndex = findNextUnlockedFloorIndex(floors, floorIndex + 1);

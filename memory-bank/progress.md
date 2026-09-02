@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 32 plus the approved Step 32A layout/animation revision are implemented with passing automated checks and await user validation. Step 33 has not started and remains blocked.
+**Phase:** Implementation Plan Step 34 is implemented with passing automated checks and awaits user validation. The user explicitly authorized Step 34 after Step 33 and prohibited Step 35 work. Step 35 has not started and remains blocked.
 
 ## Completed
 
@@ -187,6 +187,43 @@
   extraction, throughput, economy, save document version 1, IndexedDB schema
   version 1, and Step 33 are unchanged. Automated evidence: 313 unit tests, 32
   Chromium E2E tests, lint, and production build pass.
+- Step 32/32A was validated by the user on 2026-09-02 through explicit
+  authorization to begin Step 33.
+- Step 33 implemented on 2026-09-02: `tests/e2e/player-journey.spec.ts` runs a
+  complete real-application journey twice in separate clean browser contexts.
+  Each run advances a controlled wall clock through the deterministic economy
+  policy, presses the actual published canvas controls, buys mine-shaft,
+  elevator, and warehouse upgrades, opens floors 2 and 3, reaches a level-10
+  milestone, persists and reloads the exact expected version-1 state, claims a
+  one-hour offline reward, reloads again, and proves the same interval cannot be
+  claimed twice. Both runs must produce identical expected pre-offline and
+  post-claim documents with no console or page errors.
+- Step 33 integration finding: at 361 simulated seconds, repeated fractional
+  elevator pickups produced `11153.2583495261` transported against
+  `11153.258349526` extracted. The mathematically impossible `1e-10` excess was
+  arithmetic-history drift and made `createSaveDocument` reject a legitimate
+  session. `advanceElevator` now clamps accumulated transport to its extracted
+  upper bound. Seeded elevator fixtures now carry matching extraction totals,
+  and a ten-minute progression regression proves every floor remains saveable.
+- Step 33 automated evidence: 314 unit tests, 33 Chromium E2E tests, lint, the
+  strict production build, and `git diff --check` pass. The focused player
+  journey itself completes both clean-profile runs in approximately 52 seconds.
+  Step 34 has not been touched.
+- Step 34 implemented on 2026-09-02: lifecycle saves advance the driver to the
+  event boundary before stamping the document, so an interval between the last
+  rendered frame and `visibilitychange`/`pagehide` cannot be lost.
+- Abrupt navigation exposed that browsers may tear down a document before its
+  asynchronous IndexedDB transaction commits. A validated synchronous
+  localStorage journal at `cat-mine-idle:lifecycle-save-v1` now protects only
+  that boundary. The repository selects it only when it is a newer valid
+  version-1 save and clears it after IndexedDB catches up.
+- Step 34 controlled-clock browser coverage proves hidden/visible catch-up is
+  byte-for-byte equal to uninterrupted foreground play, while a closed-page
+  interval is settled at configured offline efficiency and cannot be claimed
+  twice. Real abrupt navigation, reload, journal cleanup, and absence of console
+  or page errors are covered.
+- Step 34 automated evidence: 318 unit tests, 35 Chromium E2E tests, lint,
+  strict production build, and `git diff --check` pass. Step 35 is untouched.
 
 ## Implementation Step Status
 
@@ -223,8 +260,10 @@
 | 29 — Connect upgrade controls | Complete | User validated the passing Step 29 checks and authorized Step 30. |
 | 30 — Connect floor unlock controls | Complete | User validated the passing Step 30 checks and authorized Step 31. |
 | 31 — Add mine scrolling and one-thumb input | Complete | User validated Step 31 and authorized Step 32. |
-| 32 — Add original placeholder presentation | Implemented with Step 32A annotation revision / awaiting user validation | The approved edge-to-edge mine, blue-sky surface landscape, one invariant-size empty/filled cart per visible surface cat, Fredoka typography, lowercase two-decimal large-number tiers, centre HUD elevator cargo, compact level chrome, plaque-free 64 px shaft, eased 62 px cabin, 50 px cargo cat, sequential load-sensitive route, straight-axis headhouse entry, right-flush warehouse, independently phase-shifted 1–11 cat surface crew, and level-derived 1–5 miner crews on every floor are integrated; 313 unit tests and all 32 Chromium E2E tests pass. |
-| 33 — Add the complete player-journey E2E test | Not started / blocked | Must not begin until the user validates Step 32. |
+| 32 — Add original placeholder presentation | Complete | User validated Step 32/32A and authorized Step 33. |
+| 33 — Add the complete player-journey E2E test | Complete | User authorized Step 34 after the deterministic two-profile journey passed. |
+| 34 — Verify persistence across lifecycle events | Implemented / awaiting user validation | Event-boundary catch-up, hidden/visible equivalence, abrupt-navigation recovery, exact-once offline settlement, 318 unit tests, and 35 Chromium E2E tests pass. |
+| 35 — Profile mobile performance | Not started / blocked | Must not begin until the user validates Step 34 and explicitly authorizes Step 35. |
 
 ## Not Started
 

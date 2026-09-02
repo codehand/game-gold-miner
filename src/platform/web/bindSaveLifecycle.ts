@@ -15,6 +15,9 @@ interface VisibilityEventTarget extends LifecycleEventTarget {
 export interface SaveLifecycleTargets {
   readonly page?: LifecycleEventTarget | null;
   readonly visibility?: VisibilityEventTarget | null;
+  readonly journal?: {
+    write(document: SaveDocumentV1): void;
+  } | null;
 }
 
 export function bindSaveLifecycle(
@@ -26,7 +29,10 @@ export function bindSaveLifecycle(
   const visibilityTarget =
     targets.visibility ?? getDefaultVisibilityTarget();
   const forceSave = (): void => {
-    coordinator.queueSave(createCurrentDocument());
+    const document = createCurrentDocument();
+
+    targets.journal?.write(document);
+    coordinator.queueSave(document);
     void coordinator.flush();
   };
   const handleVisibilityChange = (): void => {
