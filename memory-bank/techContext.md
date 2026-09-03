@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 34 are complete. Step 35 is implemented with a passing ten-minute Pixel 5/4× CPU Google Chrome emulation benchmark and awaits user validation; no physical Android target was available, and Step 36 has not started. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
+Steps 1 through 35 are complete. Step 36 is implemented with a passing nine-test smoke suite against the built bundle served from the root base path and awaits user validation; Step 37 has not started. The Step 35 physical mid-range Android pass is still outstanding as a recorded caveat. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -34,6 +34,18 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
   attributes.
 - `tests/e2e/player-journey.spec.ts` uses Playwright's controlled clock, two newly created browser contexts, published screen-space control diagnostics, and the real Dexie repository. It deletes `cat-mine-idle` before each run, checks rendered progress after every press, waits for the final debounced save, leaves the running page before advancing the offline clock, and validates exact policy-derived documents before and after one claim.
 - `tests/e2e/lifecycle-persistence.spec.ts` uses a mutable injected wall clock and real browser navigation. It pins exact hidden/visible equivalence against uninterrupted simulation and proves pagehide journal recovery, IndexedDB cleanup, offline settlement, claim, and reload are exact-once and error-free.
+- A separate Playwright production project builds `dist/`, serves it through
+  `vite preview` at the root base path, and runs `tests/production/production-smoke.spec.ts`
+  against the served bundle. It routes `Date.now` through `window.name` in an
+  init script, because the hashed production entry cannot be rewritten the way
+  the dev-server suites rewrite `/src/main.ts`, and it seeds invalid save
+  records during a navigation whose bundle is blocked so nothing boots to
+  overwrite them.
+- `src/ui/SaveDiagnosticBanner.ts` is the one visible surface for recoverable
+  persistence problems. `src/main.ts` supplies it as `loadActiveGame`'s
+  `onWarning` and the save coordinator's `onDiagnostic`; before Step 36 neither
+  callback was passed, so save recovery and storage failures were silent in the
+  shipped application.
 - `@fontsource/fredoka` 5.3.x self-hosts weights 600 and 700; startup waits for both browser fonts before creating Phaser canvas text.
 - ESLint applies additional rules to `src/core/**/*.ts` that reject Phaser, persistence/platform imports, and browser globals; the Vitest suite probes these rules through the repository's real flat configuration.
 - Phaser is configured without a physics property. Its E2E diagnostics identify the selected renderer and count boot-scene starts without making presentation state authoritative.
@@ -134,6 +146,14 @@ If a database is introduced, replace this statement with the complete authoritat
   The raw FPS figure tracks the host's presentation rate, so read frame time
   rather than FPS. This is not physical Android-device evidence.
 - `npm run lint`: the repository passes the ESLint flat configuration.
+- `npm run test:prod`: builds the optimized bundle, serves it with `vite preview`
+  from the root base path at `127.0.0.1:4175`, and passes all nine production
+  smoke tests covering runtime-asset loading, bundle identity, canvas pixel
+  output, exact save/restore across a reload, corrupt/unsupported/unavailable
+  storage handling, and the four representative viewports.
+- `npm run verify`: runs lint, unit tests, E2E tests, the production build, and
+  the production smoke suite in that order. This is the Step 36 validation
+  sequence.
 
 ## Conventions
 
@@ -141,4 +161,6 @@ Use two-space indentation, semicolons, single quotes, explicit exports, and mini
 
 ## Constraints and Security
 
-Use English UI, a 360×640 logical viewport, root deployment base path `/`, and lowercase `k/m/b/t/qa/qi/sx/sp/oc/no/dc` large-number suffixes before the alphabetic run beginning at `aa = 10^36`. Optimize for quick startup and 60 FPS on a representative mid-range Android device running Chrome. Telegram WebView testing is deferred to its integration milestone. Offline rewards use the saved production-rate snapshot, a two-hour cap, and 50% efficiency; future timestamps award zero. Store secrets only in ignored `.env.local` files with safe `.env.example` placeholders. Never trust Telegram `initDataUnsafe`; production identity must be derived from server-validated `initData`.
+Use English UI, a 360×640 logical viewport, root deployment base path `/`
+declared in `vite.config.ts` because runtime textures are requested through
+absolute `/assets/...` paths no bundler rewrites, and lowercase `k/m/b/t/qa/qi/sx/sp/oc/no/dc` large-number suffixes before the alphabetic run beginning at `aa = 10^36`. Optimize for quick startup and 60 FPS on a representative mid-range Android device running Chrome. Telegram WebView testing is deferred to its integration milestone. Offline rewards use the saved production-rate snapshot, a two-hour cap, and 50% efficiency; future timestamps award zero. Store secrets only in ignored `.env.local` files with safe `.env.example` placeholders. Never trust Telegram `initDataUnsafe`; production identity must be derived from server-validated `initData`.

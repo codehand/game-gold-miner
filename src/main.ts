@@ -14,7 +14,11 @@ import {
   LifecycleSafeActiveSaveRepository,
   WebLifecycleSaveJournal,
 } from './platform/web';
-import { showOfflineRewardModal, type OfflineRewardModal } from './ui';
+import {
+  createSaveDiagnosticBanner,
+  showOfflineRewardModal,
+  type OfflineRewardModal,
+} from './ui';
 
 const app = getRequiredElement('#app', 'Application root');
 const gameViewport = getRequiredElement('#game-viewport', 'Game viewport');
@@ -31,7 +35,14 @@ const repository = new LifecycleSafeActiveSaveRepository(
   lifecycleJournal,
   BASE_GAME_BALANCE,
 );
-const persistence = new SavePersistenceCoordinator(repository);
+// Save recovery and storage failures are both recoverable and both invisible
+// without this: the loader replaces an unreadable save with a fresh game and
+// the coordinator absorbs a failed write into a diagnostic, so a player who
+// lost local progress would otherwise simply find themselves back at the start.
+const saveDiagnostics = createSaveDiagnosticBanner(app);
+const persistence = new SavePersistenceCoordinator(repository, {
+  onDiagnostic: (diagnostic) => saveDiagnostics.report(diagnostic),
+});
 let game: ReturnType<typeof createGame> | null = null;
 let offlineRewardModal: OfflineRewardModal | null = null;
 let unbindSaveLifecycle: (() => void) | null = null;
@@ -66,6 +77,7 @@ async function startApplication(): Promise<void> {
     persistence,
     BASE_GAME_BALANCE,
     Date.now(),
+    { onWarning: (warning) => saveDiagnostics.report(warning) },
   );
 
   if (disposed) {
@@ -165,6 +177,7 @@ async function startApplication(): Promise<void> {
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     disposed = true;
+    saveDiagnostics.destroy();
     offlineRewardModal?.destroy();
     unbindSaveLifecycle?.();
 

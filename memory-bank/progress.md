@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 35 is implemented with a passing ten-minute mobile-emulation benchmark and awaits user validation. The user validated Step 34 by authorizing Step 35 and prohibited Step 36 work until the Step 35 test is validated.
+**Phase:** Implementation Plan Step 36 is implemented with a passing production-bundle smoke suite and awaits user validation. The user validated Step 35 by authorizing Step 36 and prohibited Step 37 work until the Step 36 test is validated.
 
 ## Completed
 
@@ -262,6 +262,44 @@
   ordinary production build with profiling hooks absent, and `git diff
   --check` pass. Save document and IndexedDB schema versions remain 1.
 
+- Step 35 was validated by the user on 2026-09-03 through explicit
+  authorization to proceed with Step 36. The physical mid-range Android Chrome
+  pass remains an open caveat rather than a blocking gate.
+- Step 36 implemented on 2026-09-03: `vite.config.ts` declares the `/`
+  deployment base path the runtime's absolute `/assets/...` texture requests
+  depend on, and `playwright.production.config.ts` plus
+  `tests/production/production-smoke.spec.ts` build `dist/`, serve it through
+  `vite preview` at `127.0.0.1:4175`, and verify the served bundle instead of
+  the development server.
+- Step 36 coverage: every runtime texture path and both self-hosted Fredoka
+  weights load successfully with no failed request and no 4xx/5xx response; a
+  controlled 40-second session flushed at a `visibilitychange` boundary equals
+  the document derived in the test process, a reload at the same instant
+  re-settles that identical document, and a further 20 seconds continues from
+  the deserialized saved state; corrupt and unsupported payloads each recover
+  into a playable fresh game with a visible notice and no uncaught error; a
+  browser whose `indexedDB.open` throws still boots, reports the failure, and
+  keeps rendering; and canvas plus all three logical regions stay inside narrow
+  phone, tall phone, tablet portrait, and desktop viewports.
+- Step 36 also proves the artefact under test is the shipped one: every document
+  entry resolves under `/assets/`, nothing is served from `/src/`, and the
+  dev-only rendered-state read-backs and opt-in profiler attributes are absent.
+  Because those diagnostics are stripped, actual rendering is proven by a pixel
+  probe of the canvas backing store.
+- Step 36 finding: Steps 21 and 22 required a visible diagnostic and a recorded
+  save-recovery warning, and the core produced both, but `src/main.ts` never
+  passed `loadActiveGame`'s `onWarning` or the save coordinator's
+  `onDiagnostic`. A player whose local save was rejected silently restarted with
+  no explanation, and every unit test stayed green because the capability itself
+  was correct. Fixed with `src/ui/SaveDiagnosticBanner.ts`, one non-blocking
+  dismissible notice shared by both callbacks and de-duplicated by code.
+  Removing the wiring fails exactly the three new error-handling tests.
+- Step 36 automated evidence: 318 unit tests, 35 Chromium E2E tests, all nine
+  production smoke tests, lint, the strict production build, and
+  `git diff --check` pass. `npm run verify` runs lint, unit, E2E, build, and the
+  production smoke suite in the order Step 36 specifies. Save document and
+  IndexedDB schema versions remain 1. Step 37 has not been touched.
+
 ## Implementation Step Status
 
 | Step | Status | Evidence |
@@ -300,13 +338,14 @@
 | 32 — Add original placeholder presentation | Complete | User validated Step 32/32A and authorized Step 33. |
 | 33 — Add the complete player-journey E2E test | Complete | User authorized Step 34 after the deterministic two-profile journey passed. |
 | 34 — Verify persistence across lifecycle events | Complete | User authorized Step 35 after event-boundary catch-up, hidden/visible equivalence, abrupt-navigation recovery, and exact-once offline settlement passed. |
-| 35 — Profile mobile performance | Implemented / awaiting user validation | Ten-minute Pixel 5/4× CPU Chrome emulation passes its frame, memory, sampled scene-graph, four-floor, startup, asset, and responsive-input assertions; physical Android evidence remains unavailable. |
+| 35 — Profile mobile performance | Complete | User authorized Step 36 after the ten-minute Pixel 5/4× CPU Chrome emulation passed its frame, memory, sampled scene-graph, four-floor, startup, asset, and responsive-input assertions; physical Android evidence remains an open caveat. |
+| 36 — Validate production build behavior | Implemented / awaiting user validation | Lint, unit, E2E, and the production build pass in sequence, then nine smoke tests pass against the built bundle served from the root base path, covering asset loading, bundle identity, canvas rendering, exact save/restore, corrupt/unsupported/unavailable storage recovery, and four viewports. |
 
 ## Not Started
 
 - Expanded manager, boost, and gift-drop systems after the base milestone.
 - Original art, sprite atlases, audio, and visual polish.
-- Physical Android Chrome and Telegram integration testing.
+- Physical mid-range Android Chrome verification of the Step 35 benchmark, and Telegram integration testing.
 - Deployment pipeline.
 
 ## Acceptance Targets

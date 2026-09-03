@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 35 is implemented with a passing ten-minute automated mobile-emulation benchmark and awaits user review. The user validated Step 34 by explicitly authorizing Step 35 and prohibited any Step 36 work before validating the Step 35 test. Step 36 has not started.
+Implementation Plan Step 36 is implemented with a passing production-bundle smoke suite and awaits user review. The user validated Step 35 by explicitly authorizing Step 36 on 2026-09-03 and required work to stop before Step 37. Step 37 has not started.
 
 ## Recent Changes
 
@@ -526,11 +526,63 @@ Implementation Plan Step 35 is implemented with a passing ten-minute automated m
   lint, the ordinary production build with profiler hooks absent, and
   `git diff --check`. Save document and IndexedDB schema versions remain 1.
 
+- The user validated Step 35 and authorized Step 36 on 2026-09-03, explicitly
+  requiring work to stop before Step 37. The outstanding physical mid-range
+  Android pass stays recorded as a caveat rather than a blocking gate.
+- Step 36 adds `vite.config.ts`, which declares the `/` deployment base path.
+  Vite already defaulted to it, but the runtime requests every texture through
+  absolute `/assets/...` paths that no bundler rewrites, so a prefixed base
+  would emit the bundle under the prefix while the loader kept asking the root.
+  The base is a deployment contract and is now written down and asserted.
+- Added `playwright.production.config.ts` and
+  `tests/production/production-smoke.spec.ts`: nine tests that build `dist/`,
+  serve it through `vite preview` at `127.0.0.1:4175`, and verify the served
+  bundle rather than the development server.
+- The smoke suite pins all four Step 36 concerns. Asset loading: every path in
+  `PLACEHOLDER_ASSETS` and `PLACEHOLDER_ANIMATION_ASSETS` plus both self-hosted
+  Fredoka weights return success, no request fails, and no response is 4xx/5xx.
+  Save behavior: a controlled 40-second session flushed at a `visibilitychange`
+  boundary must equal the document derived in the test process, a reload at the
+  same instant must re-settle that identical document, and a further 20 seconds
+  must continue from the deserialized saved state. Error handling: corrupt and
+  unsupported payloads each recover into a playable fresh game with a visible
+  notice and no uncaught error, and a browser whose `indexedDB.open` throws
+  still boots and keeps rendering. Responsive layout: canvas and all three
+  logical regions stay inside four representative viewports.
+- The suite also proves it is testing the shipped artefact: every document
+  entry resolves under `/assets/`, nothing is served from `/src/`, and the
+  dev-only rendered-state read-backs and opt-in profiler attributes are absent.
+  Because those diagnostics are stripped, the production evidence for actual
+  rendering is a pixel probe of the canvas backing store rather than a dataset
+  attribute.
+- Two production-only test techniques were needed. The hashed entry cannot be
+  rewritten the way the dev-server suites fulfil `/src/main.ts`, so the injected
+  clock is installed through an init script that routes `Date.now` via
+  `window.name`. And an invalid save is seeded during a navigation whose bundle
+  is blocked, because a page that boots flushes a valid document over the
+  fixture at its next lifecycle boundary before the recovery path can see it.
+- Step 36 exposed a real gap rather than only confirming the build. Steps 21
+  and 22 required a visible diagnostic and a recorded warning, the core produced
+  both, and every unit test passed — but `src/main.ts` never passed
+  `loadActiveGame`'s `onWarning` or the coordinator's `onDiagnostic`, so a
+  player whose save was rejected silently restarted with no explanation. Added
+  `src/ui/SaveDiagnosticBanner.ts`, a non-blocking dismissible notice shared by
+  both callbacks, de-duplicated by code because a broken storage backend reports
+  a failed write on every debounce. Removing the wiring fails exactly the three
+  new error-handling tests, which was verified by mutation.
+- Added `npm run test:prod` and `npm run verify`; the latter runs lint, unit
+  tests, E2E tests, the production build, and the production smoke suite in the
+  order Step 36 specifies.
+- Step 36 automated evidence: 318 unit tests, 35 Chromium E2E tests, all nine
+  production smoke tests, lint, the strict production build, and
+  `git diff --check` pass. Save document and IndexedDB schema versions remain 1.
+
 ## Next Steps
 
-1. Wait for the user to review the Step 35 benchmark and its physical-device caveat.
-2. Do not begin Step 36 without explicit user authorization.
-3. Keep all later steps blocked behind their preceding validation gates.
+1. Wait for the user to review the Step 36 production-bundle smoke suite.
+2. Do not begin Step 37 without explicit user authorization.
+3. Keep the outstanding physical mid-range Android Chrome pass on the record as
+   a Step 35 caveat to close before the milestone is called done.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 - Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.
 - Confirmed as deliberate that a backgrounded tab is credited at full pipeline rate while a closed one is credited through the 50% offline efficiency, so the same two-hour absence is worth about twice as much with the tab left open. Documented the asymmetry on `MAX_CATCH_UP_MS` and pinned the ratio in `tests/unit/simulation-time.test.ts`, verified by mutation to fail if either side changes.

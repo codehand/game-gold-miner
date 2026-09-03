@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 34 are complete. Step 35 mobile performance profiling is implemented with a passing ten-minute Pixel 5/4× CPU Google Chrome emulation benchmark and awaits user validation; no physical Android target was available, and Step 36 is explicitly untouched. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
+Steps 1 through 35 are complete. Step 36 production-build validation is implemented with a passing nine-test smoke suite against the served optimized bundle and awaits user validation; Step 37 is explicitly untouched. The Step 35 physical mid-range Android pass remains an open caveat rather than a blocking gate. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -16,10 +16,12 @@ Steps 1 through 34 are complete. Step 35 mobile performance profiling is impleme
 | `src/game/assets/placeholderAssets.ts` | Semantic Phaser texture keys and public paths for the original Step 32 family plus the Step 32A floor, elevator, warehouse, and supervisor pack loaded by `BootScene.preload`. |
 | `src/game/layout/mineFloorPanel.ts` | Pure semantic geometry for the approved 288×132 floor composition; renderer and browser probes share its anchors and regions. |
 | `public/assets/placeholder/`, `art-source/placeholder/` | Runtime-ready 128×128 RGBA sprites plus their art-direction/provenance manifest, and retained generated source, prompt, transparent sheet, frames, GIF, and deterministic QC metadata. |
-| `package.json`, `package-lock.json`, `tsconfig.json` | Locked dependencies, strict compiler settings, and verified development/build/test scripts. |
+| `package.json`, `package-lock.json`, `tsconfig.json` | Locked dependencies, strict compiler settings, and verified development/build/test scripts including the `verify` sequence and the production smoke run. |
+| `vite.config.ts` | Declares the `/` deployment base path the runtime's absolute `/assets/...` texture requests depend on. |
 | `eslint.config.mjs` | Flat lint configuration for TypeScript, configuration files, and the Node simulator script. |
 | `vitest.config.ts`, `tests/unit/` | Node-based unit-test configuration and scaffold baseline coverage. |
 | `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, browser smoke coverage, the Step 33 two-profile deterministic player journey, and Step 34 lifecycle equivalence/abrupt-navigation coverage. |
+| `playwright.production.config.ts`, `tests/production/production-smoke.spec.ts` | Step 36 optimized-bundle smoke suite: builds and serves `dist/` through `vite preview` at the root base path, then verifies asset loading, bundle identity, save/restore, save-recovery and storage-failure handling, and responsive layout outside the development server. |
 | `playwright.performance.config.ts`, `tests/performance/mobile-performance.spec.ts`, `performance-results/` | Step 35 optimized-build Google Chrome benchmark, Pixel 5 mobile emulation plus 4× CPU throttling, constant-memory frame histogram, post-GC heap/DOM/listener sampling, live-sampled Phaser object and unlocked-floor counts, alternating scroll-latency probes, asset/startup measurement, budget assertions, and retained raw/human-readable reports. |
 | `tests/unit/architecture.test.ts` | Regression coverage proving the core, layout, view-model, and simulation-driver boundaries accept pure TypeScript and reject renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
@@ -46,6 +48,7 @@ Steps 1 through 34 are complete. Step 35 mobile performance profiling is impleme
 | `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document and forces a flush when supported. |
 | `src/platform/web/WebLifecycleSaveJournal.ts` | Validated synchronous pagehide journal plus an active-save repository decorator that selects a newer valid lifecycle snapshot and clears it after IndexedDB catches up. |
 | `src/ui/OfflineRewardModal.ts` | Accessible DOM modal for credited offline duration, raw `GameNumber` reward display, claim/save progress, and retryable persistence failure feedback. |
+| `src/ui/SaveDiagnosticBanner.ts` | Non-blocking DOM notice that surfaces save-recovery warnings and persistence diagnostics, de-duplicated by code and dismissible. |
 
 ## Current File Responsibilities
 
@@ -70,7 +73,7 @@ Steps 1 through 34 are complete. Step 35 mobile performance profiling is impleme
 | `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, and pending-reward claim transitions. |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration, semantic placeholder-asset manifest, pure portrait geometry, pure presentation models and cosmetic animation maths, live simulation driver, reusable HUD/floor/shared-stage/purchase views, generated-sprite presentation, interactive controls, scroll input, and the single scene that pulls snapshots into them. |
-| `src/ui/` | Owns the implemented offline-reward DOM modal; the mine HUD and later overlays remain deferred. |
+| `src/ui/` | Owns the implemented offline-reward DOM modal and the save-diagnostic notice; the mine HUD and later overlays remain deferred. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding; broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Runtime original placeholder sprites, art-direction brief, and provenance manifest. Generated source and processor outputs live in `art-source/placeholder/` so production builds ship only the semantic runtime files. |
@@ -299,6 +302,29 @@ A successful unlock is applied in place: `purchaseFloorUnlock` initializes the f
 | Warehouse | Level 1, capacity 60 / 1,200 ms | Base cost 120, cost x1.15, capacity x1.12 | Shared and always available |
 
 Starting gold is 100. Every upgradeable stage uses milestones at levels 10/25/50/100 with x2/x2/x3/x4 multipliers. The Step 19 deterministic simulation validates that these values meet the automated ten-minute progression targets without tuning; they remain provisional until player-facing playtesting.
+
+## Production Build Contract
+
+The shipped artefact is the optimized `dist/` bundle served from the root base path `/`. `vite.config.ts` declares that base explicitly rather than relying on the default, because the runtime asks for its textures through absolute `/assets/...` paths that no bundler rewrites: a prefixed base would emit hashed bundles under the prefix while the loader kept requesting the root, and every texture would 404 only in the deployed build.
+
+`playwright.production.config.ts` builds and serves that bundle through `vite preview` on port 4175 and runs `tests/production/production-smoke.spec.ts` against it. The build is part of the server command so the served output always matches current sources, whether the suite runs alone through `npm run test:prod` or as the final stage of `npm run verify` (lint → unit → E2E → build → smoke).
+
+The smoke suite asserts what only the served bundle can show:
+
+- **Asset loading.** Every path in `PLACEHOLDER_ASSETS` and `PLACEHOLDER_ANIMATION_ASSETS` returns a success status, both self-hosted Fredoka weights are served from `/assets/` and report `document.fonts.check`, no request fails, and no response is 4xx/5xx.
+- **Bundle identity.** Every `<script>`/`<link>` in the served document resolves under `/assets/`, no response is served from `/src/`, and the dev-only rendered-state read-backs (`data-floor-views`, `data-hud-view`, `data-purchase-controls`, `data-animation`, `data-mine-scroll`, `data-surface-views`) plus the opt-in profiler attributes are absent. A dev server or an unstripped diagnostic build fails here rather than silently passing the rest.
+- **Real rendering.** Pixel probes read the HUD background and a floor panel out of the canvas backing store, because layout diagnostics report intended geometry and stay green when nothing was painted.
+- **Save behavior.** With `Date.now` routed through `window.name` by an init script — the hashed entry cannot be rewritten the way the dev-server tests rewrite `/src/main.ts` — a controlled 40-second session is flushed at a `visibilitychange` boundary and must equal the document derived in the test process. A reload at the same instant credits no offline time and must re-settle the identical document, and a further 20 seconds must continue from the deserialized saved state rather than a fresh one.
+- **Error handling.** A corrupt payload and an unsupported schema version are each seeded into IndexedDB during a navigation whose bundle is blocked, so nothing boots to overwrite them. The reload must show the matching recovery notice, stay playable, replace the rejected payload with a valid fresh document, and raise no uncaught error. A browser whose `indexedDB.open` throws must still boot, show the load-failure and then the save-failure notice, and keep rendering.
+- **Responsive layout.** The canvas and all three logical regions stay inside narrow-phone, tall-phone, tablet-portrait, and desktop viewports at the preserved 360:640 ratio, with no bottom navigation.
+
+## Save Diagnostic Surface
+
+`createSaveDiagnosticBanner(parent)` renders one non-blocking DOM notice for both recoverable persistence problems: the loader's `SaveRecoveryWarning` and the coordinator's `PersistenceDiagnostic`, whose shapes both satisfy `SaveDiagnosticNotice`. `src/main.ts` passes it as `loadActiveGame`'s `onWarning` and the coordinator's `onDiagnostic`.
+
+Steps 21 and 22 specified a visible diagnostic, and the core produced one, but the application never passed either callback — a player whose save was rejected simply found themselves at the start of a fresh game with no explanation. Step 36 found that only against the served bundle, where the recovery path is what a real corrupt record actually reaches.
+
+The notice never takes focus and overlays only the non-interactive HUD strip, because the session always continues: a corrupt save has already been replaced and a failed write is still retried. A code that is already showing is ignored rather than re-rendered, since a broken storage backend reports a failed write on every debounce, and a dismissed code stays dismissed until a different problem occurs. It is not withdrawn when a later write succeeds — the coordinator reports failures, not recoveries, and leaving a stale notice the player can dismiss is safer than silently retracting the news that progress may not be stored.
 
 ## Complete Database Schema
 

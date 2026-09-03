@@ -6,3 +6,8 @@ export {
   type OfflineRewardModal,
   type OfflineRewardModalOptions,
 } from './OfflineRewardModal';
+export {
+  createSaveDiagnosticBanner,
+  type SaveDiagnosticBanner,
+  type SaveDiagnosticNotice,
+} from './SaveDiagnosticBanner';

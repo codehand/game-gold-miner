@@ -132,6 +132,33 @@ Persistence and Platform Adapters
 - Turn the deterministic economy trace into real UI presses for the integration journey. Derive the exact expected save in the test process, start each run from a deleted IndexedDB database, advance only the controlled wall clock, and require two isolated browser contexts to produce the same pre-offline and post-claim documents. Keep lifecycle/background equivalence out of this test because it belongs to the next ordered gate.
 - Wait for an always-painted reference point before any pixel probe: canvas diagnostics are published inside `create`, before the first frame is presented, and an unpresented canvas reads back as opaque black.
 - Probe a point where the layer under test is the topmost drawn thing. A probe hidden behind a later-drawn panel proves nothing, so the mine gutter, not a floor panel, guards the mine camera's ignore list.
+- Declare the deployment base path rather than inheriting it. Runtime textures
+  are requested through absolute paths no bundler rewrites, so a prefixed base
+  would emit the bundle under the prefix while the loader kept asking the root —
+  a failure that appears only in a deployed build.
+- Verify the artefact that ships, not only the one the dev server assembles.
+  A production smoke suite must assert what only the served bundle can show:
+  every runtime asset returning success, entries resolving under the built
+  asset root, no module served from `/src/`, and the dev-only read-backs
+  absent. Diagnostics that are stripped from the shipped build are exactly the
+  ones a production test cannot lean on, so fall back to pixel probes,
+  IndexedDB contents, and the DOM.
+- Reach a production entry through an init script, not through route rewriting.
+  The dev-server suites inject a controlled clock by fulfilling `/src/main.ts`;
+  a hashed bundle has no such stable URL, so the same single injected clock is
+  installed before any application module runs.
+- Seed an invalid save with the application blocked from booting. A page that
+  runs will flush a valid document over the fixture at its next lifecycle
+  boundary, so the recovery path under test never sees the payload.
+- A capability the core exposes is not a feature until the application passes
+  it. A visible recovery warning that no caller subscribes to is silent in the
+  shipped build and green in every unit test; wire the callback and assert the
+  surfaced text, not the produced value.
+- Keep a recoverable diagnostic a notice rather than a dialog: the session
+  continues either way, so it must not take focus or block the canvas.
+  De-duplicate by code, because a broken storage backend reports the same
+  failure on every debounce, and let a dismissal hold until a different problem
+  occurs.
 - Enforce every documented purity boundary with a lint rule plus an `architecture.test.ts` probe, not with prose alone.
 - Add seeded randomness only when later probabilistic systems are introduced.
 - When one animated object crosses between separately clipped Phaser camera
