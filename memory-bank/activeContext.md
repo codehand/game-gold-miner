@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Implementation Plan Step 34 is implemented with passing automated validation and awaits user review. The user explicitly authorized Step 34 after Step 33 and prohibited any Step 35 work. Step 35 has not started and must not begin without explicit authorization.
+Implementation Plan Step 35 is implemented with a passing ten-minute automated mobile-emulation benchmark and awaits user review. The user validated Step 34 by explicitly authorizing Step 35 and prohibited any Step 36 work before validating the Step 35 test. Step 36 has not started.
 
 ## Recent Changes
 
@@ -479,12 +479,57 @@ Implementation Plan Step 34 is implemented with passing automated validation and
   without duplication or browser errors.
 - Step 34 automated evidence: 318 unit tests, 35 Chromium E2E tests, lint,
   strict production build, and `git diff --check` pass. Save document and
-  IndexedDB schema versions remain 1. Step 35 is untouched.
+  IndexedDB schema versions remain 1.
+- The user validated Step 34 and authorized Step 35 on 2026-09-03, explicitly
+  requiring work to stop before Step 36.
+- Step 35 adds an optimized-build Google Chrome benchmark using a Pixel 5
+  profile, Android 11 user agent, 393×727 viewport, DPR 2.75, and 4× CPU
+  throttling. Benchmark-only object/floor/input diagnostics are statically
+  removed from ordinary production builds.
+- A first Step 35 implementation published the scene-graph size once from
+  `create` and read it back after ten minutes, reporting it as constant. That
+  was a boot-time value re-read from a static attribute, not a trend, so the
+  object-count metric could not have detected growth at all. The scene now
+  republishes its live object count and unlocked-floor count twice a second
+  behind the profiling flag, the benchmark samples both alongside every heap
+  sample, and it asserts the sampled minimum equals the maximum.
+- The benchmark now also asserts four unlocked floors before sampling and again
+  at the end. A seeded save that failed validation would recover into a fresh
+  single-floor state, and every budget would otherwise pass while profiling the
+  wrong mine.
+- The required ten-minute all-four-floor run passed with 8.33 ms mean, 9.2 ms
+  p95, 9.3 ms p99, and 16.0 ms maximum frame time across 72,188 frames, with no
+  frame above 33.34 ms. The host presented at 120 Hz, so the sampler's raw
+  120.01 FPS figure reports presentation cadence, not a game ceiling; the
+  meaningful result is roughly two times headroom against the 16.67 ms budget
+  the 60 FPS target implies. An earlier run of the same benchmark at 60 Hz
+  measured 16.67 ms mean / 17.8 ms maximum, the same conclusion.
+- Post-GC live heap changed by 155,360 bytes with a -502 bytes/s post-warm-up
+  slope. Phaser objects held at 258 across all twenty samples, unlocked floors
+  at 4, DOM nodes at 176, listeners at 160, and scroll response measured
+  50.1 ms p95 / 52.5 ms maximum.
+- The optimized output measured 3,887,708 bytes total, including 2,200,266
+  image bytes and 95,720 font bytes; first-load resource transfer accounting
+  was 2,343,440 bytes. Startup reached the booted scene in 819 ms. The main JS
+  chunk remains 1,557,900 bytes raw (about 414 kB gzip) and is recorded as a
+  future startup/code-splitting observation rather than an active frame-time
+  bottleneck.
+- No Android/ADB target was connected, so this is reproducible Pixel 5
+  emulation in desktop Chrome, not physical mid-range Android evidence. The
+  physical-device pass remains the user-validation caveat. Repeated miners,
+  haulers, carts, and effects were already pooled and the sampled object count
+  never moved, so no speculative runtime rewrite was justified by the profile.
+  The one per-frame allocation left by design is `catchUpSimulation` returning
+  a new immutable state each frame; the negative heap slope shows the collector
+  absorbs it, and removing it would cost the core its determinism.
+- Step 35 verification also passes 318 unit tests, all 35 Chromium E2E tests,
+  lint, the ordinary production build with profiler hooks absent, and
+  `git diff --check`. Save document and IndexedDB schema versions remain 1.
 
 ## Next Steps
 
-1. Wait for the user to review and validate Step 34.
-2. Do not begin Step 35 without explicit user authorization.
+1. Wait for the user to review the Step 35 benchmark and its physical-device caveat.
+2. Do not begin Step 36 without explicit user authorization.
 3. Keep all later steps blocked behind their preceding validation gates.
 4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
 - Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.

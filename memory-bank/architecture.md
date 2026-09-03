@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 33 are complete. Step 34 lifecycle persistence is implemented with passing automated checks and awaits user validation. Controlled-clock coverage proves hidden/visible catch-up equals uninterrupted foreground play and real abrupt navigation recovers a validated emergency journal before settling offline time exactly once. Step 35 is explicitly untouched and blocked. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
+Steps 1 through 34 are complete. Step 35 mobile performance profiling is implemented with a passing ten-minute Pixel 5/4× CPU Google Chrome emulation benchmark and awaits user validation; no physical Android target was available, and Step 36 is explicitly untouched. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -20,6 +20,7 @@ Steps 1 through 33 are complete. Step 34 lifecycle persistence is implemented wi
 | `eslint.config.mjs` | Flat lint configuration for TypeScript, configuration files, and the Node simulator script. |
 | `vitest.config.ts`, `tests/unit/` | Node-based unit-test configuration and scaffold baseline coverage. |
 | `playwright.config.ts`, `tests/e2e/` | Chromium E2E configuration, automatic Vite test server, browser smoke coverage, the Step 33 two-profile deterministic player journey, and Step 34 lifecycle equivalence/abrupt-navigation coverage. |
+| `playwright.performance.config.ts`, `tests/performance/mobile-performance.spec.ts`, `performance-results/` | Step 35 optimized-build Google Chrome benchmark, Pixel 5 mobile emulation plus 4× CPU throttling, constant-memory frame histogram, post-GC heap/DOM/listener sampling, live-sampled Phaser object and unlocked-floor counts, alternating scroll-latency probes, asset/startup measurement, budget assertions, and retained raw/human-readable reports. |
 | `tests/unit/architecture.test.ts` | Regression coverage proving the core, layout, view-model, and simulation-driver boundaries accept pure TypeScript and reject renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
 | `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer with both stage views, and the mine content layer with four floor views; pulls the newest snapshot from its source on every frame, advances the separate cosmetic animation clock from the frame delta, clips the mine through a dedicated camera viewport, and records startup, renderer, layout, rendered-view, HUD, and animation diagnostics on the game canvas. |

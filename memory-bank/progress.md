@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 34 is implemented with passing automated checks and awaits user validation. The user explicitly authorized Step 34 after Step 33 and prohibited Step 35 work. Step 35 has not started and remains blocked.
+**Phase:** Implementation Plan Step 35 is implemented with a passing ten-minute mobile-emulation benchmark and awaits user validation. The user validated Step 34 by authorizing Step 35 and prohibited Step 36 work until the Step 35 test is validated.
 
 ## Completed
 
@@ -223,7 +223,44 @@
   twice. Real abrupt navigation, reload, journal cleanup, and absence of console
   or page errors are covered.
 - Step 34 automated evidence: 318 unit tests, 35 Chromium E2E tests, lint,
-  strict production build, and `git diff --check` pass. Step 35 is untouched.
+  strict production build, and `git diff --check` pass.
+- Step 34 was validated by the user on 2026-09-03 through explicit
+  authorization to proceed with Step 35.
+- Step 35 implemented an optimized-build performance project and a ten-minute
+  all-four-floor acceptance run in Google Chrome 151 using a Pixel 5 profile,
+  Android 11 user agent, 393×727 viewport, DPR 2.75, and 4× CPU throttling.
+  Normal production builds statically remove the benchmark-only object, floor,
+  and scroll read-backs.
+- A first Step 35 implementation published the scene-graph size once from
+  `create` and read that same static attribute back after ten minutes,
+  reporting "258, constant" as if it were a trend. The metric could not have
+  detected growth. Fixed by republishing live object and unlocked-floor counts
+  twice a second behind the profiling flag, sampling both with every heap
+  sample, and asserting the sampled minimum equals the maximum.
+- Step 35 automated evidence: 72,188 sampled frames measured 8.33 ms mean,
+  9.2 ms p95, 9.3 ms p99, 16.0 ms maximum, and zero frames above 33.34 ms. The
+  host presented at 120 Hz, so the raw 120.01 FPS figure is presentation
+  cadence; the budget result is roughly two times headroom against the 16.67 ms
+  60 FPS target. Post-GC live heap changed by 155,360 bytes over ten minutes
+  with a -502 bytes/s post-warm-up slope. Phaser objects held at 258 across all
+  twenty samples, unlocked floors at 4 at boot and at end, DOM nodes at 176,
+  listeners stabilized at 160, and scroll response measured 50.1 ms p95 /
+  52.5 ms maximum.
+- Step 35 asset/startup evidence: boot completed in 819 ms; the optimized output
+  measured 3,887,708 bytes total, 2,200,266 image bytes, 95,720 font bytes, and
+  2,343,440 transferred resource bytes. The main JavaScript chunk is 1,557,900
+  bytes raw (about 414 kB gzip), retained as a documented future startup budget
+  concern because the measured startup and frame budgets pass.
+- No physical Android/ADB target was available. The passing result is a
+  repeatable Pixel 5 emulation benchmark in desktop Chrome and must not be
+  represented as physical-device evidence. Existing repeated visual objects
+  are pooled and the sampled object/heap measurements found no runtime
+  bottleneck that justified a speculative rewrite. The remaining per-frame
+  allocation is `catchUpSimulation` returning a new immutable state each frame,
+  kept deliberately because the core's determinism rests on it.
+- Step 35 regression evidence: 318 unit tests, 35 Chromium E2E tests, lint, the
+  ordinary production build with profiling hooks absent, and `git diff
+  --check` pass. Save document and IndexedDB schema versions remain 1.
 
 ## Implementation Step Status
 
@@ -262,14 +299,14 @@
 | 31 — Add mine scrolling and one-thumb input | Complete | User validated Step 31 and authorized Step 32. |
 | 32 — Add original placeholder presentation | Complete | User validated Step 32/32A and authorized Step 33. |
 | 33 — Add the complete player-journey E2E test | Complete | User authorized Step 34 after the deterministic two-profile journey passed. |
-| 34 — Verify persistence across lifecycle events | Implemented / awaiting user validation | Event-boundary catch-up, hidden/visible equivalence, abrupt-navigation recovery, exact-once offline settlement, 318 unit tests, and 35 Chromium E2E tests pass. |
-| 35 — Profile mobile performance | Not started / blocked | Must not begin until the user validates Step 34 and explicitly authorizes Step 35. |
+| 34 — Verify persistence across lifecycle events | Complete | User authorized Step 35 after event-boundary catch-up, hidden/visible equivalence, abrupt-navigation recovery, and exact-once offline settlement passed. |
+| 35 — Profile mobile performance | Implemented / awaiting user validation | Ten-minute Pixel 5/4× CPU Chrome emulation passes its frame, memory, sampled scene-graph, four-floor, startup, asset, and responsive-input assertions; physical Android evidence remains unavailable. |
 
 ## Not Started
 
 - Expanded manager, boost, and gift-drop systems after the base milestone.
 - Original art, sprite atlases, audio, and visual polish.
-- Mobile performance and Telegram integration testing.
+- Physical Android Chrome and Telegram integration testing.
 - Deployment pipeline.
 
 ## Acceptance Targets

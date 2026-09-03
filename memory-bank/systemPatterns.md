@@ -163,3 +163,23 @@ Load save → migrate and validate → recover fresh state if invalid → calcul
 ## Performance
 
 Prefer sprite atlases, object pooling, tweens/state machines, and minimal dynamic graphics. Physics is unnecessary. Keep the simulation independent of frame rate and target 60 FPS in a 9:16 viewport.
+
+Measure the optimized bundle before changing runtime code. The Step 35 harness
+uses a constant-memory frame histogram, forces GC before retained-heap samples,
+ignores the bounded first-minute V8/Phaser warm-up when calculating sustained
+memory slope, and holds the all-four-floor scene active while alternating input
+probes.
+
+Sample every trend metric; never publish one once and read it back later. A
+counter written at boot and re-read after ten minutes is a boot-time value
+wearing a trend's clothes, and the object-count metric exists precisely to catch
+growth it could not have seen. For the same reason, assert the benchmark's own
+preconditions — the seeded four-floor save is verified as loaded before and
+after the run, so a save that silently recovered into a fresh single-floor state
+fails the benchmark instead of passing every budget while measuring the wrong
+mine. A frame-rate figure derived from `requestAnimationFrame` deltas reports
+the host's presentation cadence, so state conclusions in frame time against the
+16.67 ms budget rather than in FPS. Keep profiler diagnostics behind a build-time flag so ordinary
+production bundles remove them. Treat Pixel/CPU-throttled desktop Chrome as
+repeatable emulation evidence only; it does not replace a physical mid-range
+Android Chrome pass.

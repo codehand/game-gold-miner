@@ -12,6 +12,7 @@
     "sim:list": "serve-sim --list",
     "sim:stop": "serve-sim --kill",
     "test": "vitest run",
+    "test:perf": "playwright test --config playwright.performance.config.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

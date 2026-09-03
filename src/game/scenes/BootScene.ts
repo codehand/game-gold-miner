@@ -108,6 +108,21 @@ const VIEW_DIAGNOSTIC_INTERVAL_MS = 100;
  */
 const PUBLISHES_VIEW_DIAGNOSTICS = import.meta.env.DEV;
 
+/**
+ * Opt-in production profiling read-back. The ordinary production build leaves
+ * this false, so benchmark-only attributes and input probes are tree-shaken.
+ */
+const PUBLISHES_PERFORMANCE_DIAGNOSTICS =
+  import.meta.env.VITE_ENABLE_PERFORMANCE_DIAGNOSTICS === 'true';
+
+/**
+ * Scene-graph and unlock read-backs are resampled at most this often. Walking
+ * every container each frame would make the profiler itself a measurable cost,
+ * while a boot-only count could not show growth at all — which is the single
+ * thing an object-count metric exists to detect.
+ */
+const PERFORMANCE_DIAGNOSTIC_INTERVAL_MS = 500;
+
 const SURFACE_TITLE_HEIGHT = 28;
 const SURFACE_PANEL_INSET = 12;
 const SURFACE_PANEL_GAP = 10;
@@ -169,6 +184,7 @@ export class BootScene extends Phaser.Scene {
   #animationSpeedMultiplier: number;
   #animationTimeMs = 0;
   #lastViewDiagnosticMs = Number.NEGATIVE_INFINITY;
+  #lastPerformanceDiagnosticMs = Number.NEGATIVE_INFINITY;
   /** The camera the mine content is drawn through, needed to place presses. */
   #mineCamera: Phaser.Cameras.Scene2D.Camera | null = null;
   #mineRegion: LayoutRegion | null = null;
@@ -280,6 +296,7 @@ export class BootScene extends Phaser.Scene {
     // long a message stays readable must not change with animation speed.
     this.#applyPurchaseFeedback(time);
     this.#publishViewDiagnostics(false);
+    this.#publishPerformanceDiagnostics(false);
   }
 
   /** Scales cosmetic motion. Rejects non-finite or negative multipliers. */
@@ -445,6 +462,10 @@ export class BootScene extends Phaser.Scene {
 
     if (next.scrollY !== scroll.scrollY) {
       this.#mineCamera?.setScroll(0, next.scrollY);
+
+      if (PUBLISHES_PERFORMANCE_DIAGNOSTICS) {
+        this.game.canvas.dataset.performanceMineScrollY = String(next.scrollY);
+      }
     }
   }
 
@@ -1076,6 +1097,7 @@ export class BootScene extends Phaser.Scene {
     canvas.setAttribute('aria-label', 'Cat Mine Idle game canvas');
     canvas.setAttribute('role', 'img');
 
+    this.#publishPerformanceDiagnostics(true);
     this.#publishViewDiagnostics(true);
   }
 
@@ -1090,6 +1112,40 @@ export class BootScene extends Phaser.Scene {
    * attributes, so a shipped build would be serializing the whole screen ten
    * times a second for an audience that does not exist.
    */
+  /**
+   * Republishes the benchmark's live scene-graph size and unlocked-floor count.
+   *
+   * Both are sampled rather than published once at boot: a constant read at the
+   * end of a long run cannot distinguish a pooled scene from a leaking one, and
+   * a benchmark that silently fell back to a fresh single-floor save would
+   * otherwise meet every budget while measuring the wrong mine.
+   */
+  #publishPerformanceDiagnostics(force: boolean): void {
+    if (!PUBLISHES_PERFORMANCE_DIAGNOSTICS) {
+      return;
+    }
+
+    if (
+      !force &&
+      this.time.now - this.#lastPerformanceDiagnosticMs <
+        PERFORMANCE_DIAGNOSTIC_INTERVAL_MS
+    ) {
+      return;
+    }
+
+    this.#lastPerformanceDiagnosticMs = this.time.now;
+
+    const canvas = this.game.canvas;
+
+    canvas.dataset.performanceObjectCount = String(
+      countGameObjects(this.children.getChildren()),
+    );
+    canvas.dataset.performanceUnlockedFloors = String(
+      this.#viewModel.floors.filter((floor) => floor.isUnlocked).length,
+    );
+    canvas.dataset.performanceMineScrollY = String(this.#scroll?.scrollY ?? 0);
+  }
+
   #publishViewDiagnostics(force: boolean): void {
     if (!PUBLISHES_VIEW_DIAGNOSTICS) {
       return;
@@ -1227,6 +1283,23 @@ export class BootScene extends Phaser.Scene {
       canvas.dataset.mineScroll = JSON.stringify(describeMineScroll(this.#scroll));
     }
   }
+}
+
+/** Counts the full scene graph, including objects nested inside containers. */
+function countGameObjects(
+  objects: readonly Phaser.GameObjects.GameObject[],
+): number {
+  let count = 0;
+
+  for (const object of objects) {
+    count += 1;
+
+    if (object instanceof Phaser.GameObjects.Container) {
+      count += countGameObjects(object.list);
+    }
+  }
+
+  return count;
 }
 
 /**

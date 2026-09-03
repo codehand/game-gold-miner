@@ -2,7 +2,7 @@
 
 ## Current State
 
-Steps 1 through 33 are complete. Step 34 lifecycle persistence is implemented with passing automated checks and awaits user validation; Step 35 has not started and is explicitly blocked. Lifecycle events now advance state to their timestamp before saving, and a validated synchronous localStorage journal protects abrupt navigation until IndexedDB catches up. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
+Steps 1 through 34 are complete. Step 35 is implemented with a passing ten-minute Pixel 5/4× CPU Google Chrome emulation benchmark and awaits user validation; no physical Android target was available, and Step 36 has not started. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
 
 Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
 
@@ -27,6 +27,11 @@ Implementation must follow the ordered, test-gated sequence in `memory-bank/impl
 - Vitest 4.1.11 runs Node-based unit tests from `tests/unit/`.
 - Dexie 4.4.5 implements the browser IndexedDB adapter; `fake-indexeddb` 6.2.5 provides deterministic close/reopen and failure-independent unit coverage without changing production runtime behavior.
 - Playwright 1.62.1 runs Chromium E2E tests from `tests/e2e/` and starts a fixed-port Vite test server automatically.
+- A separate Playwright performance project builds the optimized bundle with
+  opt-in profiling diagnostics, launches installed Google Chrome with a Pixel 5
+  profile and 4× CPU throttling, and writes its ten-minute report under
+  `performance-results/`. Ordinary production builds tree-shake the profiling
+  attributes.
 - `tests/e2e/player-journey.spec.ts` uses Playwright's controlled clock, two newly created browser contexts, published screen-space control diagnostics, and the real Dexie repository. It deletes `cat-mine-idle` before each run, checks rendered progress after every press, waits for the final debounced save, leaves the running page before advancing the offline clock, and validates exact policy-derived documents before and after one claim.
 - `tests/e2e/lifecycle-persistence.spec.ts` uses a mutable injected wall clock and real browser navigation. It pins exact hidden/visible equivalence against uninterrupted simulation and proves pagehide journal recovery, IndexedDB cleanup, offline settlement, claim, and reload are exact-once and error-free.
 - `@fontsource/fredoka` 5.3.x self-hosts weights 600 and 700; startup waits for both browser fonts before creating Phaser canvas text.
@@ -121,6 +126,13 @@ If a database is introduced, replace this statement with the complete authoritat
 - `npm run build` (`tsc --noEmit` plus Vite production build)
 - `npm run test`: three hundred eighteen tests pass, including unavailable-journal fallback, lifecycle recovery, and the ten-minute fractional-transport save-invariant regression.
 - `npm run test:e2e`: all thirty-five Chromium tests pass, including the Step 33 journey plus Step 34 hidden/visible and abrupt-navigation scenarios.
+- `npm run test:perf`: the ten-minute all-four-floor Google Chrome emulation
+  benchmark passes at 8.33 ms mean / 9.2 ms p95 frame time against the 16.67 ms
+  60 FPS budget, with a live-sampled 258 Phaser objects and 176 DOM nodes held
+  constant across all twenty samples, four unlocked floors asserted at boot and
+  at end, a negative post-warm-up heap slope, and 50.1 ms p95 scroll response.
+  The raw FPS figure tracks the host's presentation rate, so read frame time
+  rather than FPS. This is not physical Android-device evidence.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 
 ## Conventions
