@@ -217,6 +217,25 @@ test('does not buy a button a swipe merely ended on', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('does not open a surface popup after a drag gesture', async ({ page }) => {
+  const errors = collectBrowserErrors(page);
+
+  await bootScrollFixture(page);
+  const elevator = await readPurchaseControl(page, ELEVATOR_KEY);
+
+  // Both ends remain inside the 44x50 Level hit area. The movement exceeds
+  // the tap threshold, so pointerup must not be interpreted as a selection.
+  await dragMine(
+    page,
+    controlCenter(elevator),
+    MINE_SCROLL_DRAG_THRESHOLD_PX + 4,
+  );
+
+  await expect(page.getByTestId('mine-upgrade-modal')).toBeHidden();
+  expect((await readMineScroll(page)).scrollY).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('buys from a control before scrolling, and from one only scrolling reveals', async ({
   page,
 }) => {

@@ -14,7 +14,11 @@ import type {
   RenderedFloorState,
   RenderedSharedStageState,
 } from '../../src/game/entities';
-import { PLACEHOLDER_TEXTURES } from '../../src/game/assets/placeholderAssets';
+import {
+  ELEVATOR_SHAFT_TEXTURE_HEIGHT_PX,
+  ELEVATOR_SHAFT_TEXTURE_WIDTH_PX,
+  PLACEHOLDER_TEXTURES,
+} from '../../src/game/assets/placeholderAssets';
 import {
   calculateFloorSlotRegion,
   calculateMineFloorPanelLayout,
@@ -203,6 +207,32 @@ function createWarehouseLevelState(level: number): GameState {
         level,
         BASE_GAME_BALANCE.warehouse.upgrade,
       ),
+    },
+  };
+}
+
+function createDeepElevatorReturnState(): GameState {
+  const base = createInitialGameState(BASE_GAME_BALANCE, FIXTURE_TIMESTAMP_MS);
+
+  return {
+    ...base,
+    floors: base.floors.map((floor, index) => {
+      if (index > 10) {
+        return floor;
+      }
+
+      return withFloor(floor, {
+        isUnlocked: true,
+        mineShaftLevel: 100,
+        totalExtracted: GameNumber.from(index === 0 ? 100 : 0),
+        totalTransported: GameNumber.from(index === 0 ? 50 : 0),
+      });
+    }),
+    elevator: {
+      ...base.elevator,
+      roundRobinCursor: -11,
+      transitProgress: 0.5,
+      carriedMaterial: GameNumber.from(50),
     },
   };
 }
@@ -433,6 +463,8 @@ test('keeps surface carts empty when the tower queue is empty', async ({
   type EmptyTowerReadBack = {
     elevatorTower: { texture: string };
     surfaceHauler: {
+      cartX: number;
+      catX: number;
       cartTexture: string;
       goldPourVisible: boolean;
     };
@@ -457,6 +489,14 @@ test('keeps surface carts empty when the tower queue is empty', async ({
     );
     expect(animation.surfaceHauler.goldPourVisible).toBe(false);
   }
+  expect(
+    later.surfaceHauler.cartX,
+    'an empty cart still completes the delivery loop',
+  ).not.toBe(first.surfaceHauler.cartX);
+  expect(
+    later.surfaceHauler.catX,
+    'the worker stays with the moving empty cart',
+  ).not.toBe(first.surfaceHauler.catX);
 });
 
 test('adds one visible transport cat at each ten warehouse levels', async ({
@@ -591,6 +631,14 @@ test('returns through the surface boundary and stops inside the elevator tower',
       width: number;
       height: number;
     };
+    elevatorShaft: {
+      texture: string;
+      width: number;
+      height: number;
+      tileScaleX: number;
+      tileScaleY: number;
+      tileHeight: number;
+    };
     surfaceElevatorCabin: {
       centerX: number;
       centerY: number;
@@ -626,6 +674,16 @@ test('returns through the surface boundary and stops inside the elevator tower',
     width: SURFACE_ELEVATOR_TOWER_WIDTH,
     height: SURFACE_ELEVATOR_TOWER_HEIGHT,
   });
+  expect(animation.elevatorShaft, 'crisp repeated shaft texture').toMatchObject({
+    texture: PLACEHOLDER_TEXTURES.elevatorShaft,
+    width: 64,
+    tileScaleX: 64 / ELEVATOR_SHAFT_TEXTURE_WIDTH_PX,
+    tileScaleY: 1,
+    tileHeight: ELEVATOR_SHAFT_TEXTURE_HEIGHT_PX,
+  });
+  expect(animation.elevatorShaft.height).toBeGreaterThan(
+    ELEVATOR_SHAFT_TEXTURE_HEIGHT_PX,
+  );
   expect(animation.surfaceLandscape, 'blue-sky surface backdrop').toEqual({
     texture: PLACEHOLDER_TEXTURES.surfaceLandscape,
     centerX: 180,
@@ -654,6 +712,52 @@ test('returns through the surface boundary and stops inside the elevator tower',
   expect(animation.warehouseManager.frame).toBeGreaterThanOrEqual(0);
   expect(animation.warehouseManager.frame).toBeLessThan(4);
   expect(animation.warehouseManager.flipX, 'warehouse cat looks toward the elevator').toBe(true);
+});
+
+test('keeps a deep elevator return route fixed while the mine camera scrolls', async ({
+  page,
+}) => {
+  await bootPausedFixture(page, createDeepElevatorReturnState());
+
+  type ElevatorRouteReadBack = {
+    elevatorCabin: { centerY: number };
+    surfaceElevatorCabin: { centerY: number };
+  };
+  const before = await readJsonAttribute<ElevatorRouteReadBack>(
+    page,
+    'data-animation',
+  );
+
+  const canvasBox = await page.locator(CANVAS_SELECTOR).boundingBox();
+
+  if (canvasBox === null) {
+    throw new Error('Expected the game canvas to have a bounding box.');
+  }
+
+  await page.mouse.move(
+    canvasBox.x + canvasBox.width * (180 / 360),
+    canvasBox.y + canvasBox.height * (400 / 640),
+  );
+  await page.mouse.wheel(0, 1_000);
+  await expect.poll(async () => {
+    return (await readJsonAttribute<{ scrollY: number }>(
+      page,
+      'data-mine-scroll',
+    )).scrollY;
+  }).toBeGreaterThan(0);
+
+  const after = await readJsonAttribute<ElevatorRouteReadBack>(
+    page,
+    'data-animation',
+  );
+
+  expect(after.elevatorCabin.centerY, 'world route ignores camera scroll').toBe(
+    before.elevatorCabin.centerY,
+  );
+  expect(
+    after.surfaceElevatorCabin.centerY,
+    'fixed-layer twin follows the same physical route',
+  ).toBe(before.surfaceElevatorCabin.centerY);
 });
 
 test('shows gold in the tower hopper only while the warehouse queue is positive', async ({

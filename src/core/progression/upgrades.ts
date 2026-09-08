@@ -55,26 +55,11 @@ export function calculateMineShaftUpgradeBatchCost(
     );
   }
 
-  validateUpgradeQuantity(floor.mineShaftLevel, quantity);
-
-  const firstCost = calculateNextUpgradeCost(
+  return calculateUpgradeBatchCost(
     floor.mineShaftLevel,
     config.upgrade,
+    quantity,
   );
-
-  if (quantity === 1) {
-    return firstCost;
-  }
-
-  const growth = config.upgrade.costGrowthRate;
-
-  if (growth === 1) {
-    return firstCost.multiply(quantity);
-  }
-
-  return firstCost
-    .multiply(integerPower(growth, quantity).subtract(1))
-    .divide(growth - 1);
 }
 
 export function calculateMaxAffordableMineShaftUpgradeQuantity(
@@ -82,52 +67,24 @@ export function calculateMaxAffordableMineShaftUpgradeQuantity(
   config: MineFloorConfig,
   gold: GameNumber,
 ): number {
-  const maximum = Number.MAX_SAFE_INTEGER - floor.mineShaftLevel;
+  assertMineFloorConfig(floor, config);
 
-  if (
-    maximum < 1 ||
-    gold.lessThan(calculateMineShaftUpgradeCost(floor, config))
-  ) {
-    return 0;
+  return calculateMaxAffordableUpgradeQuantity(
+    floor.mineShaftLevel,
+    config.upgrade,
+    gold,
+  );
+}
+
+function assertMineFloorConfig(
+  floor: MineFloorState,
+  config: MineFloorConfig,
+): void {
+  if (floor.id !== config.id) {
+    throw new Error(
+      `Floor state ${floor.id} does not match balance configuration ${config.id}.`,
+    );
   }
-
-  let affordable = 1;
-  let unaffordable = Math.min(2, maximum);
-
-  while (
-    unaffordable < maximum &&
-    gold.greaterThanOrEqualTo(
-      calculateMineShaftUpgradeBatchCost(floor, config, unaffordable),
-    )
-  ) {
-    affordable = unaffordable;
-    unaffordable = Math.min(unaffordable * 2, maximum);
-  }
-
-  if (
-    unaffordable === maximum &&
-    gold.greaterThanOrEqualTo(
-      calculateMineShaftUpgradeBatchCost(floor, config, maximum),
-    )
-  ) {
-    return maximum;
-  }
-
-  while (unaffordable - affordable > 1) {
-    const candidate = affordable + Math.floor((unaffordable - affordable) / 2);
-
-    if (
-      gold.greaterThanOrEqualTo(
-        calculateMineShaftUpgradeBatchCost(floor, config, candidate),
-      )
-    ) {
-      affordable = candidate;
-    } else {
-      unaffordable = candidate;
-    }
-  }
-
-  return affordable;
 }
 
 export function calculateElevatorUpgradeCost(
@@ -139,6 +96,30 @@ export function calculateElevatorUpgradeCost(
   return calculateNextUpgradeCost(elevator.level, config.upgrade);
 }
 
+export function calculateElevatorUpgradeBatchCost(
+  elevator: ElevatorState,
+  config: SharedStageConfig,
+  quantity: number,
+): GameNumber {
+  assertSharedStageConfig(config, 'elevator');
+
+  return calculateUpgradeBatchCost(elevator.level, config.upgrade, quantity);
+}
+
+export function calculateMaxAffordableElevatorUpgradeQuantity(
+  elevator: ElevatorState,
+  config: SharedStageConfig,
+  gold: GameNumber,
+): number {
+  assertSharedStageConfig(config, 'elevator');
+
+  return calculateMaxAffordableUpgradeQuantity(
+    elevator.level,
+    config.upgrade,
+    gold,
+  );
+}
+
 export function calculateWarehouseUpgradeCost(
   warehouse: WarehouseState,
   config: SharedStageConfig,
@@ -146,6 +127,30 @@ export function calculateWarehouseUpgradeCost(
   assertSharedStageConfig(config, 'warehouse');
 
   return calculateNextUpgradeCost(warehouse.level, config.upgrade);
+}
+
+export function calculateWarehouseUpgradeBatchCost(
+  warehouse: WarehouseState,
+  config: SharedStageConfig,
+  quantity: number,
+): GameNumber {
+  assertSharedStageConfig(config, 'warehouse');
+
+  return calculateUpgradeBatchCost(warehouse.level, config.upgrade, quantity);
+}
+
+export function calculateMaxAffordableWarehouseUpgradeQuantity(
+  warehouse: WarehouseState,
+  config: SharedStageConfig,
+  gold: GameNumber,
+): number {
+  assertSharedStageConfig(config, 'warehouse');
+
+  return calculateMaxAffordableUpgradeQuantity(
+    warehouse.level,
+    config.upgrade,
+    gold,
+  );
 }
 
 export function purchaseMineShaftUpgrade(
@@ -215,16 +220,25 @@ export function purchaseElevatorUpgrade(
   state: GameState,
   config: BaseGameBalanceConfig,
 ): UpgradePurchaseResult {
-  const cost = calculateElevatorUpgradeCost(
+  return purchaseElevatorUpgrades(state, 1, config);
+}
+
+export function purchaseElevatorUpgrades(
+  state: GameState,
+  quantity: number,
+  config: BaseGameBalanceConfig,
+): UpgradePurchaseResult {
+  const cost = calculateElevatorUpgradeBatchCost(
     state.elevator,
     config.elevator,
+    quantity,
   );
 
   if (state.gold.lessThan(cost)) {
     return failure(state, cost, 'insufficient-funds');
   }
 
-  const nextLevel = state.elevator.level + 1;
+  const nextLevel = state.elevator.level + quantity;
 
   return success(
     {
@@ -244,16 +258,25 @@ export function purchaseWarehouseUpgrade(
   state: GameState,
   config: BaseGameBalanceConfig,
 ): UpgradePurchaseResult {
-  const cost = calculateWarehouseUpgradeCost(
+  return purchaseWarehouseUpgrades(state, 1, config);
+}
+
+export function purchaseWarehouseUpgrades(
+  state: GameState,
+  quantity: number,
+  config: BaseGameBalanceConfig,
+): UpgradePurchaseResult {
+  const cost = calculateWarehouseUpgradeBatchCost(
     state.warehouse,
     config.warehouse,
+    quantity,
   );
 
   if (state.gold.lessThan(cost)) {
     return failure(state, cost, 'insufficient-funds');
   }
 
-  const nextLevel = state.warehouse.level + 1;
+  const nextLevel = state.warehouse.level + quantity;
 
   return success(
     {
@@ -278,6 +301,83 @@ function calculateNextUpgradeCost(
   return GameNumber.from(config.baseCost).multiply(
     integerPower(config.costGrowthRate, currentLevel),
   );
+}
+
+function calculateUpgradeBatchCost(
+  currentLevel: number,
+  config: UpgradeConfig,
+  quantity: number,
+): GameNumber {
+  validateUpgradeQuantity(currentLevel, quantity);
+
+  const firstCost = calculateNextUpgradeCost(currentLevel, config);
+
+  if (quantity === 1) {
+    return firstCost;
+  }
+
+  const growth = config.costGrowthRate;
+
+  if (growth === 1) {
+    return firstCost.multiply(quantity);
+  }
+
+  return firstCost
+    .multiply(integerPower(growth, quantity).subtract(1))
+    .divide(growth - 1);
+}
+
+function calculateMaxAffordableUpgradeQuantity(
+  currentLevel: number,
+  config: UpgradeConfig,
+  gold: GameNumber,
+): number {
+  const maximum = Number.MAX_SAFE_INTEGER - currentLevel;
+
+  if (
+    maximum < 1 ||
+    gold.lessThan(calculateNextUpgradeCost(currentLevel, config))
+  ) {
+    return 0;
+  }
+
+  let affordable = 1;
+  let unaffordable = Math.min(2, maximum);
+
+  while (
+    unaffordable < maximum &&
+    gold.greaterThanOrEqualTo(
+      calculateUpgradeBatchCost(currentLevel, config, unaffordable),
+    )
+  ) {
+    affordable = unaffordable;
+    unaffordable = Math.min(unaffordable * 2, maximum);
+  }
+
+  if (
+    unaffordable === maximum &&
+    gold.greaterThanOrEqualTo(
+      calculateUpgradeBatchCost(currentLevel, config, maximum),
+    )
+  ) {
+    return maximum;
+  }
+
+  while (unaffordable - affordable > 1) {
+    const candidate = affordable + Math.floor((unaffordable - affordable) / 2);
+
+    if (
+      gold.greaterThanOrEqualTo(
+        calculateUpgradeBatchCost(currentLevel, config, candidate),
+      )
+    ) {
+      affordable = candidate;
+    } else {
+      unaffordable = candidate;
+    }
+  }
+
+  return affordable;
 }
 
 function calculateSharedStageCapacity(

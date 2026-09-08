@@ -507,7 +507,11 @@ async function pressPurchaseControl(page: Page, key: string): Promise<void> {
     box.y + (control.screenBounds.y + control.screenBounds.height / 2) * scaleY,
   );
 
-  if (key.startsWith('mine-shaft:')) {
+  if (
+    key.startsWith('mine-shaft:') ||
+    key === 'elevator' ||
+    key === 'warehouse'
+  ) {
     await expect(page.getByTestId('mine-upgrade-modal')).toBeVisible();
     await page.getByTestId('mine-upgrade-x1').click();
     await page.getByTestId('mine-upgrade-close').click();

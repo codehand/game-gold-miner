@@ -4,17 +4,23 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   advanceSimulation,
   calculateElevatorUpgradeCost,
+  calculateElevatorUpgradeBatchCost,
+  calculateMaxAffordableElevatorUpgradeQuantity,
   calculateMaxAffordableMineShaftUpgradeQuantity,
+  calculateMaxAffordableWarehouseUpgradeQuantity,
   calculateMineProductionRates,
   calculateMineShaftUpgradeBatchCost,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,
+  calculateWarehouseUpgradeBatchCost,
   createInitialGameState,
   GameNumber,
   purchaseElevatorUpgrade,
+  purchaseElevatorUpgrades,
   purchaseMineShaftUpgrade,
   purchaseMineShaftUpgrades,
   purchaseWarehouseUpgrade,
+  purchaseWarehouseUpgrades,
   type GameState,
 } from '../../src/core';
 
@@ -182,6 +188,115 @@ describe('stage upgrades', () => {
         GameNumber.from(0),
       ),
     ).toBe(0);
+    expect(() =>
+      calculateMaxAffordableMineShaftUpgradeQuantity(
+        floor,
+        BASE_GAME_BALANCE.floors[1],
+        fiveCost,
+      ),
+    ).toThrow(/does not match balance configuration/);
+  });
+
+  it('quotes and atomically purchases elevator x5 and exact MAX levels', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const elevator = {
+      ...initialState.elevator,
+      carriedMaterial: GameNumber.from(25),
+      transitProgress: 0.4,
+      roundRobinCursor: 2,
+    };
+    const fiveCost = calculateElevatorUpgradeBatchCost(
+      elevator,
+      BASE_GAME_BALANCE.elevator,
+      5,
+    );
+    const sixCost = calculateElevatorUpgradeBatchCost(
+      elevator,
+      BASE_GAME_BALANCE.elevator,
+      6,
+    );
+    const state = { ...initialState, elevator, gold: fiveCost };
+    const result = purchaseElevatorUpgrades(state, 5, BASE_GAME_BALANCE);
+
+    expect(
+      calculateMaxAffordableElevatorUpgradeQuantity(
+        elevator,
+        BASE_GAME_BALANCE.elevator,
+        fiveCost,
+      ),
+    ).toBe(5);
+    expect(
+      calculateMaxAffordableElevatorUpgradeQuantity(
+        elevator,
+        BASE_GAME_BALANCE.elevator,
+        sixCost.subtract('0.0000001'),
+      ),
+    ).toBe(5);
+    expect(result.success).toBe(true);
+
+    if (!result.success) {
+      throw new Error('Expected elevator x5 purchase to succeed.');
+    }
+
+    expect(result.cost.equals(fiveCost)).toBe(true);
+    expect(result.state.gold.equals(0)).toBe(true);
+    expect(result.state.elevator.level).toBe(6);
+    expect(result.state.elevator.carriedMaterial).toBe(elevator.carriedMaterial);
+    expect(result.state.elevator.transitProgress).toBe(0.4);
+    expect(result.state.elevator.roundRobinCursor).toBe(2);
+  });
+
+  it('quotes and atomically purchases warehouse x5 and exact MAX levels', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const warehouse = {
+      ...initialState.warehouse,
+      inputQueue: GameNumber.from(75),
+      conversionProgress: 0.6,
+    };
+    const fiveCost = calculateWarehouseUpgradeBatchCost(
+      warehouse,
+      BASE_GAME_BALANCE.warehouse,
+      5,
+    );
+    const sixCost = calculateWarehouseUpgradeBatchCost(
+      warehouse,
+      BASE_GAME_BALANCE.warehouse,
+      6,
+    );
+    const state = { ...initialState, warehouse, gold: fiveCost };
+    const result = purchaseWarehouseUpgrades(state, 5, BASE_GAME_BALANCE);
+
+    expect(
+      calculateMaxAffordableWarehouseUpgradeQuantity(
+        warehouse,
+        BASE_GAME_BALANCE.warehouse,
+        fiveCost,
+      ),
+    ).toBe(5);
+    expect(
+      calculateMaxAffordableWarehouseUpgradeQuantity(
+        warehouse,
+        BASE_GAME_BALANCE.warehouse,
+        sixCost.subtract('0.0000001'),
+      ),
+    ).toBe(5);
+    expect(result.success).toBe(true);
+
+    if (!result.success) {
+      throw new Error('Expected warehouse x5 purchase to succeed.');
+    }
+
+    expect(result.cost.equals(fiveCost)).toBe(true);
+    expect(result.state.gold.equals(0)).toBe(true);
+    expect(result.state.warehouse.level).toBe(6);
+    expect(result.state.warehouse.inputQueue).toBe(warehouse.inputQueue);
+    expect(result.state.warehouse.conversionProgress).toBe(0.6);
   });
 
   it('purchases elevator and warehouse upgrades independently', () => {

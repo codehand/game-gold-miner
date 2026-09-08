@@ -71,6 +71,10 @@ src/
 
 Triển khai hiện tại giữ toàn bộ 15 tầng trong core/config và chỉ mở phần trình bày theo cụm 5 tầng. HUD Phaser cố định cao 52 logical px; số ở giữa lấy `warehouse.inputQueue` và dùng icon warehouse. `BootScene` đổi texture tháp filled/empty từ queue này và căn đội hauler trên một baseline; core elevator chỉ đi sâu hơn sau khi vét hết tầng hiện tại. Các thay đổi không làm đổi lựa chọn stack, ranh giới module, save-document version hoặc IndexedDB version.
 
+Popup DOM responsive hiện dùng chung cho tầng mỏ, tháp elevator và warehouse. View-model thuần cung cấp thuộc tính cùng giá x1/x5/MAX; `MineSimulationDriver` thực hiện batch upgrade nguyên tử và gọi persistence một lần. Phaser giữ quyền render thế giới nhưng nhường toàn bộ input khi popup mở. Không có thay đổi stack hay schema.
+
+Cosmetic clock của Phaser luôn chạy route hauler 5.2 giây cho mèo chính và mọi assistant. `warehouse.inputQueue` chỉ quyết định texture xe đầy/rỗng và hiệu ứng vàng; queue bằng không không dừng chuyển động. Logic này nằm ở view-model thuần, không chạm simulation hay schema.
+
 Nếu mục tiêu chỉ là App Store/Google Play và không cần Telegram/web, Godot là lựa chọn thứ hai. Nhưng với game tham chiếu hiện tại, **Phaser + TypeScript là lựa chọn tối ưu nhất**.
 
 Capacitor có thể đóng gói cùng codebase thành ứng dụng iOS/Android sau này. Xem [Capacitor documentation](https://capacitorjs.com/docs).

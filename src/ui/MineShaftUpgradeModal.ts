@@ -2,17 +2,18 @@ import type {
   MineShaftUpgradeModalViewModel,
   MineShaftUpgradeOptionViewModel,
   PurchaseOutcome,
+  UpgradeTarget,
 } from '../game/view-model';
 
 export interface MineShaftUpgradeModalOptions {
   readonly parent: HTMLElement;
-  readonly onUpgrade: (floorId: string, quantity: number) => PurchaseOutcome;
+  readonly onUpgrade: (target: UpgradeTarget, quantity: number) => PurchaseOutcome;
   readonly onClose?: () => void;
 }
 
 export interface RenderedMineShaftUpgradeModalState {
   readonly isVisible: boolean;
-  readonly floorId: string | null;
+  readonly target: UpgradeTarget | null;
   readonly title: string;
   readonly levelLabel: string;
   readonly attributes: readonly { readonly label: string; readonly value: string }[];
@@ -63,7 +64,7 @@ export class MineShaftUpgradeModal {
     close.className = 'mine-upgrade-close';
     close.dataset.testid = 'mine-upgrade-close';
     close.type = 'button';
-    close.setAttribute('aria-label', 'Close floor details');
+    close.setAttribute('aria-label', 'Close upgrade details');
     close.textContent = '×';
     close.addEventListener('click', this.close);
     heading.append(this.#title, this.#level, close);
@@ -129,7 +130,7 @@ export class MineShaftUpgradeModal {
   public describeRenderedState(): RenderedMineShaftUpgradeModalState {
     return {
       isVisible: this.isVisible,
-      floorId: this.#model?.floorId ?? null,
+      target: this.#model?.target ?? null,
       title: this.#model?.title ?? '',
       levelLabel: this.#model?.levelLabel ?? '',
       attributes: this.#model?.attributes ?? [],
@@ -158,7 +159,7 @@ export class MineShaftUpgradeModal {
       return;
     }
 
-    const outcome = this.#onUpgrade(model.floorId, option.quantity);
+    const outcome = this.#onUpgrade(model.target, option.quantity);
     this.#feedback.textContent = describeOutcome(outcome, option);
   }
 

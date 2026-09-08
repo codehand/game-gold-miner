@@ -39,7 +39,6 @@ export interface SurfaceHaulerAssistantPose extends SurfaceHaulerPose {
 }
 
 export type SurfaceHaulerPhase =
-  | 'idle'
   | 'loading'
   | 'delivering'
   | 'unloading'
@@ -177,8 +176,8 @@ export function calculateSurfaceHaulerAssistantOffset(
  * Gives each assistant its own point in the delivery loop.
  *
  * Active workers are evenly phase-shifted around the route instead of copying
- * the lead cat's transform. When no cargo exists, assistants wait at evenly
- * spaced route positions and retain independently offset cosmetic frames.
+ * the lead cat's transform. An empty tower changes only cargo feedback: every
+ * assistant still completes the same collection-and-return route.
  */
 export function calculateSurfaceHaulerAssistantPose(
   animationTimeMs: number,
@@ -208,20 +207,8 @@ export function calculateSurfaceHaulerAssistantPose(
     (assistantIndex + 1) / activeHaulerCount;
   const offsetTimeMs = animationTimeMs + animationTimeOffsetMs;
 
-  if (!hasCargo) {
-    return {
-      phase: 'idle',
-      routeProgress: (assistantIndex + 1) / activeHaulerCount,
-      facesLeft: false,
-      cartIsFilled: false,
-      goldPourVisible: false,
-      frame: calculateGeneratedAssetFrame(offsetTimeMs, 4, 180),
-      animationTimeOffsetMs,
-    };
-  }
-
   return {
-    ...calculateSurfaceHaulerPose(offsetTimeMs, true),
+    ...calculateSurfaceHaulerPose(offsetTimeMs, hasCargo),
     animationTimeOffsetMs,
   };
 }
@@ -242,28 +229,18 @@ export function easeElevatorTravelProgress(progress: number): number {
 }
 
 /**
- * Cosmetic surface-delivery loop driven by whether a shared stage holds gold.
+ * Cosmetic surface-delivery loop with cargo feedback driven by tower gold.
  *
- * The cart waits empty when the simulation has no material. With material it
- * fills under the chute, eases to the warehouse, unloads, and returns empty.
- * No value from this pose is fed back into production or persistence.
+ * The worker always visits the tower, travels to the warehouse, and returns.
+ * Material only controls the pour and filled-cart appearance, so an empty
+ * tower produces an empty round trip rather than parking the crew. No value
+ * from this pose is fed back into production or persistence.
  */
 export function calculateSurfaceHaulerPose(
   animationTimeMs: number,
   hasCargo: boolean,
 ): SurfaceHaulerPose {
   assertAnimationTime(animationTimeMs);
-
-  if (!hasCargo) {
-    return {
-      phase: 'idle',
-      routeProgress: 0,
-      facesLeft: false,
-      cartIsFilled: false,
-      goldPourVisible: false,
-      frame: 0,
-    };
-  }
 
   const phase = (animationTimeMs % SURFACE_HAULER_PERIOD_MS) /
     SURFACE_HAULER_PERIOD_MS;
@@ -274,8 +251,8 @@ export function calculateSurfaceHaulerPose(
       phase: 'loading',
       routeProgress: 0,
       facesLeft: false,
-      cartIsFilled: phase >= 0.12,
-      goldPourVisible: true,
+      cartIsFilled: hasCargo && phase >= 0.12,
+      goldPourVisible: hasCargo,
       frame,
     };
   }
@@ -285,7 +262,7 @@ export function calculateSurfaceHaulerPose(
       phase: 'delivering',
       routeProgress: easeElevatorTravelProgress((phase - 0.2) / 0.42),
       facesLeft: false,
-      cartIsFilled: true,
+      cartIsFilled: hasCargo,
       goldPourVisible: false,
       frame,
     };
@@ -296,7 +273,7 @@ export function calculateSurfaceHaulerPose(
       phase: 'unloading',
       routeProgress: 1,
       facesLeft: true,
-      cartIsFilled: phase < 0.68,
+      cartIsFilled: hasCargo && phase < 0.68,
       goldPourVisible: false,
       frame,
     };
@@ -332,6 +309,38 @@ export function calculateMinerPatrolPose(
     x: startX + (endX - startX) * localProgress,
     facesLeft,
   };
+}
+
+/**
+ * Smooths one authoritative fixed-step progress update across rendered frames.
+ *
+ * The target always advances around the normalized cycle, including a wrap
+ * from a high value to a low one. Once the transition duration has elapsed the
+ * exact authoritative target is returned, so a paused core cannot keep moving.
+ */
+export function interpolateNormalizedProgressForward(
+  from: number,
+  target: number,
+  elapsedMs: number,
+  transitionDurationMs: number,
+): number {
+  assertNormalizedProgress(from, 'Progress start');
+  assertNormalizedProgress(target, 'Progress target');
+
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
+    throw new Error('Progress transition time must be finite and non-negative.');
+  }
+
+  if (!Number.isFinite(transitionDurationMs) || transitionDurationMs <= 0) {
+    throw new Error('Progress transition duration must be finite and positive.');
+  }
+
+  const transitionProgress = Math.min(elapsedMs / transitionDurationMs, 1);
+  const forwardDistance = target >= from
+    ? target - from
+    : 1 - from + target;
+
+  return (from + forwardDistance * transitionProgress) % 1;
 }
 
 /** Frame selection for generated sprite sheets, driven only by cosmetic time. */
@@ -452,6 +461,12 @@ export function calculateCycleMarkerOffsetPx(
 function assertAnimationTime(value: number): void {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error('Animation time must be a finite non-negative number.');
+  }
+}
+
+function assertNormalizedProgress(value: number, name: string): void {
+  if (!Number.isFinite(value) || value < 0 || value >= 1) {
+    throw new Error(`${name} must be in [0, 1).`);
   }
 }
 

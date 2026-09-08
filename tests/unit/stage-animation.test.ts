@@ -8,6 +8,7 @@ import {
   calculateGeneratedAssetFrame,
   calculateMineFloorMinerAssistantPose,
   calculateMineFloorMinerCount,
+  interpolateNormalizedProgressForward,
   calculateMinerSwingOffsetPx,
   calculateMinerPatrolPose,
   calculateSurfaceHaulerAssistantOffset,
@@ -185,6 +186,45 @@ describe('generated asset frames', () => {
   });
 });
 
+describe('rendered progress interpolation', () => {
+  it('spreads one fixed-step update across rendered frames', () => {
+    expect(interpolateNormalizedProgressForward(0.2, 0.25, 0, 100)).toBe(0.2);
+    expect(
+      interpolateNormalizedProgressForward(0.2, 0.25, 50, 100),
+    ).toBeCloseTo(0.225);
+    expect(
+      interpolateNormalizedProgressForward(0.2, 0.25, 100, 100),
+    ).toBe(0.25);
+    expect(
+      interpolateNormalizedProgressForward(0.2, 0.25, 500, 100),
+    ).toBe(0.25);
+  });
+
+  it('moves forward smoothly across a cycle wrap', () => {
+    expect(
+      interpolateNormalizedProgressForward(0.98, 0.03, 50, 100),
+    ).toBeCloseTo(0.005);
+    expect(
+      interpolateNormalizedProgressForward(0.98, 0.03, 100, 100),
+    ).toBeCloseTo(0.03);
+  });
+
+  it('rejects invalid progress transition inputs', () => {
+    expect(() =>
+      interpolateNormalizedProgressForward(-0.1, 0.2, 10, 100),
+    ).toThrow(/Progress start/);
+    expect(() =>
+      interpolateNormalizedProgressForward(0.1, 1, 10, 100),
+    ).toThrow(/Progress target/);
+    expect(() =>
+      interpolateNormalizedProgressForward(0.1, 0.2, -1, 100),
+    ).toThrow(/transition time/);
+    expect(() =>
+      interpolateNormalizedProgressForward(0.1, 0.2, 10, 0),
+    ).toThrow(/transition duration/);
+  });
+});
+
 describe('surface hauler loop', () => {
   it('reveals one assistant every ten warehouse levels through level 100', () => {
     expect(calculateSurfaceHaulerCount(1)).toBe(1);
@@ -227,12 +267,18 @@ describe('surface hauler loop', () => {
     );
   });
 
-  it('parks idle assistants apart while keeping independent frames', () => {
+  it('keeps empty assistants moving on independent route phases', () => {
     const firstAssistant = calculateSurfaceHaulerAssistantPose(0, false, 0, 3);
     const secondAssistant = calculateSurfaceHaulerAssistantPose(0, false, 1, 3);
 
-    expect(firstAssistant.routeProgress).toBeCloseTo(1 / 3);
-    expect(secondAssistant.routeProgress).toBeCloseTo(2 / 3);
+    expect(firstAssistant.phase).toBe('delivering');
+    expect(firstAssistant.routeProgress).toBeGreaterThan(0);
+    expect(secondAssistant.phase).toBe('unloading');
+    expect(secondAssistant.routeProgress).toBe(1);
+    expect(firstAssistant.cartIsFilled).toBe(false);
+    expect(secondAssistant.cartIsFilled).toBe(false);
+    expect(firstAssistant.goldPourVisible).toBe(false);
+    expect(secondAssistant.goldPourVisible).toBe(false);
     expect(firstAssistant.frame).not.toBe(secondAssistant.frame);
   });
 
@@ -253,15 +299,27 @@ describe('surface hauler loop', () => {
     );
   });
 
-  it('waits empty beneath the chute when neither shared stage holds gold', () => {
-    expect(calculateSurfaceHaulerPose(4_000, false)).toEqual({
-      phase: 'idle',
-      routeProgress: 0,
-      facesLeft: false,
-      cartIsFilled: false,
-      goldPourVisible: false,
-      frame: 0,
-    });
+  it('keeps making empty round trips when the tower has no gold', () => {
+    const delivering = calculateSurfaceHaulerPose(
+      SURFACE_HAULER_PERIOD_MS * 0.4,
+      false,
+    );
+    const returning = calculateSurfaceHaulerPose(
+      SURFACE_HAULER_PERIOD_MS * 0.85,
+      false,
+    );
+
+    expect(delivering.phase).toBe('delivering');
+    expect(delivering.routeProgress).toBeGreaterThan(0);
+    expect(delivering.facesLeft).toBe(false);
+    expect(returning.phase).toBe('returning');
+    expect(returning.routeProgress).toBeGreaterThan(0);
+    expect(returning.facesLeft).toBe(true);
+
+    for (const pose of [delivering, returning]) {
+      expect(pose.cartIsFilled).toBe(false);
+      expect(pose.goldPourVisible).toBe(false);
+    }
   });
 
   it('pours only while the cart is parked beneath a loaded tower', () => {

@@ -31,7 +31,9 @@ import {
 import { formatAmount } from './formatAmount';
 import { createHudViewModel, type HudViewModel } from './hudViewModel';
 import {
+  createElevatorUpgradeModalViewModel,
   createMineShaftUpgradeModalViewModel,
+  createWarehouseUpgradeModalViewModel,
   type MineShaftUpgradeModalViewModel,
 } from './mineShaftUpgradeModal';
 import {
@@ -115,6 +117,8 @@ export interface SharedStageViewModel {
   readonly elevatorFloorIndex: number | null;
   /** A shared stage is always upgradeable, so this is never `null`. */
   readonly upgradeControl: PurchaseControlViewModel;
+  /** Detail and batch choices shown after tapping this stage's level badge. */
+  readonly upgradeModal: MineShaftUpgradeModalViewModel;
 }
 
 export interface MineViewModel {
@@ -311,6 +315,11 @@ export function createElevatorViewModel({
       calculateElevatorUpgradeCost(elevator, config),
       gold,
     ),
+    upgradeModal: createElevatorUpgradeModalViewModel({
+      stage: elevator,
+      config,
+      gold,
+    }),
   };
 }
 
@@ -349,6 +358,11 @@ export function createWarehouseViewModel({
       calculateWarehouseUpgradeCost(warehouse, config),
       gold,
     ),
+    upgradeModal: createWarehouseUpgradeModalViewModel({
+      stage: warehouse,
+      config,
+      gold,
+    }),
   };
 }
 

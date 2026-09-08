@@ -17,10 +17,12 @@ import type { BaseGameBalanceConfig } from '../../config';
 import {
   catchUpSimulation,
   purchaseElevatorUpgrade,
+  purchaseElevatorUpgrades,
   purchaseFloorUnlock,
   purchaseMineShaftUpgrade,
   purchaseMineShaftUpgrades,
   purchaseWarehouseUpgrade,
+  purchaseWarehouseUpgrades,
   type FloorUnlockFailureReason,
   type GameState,
   type UpgradePurchaseFailureReason,
@@ -50,6 +52,11 @@ export interface MineCommandSink {
   purchase(target: PurchaseTarget): PurchaseOutcome;
   /** Purchases the quoted number of consecutive levels for one open floor. */
   purchaseMineShaftBatch(floorId: string, quantity: number): PurchaseOutcome;
+  /** Purchases consecutive levels for any upgradeable production stage. */
+  purchaseUpgradeBatch(
+    target: Exclude<PurchaseTarget, { type: 'floor-unlock' }>,
+    quantity: number,
+  ): PurchaseOutcome;
 }
 
 /** Everything the scene needs: snapshots to pull, commands to send. */
@@ -161,14 +168,19 @@ export class MineSimulationDriver implements MineRuntimePort {
     floorId: string,
     quantity: number,
   ): PurchaseOutcome {
+    return this.purchaseUpgradeBatch(
+      { type: 'mine-shaft', floorId },
+      quantity,
+    );
+  }
+
+  public purchaseUpgradeBatch(
+    target: Exclude<PurchaseTarget, { type: 'floor-unlock' }>,
+    quantity: number,
+  ): PurchaseOutcome {
     this.advance();
 
-    const result = purchaseMineShaftUpgrades(
-      this.#state,
-      floorId,
-      quantity,
-      this.#balance,
-    );
+    const result = this.#purchaseUpgradeBatch(target, quantity);
 
     if (!result.success) {
       return describeRefusal(result.reason);
@@ -202,6 +214,25 @@ export class MineSimulationDriver implements MineRuntimePort {
         return purchaseElevatorUpgrade(this.#state, this.#balance);
       case 'warehouse':
         return purchaseWarehouseUpgrade(this.#state, this.#balance);
+    }
+  }
+
+  #purchaseUpgradeBatch(
+    target: Exclude<PurchaseTarget, { type: 'floor-unlock' }>,
+    quantity: number,
+  ): UpgradePurchaseResult {
+    switch (target.type) {
+      case 'mine-shaft':
+        return purchaseMineShaftUpgrades(
+          this.#state,
+          target.floorId,
+          quantity,
+          this.#balance,
+        );
+      case 'elevator':
+        return purchaseElevatorUpgrades(this.#state, quantity, this.#balance);
+      case 'warehouse':
+        return purchaseWarehouseUpgrades(this.#state, quantity, this.#balance);
     }
   }
 

@@ -1,12 +1,21 @@
-import type { MineFloorConfig } from '../../config';
+import type { MineFloorConfig, SharedStageConfig } from '../../config';
 import {
+  calculateElevatorUpgradeBatchCost,
   calculateLevelEffect,
+  calculateMaxAffordableElevatorUpgradeQuantity,
   calculateMaxAffordableMineShaftUpgradeQuantity,
+  calculateMaxAffordableWarehouseUpgradeQuantity,
   calculateMineShaftUpgradeBatchCost,
+  calculateWarehouseUpgradeBatchCost,
+  type ElevatorState,
   type GameNumber,
   type MineFloorState,
+  type WarehouseState,
 } from '../../core';
 import { formatAmount } from './formatAmount';
+import type { PurchaseTarget } from './purchaseControl';
+
+export type UpgradeTarget = Exclude<PurchaseTarget, { type: 'floor-unlock' }>;
 
 export type MineShaftUpgradeOptionId = 'x1' | 'x5' | 'max';
 
@@ -24,7 +33,7 @@ export interface MineShaftUpgradeAttributeViewModel {
 }
 
 export interface MineShaftUpgradeModalViewModel {
-  readonly floorId: string;
+  readonly target: UpgradeTarget;
   readonly title: string;
   readonly levelLabel: string;
   readonly attributes: readonly MineShaftUpgradeAttributeViewModel[];
@@ -59,7 +68,7 @@ export function createMineShaftUpgradeModalViewModel({
   );
 
   return {
-    floorId: floor.id,
+    target: { type: 'mine-shaft', floorId: floor.id },
     title: `Floor ${floor.floorNumber}`,
     levelLabel: `Level ${floor.mineShaftLevel}`,
     attributes: [
@@ -88,6 +97,132 @@ export function createMineShaftUpgradeModalViewModel({
             isEnabled: false,
           },
     ],
+  };
+}
+
+export interface SharedStageUpgradeModalInput<TStage> {
+  readonly stage: TStage;
+  readonly config: SharedStageConfig;
+  readonly gold: GameNumber;
+}
+
+export function createElevatorUpgradeModalViewModel({
+  stage: elevator,
+  config,
+  gold,
+}: SharedStageUpgradeModalInput<ElevatorState>): MineShaftUpgradeModalViewModel {
+  const maxQuantity = calculateMaxAffordableElevatorUpgradeQuantity(
+    elevator,
+    config,
+    gold,
+  );
+
+  return {
+    target: { type: 'elevator' },
+    title: 'Elevator Tower',
+    levelLabel: `Level ${elevator.level}`,
+    attributes: [
+      { label: 'Capacity', value: formatAmount(elevator.capacity) },
+      { label: 'Cycle time', value: formatDuration(config.cycleDurationMs) },
+      { label: 'Carrying', value: formatAmount(elevator.carriedMaterial) },
+      {
+        label: 'Next capacity',
+        value: formatAmount(
+          calculateLevelEffect(
+            config.baseCapacity,
+            elevator.level + 1,
+            config.upgrade,
+          ),
+        ),
+      },
+    ],
+    options: createSharedStageOptions(
+      maxQuantity,
+      gold,
+      (quantity) => calculateElevatorUpgradeBatchCost(elevator, config, quantity),
+    ),
+  };
+}
+
+export function createWarehouseUpgradeModalViewModel({
+  stage: warehouse,
+  config,
+  gold,
+}: SharedStageUpgradeModalInput<WarehouseState>): MineShaftUpgradeModalViewModel {
+  const maxQuantity = calculateMaxAffordableWarehouseUpgradeQuantity(
+    warehouse,
+    config,
+    gold,
+  );
+
+  return {
+    target: { type: 'warehouse' },
+    title: 'Warehouse',
+    levelLabel: `Level ${warehouse.level}`,
+    attributes: [
+      { label: 'Capacity / cycle', value: formatAmount(warehouse.capacity) },
+      { label: 'Cycle time', value: formatDuration(config.cycleDurationMs) },
+      { label: 'Gold queued', value: formatAmount(warehouse.inputQueue) },
+      {
+        label: 'Next capacity',
+        value: formatAmount(
+          calculateLevelEffect(
+            config.baseCapacity,
+            warehouse.level + 1,
+            config.upgrade,
+          ),
+        ),
+      },
+    ],
+    options: createSharedStageOptions(
+      maxQuantity,
+      gold,
+      (quantity) => calculateWarehouseUpgradeBatchCost(warehouse, config, quantity),
+    ),
+  };
+}
+
+function createSharedStageOptions(
+  maxQuantity: number,
+  gold: GameNumber,
+  calculateCost: (quantity: number) => GameNumber,
+): readonly MineShaftUpgradeOptionViewModel[] {
+  return [
+    createGenericOption('x1', 'x1', 1, gold, calculateCost),
+    createGenericOption('x5', 'x5', 5, gold, calculateCost),
+    maxQuantity > 0
+      ? createGenericOption(
+          'max',
+          `MAX x${maxQuantity}`,
+          maxQuantity,
+          gold,
+          calculateCost,
+        )
+      : {
+          id: 'max',
+          label: 'MAX x0',
+          quantity: 0,
+          costLabel: '—',
+          isEnabled: false,
+        },
+  ];
+}
+
+function createGenericOption(
+  id: MineShaftUpgradeOptionId,
+  label: string,
+  quantity: number,
+  gold: GameNumber,
+  calculateCost: (quantity: number) => GameNumber,
+): MineShaftUpgradeOptionViewModel {
+  const cost = calculateCost(quantity);
+
+  return {
+    id,
+    label,
+    quantity,
+    costLabel: formatAmount(cost),
+    isEnabled: gold.greaterThanOrEqualTo(cost),
   };
 }
 

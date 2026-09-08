@@ -25,12 +25,16 @@ export {
   type SharedStageViewModelInput,
 } from './mineViewModel';
 export {
+  createElevatorUpgradeModalViewModel,
   createMineShaftUpgradeModalViewModel,
+  createWarehouseUpgradeModalViewModel,
   type MineShaftUpgradeAttributeViewModel,
   type MineShaftUpgradeModalInput,
   type MineShaftUpgradeModalViewModel,
   type MineShaftUpgradeOptionId,
   type MineShaftUpgradeOptionViewModel,
+  type SharedStageUpgradeModalInput,
+  type UpgradeTarget,
 } from './mineShaftUpgradeModal';
 export {
   beginMineScrollGesture,
@@ -70,6 +74,7 @@ export {
   calculateGeneratedAssetFrame,
   calculateMineFloorMinerAssistantPose,
   calculateMineFloorMinerCount,
+  interpolateNormalizedProgressForward,
   calculateMinerPatrolPose,
   calculateMinerSwingOffsetPx,
   calculateSurfaceHaulerAssistantOffset,

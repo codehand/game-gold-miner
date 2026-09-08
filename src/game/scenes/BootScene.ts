@@ -4,6 +4,8 @@ import { MineShaftUpgradeModal } from '../../ui/MineShaftUpgradeModal';
 
 import { createBacklogTextures } from '../assets/backlogTextures';
 import {
+  ELEVATOR_SHAFT_TEXTURE_HEIGHT_PX,
+  ELEVATOR_SHAFT_TEXTURE_WIDTH_PX,
   PLACEHOLDER_ANIMATION_ASSETS,
   PLACEHOLDER_ANIMATION_FRAME_SIZE,
   PLACEHOLDER_ANIMATION_TEXTURES,
@@ -89,6 +91,7 @@ import {
   type PurchaseControlViewModel,
   type PurchaseFeedback,
   type PurchaseFeedbackViewModel,
+  type UpgradeTarget,
 } from '../view-model';
 
 export const BOOT_SCENE_KEY = 'BootScene';
@@ -192,6 +195,7 @@ export class BootScene extends Phaser.Scene {
   #mineCamera: Phaser.Cameras.Scene2D.Camera | null = null;
   #mineRegion: LayoutRegion | null = null;
   #shaftRegion: LayoutRegion | null = null;
+  #shaftBackground: Phaser.GameObjects.TileSprite | null = null;
   #shaftElevator: Phaser.GameObjects.Image | null = null;
   #shaftCargoCat: Phaser.GameObjects.Sprite | null = null;
   #surfaceElevatorTower: Phaser.GameObjects.Image | null = null;
@@ -206,7 +210,7 @@ export class BootScene extends Phaser.Scene {
   #surfaceHaulerAssistants: readonly Phaser.GameObjects.Sprite[] = [];
   #surfaceGoldPour: Phaser.GameObjects.Sprite | null = null;
   #floorUpgradeModal: MineShaftUpgradeModal | null = null;
-  #selectedFloorUpgradeId: string | null = null;
+  #selectedUpgradeTarget: UpgradeTarget | null = null;
   /** Scroll offset and tap-versus-drag state for the mine; null before `create`. */
   #scroll: MineScrollState | null = null;
   /** Number of floor rows currently revealed to the player: 5, 10, or 15. */
@@ -256,11 +260,11 @@ export class BootScene extends Phaser.Scene {
 
     this.#floorUpgradeModal = new MineShaftUpgradeModal({
       parent: this.game.canvas.parentElement ?? document.body,
-      onUpgrade: (floorId, quantity) => {
-        return this.#requestMineShaftBatch(floorId, quantity);
+      onUpgrade: (target, quantity) => {
+        return this.#requestUpgradeBatch(target, quantity);
       },
       onClose: () => {
-        this.#selectedFloorUpgradeId = null;
+        this.#selectedUpgradeTarget = null;
         this.input.enabled = true;
         this.#publishViewDiagnostics(true);
       },
@@ -374,7 +378,7 @@ export class BootScene extends Phaser.Scene {
 
     this.#hudView.applySnapshot(viewModel.hud);
     this.#floorViews.forEach((view, index) => {
-      view.applySnapshot(viewModel.floors[index]);
+      view.applySnapshot(viewModel.floors[index], this.time.now);
     });
     this.#elevatorView.applySnapshot(viewModel.elevator);
     this.#warehouseView.applySnapshot(viewModel.warehouse);
@@ -403,13 +407,14 @@ export class BootScene extends Phaser.Scene {
       String(viewModel.warehouse.level),
     );
 
-    if (this.#selectedFloorUpgradeId !== null) {
-      const selected = viewModel.floors.find(
-        ({ id }) => id === this.#selectedFloorUpgradeId,
+    if (this.#selectedUpgradeTarget !== null) {
+      const selected = this.#resolveUpgradeModal(
+        viewModel,
+        this.#selectedUpgradeTarget,
       );
 
-      if (selected?.upgradeModal !== null && selected !== undefined) {
-        this.#floorUpgradeModal?.applySnapshot(selected.upgradeModal);
+      if (selected !== null) {
+        this.#floorUpgradeModal?.applySnapshot(selected);
       } else {
         this.#floorUpgradeModal?.close();
       }
@@ -459,22 +464,52 @@ export class BootScene extends Phaser.Scene {
       return;
     }
 
-    this.#selectedFloorUpgradeId = floor.id;
+    this.#openUpgradeModal(floor.upgradeModal.target);
+  }
+
+  #openSharedStageUpgrade(target: Extract<UpgradeTarget, { type: 'elevator' | 'warehouse' }>): void {
+    this.#openUpgradeModal(target);
+  }
+
+  #openUpgradeModal(target: UpgradeTarget): void {
+    if (this.#scroll?.hasDragged === true) {
+      return;
+    }
+
+    const model = this.#resolveUpgradeModal(this.#viewModel, target);
+
+    if (model === null) {
+      return;
+    }
+
+    this.#selectedUpgradeTarget = target;
     // Phaser listens above the canvas as well as on it. A DOM overlay therefore
     // owns input explicitly while open, so its CTA/close pointer cannot also
     // activate a surface or mine object underneath.
     this.input.enabled = false;
-    this.#floorUpgradeModal?.open(floor.upgradeModal);
+    this.#floorUpgradeModal?.open(model);
     this.#publishViewDiagnostics(true);
   }
 
-  #requestMineShaftBatch(floorId: string, quantity: number) {
-    const outcome = this.#source.purchaseMineShaftBatch(floorId, quantity);
+  #requestUpgradeBatch(target: UpgradeTarget, quantity: number) {
+    const outcome = this.#source.purchaseUpgradeBatch(target, quantity);
 
     this.#bindSnapshot(this.#source.snapshot, false);
     this.#publishViewDiagnostics(true);
 
     return outcome;
+  }
+
+  #resolveUpgradeModal(viewModel: MineViewModel, target: UpgradeTarget) {
+    switch (target.type) {
+      case 'mine-shaft':
+        return viewModel.floors.find(({ id }) => id === target.floorId)
+          ?.upgradeModal ?? null;
+      case 'elevator':
+        return viewModel.elevator.upgradeModal;
+      case 'warehouse':
+        return viewModel.warehouse.upgradeModal;
+    }
   }
 
   /**
@@ -621,7 +656,7 @@ export class BootScene extends Phaser.Scene {
         continue;
       }
 
-      view.applyAnimation(this.#animationTimeMs);
+      view.applyAnimation(this.#animationTimeMs, this.time.now);
     }
 
     this.#elevatorView?.applyAnimation(this.#animationTimeMs);
@@ -742,12 +777,11 @@ export class BootScene extends Phaser.Scene {
       surfaceCargoCat !== null
     ) {
       const shaftCenterX = shaft.x + shaft.width / 2;
-      const scrollY = this.#mineCamera?.scrollY ?? 0;
-      // The route now terminates inside the fixed headhouse rather than at the
-      // mine-camera boundary. Converting the screen-space tower stop back into
-      // mine-world coordinates keeps it fixed while the underground view scrolls.
+      // The route terminates at one physical world point above floor one.
+      // Camera scrolling must never move this endpoint: doing so shortens a
+      // deep return leg and makes the cabin skip unseen floors into the tower.
       const surfaceStopWorldY =
-        scrollY + SURFACE_ELEVATOR_STOP_Y - SURFACE_HEIGHT;
+        SURFACE_ELEVATOR_STOP_Y - SURFACE_HEIGHT;
       const stage = this.#viewModel.elevator;
       const floorIndex = stage.elevatorFloorIndex;
       let elevatorY = surfaceStopWorldY;
@@ -781,7 +815,9 @@ export class BootScene extends Phaser.Scene {
         }
       }
 
-      const surfaceLocalY = SURFACE_HEIGHT + elevatorY - scrollY;
+      // The surface twin maps the fixed world route into the fixed surface
+      // layer. It therefore also remains independent of the mine camera.
+      const surfaceLocalY = SURFACE_HEIGHT + elevatorY;
       const towerEntryProgress = Phaser.Math.Clamp(
         (SURFACE_HEIGHT - surfaceLocalY) /
           (SURFACE_HEIGHT - SURFACE_ELEVATOR_STOP_Y),
@@ -875,7 +911,7 @@ export class BootScene extends Phaser.Scene {
       )
       .setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
-        this.#requestPurchase(this.#viewModel.elevator.upgradeControl);
+        this.#openSharedStageUpgrade({ type: 'elevator' });
       });
     this.#surfaceWarehouse = this.add
       .image(
@@ -886,7 +922,7 @@ export class BootScene extends Phaser.Scene {
       .setDisplaySize(SURFACE_WAREHOUSE_WIDTH, SURFACE_WAREHOUSE_HEIGHT)
       .setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
-        this.#requestPurchase(this.#viewModel.warehouse.upgradeControl);
+        this.#openSharedStageUpgrade({ type: 'warehouse' });
       });
 
     layer.add([
@@ -977,14 +1013,14 @@ export class BootScene extends Phaser.Scene {
       region: SURFACE_ELEVATOR_LEVEL_CONTROL,
       layout: 'floor-level',
       onPress: () => {
-        this.#requestPurchase(this.#viewModel.elevator.upgradeControl);
+        this.#openSharedStageUpgrade({ type: 'elevator' });
       },
     });
     this.#surfaceWarehouseUpgradeControl = new PurchaseControlView(this, {
       region: SURFACE_WAREHOUSE_LEVEL_CONTROL,
       layout: 'floor-level',
       onPress: () => {
-        this.#requestPurchase(this.#viewModel.warehouse.upgradeControl);
+        this.#openSharedStageUpgrade({ type: 'warehouse' });
       },
     });
     layer.add([
@@ -1004,7 +1040,7 @@ export class BootScene extends Phaser.Scene {
         backgroundAlpha: 0.55,
         showStageSprite: false,
         onUpgrade: () => {
-          this.#requestPurchase(this.#viewModel.elevator.upgradeControl);
+          this.#openSharedStageUpgrade({ type: 'elevator' });
         },
       },
     );
@@ -1023,7 +1059,7 @@ export class BootScene extends Phaser.Scene {
       {
         textureKey: PLACEHOLDER_ANIMATION_TEXTURES.warehouseReceive,
         onUpgrade: () => {
-          this.#requestPurchase(this.#viewModel.warehouse.upgradeControl);
+          this.#openSharedStageUpgrade({ type: 'warehouse' });
         },
       },
     );
@@ -1047,11 +1083,24 @@ export class BootScene extends Phaser.Scene {
       .rectangle(0, 0, width, contentHeight, COLOR_MINE_BACKGROUND)
       .setOrigin(0, 0);
     const shaftBackground = this.add
-      .image(shaft.x, shaft.y, PLACEHOLDER_TEXTURES.elevatorShaft)
+      .tileSprite(
+        shaft.x,
+        shaft.y,
+        shaft.width,
+        shaft.height,
+        PLACEHOLDER_TEXTURES.elevatorShaft,
+      )
       .setOrigin(0, 0)
-      .setDisplaySize(shaft.width, shaft.height);
+      // The original four-floor art is 192x528. The fifteen-floor shaft must
+      // repeat that artwork at native vertical scale; stretching one image to
+      // the full depth smears every brace and rail as the mine scrolls.
+      .setTileScale(
+        shaft.width / ELEVATOR_SHAFT_TEXTURE_WIDTH_PX,
+        1,
+      );
 
     this.#shaftRegion = shaft;
+    this.#shaftBackground = shaftBackground;
     this.#shaftElevator = this.add
       .image(
         shaft.x + shaft.width / 2,
@@ -1290,6 +1339,16 @@ export class BootScene extends Phaser.Scene {
             centerY: this.#shaftElevator.y,
             width: this.#shaftElevator.displayWidth,
             height: this.#shaftElevator.displayHeight,
+          },
+      elevatorShaft: this.#shaftBackground === null
+        ? null
+        : {
+            texture: this.#shaftBackground.texture.key,
+            width: this.#shaftBackground.width,
+            height: this.#shaftBackground.height,
+            tileScaleX: this.#shaftBackground.tileScaleX,
+            tileScaleY: this.#shaftBackground.tileScaleY,
+            tileHeight: ELEVATOR_SHAFT_TEXTURE_HEIGHT_PX,
           },
       elevatorCargoCat: this.#shaftCargoCat === null
         ? null

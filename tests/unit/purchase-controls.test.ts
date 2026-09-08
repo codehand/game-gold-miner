@@ -322,6 +322,28 @@ describe('purchase commands through the driver', () => {
     expect(commandCount).toBe(1);
   });
 
+  it('routes each shared-stage batch as one persisted command', () => {
+    let commandCount = 0;
+    const driver = createPausedDriver(
+      createState({ gold: GameNumber.from(100_000) }),
+      () => {
+        commandCount += 1;
+      },
+    );
+
+    expect(driver.purchaseUpgradeBatch({ type: 'elevator' }, 5)).toBe(
+      'purchased',
+    );
+    expect(driver.state.elevator.level).toBe(6);
+    expect(commandCount).toBe(1);
+
+    expect(driver.purchaseUpgradeBatch({ type: 'warehouse' }, 5)).toBe(
+      'purchased',
+    );
+    expect(driver.state.warehouse.level).toBe(6);
+    expect(commandCount).toBe(2);
+  });
+
   it('buys a mine shaft once, deducting exactly the displayed price', () => {
     const state = createState({ gold: GameNumber.from(1_000) });
     const driver = createPausedDriver(state);

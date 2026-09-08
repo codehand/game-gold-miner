@@ -27,6 +27,8 @@ Persistence and Platform Adapters
 - Run base-game production automatically without managers or player tapping.
 - Let the shared elevator descend through every unlocked floor in order, load at each stop, and continue only when that floor is fully drained and capacity remains; otherwise return to the surface before starting another top-down trip.
 - Upgrade each mine shaft, the elevator, and the warehouse independently; shaft levels derive higher extraction yield, shared-stage levels derive higher capacity, and all upgrades retain queued material and in-progress completion percentage.
+- Treat a Level badge as selection, not payment: mine shafts, the elevator tower, and the warehouse open one blocking detail modal with authoritative current/next attributes and exact x1/x5/MAX quotes. Route every modal CTA through one atomic batch command and persist successful batches once.
+- Apply tap-versus-drag rejection at the shared modal entry point, not only at individual controls, so surface Level badges and buildings cannot open a popup from the pointerup that ends a drag.
 - Derive cumulative level 10/25/50/100 milestone multipliers from the current level for every stage; never store grant flags or mutate bonuses that could be applied twice after reload.
 - Unlock deeper floors only through a distinct immutable command after the immediately previous floor is unlocked at its configured shaft level; deduct once and initialize the target from balance data. Derive what a locked floor shows from the same private predicate that command uses, so the description and the charge cannot disagree.
 - Analyze provisional balance with a deterministic one-second automated playthrough: prioritize eligible unlocks, reserve their cost once prerequisites are met, otherwise buy the affordable upgrade with the greatest modeled effective-rate increase, and use next-unlock progress plus configured order for exact ties.
@@ -59,16 +61,19 @@ Persistence and Platform Adapters
 - Memoize the derived snapshot in the driver and re-derive it only when a fixed tick completed, so the frames that change no displayed value hand back the same object and the scene skips rebinding by identity. State replaced by a command always re-derives, because a command changes displayed values without completing a tick.
 - Order a renderable guard behind the identity check it protects, so a per-frame path that changes nothing costs nothing while every distinct snapshot is still checked once.
 - Keep read-back diagnostics out of shipped builds behind a statically substituted flag, so the serialization drops out of the bundle rather than merely going unread.
+- Keep world-space route endpoints independent of camera scroll. Convert a world pose into each camera/layer only for drawing; never feed viewport offset back into physical route interpolation, or offscreen distance collapses when the player scrolls.
 - Credit nothing when the host clock moves backwards, and leave the authoritative timestamp ahead until real time catches up; the safe direction is never paying out time that did not pass.
 - Treat a gap in the render loop as elapsed time to be simulated, not as one oversized frame. The per-call foreground bound guards against a slow frame paying out a burst; a hidden tab returns the whole absence at once, so walk it in credited-size slices, bound the walk so resuming cannot freeze the tab, and consume the authoritative timestamp in full whether or not the time was credited.
 - Share the away-time *horizon* between catch-up and offline income, but not the *rate*. A tab left open counts as online and is credited at full pipeline rate; a closed one is credited through `offlineIncome.efficiency`, so the same two hours is worth about twice as much backgrounded. That is a balance decision, not an oversight, and it is invisible to every test that checks only one of the two paths — pin the ratio directly so applying the efficiency to catch-up, or dropping it from offline income, fails loudly.
 - Give every production stage its own indicator driven by authoritative progress, and render waiting material wherever it can accumulate as discrete blocks measured against the capacity of the stage that removes it.
-- Keep the cosmetic clock strictly separate from the simulation clock: scale it with a validated multiplier, drive only decoration with it, and gate that decoration on state so idle machinery visibly stops.
+- Keep the cosmetic clock strictly separate from the simulation clock: scale it with a validated multiplier and drive only decoration with it. Gate machinery that communicates production activity on authoritative state, but let the surface hauler crew continuously patrol; its queue predicate controls cargo/pour feedback rather than movement.
 - For progress-driven travel, map authoritative normalized progress through a pure endpoint-preserving easing function only when positioning the rendered object. Never feed eased progress back into route state, production timing, load calculations, or persistence.
+- When authoritative progress arrives on a fixed-step cadence, interpolate only the rendered value from its current pose to the newest target over one fixed step. Traverse normalized wraps forward, settle exactly on the target, and never extrapolate indefinitely when the core pauses; this removes 10 Hz snapping without making cosmetic time authoritative.
 - Never report a bottleneck a stage cannot observe from its own state; a full elevator car is one full trip, so transport pressure belongs in the floor queue/cart diagnostic rather than the decorative gold mound.
 - Publish read-back diagnostics on a cadence, not on every frame: values that change continuously would otherwise serialize the whole screen 60 times a second for diagnostics alone.
 - Signal a locked or disabled element with its own palette colour and badge rather than an alpha dim, so a pixel probe can prove the distinction.
 - Keep environmental decoration stable. If queue fullness needs a discrete capacity signal, expose it through the receiving container, amount label, or diagnostic rather than hiding, blinking, or rescaling a fixed landmark.
+- Repeat long structural textures at a documented native-axis scale instead of stretching one bitmap over dynamic content depth. Publish tile dimensions in development diagnostics so a later floor-count change cannot silently reintroduce filtered, blurred rails or seams.
 - Let visual workforce milestones derive from an existing authoritative level,
   not new saved presentation state. Pool the maximum crew once, reveal only the
   reached assistants, and phase-shift each worker horizontally around one
@@ -84,6 +89,9 @@ Persistence and Platform Adapters
   surface-delivery presentation. Elevator cargo is still in transit: it must
   not enable the gold-pour effect, filled carts, or loaded hauler poses before
   the core transfers it into the tower queue at surface arrival.
+- Keep every surface hauler moving through the full collection/delivery/return
+  route even when that source is empty; absence of gold means an empty cart and
+  no pour, not an idle worker.
 - Keep one lowercase magnitude-tier resolver shared by every number surface,
   including DOM overlays, so HUD, prices, queues, income, and offline rewards
   cannot disagree about suffix boundaries.

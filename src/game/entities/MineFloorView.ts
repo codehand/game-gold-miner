@@ -26,6 +26,7 @@ import {
 import {
   calculateMineFloorMinerAssistantPose,
   calculateMineFloorMinerCount,
+  interpolateNormalizedProgressForward,
   calculateMinerPatrolPose,
   calculateGeneratedAssetFrame,
   MINE_FLOOR_MINER_ASSISTANT_COUNT,
@@ -33,6 +34,7 @@ import {
   type MineFloorViewModel,
   type PurchaseFeedbackViewModel,
 } from '../view-model';
+import { SIMULATION_STEP_MS } from '../../core';
 import {
   PurchaseControlView,
   type RenderedPurchaseControlState,
@@ -168,6 +170,8 @@ export class MineFloorView {
   readonly #minerEndX: number;
   readonly #minerRestY: number;
   #extractionProgress = 0;
+  #extractionProgressFrom = 0;
+  #extractionTransitionStartMs = 0;
   #activeMinerCount = 0;
   #materialPileSteps = 0;
   #isPileBackedUp = false;
@@ -435,7 +439,19 @@ export class MineFloorView {
   }
 
   /** Rebinds every displayed value to a newer read-only snapshot. */
-  public applySnapshot(floor: MineFloorViewModel): void {
+  public applySnapshot(
+    floor: MineFloorViewModel,
+    renderTimeMs: number,
+  ): void {
+    const currentVisualProgress = interpolateNormalizedProgressForward(
+      this.#extractionProgressFrom,
+      this.#extractionProgress,
+      Math.max(0, renderTimeMs - this.#extractionTransitionStartMs),
+      SIMULATION_STEP_MS,
+    );
+
+    this.#extractionProgressFrom = currentVisualProgress;
+    this.#extractionTransitionStartMs = renderTimeMs;
     this.#root.setVisible(floor.isVisible);
     this.#background.setFillStyle(
       floor.isUnlocked ? COLOR_PANEL : COLOR_LOCKED_PANEL,
@@ -538,9 +554,15 @@ export class MineFloorView {
    * Gives the generated miner a restrained cosmetic bob. Extraction still
    * completes exactly when the core says so.
    */
-  public applyAnimation(animationTimeMs: number): void {
+  public applyAnimation(animationTimeMs: number, renderTimeMs: number): void {
+    const visualExtractionProgress = interpolateNormalizedProgressForward(
+      this.#extractionProgressFrom,
+      this.#extractionProgress,
+      Math.max(0, renderTimeMs - this.#extractionTransitionStartMs),
+      SIMULATION_STEP_MS,
+    );
     const pose = calculateMinerPatrolPose(
-      this.#extractionProgress * MINER_PATROL_PERIOD_MS,
+      visualExtractionProgress * MINER_PATROL_PERIOD_MS,
       this.#minerStartX,
       this.#minerEndX,
     );
@@ -556,7 +578,7 @@ export class MineFloorView {
       }
 
       const assistantPose = calculateMineFloorMinerAssistantPose(
-        this.#extractionProgress,
+        visualExtractionProgress,
         index,
         this.#activeMinerCount,
         this.#minerStartX,

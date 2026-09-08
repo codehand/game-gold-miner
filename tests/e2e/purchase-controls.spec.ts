@@ -7,6 +7,7 @@ import {
   calculateMineShaftUpgradeBatchCost,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,
+  calculateWarehouseUpgradeBatchCost,
   createInitialGameState,
   GameNumber,
   type GameState,
@@ -226,12 +227,17 @@ test('shows floor attributes and buys every affordable level with MAX', async ({
   expect(errors).toEqual([]);
 });
 
-test('buys the shared elevator and warehouse from their own controls', async ({
+test('opens shared-stage details and buys x1 elevator plus x5 warehouse', async ({
   page,
 }) => {
   const errors = collectBrowserErrors(page);
-  const fixture = createFixtureState(GameNumber.from(1_000));
+  const fixture = createFixtureState(GameNumber.from(10_000));
   const costs = nextCosts(fixture);
+  const warehouseX5Cost = calculateWarehouseUpgradeBatchCost(
+    fixture.warehouse,
+    BASE_GAME_BALANCE.warehouse,
+    5,
+  );
 
   const before = await bootDriverFixture(page, fixture);
   const elevatorControl = await readPurchaseControl(page, ELEVATOR_KEY);
@@ -264,14 +270,29 @@ test('buys the shared elevator and warehouse from their own controls', async ({
   expect(warehouseControl.visualWorldBounds).toMatchObject({ width: 30, height: 34 });
 
   await pressPurchaseControl(page, ELEVATOR_KEY);
+  const modal = page.getByTestId('mine-upgrade-modal');
+
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole('heading', { name: 'Elevator Tower' })).toBeVisible();
+  await expect(modal).toContainText('Capacity');
+  await expect(modal).toContainText('Carrying');
+  expect((await readCoreState(page)).elevatorLevel).toBe(before.elevatorLevel);
+  await page.getByTestId('mine-upgrade-x1').click();
   await expect
     .poll(async () => (await readCoreState(page)).elevatorLevel)
     .toBe(before.elevatorLevel + 1);
+  await page.getByTestId('mine-upgrade-close').click();
 
   await pressPurchaseControl(page, WAREHOUSE_KEY);
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole('heading', { name: 'Warehouse' })).toBeVisible();
+  await expect(modal).toContainText('Capacity / cycle');
+  await expect(modal).toContainText('Gold queued');
+  expect((await readCoreState(page)).warehouseLevel).toBe(before.warehouseLevel);
+  await page.getByTestId('mine-upgrade-x5').click();
   await expect
     .poll(async () => (await readCoreState(page)).warehouseLevel)
-    .toBe(before.warehouseLevel + 1);
+    .toBe(before.warehouseLevel + 5);
 
   const after = await readCoreState(page);
 
@@ -283,7 +304,7 @@ test('buys the shared elevator and warehouse from their own controls', async ({
     GameNumber.deserialize(after.gold).equals(
       GameNumber.deserialize(before.gold)
         .subtract(costs.elevator)
-        .subtract(costs.warehouse),
+        .subtract(warehouseX5Cost),
     ),
     'one deduction per purchase',
   ).toBe(true);

@@ -20,6 +20,10 @@ export const PLACEHOLDER_TEXTURES = {
   surfaceLandscape: 'step-32a-surface-landscape',
 } as const;
 
+/** Native dimensions of the shaft texture used to derive a non-stretched tile. */
+export const ELEVATOR_SHAFT_TEXTURE_WIDTH_PX = 192;
+export const ELEVATOR_SHAFT_TEXTURE_HEIGHT_PX = 528;
+
 export const PLACEHOLDER_ASSETS = [
   [PLACEHOLDER_TEXTURES.elevatorCabin, '/assets/step-32a/elevator-cabin-v2.png'],
   [PLACEHOLDER_TEXTURES.elevatorShaft, '/assets/step-32a/elevator-shaft.png'],
