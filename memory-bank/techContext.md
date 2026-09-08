@@ -8,6 +8,14 @@ Implementation followed the ordered, test-gated sequence in `memory-bank/impleme
 
 ## Approved Direction
 
+Role-based cat art now has an approved asset-only catalog contract under
+`art-source/cat-role-catalog/`. Asset metadata uses `rarityTier` with the fixed
+codes `N`, `R`, `SR`, `SSR`, and `UR`; this is deliberately distinct from the
+numeric gameplay `level`. The existing 2×2, four-frame Step 32A unloader sheet
+remains the runtime default and the `unloader:N` baseline. No catalog resolver,
+runtime import, gameplay attribute, balance value, persistence field, or schema
+version change is authorized in this phase.
+
 - TypeScript
 - Phaser 4.2.1, pinned for reproducible 2D rendering and animation builds
 - Vite for development and production builds
@@ -46,6 +54,43 @@ Implementation followed the ordered, test-gated sequence in `memory-bank/impleme
   `onWarning` and the save coordinator's `onDiagnostic`; before Step 36 neither
   callback was passed, so save recovery and storage failures were silent in the
   shipped application.
+- Supabase CLI 2.117.0 is an **exact** devDependency, so a clean checkout runs
+  the same backend version rather than whatever is installed globally. The whole
+  stack runs offline in Docker: `npm run supabase:start`, `npm run supabase:stop`,
+  `npm run supabase:reset`, `npm run supabase:status`. Local ports are the CLI
+  defaults — API 54321, database 54322, Studio 54323, mail 54324 — chosen to
+  avoid the client's 5173, 4173, 4174, and 4175. `realtime`, `storage`, and
+  `analytics` are disabled in `supabase/config.toml`; no milestone step uses
+  them and each is a container at start-up.
+- Supabase Edge Functions run on Deno inside the CLI's edge runtime, so no local
+  Deno install is required. `supabase/functions/**` is linted with Deno globals
+  declared in `eslint.config.mjs`, but is deliberately outside `tsconfig.json`:
+  `Deno` has no type in the Node/DOM libraries the client compiles against.
+  Server-side type checking and unit testing arrive with the Step 7 harness.
+- `scripts/scan-bundle-secrets.mjs` (`npm run scan:secrets`) fails the build when
+  `dist/` contains a JWT declaring `role=service_role`, an `sb_secret_*` key, an
+  exact non-`VITE_` value from `.env.local` or the running stack, or any
+  server-only variable name from `.env.example`. It runs inside `npm run verify`
+  between `build` and `test:prod`. The anon/publishable key is deliberately not
+  flagged: it is public by design.
+- `scripts/verify-server-stack.mjs` (`npm run verify:server`) is the Step 4
+  validation, reused unchanged by Step 5's CI job: Docker reachable, stack
+  starts, migrations apply to an empty database, every committed migration
+  (read from `supabase/migrations/`, not listed by hand) is recorded as applied,
+  and `GET /v1/health` answers 200 with a current server timestamp to a caller
+  with no bearer token. `npm run verify:server -- --with-bundle-scan` adds the
+  build and secret scan; **the `--` is required**, because npm does not forward a
+  bare flag to the script and the two extra checks would be skipped in silence.
+  `.github/workflows/ci.yml` runs it, without `--with-bundle-scan`, as the
+  `server` job on every push and pull request, alongside a `client` job running
+  `npm run verify`.
+- Every Supabase CLI call that is parsed passes `--output-format json` (or
+  `-o json`) explicitly. The CLI's default is a text table and it emits JSON on
+  its own only when it auto-detects an agent, so relying on that detection makes
+  a check pass under automation and fail in a human terminal. Payloads may also
+  be preceded by progress notices and ANSI escapes on the same stream, so every
+  parse locates `{` first and treats its absence as a reported parse failure —
+  never as an empty result.
 - `@fontsource/fredoka` 5.3.x self-hosts weights 600 and 700; startup waits for both browser fonts before creating Phaser canvas text.
 - ESLint applies additional rules to `src/core/**/*.ts` that reject Phaser, persistence/platform imports, and browser globals; the Vitest suite probes these rules through the repository's real flat configuration.
 - Phaser is configured without a physics property. Its E2E diagnostics identify the selected renderer and count boot-scene starts without making presentation state authoritative.
@@ -124,7 +169,362 @@ Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and o
 
 ## Complete Database Schema
 
-**Relational/server database schema: none.** The MVP remains client-only.
+**Relational/server database schema — landed in the local Supabase stack.**
+Server-milestone Step 3 designed the schema below on 2026-09-08; Step 4 stood up
+the local Supabase stack; Step 5 landed it on 2026-09-08 as
+`supabase/migrations/20260908130000_create_platform_tables.sql`, applied after
+Step 4's bootstrap migration
+(`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
+creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
+for `gen_random_uuid()`). All six tables and the row-level-security policies in
+the matrix below exist in the local development database after
+`supabase db reset`; **no deployed database contains them**, because no
+deployment exists yet. This block and its twin in the other document are
+byte-identical by construction and must be changed together, in the same change
+as every future migration, exactly as `AGENTS.md` requires.
+
+Full protocol context is in `memory-bank/server-save-sync-protocol.md`; the
+threat model and recorded defaults it obeys are in
+`memory-bank/server-threat-model.md`.
+
+### How a `GameNumber` is stored
+
+Three rules, and they differ by location.
+
+1. **Inside a save document, nothing changes.** `GameNumber` values stay
+   serialized decimal/scientific strings inside the document text, exactly as
+   the version-1 save schema already defines them. The server neither reformats
+   nor re-serializes them.
+2. **Anywhere SQL must sort or rank a `GameNumber`, store two columns.**
+   `*_exact text` holds the canonical serialized form and is the only value ever
+   displayed; `*_log10 double precision` holds its base-10 magnitude and is used
+   only for `ORDER BY`. A value past `1e308` cannot enter a `double precision`
+   column, but its logarithm can, which is what makes the pair work.
+3. **`numeric` is deliberately not used.** It could hold these magnitudes, but
+   round-tripping the canonical string through `numeric` is not guaranteed to
+   reproduce the exact serialization display depends on, and comparison and
+   index cost grow with digit count while idle-game values grow without bound.
+   The `exact` + `log10` pair keeps display exact and sort cost constant.
+
+Sorting on `log10` orders distinct magnitudes correctly. Two values whose
+mantissas differ beyond double precision can tie; the ranking index carries a
+deterministic secondary column so that tie resolves stably, and the exact string
+is what the player is shown either way.
+
+### Storage of the save document — `text`, not `jsonb`
+
+`saves.document_json` is `text` holding the exact serialized document. It is
+**not** `jsonb`, and this is a correctness requirement rather than a preference:
+`jsonb` does not preserve key order, discards insignificant whitespace, and
+normalizes numeric literals, whereas Step 20's test requires a pre-milestone
+save to come back from download **byte-for-byte** identical. The server parses
+the document to validate it and stores the original text unchanged. Nothing in
+SQL ever queries inside the document — re-simulation parses it in the Edge
+Function, and leaderboard values are projected into their own table — so `jsonb`
+would buy nothing and cost the round-trip guarantee.
+
+`save_audit.detail` is `jsonb` because it is server-authored, never returned to
+a client, and never round-tripped.
+
+### Tables
+
+Schema `public`. `gen_random_uuid()` is built into PostgreSQL 13+, which
+Supabase provides; no extension is required.
+
+```sql
+-- Shared trigger: maintains updated_at on rows that carry it.
+create function public.set_updated_at() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+-- ---------------------------------------------------------------- profiles --
+create table public.profiles (
+  id           uuid        primary key references auth.users(id) on delete cascade,
+  display_name text            null,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  constraint profiles_display_name_length
+    check (display_name is null or char_length(display_name) between 1 and 24)
+);
+
+create trigger profiles_set_updated_at
+  before update on public.profiles
+  for each row execute function public.set_updated_at();
+
+-- ------------------------------------------------------------------- saves --
+create table public.saves (
+  user_id                uuid        primary key references auth.users(id) on delete cascade,
+  revision               bigint      not null,
+  schema_version         integer     not null,
+  document_json          text        not null,
+  received_at            timestamptz not null default now(),
+  previous_revision      bigint          null,
+  previous_document_json text            null,
+  previous_received_at   timestamptz     null,
+  created_at             timestamptz not null default now(),
+  constraint saves_revision_positive
+    check (revision > 0),
+  constraint saves_schema_version_positive
+    check (schema_version > 0),
+  constraint saves_document_size
+    check (octet_length(document_json) <= 65536),
+  constraint saves_previous_all_or_none
+    check (num_nulls(previous_revision, previous_document_json, previous_received_at) in (0, 3)),
+  constraint saves_previous_revision_older
+    check (previous_revision is null or previous_revision < revision),
+  constraint saves_previous_document_size
+    check (previous_document_json is null or octet_length(previous_document_json) <= 65536)
+);
+
+-- ---------------------------------------------------------------- save_audit --
+create table public.save_audit (
+  id                 bigint      generated always as identity primary key,
+  user_id            uuid        not null references auth.users(id) on delete cascade,
+  occurred_at        timestamptz not null default now(),
+  outcome            text        not null,
+  error_code         text            null,
+  base_revision      bigint          null,
+  resulting_revision bigint          null,
+  document_bytes     integer     not null,
+  client_reported_at timestamptz     null,
+  detail             jsonb           null,
+  constraint save_audit_outcome_known
+    check (outcome in ('accepted', 'rejected')),
+  constraint save_audit_error_code_matches_outcome
+    check ((outcome = 'accepted') = (error_code is null)),
+  constraint save_audit_resulting_revision_matches_outcome
+    check ((outcome = 'accepted') = (resulting_revision is not null)),
+  constraint save_audit_document_bytes_non_negative
+    check (document_bytes >= 0),
+  constraint save_audit_detail_size
+    check (detail is null or octet_length(detail::text) <= 4096)
+);
+
+create index save_audit_user_time_idx
+  on public.save_audit (user_id, occurred_at desc);
+
+create index save_audit_rejected_time_idx
+  on public.save_audit (occurred_at desc)
+  where outcome = 'rejected';
+
+-- ----------------------------------------------------------- recovery_codes --
+create table public.recovery_codes (
+  id          uuid        primary key default gen_random_uuid(),
+  user_id     uuid        not null references auth.users(id) on delete cascade,
+  code_hash   text        not null,
+  created_at  timestamptz not null default now(),
+  redeemed_at timestamptz     null,
+  revoked_at  timestamptz     null,
+  constraint recovery_codes_hash_format
+    check (code_hash ~ '^[0-9a-f]{64}$'),
+  constraint recovery_codes_single_terminal_state
+    check (redeemed_at is null or revoked_at is null)
+);
+
+create unique index recovery_codes_hash_key
+  on public.recovery_codes (code_hash);
+
+create unique index recovery_codes_one_active_per_user_idx
+  on public.recovery_codes (user_id)
+  where redeemed_at is null and revoked_at is null;
+
+-- ------------------------------------------------------ leaderboard_entries --
+create table public.leaderboard_entries (
+  board_key       text             not null,
+  user_id         uuid             not null references auth.users(id) on delete cascade,
+  display_name    text                 null,
+  metric_exact    text             not null,
+  metric_log10    double precision not null,
+  source_revision bigint           not null,
+  updated_at      timestamptz      not null default now(),
+  primary key (board_key, user_id),
+  constraint leaderboard_entries_board_key_format
+    check (board_key ~ '^[a-z0-9][a-z0-9._-]{0,63}$'),
+  constraint leaderboard_entries_display_name_length
+    check (display_name is null or char_length(display_name) between 1 and 24),
+  constraint leaderboard_entries_metric_exact_length
+    check (char_length(metric_exact) between 1 and 64),
+  constraint leaderboard_entries_metric_log10_finite
+    check (metric_log10 <> 'NaN'::double precision
+           and metric_log10 > '-Infinity'::double precision
+           and metric_log10 < 'Infinity'::double precision),
+  constraint leaderboard_entries_source_revision_positive
+    check (source_revision > 0)
+);
+
+create index leaderboard_entries_rank_idx
+  on public.leaderboard_entries (board_key, metric_log10 desc, updated_at asc);
+
+create trigger leaderboard_entries_set_updated_at
+  before update on public.leaderboard_entries
+  for each row execute function public.set_updated_at();
+
+-- ------------------------------------------------------------ entitlements --
+create table public.entitlements (
+  user_id         uuid        not null references auth.users(id) on delete cascade,
+  entitlement_key text        not null,
+  granted_at      timestamptz not null default now(),
+  granted_by      text        not null,
+  source          text            null,
+  revoked_at      timestamptz     null,
+  primary key (user_id, entitlement_key),
+  constraint entitlements_key_known
+    check (entitlement_key in ('cosmetic.supporter_badge')),
+  constraint entitlements_granted_by_length
+    check (char_length(granted_by) between 1 and 64)
+);
+```
+
+### Column reference
+
+| Table | Column | Type | Null | Default | Key / constraint |
+|---|---|---|---|---|---|
+| `profiles` | `id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade |
+| `profiles` | `display_name` | text | yes | — | 1–24 characters when present; player-supplied, untrusted on render |
+| `profiles` | `created_at` | timestamptz | no | `now()` | — |
+| `profiles` | `updated_at` | timestamptz | no | `now()` | maintained by `profiles_set_updated_at` |
+| `saves` | `user_id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade; one row per user |
+| `saves` | `revision` | bigint | no | — | `> 0`; monotonic, `+1` per accepted upload; the D2 concurrency token |
+| `saves` | `schema_version` | integer | no | — | `> 0`; denormalized from the document for migration sweeps |
+| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV1` |
+| `saves` | `received_at` | timestamptz | no | `now()` | server clock; the D3 anchor for every elapsed-time calculation |
+| `saves` | `previous_revision` | bigint | yes | — | `< revision`; null-together with the other two `previous_*` columns |
+| `saves` | `previous_document_json` | text | yes | — | ≤ 65536 bytes; one generation of rollback |
+| `saves` | `previous_received_at` | timestamptz | yes | — | — |
+| `saves` | `created_at` | timestamptz | no | `now()` | — |
+| `save_audit` | `id` | bigint | no | identity | PK, generated always |
+| `save_audit` | `user_id` | uuid | no | — | FK → `auth.users(id)` on delete cascade |
+| `save_audit` | `occurred_at` | timestamptz | no | `now()` | server clock |
+| `save_audit` | `outcome` | text | no | — | `accepted` or `rejected` |
+| `save_audit` | `error_code` | text | yes | — | present exactly when rejected; a code from the protocol vocabulary |
+| `save_audit` | `base_revision` | bigint | yes | — | what the client claimed to be building on |
+| `save_audit` | `resulting_revision` | bigint | yes | — | present exactly when accepted |
+| `save_audit` | `document_bytes` | integer | no | — | `>= 0`; body size, for abuse analysis |
+| `save_audit` | `client_reported_at` | timestamptz | yes | — | the client's own claimed time, recorded and never trusted; a clock attack is visible as divergence from `occurred_at` |
+| `save_audit` | `detail` | jsonb | yes | — | ≤ 4096 bytes; server-authored reason |
+| `recovery_codes` | `id` | uuid | no | `gen_random_uuid()` | PK |
+| `recovery_codes` | `user_id` | uuid | no | — | FK → `auth.users(id)` on delete cascade |
+| `recovery_codes` | `code_hash` | text | no | — | unique; 64 lowercase hex characters |
+| `recovery_codes` | `created_at` | timestamptz | no | `now()` | — |
+| `recovery_codes` | `redeemed_at` | timestamptz | yes | — | mutually exclusive with `revoked_at` |
+| `recovery_codes` | `revoked_at` | timestamptz | yes | — | set when a replacement code is issued |
+| `leaderboard_entries` | `board_key` | text | no | — | PK part 1; `^[a-z0-9][a-z0-9._-]{0,63}$` |
+| `leaderboard_entries` | `user_id` | uuid | no | — | PK part 2; FK → `auth.users(id)` on delete cascade |
+| `leaderboard_entries` | `display_name` | text | yes | — | 1–24 characters; snapshot taken at publish time |
+| `leaderboard_entries` | `metric_exact` | text | no | — | 1–64 characters; serialized `GameNumber`, the only displayed value |
+| `leaderboard_entries` | `metric_log10` | double precision | no | — | finite, not NaN; sort key only, never displayed |
+| `leaderboard_entries` | `source_revision` | bigint | no | — | `> 0`; the `saves.revision` this entry derives from |
+| `leaderboard_entries` | `updated_at` | timestamptz | no | `now()` | maintained by `leaderboard_entries_set_updated_at`; the ranking tie-break |
+| `entitlements` | `user_id` | uuid | no | — | PK part 1; FK → `auth.users(id)` on delete cascade |
+| `entitlements` | `entitlement_key` | text | no | — | PK part 2; must be a known key |
+| `entitlements` | `granted_at` | timestamptz | no | `now()` | — |
+| `entitlements` | `granted_by` | text | no | — | 1–64 characters; no client path grants |
+| `entitlements` | `source` | text | yes | — | why it was granted |
+| `entitlements` | `revoked_at` | timestamptz | yes | — | — |
+
+### Indexes, and the ones deliberately absent
+
+| Index | Table | Definition | Why |
+|---|---|---|---|
+| PK | `profiles` | `(id)` | Only access path is by user. |
+| PK | `saves` | `(user_id)` | Only access path is by user. **No secondary index exists**: at the recorded scale of ~10⁴ rows every read and write is by primary key, so another index would cost writes and buy nothing. |
+| `save_audit_user_time_idx` | `save_audit` | `(user_id, occurred_at desc)` | Per-user history when investigating one account. |
+| `save_audit_rejected_time_idx` | `save_audit` | `(occurred_at desc) where outcome = 'rejected'` | Partial, because Step 35's alert watches the rejection rate and rejections are the rare minority. |
+| `recovery_codes_hash_key` | `recovery_codes` | unique `(code_hash)` | Redemption looks a code up directly instead of scanning. |
+| `recovery_codes_one_active_per_user_idx` | `recovery_codes` | unique `(user_id) where redeemed_at is null and revoked_at is null` | Enforces at most one live code per user in the database rather than in application logic. |
+| `leaderboard_entries_rank_idx` | `leaderboard_entries` | `(board_key, metric_log10 desc, updated_at asc)` | The ranking query. The trailing column is the tie-break; Step 27 may choose a different one, which is an index change, not a table change. |
+| PK | `leaderboard_entries` | `(board_key, user_id)` | One entry per user per board. |
+| PK | `entitlements` | `(user_id, entitlement_key)` | Covers lookup by user as a prefix, so **no separate per-user index exists**. |
+
+### Row-level security
+
+RLS is **enabled on every table**. Anything not listed is denied. The service
+role used by Edge Functions bypasses RLS and is the only writer anywhere in this
+schema.
+
+| Table | select | insert | update | delete |
+|---|---|---|---|---|
+| `profiles` | own row | none — created by the Step 9 sign-up trigger | own row | none |
+| `saves` | own row | **none** | **none** | **none** |
+| `save_audit` | none | none | none | none |
+| `recovery_codes` | none | none | none | none |
+| `leaderboard_entries` | all rows, every column but `user_id` | none | none | none |
+| `entitlements` | own row | none | none | none |
+
+`saves` denying every client write is the rule the whole anti-cheat design rests
+on: row-level security cannot re-simulate a save, so it cannot judge one, and a
+client that could reach `saves` through PostgREST would make Phase 4 decoration.
+Step 15 establishes it and Step 26 attacks it.
+
+`leaderboard_entries` is world-readable by design — that is what a leaderboard
+is. It carries its own `display_name` snapshot precisely so that publishing a
+board does **not** require widening `profiles` beyond own-row access.
+
+Its `user_id` is withheld at the **grant** level rather than the policy level,
+because a row policy alone does not constrain which columns a caller asks for:
+against a world-readable table, `?select=user_id` would enumerate the
+`auth.users` id of every player who has ever published to a board, with no
+authentication at all. Grants and row-level security are independent and both
+must permit a read, so `revoke select … ; grant select (board_key,
+display_name, metric_exact, metric_log10, source_revision, updated_at)` keeps
+the board public without publishing ids. Two consequences for Step 27, recorded
+rather than discovered and verified against the local stack: a client cannot
+select, filter, or sort by `user_id`, so "where do I rank" is answered by the
+Edge Function rather than by a direct query here; and `select=*` is refused
+outright (`42501`), because PostgREST expands it to every column including the
+withheld one, so a board query must name its columns.
+
+### Relationships and deletion
+
+Every table holds exactly one foreign key, to `auth.users(id)`, with
+`on delete cascade`. There are no other relationships. That gives Step 33 a
+single deletion path: removing the `auth.users` row removes every row this
+schema holds for that person.
+
+**Invariant for every future table:** it must carry a cascading foreign key to
+`auth.users(id)`, or declare its own explicit deletion path in the same change.
+Step 33's test enumerates the tables, so one added without a deletion path fails
+it.
+
+Consequence recorded rather than discovered later: `save_audit` rows cascade
+away with the account, so deleting an account also erases the evidence of abuse
+from it. That is the right default while no money is at stake and GDPR is
+assumed to apply, and it is a trade, not an oversight.
+
+### Recovery-code hashing
+
+`code_hash` holds an HMAC-SHA-256 digest, hex-encoded, of the recovery code
+under a pepper held in Edge Function configuration and **never** stored in the
+database. Plaintext codes are never stored, logged, or returned after issuance.
+
+A fast keyed digest is correct here rather than a slow password hash: the code
+is a high-entropy machine-generated secret, not a human-chosen password, so
+there is no small candidate space to make expensive. Keeping the pepper outside
+the database means a database leak alone does not permit offline enumeration,
+and the unique index on the digest is what lets redemption find the row without
+scanning. Step 14 fixes the code's own format and entropy.
+
+There is deliberately **no per-code failed-attempt counter**: a wrong code
+usually matches no row at all, so counting per code would miss the attack.
+Throttling belongs per caller and per address, in Step 25.
+
+### What Step 3 does not design
+
+- The Step 32 account audit log covering identity changes, recovery issuance and
+  redemption, and entitlement grants. It is a separate table designed in its own
+  step; merging it with `save_audit` would put frequent save rows and rare
+  identity events in one table with opposing access patterns.
+- The leaderboard metric, reset period, and tie-break — Step 27. The schema is
+  metric-agnostic on purpose: a season or period is a `board_key` value, not a
+  schema change.
+- Rate-limit counters — Step 25, which may use platform facilities rather than
+  tables.
+- `offlineGrant` and anything Step 22 needs beyond `received_at`, which already
+  anchors it.
 
 **IndexedDB schema:** database `cat-mine-idle`, version `1`.
 
@@ -152,9 +552,30 @@ If a database is introduced, replace this statement with the complete authoritat
   smoke tests covering runtime-asset loading, bundle identity, canvas pixel
   output, exact save/restore across a reload, corrupt/unsupported/unavailable
   storage handling, and the four representative viewports.
-- `npm run verify`: runs lint, unit tests, E2E tests, the production build, and
-  the production smoke suite in that order. This is the Step 36 validation
-  sequence.
+- `npm run verify`: runs lint, unit tests, E2E tests, the production build, the
+  build-output secret scan, and the production smoke suite in that order. This is
+  the Step 36 validation sequence with server-milestone Step 4's secret scan
+  inserted after the build.
+- `npm run verify:server`: verified on 2026-09-08 from a clean checkout against
+  an empty Docker volume set — nine checks pass, including both committed
+  migrations applied from empty and an unauthenticated `GET /v1/health`
+  returning 200 within 9 ms of the local clock. Requires Docker.
+- `npm run verify:all`: `verify` then `verify:server` in sequence, added at Step
+  5 as the sibling command its own test named; `.github/workflows/ci.yml` runs
+  the same two checks as separate CI jobs rather than one sequential command, so
+  either failing fails the workflow independently.
+- `npm run scan:secrets`: verified against a real `dist/`; mutation-proven by
+  planting a service-role JWT, an `sb_secret_*` key, and a server-only variable
+  name, each of which fails the scan. It exempts a non-`VITE_` value only when
+  its `VITE_` twin name carries the same value, so a server-side
+  `SUPABASE_ANON_KEY` beside `VITE_SUPABASE_ANON_KEY` does not fail the build
+  while a secret mirrored under an unrelated `VITE_` name still does. Reduced
+  coverage — no `.env.local`, or a running stack whose status could not be
+  parsed — is printed as a warning rather than passing in silence.
+- `tests/unit/bundle-secret-scan.test.ts` covers the scanner directly against
+  temporary fixtures outside the repository, importing it through
+  `scripts/scan-bundle-secrets.d.mts` so `tsc` type-checks the test while the
+  script stays plain JavaScript that `package.json` runs with no build step.
 
 ## Conventions
 
@@ -165,3 +586,61 @@ Use two-space indentation, semicolons, single quotes, explicit exports, and mini
 Use English UI, a 360×640 logical viewport, root deployment base path `/`
 declared in `vite.config.ts` because runtime textures are requested through
 absolute `/assets/...` paths no bundler rewrites, and lowercase `k/m/b/t/qa/qi/sx/sp/oc/no/dc` large-number suffixes before the alphabetic run beginning at `aa = 10^36`. Optimize for quick startup and 60 FPS on a representative mid-range Android device running Chrome. Telegram WebView testing is deferred to its integration milestone. Offline rewards use the saved production-rate snapshot, a two-hour cap, and 50% efficiency; future timestamps award zero. Store secrets only in ignored `.env.local` files with safe `.env.example` placeholders. Never trust Telegram `initDataUnsafe`; production identity must be derived from server-validated `initData`.
+
+Server-milestone Step 1 recorded the following about the repository as it stands
+on 2026-09-08, because later steps depend on it. The git remote is
+`https://github.com/codehand/game-gold-miner.git`. **There is no CI configuration of
+any kind** — no `.github/workflows`, so the server plan's Step 5 creates it from
+nothing, with GitHub Actions as the recorded default. **`index.html` sets no
+Content Security Policy**, and no plan step adds one; this is recorded as an
+accepted known gap (finding F5) rather than an oversight, and it matters because
+the planned guest session credential would live in script-writable storage. **No
+domain is registered**, so the first-party HttpOnly cookie option — the only
+storage exempt from Safari's seven-day script-writable-storage deletion — is not
+available and the save-sync protocol may not assume it. **`break_infinity.js`
+2.2.0 declares `main: dist/break_infinity.common.js` and
+`module: dist/break_infinity.esm.js` with no `type` field**; it is the single
+external dependency of `src/core`, imported only by
+`src/core/numbers/GameNumber.ts`, and whether it imports cleanly into a Deno Edge
+Function is unproven and must be verified before any other server work depends on
+it. Full reasoning is in `memory-bank/server-threat-model.md`.
+
+Server-milestone Step 4 stood up the local Supabase stack on 2026-09-08 and
+fixed the repository's secret boundary. **The `VITE_` prefix is that boundary**:
+Vite inlines `VITE_`-prefixed variables into the browser bundle, so a privileged
+credential must never carry one. `.env.example` is the committed template and
+holds placeholders only; `.env.local` holds real values and is git-ignored, as
+are `.env`, every `.env.*` but the template, and the Supabase CLI's `.temp` and
+`.branches` state. `SUPABASE_SERVICE_ROLE_KEY`, `RECOVERY_CODE_PEPPER`, and
+`TELEGRAM_BOT_TOKEN` are declared server-only; `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY` are the only public pair. `npm run scan:secrets`
+enforces this against the built bundle inside `npm run verify`, and
+`tests/unit/server-stack.test.ts` enforces the repository-side invariants —
+including that no tracked or untracked-but-unignored file holds a service-role
+JWT or an `sb_secret_*` key, asserted through `git check-ignore` rather than the
+text of `.gitignore` so a commented-out rule cannot pass.
+
+The `save-sync` Edge Function sets `verify_jwt = false` at the platform level
+because protocol §10.1 requires `GET /v1/health` to answer an unauthenticated
+caller; its authenticated routes verify their own bearer token in the handler
+from Step 16. The health route never reads the service-role key — it is the one
+unauthenticated route, and that key bypasses row-level security — and a unit
+assertion pins the absence. It proves database reachability through a PostgREST
+round trip, verified by stopping the PostgREST container and observing a 503
+`service_unavailable` from the same route.
+
+Server-milestone Step 2 fixed the save-sync contract in
+`memory-bank/server-save-sync-protocol.md`; no code implements it yet. The
+decisions with technical consequences: the session credential lives in the
+Supabase client's default **script-writable storage, not a first-party HttpOnly
+cookie**, because no domain is registered — which means the session token and
+the local save fall under iOS Safari's same seven-day deletion, so for an
+unlinked guest the Step 14 recovery code, not cloud save, is what survives it.
+Concurrency uses a server-owned monotonic `revision` rather than an ETag. Cloud
+upload runs at most once per 60 seconds with forced lifecycle/claim/boot
+triggers, leaving `DEFAULT_SAVE_DEBOUNCE_MS = 500` untouched for local writes.
+Request bodies are capped at 64 KB before parsing, against a real fifteen-floor
+save of roughly 3–4 KB. Cloud failures reuse `createSaveDiagnosticBanner` with
+`cloud-sync-*` codes, and only terminal failures reach it — the banner never
+withdraws a notice, so a retryable network error must show nothing while a retry
+is still pending.

@@ -4,11 +4,180 @@
 
 The base-game milestone is complete and validated. A second milestone is now planned but not started: `memory-bank/server-milestone-plan.md` takes the game from client-only to account-backed — guest play, Google/Apple/Telegram sign-in, cloud save, server-verified progress, leaderboards, and entitlement groundwork, on Supabase.
 
-That plan is written and awaiting authorization to begin. No server code exists. Eight kickoff questions remain unanswered and are listed at the end of the plan; Step 1 is where they get resolved or given recorded defaults.
+Steps 1 through 4 are validated. **Step 5 is implemented on 2026-09-08 and awaiting user validation**; no step past it has started. Step 6 must not begin before that gate. See `## Next Steps` below for the Step 4 and Step 5 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
+
+Step 3 designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — with all 42 columns, every type, default, nullability, key, constraint, index, and relationship, plus the RLS matrix in which `saves` denies the client every write. Step 5 landed all six as `supabase/migrations/20260908130000_create_platform_tables.sql`, with RLS enabled and exactly the policies that matrix names; they exist in the local development database, not in any deployment.
+
+Its decisive finding is that **`saves.document_json` must be `text`, not `jsonb`**. Step 20's test requires a pre-milestone save to come back from download byte-for-byte, and `jsonb` reorders keys, drops insignificant whitespace, and normalizes numeric literals. That was verified rather than assumed: the same document stored in both column types came back from `jsonb` with its keys reordered. Choosing `jsonb` would have failed Step 20 long after the schema was live.
+
+Three further decisions carry beyond the schema. `saves` keeps one generation of rollback, because the threat model ranks a player's own progress above everything else and a single history-less row offers no recovery from a wrongly accepted upload. `leaderboard_entries` snapshots its own `display_name` so publishing a public board never widens `profiles` past own-row access. `recovery_codes.code_hash` is an HMAC digest under a pepper held outside the database — a fast keyed digest is right for a high-entropy machine secret rather than a human password, and keeping the pepper out of Postgres means a database leak alone does not permit offline enumeration. Every table carries exactly one cascading foreign key to `auth.users`, which gives Step 33 a single deletion path and becomes an invariant for every future table; the accepted cost is that deleting an account also erases its abuse evidence from `save_audit`.
+
+Step 2 fixed the client/server contract before either side is written. `GET /v1/save` and `PUT /v1/save` on an Edge Function are the only save path, each with an example request and response for every success and every rejection. An eleven-code error vocabulary pairs each failure with what the client does and the exact copy the player sees — most entries show the player nothing, because the game never blocks on cloud sync and `createSaveDiagnosticBanner` deliberately never withdraws a notice, so a retryable network error must stay silent while a retry is pending or a tunnel would pin a permanent banner to the screen. Cloud failures reuse that banner with `cloud-sync-*` codes rather than a new surface.
+
+Five decisions are binding on later steps. **D1**: the session lives in script-writable storage, not a first-party HttpOnly cookie, because no domain exists — and the consequence is sharper than the default looked, since the session token and the local save then fall under iOS Safari's *same* seven-day deletion, so for an unlinked guest the Step 14 recovery code rather than cloud save is what makes Step 21's promise true. **D2**: a server-owned monotonic `revision`, with the stale-write rejection returning the server's document so a conflict resolves in one round trip; this also makes a retried upload whose response was lost resolve silently instead of becoming a false conflict. **D3**: the server's `receivedAt` anchors every elapsed-time calculation, while the document's own timestamps are carried verbatim for the client's local simulation and are never a server input. **D4**: divergent devices resolve by dominance over the monotonic progress vector — one document that is a superset of the other is adopted silently, and only a genuine fork asks the player, with `gold` and every queue and progress value excluded because they legitimately fall. **D5**: cloud upload is at most one per 60 s with forced lifecycle, claim, and boot-reconcile triggers, leaving the 500 ms local debounce untouched; this resolves finding F6.
+
+That deliverable records the threat model over six attacker capabilities — local storage, the client bundle, the device clock, HTTP requests, the session credential itself, and unlimited anonymous identities — with what each is worth and which step defends it. It ranks the protected assets, and that ranking is load-bearing: a player's own progress outranks leaderboard integrity, so the Step 23 re-simulation tolerance must be biased toward accepting a slightly generous save over rejecting an honest one. It also records what the milestone deliberately does not defend, and one ordering consequence — nothing before Step 22 defends the device clock, so Steps 15–21 will faithfully store clock-derived income and must not be described as anti-cheat.
+
+None of the eight kickoff questions was answered by the user; all eight now carry a conservative recorded default, and the plan's Open questions section is now a table of those defaults rather than a list of blockers. Three were resolved partly by inspecting the repository: the git remote is GitHub, there is no CI of any kind, and `index.html` sets no Content Security Policy — so Step 2 may **not** assume a first-party HttpOnly cookie is available, and Step 5 creates CI from nothing.
+
+Auditing all 37 steps also found nine assumptions the plan relied on without recording them (F1–F9). The two with real cost: **Step 12 presumes a Telegram Mini App host that does not exist** — `src/platform/` contains only `web/` and nothing in `src/` mentions Telegram — so Step 12 gains a prerequisite it did not have; and **Step 6's premise that `break_infinity.js` imports cleanly into Deno is unproven**, so Step 6 must verify that first, with a shim rather than a reimplementation as the fallback. A third has a cost the plan never recorded: **Step 11's Apple sign-in needs an Apple Developer Program membership, a Services ID, and a verified domain**, so it depends on the unresolved domain question in a way Step 10's Google sign-in does not, and it adds roughly USD 99/year. The rest: Step 23's upper bound is loose by construction and must say so, Step 22 changes the authoritative clock and must not change the offline-income formula, cloud upload cadence is separate from the 500 ms local debounce and capped at one per 60 s, Step 21's measurement needs a seven-day wall-clock observation rather than a sitting, Step 31 needs one concrete entitlement and it must be cosmetic so it cannot become an unmodelled input to Step 23, and there is no XSS/CSP step. That last one, F5, is the single item left genuinely open, because closing it means adding a step and that is the user's decision at this gate.
 
 Two findings from the planning discussion are recorded in that plan. Canvas/WebGL fingerprinting was proposed as a guest identity mechanism and rejected: it collides across identically-configured devices, which would hand one player another player's save; it is unstable across routine updates; Brave randomizes it per session while Firefox and Tor make every user identical; and it is an observable identifier rather than a secret credential, so it cannot prove ownership. It is permitted only as a weak abuse signal in Step 25. Separately, Safari deletes all script-writable storage after seven days of use without first-party interaction, which means the shipped client-only build already loses a lapsed player's entire save — both the Dexie database and the localStorage lifecycle journal fall under that rule. Step 21 handles it for players with an account; whether to fix the shipped build first is undecided. Other post-milestone work — managers, boosts, gift drops, audio, final art — remains unplanned and unauthorized.
 
 ## Recent Changes
+
+- Generated **Elon** (`elevatorCargoCat`, catalog role `elevator-cargo-cat`,
+  tier `SSR`) on 2026-09-08 as the third named SSR elevator cargo steward.
+  Elon preserves the user's silver-white tabby identity, icy luminous eyes,
+  long striped tail, moon-phase collar, and celestial cargo cube; royal-violet
+  cloth and an amethyst neck gem carry SSR. The four-frame idle and complete
+  source/QC/provenance package live under
+  `art-source/cat-role-catalog/elevator-cargo-cat/ssr/elon/`. Strict QC passes
+  with zero empty, source/output edge-touch, or paste-clamped frames, body-scale
+  CV `0.00239`, and anchor-Y deviation `0.01131`. Elon remains an unintegrated
+  candidate; runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Win** (`elevatorCargoCat`, catalog role `elevator-cargo-cat`,
+  tier `SSR`) on 2026-09-08 as the second named SSR elevator cargo steward.
+  Win preserves the user's golden-orange tabby identity, pale luminous eyes,
+  cloud collar, lightning trim, long striped tail, and ornate locked cargo
+  ledger; royal-violet cloth and an amethyst neck gem carry SSR. The four-frame
+  idle and complete source/QC/provenance package live under
+  `art-source/cat-role-catalog/elevator-cargo-cat/ssr/win/`. Strict QC passes
+  with zero empty, source/output edge-touch, or paste-clamped frames, body-scale
+  CV `0.01761`, and anchor-Y deviation `0.01618`. Win remains an unintegrated
+  candidate; runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Mofy** (`elevatorCargoCat`, catalog role
+  `elevator-cargo-cat`, tier `SSR`) on 2026-09-08. Mofy preserves the user's
+  calico face and body markings, mint-green eyes, long tail, leaf-shaped cloak,
+  and carved wooden flower ledger; royal-violet cloth and an amethyst neck gem
+  carry SSR. The four-frame idle and complete source/QC/provenance package live
+  under `art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/`. Strict QC
+  passes with zero empty, source/output edge-touch, or paste-clamped frames,
+  body-scale CV `0.01500`, and anchor-Y deviation `0.00727`. A 50×50 logical
+  pixel shaft preview confirms the compact cabin read. Mofy remains an
+  unintegrated candidate; runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Nautilus** (`warehouseManager`, catalog role `warehouse-manager`,
+  tier `SSR`) on 2026-09-08 as the first SSR warehouse supervisor. Nautilus
+  preserves the user's charcoal-black cat, glowing aqua eyes, long thin tail,
+  wave-pattern ceremonial cloak, and golden shell-shaped inventory ledger;
+  royal-violet/deep-amethyst cloth and an amethyst neck gem carry SSR. The
+  four-frame idle and complete source/QC/provenance package live under
+  `art-source/cat-role-catalog/warehouse-manager/ssr/nautilus/`.
+  Largest-component cleanup removed a detached motion mark. Strict QC passes
+  with zero empty, edge-touch, or paste-clamped frames, body-scale CV `0.01471`,
+  and anchor-Y deviation `0.00081`. Nautilus remains an unintegrated candidate;
+  runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Gauge** (`warehouseManager`, catalog role `warehouse-manager`,
+  tier `SR`) on 2026-09-08 as the third named SR warehouse supervisor. Gauge
+  preserves the user's orange tabby identity, striped tail, utility-pocket
+  field coat, steel shoulder guard, and gear-emblem inventory clipboard;
+  sapphire-blue scarf and cyan highlights carry SR. The four-frame idle and
+  complete source/QC/provenance package live under
+  `art-source/cat-role-catalog/warehouse-manager/sr/gauge/`. Largest-component
+  cleanup removed detached motion marks. Strict QC passes with zero empty,
+  edge-touch, or paste-clamped frames, body-scale CV `0.00492`, and anchor-Y
+  deviation `0.02311`. Gauge remains an unintegrated candidate; runtime,
+  gameplay, saves, and schemas are unchanged.
+
+- Generated **Baron** (`warehouseManager`, catalog role `warehouse-manager`,
+  tier `SR`) on 2026-09-08 as the second named SR warehouse supervisor. Baron
+  preserves the user's fluffy cream fur, pale-gold eyes, large plume tail,
+  ivory-and-gold ceremonial armor, and ornate inventory scroll; sapphire-blue
+  sash and cloth accents carry SR. The four-frame idle and complete source/QC/
+  provenance package live under
+  `art-source/cat-role-catalog/warehouse-manager/sr/baron/`. Strict QC passes
+  with zero empty, edge-touch, or paste-clamped frames, body-scale CV `0.00275`,
+  and anchor-Y deviation `0.01537`. Baron remains an unintegrated candidate;
+  runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Cipher** (`warehouseManager`, catalog role `warehouse-manager`,
+  tier `SR`) on 2026-09-08. Cipher preserves the user's sleek charcoal-black
+  identity, pale-gold eyes, long tail, segmented futuristic armor, and
+  holographic inventory tablet; sapphire/electric blue and cyan carry the SR
+  color identity while gold remains secondary trim. The four-frame idle and
+  full source/QC/provenance package live under
+  `art-source/cat-role-catalog/warehouse-manager/sr/cipher/`. Strict QC passes
+  with zero empty, edge-touch, or paste-clamped frames, body-scale CV `0.00744`,
+  and anchor-Y deviation `0.01456`. The existing cosmetic warehouse manager
+  stays the `N` runtime default; no gameplay, runtime, save, or schema change.
+
+- Generated **Sovereign** (`unloader:SSR`) on 2026-09-08 as the third named SSR
+  unloader. The candidate preserves the user's warm-tan long-haired lynx
+  identity, cream mane, tall tufted ears, dark markings, glowing pale-gold eyes,
+  open receiving paws, and ornate shoulder-mounted treasure chest. Royal-violet
+  cloth and an amethyst belt gem carry SSR, with gold retained as a secondary
+  material. The four-frame idle and full source/QC/provenance package live under
+  `art-source/cat-role-catalog/unloader/ssr/sovereign/`. Strict QC passes with
+  zero empty, edge-touch, or paste-clamped frames, body-scale CV `0.00736`, and
+  anchor-Y deviation `0.00255`. Sovereign remains an unintegrated candidate;
+  runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Zenith** (`unloader:SSR`) on 2026-09-08 as a second named
+  character in the same role/rarity as Aegis. Zenith preserves the user's cream
+  Siamese identity, dark ears/mask/paws/tail, pale-gold eyes, celestial
+  clothing, open receiving paw, and compact gold balance scales; deep-violet
+  cloth and an amethyst forehead gem carry SSR. The four-frame idle and full
+  source/QC/provenance package live under
+  `art-source/cat-role-catalog/unloader/ssr/zenith/`. Strict QC passes with zero
+  empty, edge-touch, or paste-clamped frames, body-scale CV `0.00271`, and
+  anchor-Y deviation `0.00070`. The catalog now explicitly permits multiple
+  named characters per role/rarity and uses character-qualified asset IDs.
+  Zenith remains an unintegrated candidate; runtime and game schemas are
+  unchanged.
+
+- Generated **Aegis** (`unloader:SSR`) on 2026-09-08 from the user-supplied
+  silver-gray ceremonial cat reference. The candidate preserves gray tabby
+  markings, white muzzle/belly/paws, pale-gold eyes, ornate gold armor, and an
+  open-paw receiving pose, while deep-violet cloth/inlays and an amethyst chest
+  gem provide the required SSR purple identity. The four-frame stationary idle,
+  transparent sheet, raw/reference files, prompt, GIF, contact/context previews,
+  QC metadata, and provenance are stored under
+  `art-source/cat-role-catalog/unloader/ssr/`. Strict QC passes with zero empty,
+  edge-touch, or paste-clamped frames, body-scale CV `0.00204`, and anchor-Y
+  deviation `0.00288`. Status is `candidate-generated-awaiting-user-review`;
+  runtime, gameplay, balance, state, saves, and schemas remain unchanged.
+
+- Generated the first catalog variant, **Tally** (`unloader:UR`), on 2026-09-08 from the
+  user-supplied dark rune-cat reference. The candidate preserves navy-black fur,
+  amber eyes, ornate gold rune armor/cloak, and a compact teal-crystal pickaxe
+  in a restrained four-frame stationary idle. The normalized 2×2 RGBA sheet,
+  per-frame PNGs, GIF, contact sheet, game-context comparison, raw generation,
+  prompt, reference copy, pipeline metadata, and provenance are stored under
+  `art-source/cat-role-catalog/unloader/ur/`. Strict QC passes with zero empty,
+  edge-touch, or paste-clamped frames, body-scale CV `0.00465`, and anchor-Y
+  deviation `0.00609`. Status is `candidate-generated-awaiting-user-review`;
+  it is not copied into runtime assets or connected to gameplay/state/save.
+
+- Server-milestone Step 3 on 2026-09-08: designed the Postgres schema and wrote
+  it byte-identically into `memory-bank/architecture.md` and
+  `memory-bank/techContext.md`, replacing the "Relational/server database
+  schema: none" statement in each. No migration and no database exist. The
+  documented DDL was extracted from the document itself and executed against
+  PostgreSQL 17 in a throwaway container with a stub `auth.users`; it applies
+  cleanly and 14 constraint-behaviour assertions pass, including that deleting
+  the `auth.users` row cascades every row in all six tables. That is a design
+  check against stock PostgreSQL, not a Supabase project — Step 4 creates that.
+
+- Server-milestone Step 2 on 2026-09-08: wrote the save-sync contract in
+  `memory-bank/server-save-sync-protocol.md`. Documentation only; no code, no
+  balance value, no schema version changed. Decisions D1–D5 above are binding on
+  later steps, and the dominance conflict policy holds only while the progress
+  vector stays monotonic, so a future prestige or reset mechanic must revise it
+  in the same change.
+
+- Recorded the user-approved cat-role asset taxonomy on 2026-09-08: every role
+  has ordered rarity tiers `N` normal/gray, `R` rare/green, `SR` super
+  rare/blue, `SSR` super-super rare/purple, and `UR` ultra rare/gold. The
+  existing Step 32A `unloader` remains the runtime default and is registered as
+  the `unloader:N` baseline. Added an asset-family brief and manifest under
+  `art-source/cat-role-catalog/`. This is documentation and asset preproduction
+  only; tier attributes, acquisition, runtime selection, authoritative state,
+  balance, saves, and database schemas are unchanged. The next asset input is a
+  user-supplied role name, rarity tier, and design reference image.
 
 - Step 37 was validated by the user on 2026-09-08, closing the base-game milestone. All 37 plan steps are complete and the plan's Definition of Done is met.
 - Step 37 implemented on 2026-09-08 as a review-and-documentation step with no runtime, balance, or schema change. It reviewed the delivered base game against `memory-bank/implementation-plan.md` and the GDD acceptance criteria, recorded every deferred feature instead of building it, added `README.md`, and corrected the repository documentation that still described a four-floor mine and a round-robin elevator.
@@ -628,13 +797,183 @@ The follow-up HUD clarification renames the centre field and rendered diagnostic
 
 The 2026-09-07 browser-feedback revision is implemented: `HUD_HEIGHT` is 52, the centre HUD value reads `warehouse.inputQueue`, and balance/state/view construction now supports exactly fifteen floors. Floors 1–5 are visible initially; opening floor 5 expands the mine to floors 1–10, and opening floor 10 expands it to floors 1–15 without restarting the scene. The active scroll range resizes with each reveal while retaining the current scroll position. Save document and IndexedDB versions remain 1; legacy four-floor version-1 documents are expanded to the fifteen-floor shape before strict validation, preserving floors 1–4 and adding locked configured defaults. The game UI/UX skill guided the compact fixed-region and progressive-disclosure implementation without weakening safe-area scaling or touch targets. Automated evidence: 321 unit tests, 37 Chromium E2E tests, all nine production smoke tests, lint, build, and `git diff --check` pass; direct in-app browser inspection confirms the 52 px HUD, five initially visible floors, and no console errors.
 
-The 37-step plan is finished. Nothing is in progress and nothing is authorized.
+Server-milestone Step 4 is implemented and awaiting validation. The whole backend
+now runs offline in Docker: Supabase CLI 2.117.0 is an exact devDependency,
+`supabase/config.toml` is committed with project id `cat-mine-idle` and default
+ports that do not collide with 5173/4173/4174/4175, and `realtime`, `storage`,
+and `analytics` are switched off because no milestone step uses them. One Edge
+Function, `save-sync`, serves protocol §10.1 `GET /v1/health` at
+`/functions/v1/save-sync/v1/health`; it is the router, error envelope, and
+vocabulary Steps 16 and 17 must reuse rather than a second contract.
 
-1. Do not begin any post-milestone work — managers, boosts, gift drops, audio,
-   final art, Telegram integration, deployment — without explicit user
-   authorization. The deferred list in `memory-bank/progress.md` is a record of
-   what was excluded, not a backlog to start from. A new milestone needs its own
-   ordered, test-gated plan before code is written.
+Three Step 4 judgment calls to review at the gate. First, `verify_jwt = false`
+for the whole function, because §10.1 requires the health route to answer an
+unauthenticated caller — the authenticated routes verify their own token in the
+handler from Step 16, and until then no route touches data. Second, **one
+bootstrap migration exists** even though Step 5 owns migrations: it creates
+nothing, asserts the PostgreSQL 13+ premise the Step 3 schema relies on for
+`gen_random_uuid()`, and gives Step 4's "applies migrations" check and Step 5's
+"a broken migration fails CI" check a real file rather than an empty directory.
+The six designed tables are untouched. Third, the health route proves database
+reachability by round-tripping PostgREST with the **anon** key, never the
+service-role key, because it is the one route open to unauthenticated callers
+and that key bypasses row-level security; Step 16 narrows the probe to `saves`
+once that table exists.
+
+The secret boundary is now enforced rather than described. `.env.example` is the
+committed template, `.env.local` holds real values and is ignored, and the
+`VITE_` prefix is the whole line between a public value and a credential.
+`npm run scan:secrets` fails the build if `dist/` carries a service-role JWT, an
+`sb_secret_*` key, an exact non-`VITE_` environment value, or a server-only
+variable name, and it runs inside `npm run verify` between `build` and
+`test:prod`. `tests/unit/server-stack.test.ts` adds sixteen static invariants,
+asserting the ignore rules through `git check-ignore` rather than the text of
+`.gitignore` so a commented-out rule cannot pass.
+
+Evidence: `npm run verify:server -- --with-bundle-scan` passes all nine checks
+from a clean checkout against an empty Docker volume set, including migrations
+applied from empty and an unauthenticated health check answering 200 within 9 ms
+of the local clock. Both halves are mutation-proven: a broken migration fails
+`supabase db reset` with exit 1, the version guard fires when its threshold is
+raised, stopping the PostgREST container turns the health route into a 503
+`service_unavailable`, and a planted service-role JWT, `sb_secret_*` key, or
+server-only variable name each fails the bundle scan. `npm run verify` passes end
+to end: lint, 351 unit tests, 42 Chromium E2E tests, the strict production build,
+the secret scan, and 9 production smoke tests. No client code changed, no gameplay
+changed, and save-document and IndexedDB schema versions remain 1.
+
+A user review of Step 4 found four defects, all fixed with regressions. The
+serious one: `npm run verify:server` reported a healthy stack as a missing
+migration in any ordinary terminal, because `supabase migration list --local`
+defaults to a text table and only emits JSON when the CLI auto-detects an agent —
+which is why it passed during implementation and would have failed for a human.
+It now requests JSON explicitly, guards the payload slice, and reports an
+unreadable response as its own failure rather than as a missing migration. The
+others: the plan document used `npm run verify:server --with-bundle-scan`, which
+npm does not forward, so the documented nine-check command silently ran seven;
+the secret scanner would have failed a build on an anon key present under both
+its prefixed and unprefixed names, now exempted by twin name rather than by value
+so a mirrored secret cannot exempt itself; and the privileged-key probe degraded
+silently to checking nothing, now warned about and distinguished from a stack
+that is simply not running. Unit coverage is 364, up from 351.
+
+Two gaps are recorded rather than closed. `supabase/functions/**` is linted with
+Deno globals declared but is outside `tsconfig.json`, because `Deno` has no type
+in the Node/DOM libraries the client compiles against — Step 7's Edge Function
+harness closes this, and until then the function's only automated proof is the
+live health probe plus static source assertions. And the health probe reports
+PostgREST's reachability, which is a real database round trip but not a query
+against a table the game owns.
+
+The user validated Step 4 and authorized Step 5 on 2026-09-08.
+
+Server-milestone Step 5 is implemented on 2026-09-08: migrations and CI.
+`supabase/migrations/20260908130000_create_platform_tables.sql` lands the six
+Step 3 tables verbatim — the exact `create table`/index SQL documented in
+`memory-bank/architecture.md` and `memory-bank/techContext.md` — plus RLS
+enabled on all six with exactly the policies the Step 3 matrix names:
+`profiles` and `entitlements` select-own, `profiles` update-own, `saves`
+select-own with no insert/update/delete policy anywhere, and
+`leaderboard_entries` select-all. `save_audit` and `recovery_codes` get RLS
+enabled and no policy at all, which denies every access to `anon` and
+`authenticated` outright. `supabase/seed.sql` gained one fixture guest —
+an `auth.users` row plus its `profiles` row, both local-only — so
+`supabase db reset` leaves something to inspect in Studio without the Step 8
+sign-in flow existing yet; `saves`, `save_audit`, `leaderboard_entries`, and
+`entitlements` stay unseeded because a realistic fixture row for them needs
+code that does not exist before Steps 16, 26, and 31.
+
+Step 5 evidence went beyond re-running Step 4's script. Against the real local
+stack, a JWT minted for the seeded fixture user (`role: authenticated`,
+`sub` set to its id) can `select` its own `profiles` row (200, one row) and its
+own — empty — `saves` row-set (200, `[]`); a direct `insert` into `saves` with
+that same token is refused (403, PostgREST `42501`, "new row violates
+row-level security policy"); and `save_audit` returns `[]` under RLS with no
+policy at all rather than an error. `EXPECTED_MIGRATIONS` in
+`scripts/verify-server-stack.mjs` now lists both migration files, so
+`npm run verify:server` actually checks the new one landed rather than only the
+bootstrap file. Step 5's own "a deliberately broken migration fails CI" claim
+was mutation-proven directly: a temporary migration with a typo'd foreign-key
+column made `supabase db reset` exit 1, and removing it restored exit 0 and a
+clean `npm run verify:server` pass — the identical mechanism
+`.github/workflows/ci.yml`'s new `server` job runs, though no GitHub Actions run
+has actually executed, since this checkout was never pushed. That workflow adds
+a `client` job (`npm run verify`) alongside it, and `package.json` gained a
+`verify:all` sibling script that runs both locally in sequence. `npm run lint`
+and `npm run test` (364 unit tests) were re-run and pass unchanged; no client
+source file changed, and no gameplay, save-document, or IndexedDB schema
+version changed.
+
+One scope decision worth reviewing at the gate: Step 5 lands all six tables
+now, rather than one per the step that first names it (Step 9 for `profiles`,
+Step 15 for `saves`, Step 27 for `leaderboard_entries`, Step 31 for
+`entitlements`). This follows what `memory-bank/architecture.md`,
+`memory-bank/techContext.md`, and the Step 4 bootstrap migration's own comment
+already committed to before this step began — "Step 5 lands these six tables
+as forward-only migrations" — rather than a re-reading of Phase 2/3/5/6's
+per-step instructions in isolation. Under this reading, Steps 9, 15, 27, and 31
+add the application logic around an already-existing table (the sign-up
+trigger, the upload function, the ranking query, the grant check), not the
+`create table` statement itself.
+
+A code review of the Step 4/5 working tree on 2026-09-08 found ten issues and
+all ten were fixed in place, before the gate rather than after it. Three changed
+behaviour that a gate would otherwise have certified as working:
+
+1. `parseEnvFile` in `scripts/scan-bundle-secrets.mjs` took everything after the
+   first `=` as the value, so a `.env.local` line carrying a trailing
+   `# comment` produced a forbidden value that could never occur in a bundle.
+   The exact-value check — one of the scan's three legs — silently became a
+   no-op for that variable while still printing as having run. It now reads
+   dotenv's quoting rules and strips an `export ` prefix, and the fix is
+   mutation-proven: the regression test fails against the old parser.
+2. `public.set_updated_at()` was created without `set search_path = ''`
+   (Supabase's `function_search_path_mutable` lint). Migrations are
+   forward-only and this is the trigger every future `updated_at` column
+   attaches to, so it was pinned at creation; the body now calls
+   `pg_catalog.now()`, and the trigger was verified still firing against the
+   local stack.
+3. `leaderboard_entries_select_all` admits every row, and PostgREST lets the
+   caller choose its own column list — so `?select=user_id` enumerated the
+   `auth.users` id of every published player with no authentication. `user_id`
+   is now withheld by column-level grant. Verified live: anon reads
+   `board_key,display_name,metric_exact` (200) and is refused `select=user_id`
+   and `select=*` alike (`42501`). The RLS matrix in `architecture.md` and
+   `techContext.md` moved with it, and both copies remain byte-identical.
+
+The remaining seven were smaller but the same shape — a check that reports
+success without having checked. `EXPECTED_MIGRATIONS` is gone from
+`scripts/verify-server-stack.mjs`, replaced by a read of `supabase/migrations/`
+plus a guard against an empty list, so a future migration cannot be silently
+skipped by an unedited constant; the bundle scan now names the `.env.local`
+values it skipped as too short or placeholder and refuses to print a pass over
+an empty `dist/`; the save-sync health route answers a missing environment
+variable with `server_error` rather than `service_unavailable`, which would
+otherwise have every client retry forever against a healthy database, and
+`errorResponse` can now set the `Retry-After` the protocol's §4 tells clients to
+wait for; `.github/workflows/ci.yml` declares `permissions: contents: read` and
+per-job `timeout-minutes`; and the repository-wide credential scan in
+`tests/unit/server-stack.test.ts` skips binary extensions — it was reading 363
+untracked images, mostly `art-source/`, on every `npm run test` — and now
+reports an unreadable file as an offender rather than skipping it silently.
+That test went from roughly 2 s to 36 ms.
+
+Each fix ships with a regression test. After them: `npm run lint` clean,
+376 unit tests pass, `npm run verify` passes end to end, and
+`npm run verify:server` passes with both migrations applying to an empty
+database.
+
+The base-game 37-step plan is finished. The server milestone is at its Step 5 gate: Steps 1 through 4 are validated, Step 5 is implemented and awaiting validation, and Step 6 may not begin until the user validates it. F5 — whether to add an XSS/CSP step — is still open and was not answered at the Step 1 gate; Step 2's D1 makes it slightly more pressing, since the session credential now definitively lives in script-writable storage. Every other open item carries a recorded default that can be overturned later at documented cost.
+
+1. Two workstreams are authorized, and only these two. The **server milestone**
+   is at its Step 5 gate — implemented, awaiting validation, Step 6 blocked
+   (`memory-bank/server-milestone-plan.md`). The **cat-role asset catalog** is
+   authorized as asset preproduction only, under `art-source/`, with no runtime
+   loader entry, gameplay attribute, or schema change. Everything else —
+   managers, boosts, gift drops, audio, Telegram integration, deployment — still
+   needs explicit user authorization and its own ordered, test-gated plan before
+   code is written. The deferred list in `memory-bank/progress.md` is a record of
+   what was excluded, not a backlog to start from.
 2. Two verification items survive the milestone and remain open: a physical
    mid-range Android Chrome pass, and a human playtest of the GDD's
    30-second-comprehension criterion. Neither is automatable; both were recorded
@@ -642,8 +981,9 @@ The 37-step plan is finished. Nothing is in progress and nothing is authorized.
 3. Playtest the provisional balance curve, especially the generated floor 5–15
    depth curve, which no human has played through. Every balance value in
    `src/config/balance.ts` remains provisional until it does.
-4. Scroll response is the tightest performance margin at fifteen floors — 83.5 ms
-   p95 against a 100 ms budget — and is the first thing to re-measure if the mine
+4. Scroll response is the tightest performance margin at fifteen floors — 81.9 ms
+   p95 against a 100 ms budget, per the current `performance-results/step-35-latest.json`
+   — and is the first thing to re-measure if the mine
    grows or the scene graph gets heavier.
 - Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.
 - Confirmed as deliberate that a backgrounded tab is credited at full pipeline rate while a closed one is credited through the 50% offline efficiency, so the same two-hour absence is worth about twice as much with the tab left open. Documented the asymmetry on `MAX_CATCH_UP_MS` and pinned the ratio in `tests/unit/simulation-time.test.ts`, verified by mutation to fail if either side changes.

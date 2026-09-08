@@ -4,7 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-"Cat Mine Idle" — a web-first (browser + Telegram Mini App) idle mining game in TypeScript, Phaser 4, and Vite. Portrait 360×640 logical viewport. Client-only; no backend and no database.
+"Cat Mine Idle" — a web-first (browser + Telegram Mini App) idle mining game in TypeScript, Phaser 4, and Vite. Portrait 360×640 logical viewport.
+
+**The playable game is client-only**: nothing in `src/` makes a network call, and
+the save lives in IndexedDB.
+
+A separate server milestone (`memory-bank/server-milestone-plan.md`) is in
+progress. Its local Supabase stack lives in `supabase/` — committed
+`config.toml`, forward-only migrations, and one `save-sync` Edge Function that
+currently serves only a health check. All six designed database tables exist in
+the local development database, with row-level security matching the matrix
+documented byte-identically in `memory-bank/architecture.md` and
+`memory-bank/techContext.md`; no deployment exists, and nothing in `src/` reads
+or writes any of it yet. `.github/workflows/ci.yml` gates every push and pull
+request with a `client` job (`npm run verify`) and a `server` job
+(`npm run verify:server`).
 
 ## Commands
 
@@ -15,7 +29,11 @@ npm run lint           # eslint .
 npm run test           # vitest run (tests/unit/**/*.test.ts, node environment)
 npm run test:e2e       # playwright (chromium) against a dev server on 127.0.0.1:4173
 npm run test:prod      # build dist/, serve it from / on :4175, run the production smoke suite
-npm run verify         # lint → test → test:e2e → build → test:prod (the full gate)
+npm run verify         # lint → test → test:e2e → build → scan:secrets → test:prod (the full gate)
+npm run scan:secrets   # fail if dist/ carries a service-role key or other non-public secret
+npm run supabase:start # local Supabase stack in Docker (supabase:stop / :reset / :status)
+npm run verify:server  # local stack: starts, applies migrations from empty, health check (needs Docker)
+npm run verify:all     # verify && verify:server, in sequence
 npm run test:perf      # optional ten-minute Chrome benchmark (Pixel 5 emulation, 4x CPU throttle)
 npm run dev:sim        # boot iPhone Simulator + Safari + serve-sim stream (macOS/Xcode)
 npm run sim:list       # list active simulator streams

@@ -19,6 +19,7 @@ export default defineConfig(
     extends: [js.configs.recommended],
     languageOptions: {
       globals: {
+        AbortSignal: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
         process: 'readonly',
@@ -30,6 +31,25 @@ export default defineConfig(
   {
     files: ['**/*.ts'],
     extends: [js.configs.recommended, tseslint.configs.recommended],
+  },
+  {
+    // Supabase Edge Functions run on Deno, not Node or the browser, so their
+    // globals are declared here rather than left undefined. They are outside
+    // `tsconfig.json`'s `include` because `Deno` has no type in the Node/DOM
+    // libraries the client compiles against; server-side type checking and
+    // testing arrive with the Step 7 Edge Function harness.
+    files: ['supabase/functions/**/*.ts'],
+    languageOptions: {
+      globals: {
+        AbortSignal: 'readonly',
+        Deno: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        URL: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+      },
+    },
   },
   {
     files: ['src/core/**/*.ts'],

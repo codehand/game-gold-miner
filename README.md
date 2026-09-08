@@ -6,8 +6,14 @@ elevator hauls it to the surface, and one shared warehouse converts it into
 spendable gold. The player spends that gold on independent stage upgrades and
 sequential floor unlocks, and receives a capped reward for time spent away.
 
-The game runs in a mobile browser at a fixed 360×640 portrait logical viewport
-and is client-only: no backend, no accounts, no server database.
+The game runs in a mobile browser at a fixed 360×640 portrait logical viewport.
+**The playable game is client-only** — no accounts, no cloud save, and no network
+call on any path; it boots, plays, and saves entirely offline in IndexedDB. A
+separate server milestone is under way in `memory-bank/server-milestone-plan.md`;
+its local Supabase stack lives in `supabase/`, holds all six designed tables
+with row-level security, and its one Edge Function currently serves nothing but
+a health check. Nothing in `src/` talks to it. `.github/workflows/ci.yml` gates
+every push and pull request.
 
 ## Requirements
 
@@ -17,6 +23,7 @@ and is client-only: no backend, no accounts, no server database.
 - Google Chrome installed as a real channel, for the optional performance
   benchmark only
 - macOS with Xcode, for the optional iOS Simulator preview only
+- Docker, for the optional local Supabase stack only; the game itself needs none
 
 ## Install and run
 
@@ -39,9 +46,13 @@ already open; production runs automatically with no tapping required.
 | `npm run test` | Vitest unit suite (`tests/unit/`, Node environment). |
 | `npm run test:e2e` | Playwright Chromium browser suite (`tests/e2e/`) against a dev server on port 4173. |
 | `npm run test:prod` | Builds `dist/`, serves it from `/` on port 4175, and runs the production smoke suite. |
-| `npm run verify` | lint → unit → E2E → build → production smoke, in that order. This is the full gate. |
+| `npm run verify` | lint → unit → E2E → build → secret scan → production smoke, in that order. This is the full gate. |
 | `npm run test:perf` | Optional ten-minute Chrome benchmark with Pixel 5 emulation and 4× CPU throttling; writes to `performance-results/`. |
 | `npm run dev:sim` | Optional macOS iPhone Simulator preview stream (`sim:list` / `sim:stop` manage it). |
+| `npm run scan:secrets` | Fails if a built `dist/` carries a service-role key or any other non-public secret. Runs inside `verify`. |
+| `npm run supabase:start` | Start the local Supabase stack in Docker (`supabase:stop`, `supabase:reset`, `supabase:status` manage it). |
+| `npm run verify:server` | Server stack check: the stack starts, migrations apply from empty, and the health check answers. Requires Docker. |
+| `npm run verify:all` | `verify` then `verify:server`, in sequence — what `.github/workflows/ci.yml` runs as two parallel jobs. |
 
 Each Playwright config starts its own server with `reuseExistingServer: false`,
 so free ports 4173 (E2E), 4174 (performance), and 4175 (production) before
@@ -145,6 +156,48 @@ IndexedDB transaction may not commit before teardown.
 
 **Any change to the save shape must bump the schema version and add a migration
 plus tests.**
+
+## Local server stack (server milestone, in progress)
+
+The playable game does not use this. It exists for the milestone in
+`memory-bank/server-milestone-plan.md`, whose design documents are
+`memory-bank/server-threat-model.md`, `memory-bank/server-save-sync-protocol.md`,
+and the database schema recorded byte-identically in `memory-bank/architecture.md`
+and `memory-bank/techContext.md`.
+
+```bash
+cp .env.example .env.local     # fill from `npx supabase status` after starting
+npm run supabase:start         # whole backend, in Docker, offline
+npm run verify:server          # stack, migrations, health
+npm run supabase:stop
+```
+
+Ports are the Supabase CLI defaults — API 54321, database 54322, Studio 54323,
+mail 54324 — and do not collide with the client's 5173, 4173, 4174, or 4175.
+
+`supabase/migrations/` holds two forward-only migrations: a bootstrap file that
+creates nothing (it only asserts the PostgreSQL 13+ premise the schema relies on
+for `gen_random_uuid()`), and one that lands all six designed tables —
+`profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`,
+`entitlements` — with row-level security enabled and exactly the policies
+`memory-bank/architecture.md`'s RLS matrix names. `supabase/seed.sql` inserts
+one local-only fixture guest (`auth.users` row plus its `profiles` row) after
+every `supabase db reset`, never applied to a deployed database.
+`.github/workflows/ci.yml` runs `npm run verify` and `npm run verify:server` as
+two required jobs on every push and pull request.
+
+The one endpoint that exists:
+
+```bash
+curl http://127.0.0.1:54321/functions/v1/save-sync/v1/health
+# {"status":"ok","serverTime":"..."}
+```
+
+**Secrets.** `.env.local` is git-ignored; `.env.example` is the committed
+template. The `VITE_` prefix is the boundary: Vite inlines exactly those
+variables into the browser bundle, so a service-role key, a recovery-code pepper,
+or a bot token must never carry one. `npm run scan:secrets` fails the build if a
+privileged credential reaches `dist/`, and it runs inside `npm run verify`.
 
 ## Testing
 

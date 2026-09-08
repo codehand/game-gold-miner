@@ -544,6 +544,20 @@ the implementation including the complete database schema in both required files
 and a new developer can run the client and the server locally from repository
 documentation alone.
 
+## Status
+
+Steps 1, 2, 3, and 4 are validated. Step 5 is implemented on 2026-09-08 and
+awaiting user validation. Step 6 must not begin before that gate.
+
+| Step | Status | Evidence |
+|---|---|---|
+| 1 — Record scope, threat model, and open questions | Validated by the user on 2026-09-08 | `memory-bank/server-threat-model.md`: threat model over four attacker capabilities plus session-credential and multi-identity, explicit non-defences, standing rules, all eight kickoff questions defaulted, and nine previously unrecorded assumptions found. |
+| 2 — Design the save-sync protocol | Validated by the user on 2026-09-08 | `memory-bank/server-save-sync-protocol.md`: two endpoints plus health with an example request and response for every success and every rejection, an eleven-code error vocabulary with fixed player-facing copy, the `revision` concurrency token, server-clock anchoring, the dominance conflict policy, the session-storage decision, and the upload cadence that resolves F6. |
+| 3 — Design the database schema | Validated by the user on 2026-09-08 | Six tables documented byte-identically in `memory-bank/architecture.md` and `memory-bank/techContext.md` — 42 columns, every type, default, nullability, key, constraint, index, and relationship, plus the RLS matrix and the `GameNumber` storage rule. The documented DDL was extracted from the document itself and executed against PostgreSQL 17; 14 constraint-behaviour assertions pass, including full cascade deletion. |
+| 4 — Stand up the Supabase project and local stack | Validated by the user on 2026-09-08 | Supabase CLI 2.117.0 pinned as an exact devDependency; committed `supabase/config.toml`, one bootstrap migration, one `save-sync` Edge Function serving protocol §10.1. `npm run verify:server -- --with-bundle-scan` (the `--` is required; npm does not forward a bare flag) passes nine checks from a clean checkout against an empty Docker volume set. Mutation-proven on both halves: a broken migration fails `db reset` with exit 1, a stopped PostgREST container turns the health route into a 503 `service_unavailable`, and a planted service-role JWT, `sb_secret_*` key, or server-only variable name each fails the bundle scan. A user review then found four defects, each fixed with a regression: the migration check parsed the CLI's default text table and reported a healthy stack as a missing migration, the plan's own `--with-bundle-scan` invocation was not forwarded by npm, the scanner would have failed a build on an anon key present under both its prefixed and unprefixed names, and the privileged-key probe degraded to checking nothing in silence. `npm run verify` passes end to end — lint, 364 unit tests, 42 Chromium E2E, strict build, secret scan, 9 production smoke. |
+| 5 — Add migrations and CI | Implemented on 2026-09-08, awaiting validation | `supabase/migrations/20260908130000_create_platform_tables.sql` lands the Step 3 schema verbatim — all six tables, every index, and RLS enabled with exactly the policies the Step 3 matrix names (`profiles`/`saves`/`entitlements` own-row select, `profiles` own-row update, `leaderboard_entries` world-readable select, `save_audit`/`recovery_codes` no policy at all). `supabase db reset` applies both migrations and the new `supabase/seed.sql` fixture guest cleanly; `npm run verify:server` passes with `EXPECTED_MIGRATIONS` now covering both files. `.github/workflows/ci.yml` adds a `client` job (`npm run verify`) and a `server` job (`npm run verify:server`) that both gate every push and pull request; `package.json` gained a `verify:all` sibling script running both locally. Evidence gathered directly rather than only asserted: against the real local stack, an anon-scoped JWT for the seeded fixture user can `select` its own `profiles` row (200, one row) and its own empty `saves` row-set (200, `[]`), a direct `insert` into `saves` is refused (403, PostgREST error `42501`, "new row violates row-level security policy"), and `save_audit` returns `[]` under RLS with no policy. Mutation-proven for the CI claim itself: a migration with a typo'd foreign-key column made `supabase db reset` exit 1; removing it restored exit 0 — the same mechanism `.github/workflows/ci.yml`'s `server` job runs, though no actual GitHub Actions run has executed, since this checkout has not been pushed. |
+| 6–37 | Not started | Blocked by the Step 5 gate. |
+
 ## Definition of Done
 
 The milestone is complete when all 37 validations pass; a guest can play
@@ -556,19 +570,35 @@ both copies of the database schema, reflects the delivered state.
 
 ## Open questions
 
-These were asked at kickoff and are not yet answered. Each blocks the step named.
+These were asked at kickoff. **None was answered by the user; all eight now carry
+a recorded assumed default**, written in Step 1's deliverable,
+`memory-bank/server-threat-model.md` §7. Each remains open in the sense that the
+user may overturn it; none blocks its step any longer. §10 of that document
+states what overturning each one costs.
 
-- Expected scale and infrastructure budget — Steps 3, 36.
-- Primary player regions, for latency, data-protection obligations, and the
-  consent position in Step 25 — Steps 3, 25, 33.
-- Whether Telegram ships in this milestone or later — Step 12.
-- Whether real money is ever taken, which sets how much anti-cheat is worth —
-  Phases 4 and 6.
-- Existing domain, cloud accounts, and CI — Steps 4, 5. The domain question also
-  decides whether the first-party cookie option in Step 2 is available.
-- Who operates the server after delivery — Steps 34, 35.
-- Whether existing local saves must survive — Step 20.
-- Minimum player age and email-retention rules — Steps 9, 33.
+| Question | Recorded default | Steps |
+|---|---|---|
+| Expected scale and infrastructure budget | Prototype scale: 10k accounts, 1k DAU, 20 uploads/s peak; Supabase Free → Pro | 3, 36 |
+| Primary player regions and data-protection obligations | Vietnam/SEA primary, Singapore region; assume GDPR applies, so Step 25 collects no fingerprint signal at all | 3, 25, 33 |
+| Whether Telegram ships in this milestone | Yes, at Step 12, explicitly cuttable — and Step 12 gains a Mini App host prerequisite it did not have (finding F1) | 12 |
+| Whether real money is ever taken | No, none in this milestone; this sets the Step 23 tolerance direction | Phases 4, 6 |
+| Existing domain, cloud accounts, and CI | None exist (verified: GitHub remote, no CI, no CSP). Step 2 therefore may **not** assume a first-party cookie | 2, 4, 5 |
+| Who operates the server after delivery | The repository owner, sole operator; RPO 24 h, best-effort RTO | 34, 35 |
+| Whether existing local saves must survive | Yes — Step 20 is mandatory | 20 |
+| Minimum player age and email retention | Not knowingly offered under 16; no age gate built; no email column in `profiles` | 9, 33 |
+
+Step 1 also audited all 37 steps for assumptions the plan relied on without
+recording them, and found nine (F1–F9 in §8 of that document): the missing
+Telegram Mini App host (Step 12), the unproven Deno import of
+`break_infinity.js` (Step 6), the unstated modelling rule behind Step 23's upper
+bound, the requirement that Step 22 change the authoritative clock without
+changing the economy, the absence of any XSS/CSP step, the unspecified cloud
+upload cadence that drives cost and rate limits (Steps 2, 19, 25, 36), the Apple
+Developer Program membership and verified domain that Step 11 needs and the
+budget did not contain, the seven-day observation window Step 21's measurement
+actually requires, and the absence of any concrete entitlement for Step 31 to
+grant. **F5, the missing XSS/CSP step, is the one item left genuinely open**,
+because closing it means adding a step and that is the user's decision.
 
 ## Related open item outside this plan
 

@@ -1,0 +1,56 @@
+name: CI
+
+# Server-milestone Step 5: a CI job that applies every migration to an empty
+# database and passes, alongside the existing client gate. The two jobs are
+# independent and both must pass; either failing fails the workflow.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Neither job writes to the repository, and both execute install lifecycle
+# scripts from pull-request code. Declaring the token explicitly stops it
+# inheriting an org default that may still be read-write.
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: Client gate (lint, unit, e2e, build, secrets, prod smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run verify
+
+  server:
+    name: Server gate (Supabase migrations from empty, health check)
+    runs-on: ubuntu-latest
+    # The health check retries for 20 s against a cold-starting edge runtime;
+    # a runtime that never comes up must fail the job rather than hold a runner.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+          cache: npm
+      - run: npm ci
+      # `npm run verify:server` starts the local stack fresh on this runner —
+      # there is no prior database, so `supabase db reset` applies every
+      # committed migration to an empty one — and then checks the health
+      # route. A migration that fails to apply fails this step, and therefore
+      # the workflow, rather than being discovered on deploy.
+      - run: npm run verify:server

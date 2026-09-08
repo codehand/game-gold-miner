@@ -7,3 +7,12 @@ test-results/
 .DS_Store
 *.log
 .mcp.json
+
+# Environment files. `.env.example` is the only committed one.
+.env
+.env.*
+!.env.example
+
+# Supabase CLI local state
+supabase/.branches/
+supabase/.temp/
