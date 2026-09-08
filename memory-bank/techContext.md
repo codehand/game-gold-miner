@@ -2,9 +2,9 @@
 
 ## Current State
 
-Steps 1 through 36 are complete. Step 37, the base-game closing review, is implemented and awaits user validation; it added `README.md`, corrected the documentation that still described a four-floor mine, and re-ran the mobile benchmark against the full fifteen-floor scene. The Step 35 physical mid-range Android pass and a human 30-second-comprehension playtest remain the two recorded open caveats. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
+All 37 implementation-plan steps are complete and user-validated; the user validated Step 37 on 2026-09-08, closing the base-game milestone. Step 37 added `README.md`, corrected the documentation that still described a four-floor mine, and re-ran the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android pass and a human 30-second-comprehension playtest remain the two recorded open caveats; neither blocks the milestone. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
 
-Implementation must follow the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. The plan currently defines 37 base-game steps; each step must pass its stated validation before dependent work begins.
+Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
 ## Approved Direction
 

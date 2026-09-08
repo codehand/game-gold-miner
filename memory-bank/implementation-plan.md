@@ -258,6 +258,14 @@ authoritative state, or save schema.
 
 **Test:** Confirm every prior step has recorded passing evidence, the Memory Bank matches the implemented repository, and a new developer can install, run, test, and understand the base game using repository documentation alone.
 
+## Status
+
+All 37 steps are complete and user-validated. Step 37 was validated on
+2026-09-08, closing the base-game milestone; the Definition of Done below is
+met. This plan is now a completed record, not a queue of work. Post-milestone
+scope requires its own ordered, test-gated plan and explicit user authorization
+before any code is written.
+
 ## Definition of Done
 
 The base game is complete only when all 37 step validations pass, the production bundle is playable in a mobile-sized browser, all fifteen floors can run concurrently, progression is viable, saves and offline rewards are deterministic, no deferred feature has leaked into scope, and all project documentation reflects the delivered state.

@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 36 are complete. Step 37, the base-game closing review, is implemented and awaits user validation. It changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
+All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game; it is the map any post-milestone work starts from. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
 
 ## Implemented Foundation
 
