@@ -1,0 +1,36 @@
+Use case: stylized-concept.
+Asset type: clean HD 2D game NPC idle animation source sheet.
+
+Create the same character shown in the user reference, named Nautilus, adapted
+to the Cat Mine Idle warehouse-manager sprite family. Nautilus is an SSR
+warehouse manager. Preserve the elegant charcoal-black cat, slightly angular
+face, tall ears, glowing aqua eyes, small dark nose, long thin curved tail,
+ocean-wave ceremonial cloak with gold trim, and compact ornate golden
+shell-shaped inventory ledger held securely across the torso.
+
+Adapt the rarity palette to SSR: make the cloak rich royal violet and deep
+amethyst purple with gold wave motifs, and replace the teal neck gem with a
+faceted amethyst-purple gem. Preserve aqua eyes as Nautilus's distinctive
+identity accent. Gold remains secondary on the shell ledger and trim. The shell
+ledger reads as a warehouse inventory book at 56x56 game scale and contains no
+legible text, letters, or numbers.
+
+Create exactly four equal cells in a clean 2x2 grid, read left-to-right then
+top-to-bottom. Show a subtle stationary idle loop: attentive neutral pose;
+gentle breath and soft blink with eye light contained inside the eyes; tiny
+ear/tail/cloak settle and small paw adjustment on the ledger; return toward
+neutral with another soft blink. Keep identity, anatomy, cloak, ledger size,
+camera distance, standing-equivalent scale, torso center, and feet baseline
+consistent. Both feet remain planted with no lateral travel.
+
+The full cat, tail, ears, cloak, paws, shell ledger, and outline must remain
+inside the central safe area of each cell with magenta margin on every side.
+Background is exactly solid flat #FF00FF. No gradient, ground shadow, outer
+glow, floating bubbles, particles, scenery, borders, dividers, text, labels,
+UI chrome, rarity badge, watermark, signature, detached effects, or duplicate
+subject.
+
+Built-in image generation references:
+- User-supplied Nautilus design reference for identity and equipment.
+- Current runtime warehouse-manager sheet for role silhouette and technical scale.
+- Cipher, Baron, and Gauge SR sheets for same-role family consistency.

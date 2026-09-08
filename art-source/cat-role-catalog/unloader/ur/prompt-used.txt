@@ -1,0 +1,37 @@
+Built-in image generation, 2026-09-08.
+
+Use case: stylized-concept
+Asset type: Phaser 4 game NPC sprite sheet for Cat Mine Idle, role `unloader`,
+rarity tier `UR`
+
+Input images:
+- User reference `Gemini_Generated_Image_adffi7adffi7adff.png` controls character
+  identity, palette, face, costume, gold rune language, amber eyes, and crystal
+  pickaxe.
+- Current Step 32A unloader sheet controls the 2x2 layout, camera distance,
+  chibi proportions, frame centering, and stable feet line.
+- Current mine-floor background is context only for warm-cave readability and
+  must not appear in the output.
+
+Create exactly four sequential frames of a restrained stationary idle loop for
+the same black/navy UR unloader cat. Preserve the large head, short rounded
+limbs, dark navy-black fur, amber eyes, ornate dark cloak/armor with luminous
+gold trim and rune accents, and compact teal-crystal pickaxe held close to the
+torso. Frame 1 is neutral and alert; frame 2 adds subtle breathing and a blink;
+frame 3 makes a small paw/pickaxe adjustment with slight tail/cape secondary
+motion; frame 4 settles smoothly toward neutral.
+
+Use a full-body frontal three-quarter view with the same facing, project-native
+clean-HD rounded cartoon rendering, bold dark edges, soft dimensional shading,
+and readable gold UR accents. The silhouette must survive at 75x75 logical
+pixels.
+
+Output one exact 2x2 grid read left-to-right then top-to-bottom. Use four equal
+square cells. Center each full body inside the central 65% safe area with one
+camera distance, anatomical scale, and bottom-center feet line. Use a flat,
+uniform solid #FF00FF background with no grid lines.
+
+Exclude text, rarity letters, labels, UI, scenery, cave background, baked ground
+shadow, watermark, signature, extra characters, duplicate body parts, detached
+floating crystals/effects, sparkles, cropped anatomy or equipment, and anything
+crossing a cell boundary.

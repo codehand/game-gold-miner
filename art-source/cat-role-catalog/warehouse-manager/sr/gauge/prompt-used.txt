@@ -1,0 +1,35 @@
+Use case: stylized-concept.
+Asset type: clean HD 2D game NPC idle animation source sheet.
+
+Create the same character shown in the user reference, named Gauge, adapted to
+the Cat Mine Idle warehouse-manager sprite family. Gauge is an SR warehouse
+manager. Preserve the warm orange tabby fur and darker stripes, large rounded
+head, huge pale-gold eyes, pink nose, long striped tail, practical olive-gray
+warehouse field coat with many pockets, layered metal shoulder guard,
+restrained gold edging, and compact brown-and-gold mechanical inventory
+clipboard with a large gear emblem held close across the torso.
+
+Adapt the rarity palette to SR: replace the purple neck scarf and accents with
+rich sapphire blue, royal blue, and restrained cyan highlights. Keep the olive
+coat, steel shoulder plate, orange fur, brown clipboard, and gold trim as
+identity materials. The clipboard remains readable at 56x56 game scale but
+contains no legible text, letters, or numbers.
+
+Create exactly four equal cells in a clean 2x2 grid, read left-to-right then
+top-to-bottom. Show a subtle stationary idle loop: attentive neutral pose;
+gentle breath and soft blink; tiny ear/tail settle with a small paw adjustment;
+return toward neutral with another soft blink. Keep identity, anatomy, coat,
+armor, clipboard size, camera distance, standing-equivalent scale, torso
+center, and feet baseline consistent. Both feet remain planted with no lateral
+travel.
+
+The full cat, striped tail, ears, coat, paws, clipboard, and outline must remain
+inside the central safe area of each cell with magenta margin on every side.
+Background is exactly solid flat #FF00FF. No gradient, ground shadow, aura,
+particles, scenery, borders, dividers, text, labels, UI chrome, rarity badge,
+watermark, signature, detached effects, or duplicate subject.
+
+Built-in image generation references:
+- User-supplied Gauge design reference for identity and equipment.
+- Current runtime warehouse-manager sheet for role silhouette and technical scale.
+- Cipher and Baron SR sheets for family consistency and rarity treatment.

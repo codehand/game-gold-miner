@@ -1,0 +1,31 @@
+Use case: stylized-concept.
+Asset type: clean HD 2D game NPC idle animation source sheet.
+
+Create the same character shown in the user reference, named Cipher, adapted to
+the Cat Mine Idle warehouse-manager sprite family. Cipher is an SR warehouse
+manager. Preserve the sleek charcoal-black cat, large round head, huge pale-gold
+eyes, small dark nose, long curved tail, futuristic segmented manager armor with
+restrained gold trim, and transparent holographic inventory tablet held close
+across the torso.
+
+Adapt the rarity palette to SR: replace purple/violet armor panels, tablet
+graphics, rim light, and glow with rich sapphire blue, electric blue, and cyan.
+Gold remains a small secondary trim. The tablet reads as an abstract inventory
+and data clipboard at 56x56 game scale, without legible text, letters, or numbers.
+
+Create exactly four equal cells in a clean 2x2 grid, read left-to-right then
+top-to-bottom. Show a subtle stationary idle loop: attentive neutral pose; gentle
+breath and blink with a cyan screen pulse; tiny ear/tail settle and paw adjustment;
+return toward neutral with another soft blink. Keep identity, anatomy, armor,
+tablet size, camera distance, standing-equivalent scale, torso center, and feet
+baseline consistent. Both feet remain planted with no lateral travel.
+
+The full cat, tail, ears, armor, paws, tablet, and glow must remain inside the
+central safe area of each cell with magenta margin on every side. Background is
+exactly solid flat #FF00FF. No gradient, ground shadow, detached aura, floating
+panels, particles, scenery, borders, dividers, text, labels, UI chrome, rarity
+badge, watermark, signature, or duplicate subject.
+
+Built-in image generation references:
+- User-supplied Cipher design reference for identity and equipment.
+- Current runtime warehouse-manager sheet for role silhouette and technical scale.
