@@ -31,11 +31,16 @@ import {
 import { formatAmount } from './formatAmount';
 import { createHudViewModel, type HudViewModel } from './hudViewModel';
 import {
+  createMineShaftUpgradeModalViewModel,
+  type MineShaftUpgradeModalViewModel,
+} from './mineShaftUpgradeModal';
+import {
   createFloorUnlockControlViewModel,
   createUpgradeControlViewModel,
   formatUnlockRequirement,
   type PurchaseControlViewModel,
 } from './purchaseControl';
+import { MINE_FLOOR_REVEAL_GROUP_SIZE } from '../layout';
 
 /** Discrete pile heights, so a growing bottleneck is visible at a glance. */
 export const MAX_MATERIAL_PILE_STEPS = 4;
@@ -48,6 +53,8 @@ export type SharedStageId = 'elevator' | 'warehouse';
 export interface MineFloorViewModel {
   readonly id: string;
   readonly floorNumber: number;
+  /** Floors are revealed in groups of five as floors 5 and 10 open. */
+  readonly isVisible: boolean;
   /** English heading, e.g. `Floor 2`. */
   readonly floorLabel: string;
   readonly isUnlocked: boolean;
@@ -71,6 +78,8 @@ export interface MineFloorViewModel {
   readonly backlogLabel: string | null;
   /** The shaft-upgrade control, or `null` for a locked floor that has none. */
   readonly upgradeControl: PurchaseControlViewModel | null;
+  /** Detail and batch choices shown after tapping this open floor's badge. */
+  readonly upgradeModal: MineShaftUpgradeModalViewModel | null;
   /** The unlock control, or `null` once the floor is open. */
   readonly unlockControl: PurchaseControlViewModel | null;
   /** `Needs Floor 1 Lv 5` while locked, otherwise `null`. */
@@ -130,6 +139,7 @@ export interface MineFloorViewModelInput {
    * else on this input is a fact about this floor alone.
    */
   readonly unlock: FloorUnlockAvailability | null;
+  readonly isVisible?: boolean;
 }
 
 export interface SharedStageViewModelInput<TStage> {
@@ -153,6 +163,8 @@ export function createMineViewModel(
   state: GameState,
   balance: BaseGameBalanceConfig,
 ): MineViewModel {
+  const visibleFloorCount = calculateVisibleMineFloorCount(state.floors);
+
   return {
     hud: createHudViewModel(state, balance),
     floors: state.floors.map((floor, index) => {
@@ -162,6 +174,7 @@ export function createMineViewModel(
         elevatorCapacity: state.elevator.capacity,
         gold: state.gold,
         unlock: describeFloorUnlock(state, floor.id, balance),
+        isVisible: floor.floorNumber <= visibleFloorCount,
       });
     }),
     elevator: createElevatorViewModel({
@@ -184,6 +197,7 @@ export function createMineFloorViewModel({
   elevatorCapacity,
   gold,
   unlock,
+  isVisible = true,
 }: MineFloorViewModelInput): MineFloorViewModel {
   assertNormalizedProgress(floor.extractionProgress, `floor ${floor.id} extraction`);
   assertDisplayableLevel(floor.mineShaftLevel, `floor ${floor.id}`);
@@ -198,6 +212,7 @@ export function createMineFloorViewModel({
   return {
     id: floor.id,
     floorNumber: floor.floorNumber,
+    isVisible,
     floorLabel: `Floor ${floor.floorNumber}`,
     isUnlocked: floor.isUnlocked,
     mineShaftLevel: floor.mineShaftLevel,
@@ -219,12 +234,39 @@ export function createMineFloorViewModel({
             gold,
           )
         : null,
+    upgradeModal:
+      unlock === null
+        ? createMineShaftUpgradeModalViewModel({ floor, config, gold })
+        : null,
     unlockControl:
       unlock === null ? null : createFloorUnlockControlViewModel(unlock),
     unlockRequirementLabel:
       unlock === null ? null : formatUnlockRequirement(unlock),
     isUnlockRequirementMet: unlock === null ? true : unlock.isRequirementMet,
   };
+}
+
+export function calculateVisibleMineFloorCount(
+  floors: readonly MineFloorState[],
+): number {
+  if (floors.length === 0) {
+    return 0;
+  }
+
+  const deepestUnlockedFloor = floors.reduce((deepest, floor) => {
+    return floor.isUnlocked ? Math.max(deepest, floor.floorNumber) : deepest;
+  }, 0);
+  const visibleGroups = Math.floor(
+    deepestUnlockedFloor / MINE_FLOOR_REVEAL_GROUP_SIZE,
+  ) + 1;
+
+  return Math.min(
+    floors.length,
+    Math.max(
+      MINE_FLOOR_REVEAL_GROUP_SIZE,
+      visibleGroups * MINE_FLOOR_REVEAL_GROUP_SIZE,
+    ),
+  );
 }
 
 export function createElevatorViewModel({

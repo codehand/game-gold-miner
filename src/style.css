@@ -62,6 +62,152 @@ body {
   background: rgb(3 7 18 / 78%);
 }
 
+.mine-upgrade-backdrop {
+  position: fixed;
+  z-index: 8;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(3 7 18 / 76%);
+}
+
+.mine-upgrade-backdrop[hidden] {
+  display: none;
+}
+
+.mine-upgrade-dialog {
+  width: min(100%, 340px);
+  overflow: hidden;
+  border: 2px solid #f4bd3e;
+  border-radius: 18px;
+  background: #17233a;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 55%);
+  color: #f9fafb;
+}
+
+.mine-upgrade-heading {
+  position: relative;
+  padding: 20px 56px 14px 20px;
+  border-bottom: 1px solid #41658a;
+}
+
+.mine-upgrade-heading h1,
+.mine-upgrade-level,
+.mine-upgrade-feedback {
+  margin: 0;
+}
+
+.mine-upgrade-heading h1 {
+  color: #f4bd3e;
+  font-size: 26px;
+}
+
+.mine-upgrade-level {
+  margin-top: 2px;
+  color: #d1d5db;
+  font-size: 15px;
+}
+
+.mine-upgrade-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: #24344b;
+  color: #f9fafb;
+  cursor: pointer;
+  font: inherit;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.mine-upgrade-attributes {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 18px;
+  margin: 0;
+  padding: 18px 20px;
+  background: #1d2d46;
+  font-size: 15px;
+}
+
+.mine-upgrade-attributes dt {
+  color: #9ca3af;
+}
+
+.mine-upgrade-attributes dd {
+  margin: 0;
+  color: #f9fafb;
+  font-weight: 700;
+  text-align: right;
+}
+
+.mine-upgrade-feedback {
+  min-height: 28px;
+  padding: 7px 20px 0;
+  color: #86efac;
+  font-size: 13px;
+  text-align: center;
+}
+
+.mine-upgrade-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px 14px;
+}
+
+.mine-upgrade-action {
+  min-width: 0;
+  min-height: 58px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 10px;
+  background: #41658a;
+  color: #f9fafb;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.mine-upgrade-action:focus-visible,
+.mine-upgrade-close:focus-visible {
+  outline: 3px solid #f9fafb;
+  outline-offset: 2px;
+}
+
+.mine-upgrade-action:disabled {
+  background: #24344b;
+  color: #6b7280;
+  cursor: default;
+}
+
+.mine-upgrade-action-label,
+.mine-upgrade-action-cost {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mine-upgrade-action-label {
+  font-size: 13px;
+}
+
+.mine-upgrade-action-cost {
+  margin-top: 3px;
+  color: #f4bd3e;
+  font-size: 11px;
+}
+
+.mine-upgrade-action:disabled .mine-upgrade-action-cost {
+  color: #6b7280;
+}
+
 .offline-reward-dialog {
   width: min(100%, 320px);
   padding: 28px 24px 24px;

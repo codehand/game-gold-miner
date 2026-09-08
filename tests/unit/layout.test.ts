@@ -216,10 +216,10 @@ describe('scrollable mine content', () => {
     expect(calculateMineContentHeight(1)).toBe(
       MINE_CONTENT_PADDING * 2 + FLOOR_SLOT_HEIGHT,
     );
-    expect(calculateMineContentHeight(MINE_FLOOR_COUNT)).toBe(548);
+    expect(calculateMineContentHeight(MINE_FLOOR_COUNT)).toBe(2_000);
     expect(
       calculateMineContentHeight(MINE_FLOOR_COUNT) - calculateMineLayout().mine.height,
-    ).toBe(144);
+    ).toBe(1_576);
   });
 
   it('rejects invalid floor counts', () => {
@@ -231,7 +231,7 @@ describe('scrollable mine content', () => {
     );
   });
 
-  it('stacks four floor slots sequentially inside the content box', () => {
+  it('stacks fifteen floor slots sequentially inside the content box', () => {
     const contentHeight = calculateMineContentHeight();
     let previousBottom = 0;
 
@@ -353,7 +353,7 @@ describe('touch targets', () => {
 
 describe('region serialization', () => {
   it('emits the diagnostic form the browser layout test reads', () => {
-    expect(serializeRegion(calculateMineLayout().mine)).toBe('0,236,360,404');
+    expect(serializeRegion(calculateMineLayout().mine)).toBe('0,216,360,424');
   });
 });
 

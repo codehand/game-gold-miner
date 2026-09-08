@@ -118,7 +118,15 @@ function loadAtFloor(state: GameState, floorIndex: number): GameState {
     state.elevator.carriedMaterial,
   );
   const pickedUp = minimum(floor.materialQueue, remainingCapacity);
-  const carriedMaterial = state.elevator.carriedMaterial.add(pickedUp);
+  const filledRemainingCapacity = pickedUp.equals(remainingCapacity);
+  const drainedCurrentFloor = pickedUp.equals(floor.materialQueue);
+  // Reuse the configured capacity at the full boundary. Decimal subtraction
+  // followed by addition can otherwise land one representable digit below it
+  // (for example 50.004999999999995 versus 50.005), making a full cabin look
+  // as though it still has room and incorrectly sending it to a deeper floor.
+  const carriedMaterial = filledRemainingCapacity
+    ? state.elevator.capacity
+    : state.elevator.carriedMaterial.add(pickedUp);
   const floors = state.floors.map((currentFloor, index) => {
     if (index !== floorIndex || pickedUp.equals(0)) {
       return currentFloor;
@@ -144,6 +152,7 @@ function loadAtFloor(state: GameState, floorIndex: number): GameState {
   });
   const nextFloorIndex = findNextUnlockedFloorIndex(floors, floorIndex + 1);
   const continuesDown =
+    drainedCurrentFloor &&
     carriedMaterial.lessThan(state.elevator.capacity) &&
     nextFloorIndex !== null;
 

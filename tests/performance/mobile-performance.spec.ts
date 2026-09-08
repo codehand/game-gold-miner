@@ -122,7 +122,7 @@ test('sustains the all-floor mobile performance budget', async ({ page }) => {
   // failed validation would recover into a fresh single-floor state, and every
   // frame and memory budget below would then pass while profiling the wrong
   // mine entirely.
-  expect(unlockedFloorsAtBoot, 'unlocked floors under benchmark').toBe(4);
+  expect(unlockedFloorsAtBoot, 'unlocked floors under benchmark').toBe(15);
 
   await page.evaluate(() => {
     window.__step35Frames.lastMs = null;
@@ -263,7 +263,7 @@ test('sustains the all-floor mobile performance budget', async ({ page }) => {
     report.objects.minPhaserGameObjects,
     'scene graph does not grow after boot',
   ).toBeLessThanOrEqual(bootPhaserGameObjects);
-  expect(report.floors.unlockedAtEnd, 'floors stay unlocked').toBe(4);
+  expect(report.floors.unlockedAtEnd, 'floors stay unlocked').toBe(15);
   // Not a hard zero: one host-level scheduling hiccup in ten minutes is not a
   // rendering defect. A visible stall pattern is, so the tolerance is a rate.
   expect(
@@ -337,7 +337,7 @@ async function seedAllFloorSave(page: Page): Promise<void> {
       opening.onsuccess = () => resolve(opening.result);
       opening.onerror = () => reject(opening.error);
     });
-    const floorLevels = [5, 5, 7, 1];
+    const floorLevels = [5, 5, 7, 7, 7, 7, 7, 7, 7, 10, 10, 10, 10, 10, 1];
     const transaction = database.transaction('saves', 'readwrite');
 
     transaction.objectStore('saves').put({

@@ -11,6 +11,7 @@ import {
   describeMineScroll,
   dragMineScroll,
   endMineScrollGesture,
+  resizeMineScrollContent,
   scrollMineByWheel,
   MINE_SCROLL_DRAG_THRESHOLD_PX,
   type MineScrollPointer,
@@ -21,7 +22,7 @@ const MINE_REGION: LayoutRegion = calculateMineLayout().mine;
 /** Above the drag threshold, so a single move is unambiguously a scroll. */
 const LONG_DRAG_PX = MINE_SCROLL_DRAG_THRESHOLD_PX + 40;
 
-/** The real mine, whose four floors are taller than the region drawing them. */
+/** The initial five-floor group, which is taller than the region drawing it. */
 function createState(
   overrides: Partial<{ region: LayoutRegion; contentHeight: number }> = {},
 ): MineScrollState {
@@ -65,6 +66,19 @@ describe('mine scroll range', () => {
 
     expect(state.maxScrollY).toBe(0);
     expect(drag(state, 400, 200).scrollY).toBe(0);
+  });
+
+  it('preserves position when a newly revealed floor group expands the mine', () => {
+    const fiveFloors = createState({ contentHeight: calculateMineContentHeight(5) });
+    const scrolled = drag(fiveFloors, 400, 300);
+    const tenFloors = resizeMineScrollContent(
+      scrolled,
+      calculateMineContentHeight(10),
+    );
+
+    expect(tenFloors.scrollY).toBe(scrolled.scrollY);
+    expect(tenFloors.maxScrollY).toBeGreaterThan(scrolled.maxScrollY);
+    expect(tenFloors.contentHeight).toBe(calculateMineContentHeight(10));
   });
 
   it('rejects a region or content size it could not scroll', () => {

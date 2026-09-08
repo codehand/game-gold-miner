@@ -36,10 +36,13 @@ export {
 } from './progression/calculateLevelEffect';
 export {
   calculateElevatorUpgradeCost,
+  calculateMaxAffordableMineShaftUpgradeQuantity,
+  calculateMineShaftUpgradeBatchCost,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,
   purchaseElevatorUpgrade,
   purchaseMineShaftUpgrade,
+  purchaseMineShaftUpgrades,
   purchaseWarehouseUpgrade,
   type UpgradePurchaseFailureReason,
   type UpgradePurchaseResult,

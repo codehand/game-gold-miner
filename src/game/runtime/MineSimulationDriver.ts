@@ -19,6 +19,7 @@ import {
   purchaseElevatorUpgrade,
   purchaseFloorUnlock,
   purchaseMineShaftUpgrade,
+  purchaseMineShaftUpgrades,
   purchaseWarehouseUpgrade,
   type FloorUnlockFailureReason,
   type GameState,
@@ -47,6 +48,8 @@ export interface MineCommandSink {
    * the scene can show the result without deciding it.
    */
   purchase(target: PurchaseTarget): PurchaseOutcome;
+  /** Purchases the quoted number of consecutive levels for one open floor. */
+  purchaseMineShaftBatch(floorId: string, quantity: number): PurchaseOutcome;
 }
 
 /** Everything the scene needs: snapshots to pull, commands to send. */
@@ -152,6 +155,29 @@ export class MineSimulationDriver implements MineRuntimePort {
     this.#onCommandApplied?.();
 
     return target.type === 'floor-unlock' ? 'unlocked' : 'purchased';
+  }
+
+  public purchaseMineShaftBatch(
+    floorId: string,
+    quantity: number,
+  ): PurchaseOutcome {
+    this.advance();
+
+    const result = purchaseMineShaftUpgrades(
+      this.#state,
+      floorId,
+      quantity,
+      this.#balance,
+    );
+
+    if (!result.success) {
+      return describeRefusal(result.reason);
+    }
+
+    this.#setState(result.state);
+    this.#onCommandApplied?.();
+
+    return 'purchased';
   }
 
   /**

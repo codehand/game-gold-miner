@@ -117,6 +117,10 @@ function createTransportLimitedState(): GameState {
     ...base,
     gold: GameNumber.from(1_000),
     floors: base.floors.map((floor, index) => {
+      if (index >= 4) {
+        return floor;
+      }
+
       return withFloor(floor, {
         isUnlocked: true,
         mineShaftLevel: UNLOCKED_FLOOR_LEVELS[index],
@@ -157,6 +161,10 @@ function createWarehouseLimitedState(): GameState {
     ...base,
     gold: GameNumber.from(1_000),
     floors: base.floors.map((floor, index) => {
+      if (index >= 4) {
+        return floor;
+      }
+
       return withFloor(floor, {
         isUnlocked: true,
         mineShaftLevel: UNLOCKED_FLOOR_LEVELS[index],
@@ -280,7 +288,7 @@ test('reports a full floor queue while transport is the slowest stage', async ({
 
   // The waiting material is the bottleneck signal: every shaft holds a whole
   // elevator trip. The fixed environmental mound stays gold and visible.
-  floors.forEach((floor, index) => {
+  floors.slice(0, 4).forEach((floor, index) => {
     const label = `floor ${index + 1}`;
 
     expect(floor.materialPileSteps, `${label} queue fullness`).toBe(MAX_MATERIAL_PILE_STEPS);
@@ -288,6 +296,11 @@ test('reports a full floor queue while transport is the slowest stage', async ({
     expect(floor.goldPileDisplaySize, `${label} fixed gold mound size`).toBe(52);
     expect(floor.backlogLabel, `${label} backlog overlay`).toBeNull();
     expect(floor.isPileBackedUp, `${label} backlog colour`).toBe(true);
+  });
+  expect(floors[4]).toMatchObject({
+    badgeLabel: '5',
+    isLockedAppearance: true,
+    showsGoldPile: false,
   });
 
   // Transport itself is working, not stalled, and its indicator follows the
@@ -403,6 +416,49 @@ test('loads a surface cart beneath the chute and pushes it toward the warehouse'
   expect(delivering.surfaceHauler.goldPourVisible).toBe(false);
 });
 
+test('keeps surface carts empty when the tower queue is empty', async ({
+  page,
+}) => {
+  const fixture = createTransportLimitedState();
+
+  await bootPausedFixture(page, {
+    ...fixture,
+    warehouse: {
+      ...fixture.warehouse,
+      inputQueue: GameNumber.from(0),
+      conversionProgress: 0,
+    },
+  });
+
+  type EmptyTowerReadBack = {
+    elevatorTower: { texture: string };
+    surfaceHauler: {
+      cartTexture: string;
+      goldPourVisible: boolean;
+    };
+  };
+
+  const first = await readJsonAttribute<EmptyTowerReadBack>(
+    page,
+    'data-animation',
+  );
+  await page.waitForTimeout(1_500);
+  const later = await readJsonAttribute<EmptyTowerReadBack>(
+    page,
+    'data-animation',
+  );
+
+  for (const animation of [first, later]) {
+    expect(animation.elevatorTower.texture).toBe(
+      PLACEHOLDER_TEXTURES.elevatorTowerEmpty,
+    );
+    expect(animation.surfaceHauler.cartTexture).toBe(
+      PLACEHOLDER_TEXTURES.goldContainer,
+    );
+    expect(animation.surfaceHauler.goldPourVisible).toBe(false);
+  }
+});
+
 test('adds one visible transport cat at each ten warehouse levels', async ({
   page,
 }) => {
@@ -412,6 +468,7 @@ test('adds one visible transport cat at each ten warehouse levels', async ({
     surfaceHauler: {
       catX: number;
       catY: number;
+      cartY: number;
       catFlipX: boolean;
       activeCatCount: number;
       activeCartCount: number;
@@ -455,8 +512,10 @@ test('adds one visible transport cat at each ten warehouse levels', async ({
   expect(visibleAssistants.every((assistant) => (
     assistant.cartVisible &&
     assistant.cartWidth === SURFACE_HAULER_CART_SIZE &&
-    assistant.cartHeight === SURFACE_HAULER_CART_SIZE
-  )), 'every visible cat owns one invariant-size cart').toBe(true);
+    assistant.cartHeight === SURFACE_HAULER_CART_SIZE &&
+    assistant.cartY === animation.surfaceHauler.cartY &&
+    assistant.y === animation.surfaceHauler.catY
+  )), 'every visible cat and cart shares the lead route baseline').toBe(true);
   expect(new Set(visibleAssistants.map((assistant) => (
     `${assistant.cartX},${assistant.cartY}`
   ))).size, 'each assistant cart has its own route position').toBe(2);
@@ -526,6 +585,7 @@ test('returns through the surface boundary and stops inside the elevator tower',
 
   const animation = await readJsonAttribute<{
     elevatorTower: {
+      texture: string;
       centerX: number;
       centerY: number;
       width: number;
@@ -561,6 +621,7 @@ test('returns through the surface boundary and stops inside the elevator tower',
   }>(page, 'data-animation');
 
   expect(animation.elevatorTower, 'generated surface headhouse').toMatchObject({
+    texture: PLACEHOLDER_TEXTURES.elevatorTowerEmpty,
     centerX: SURFACE_ELEVATOR_TOWER_CENTER_X,
     width: SURFACE_ELEVATOR_TOWER_WIDTH,
     height: SURFACE_ELEVATOR_TOWER_HEIGHT,
@@ -595,6 +656,20 @@ test('returns through the surface boundary and stops inside the elevator tower',
   expect(animation.warehouseManager.flipX, 'warehouse cat looks toward the elevator').toBe(true);
 });
 
+test('shows gold in the tower hopper only while the warehouse queue is positive', async ({
+  page,
+}) => {
+  await bootPausedFixture(page, createTransportLimitedState());
+
+  const animation = await readJsonAttribute<{
+    elevatorTower: { texture: string };
+  }>(page, 'data-animation');
+
+  expect(animation.elevatorTower.texture).toBe(
+    PLACEHOLDER_TEXTURES.elevatorTower,
+  );
+});
+
 /**
  * The backlog colour is the one production signal carried by pixels alone, so
  * it has to reach the framebuffer under either renderer.
@@ -623,9 +698,10 @@ test('keeps the approved gold pile under the Canvas renderer', async ({
 
   const floors = await readRenderedFloors(page);
 
-  floors.forEach((floor, index) => {
+  floors.slice(0, 4).forEach((floor, index) => {
     expect(floor.isPileBackedUp, `floor ${index + 1} backlog colour`).toBe(true);
   });
+  expect(floors[4].isPileBackedUp, 'locked floor 5 backlog colour').toBe(false);
 
   const [pileBottom, pileTop, warehouseQueueBlock] = await readLogicalPixels(
     page,
@@ -663,10 +739,15 @@ test('shows a full warehouse queue while conversion is the slowest stage', async
   const [elevator, warehouse] = await readRenderedSharedStages(page);
 
   // A faster elevator keeps the queues clear, so no floor claims a backlog.
-  floors.forEach((floor, index) => {
+  floors.slice(0, 4).forEach((floor, index) => {
     expect(floor.materialPileSteps, `floor ${index + 1} pile`).toBe(1);
     expect(floor.backlogLabel, `floor ${index + 1} backlog`).toBeNull();
     expect(floor.isPileBackedUp, `floor ${index + 1} backlog colour`).toBe(false);
+  });
+  expect(floors[4]).toMatchObject({
+    badgeLabel: '5',
+    isLockedAppearance: true,
+    isPileBackedUp: false,
   });
 
   expect(elevator.statusLabel, 'elevator status').toBe('Collecting');

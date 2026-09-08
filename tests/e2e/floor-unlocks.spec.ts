@@ -238,7 +238,7 @@ test('blocks a premature unlock, then opens the floor and keeps it open', async 
   expect(
     await readStoredFloorUnlocks(page),
     'the open floor must reach the save before the reload',
-  ).toEqual([true, true, false, false]);
+  ).toEqual([true, true, ...Array.from({ length: 13 }, () => false)]);
 
   await page.reload();
   await waitForBootedScene(page);
@@ -373,6 +373,14 @@ async function pressPurchaseControl(page: Page, key: string): Promise<void> {
   expect(center.y, `${key} vertical position`).toBeLessThan(box.y + box.height);
 
   await page.mouse.click(center.x, center.y);
+
+  if (key.startsWith('mine-shaft:')) {
+    await expect(page.getByTestId('mine-upgrade-modal')).toBeVisible();
+    await page.getByTestId('mine-upgrade-x1').click();
+    await page.getByTestId('mine-upgrade-close').click();
+    await page.clock.runFor(PRESS_SETTLE_STEP_MS);
+    return;
+  }
 
   for (let attempt = 0; attempt < MAX_PRESS_SETTLE_ATTEMPTS; attempt += 1) {
     await page.clock.runFor(PRESS_SETTLE_STEP_MS);

@@ -62,7 +62,7 @@ interface CoreStateReadBack {
 }
 
 /**
- * All four floors open and gold to spare.
+ * The original four floors open and gold to spare; floor 5 stays locked.
  *
  * Every floor then offers a shaft upgrade a press could complete, which is what
  * makes "nothing was bought" a real assertion rather than a purchase that was
@@ -81,8 +81,9 @@ function createFixtureState(): GameState {
 
       return {
         ...floor,
-        isUnlocked: true,
-        mineShaftLevel: nextRequirement?.level ?? floor.mineShaftLevel,
+        isUnlocked: index < 4,
+        mineShaftLevel:
+          index < 4 ? nextRequirement?.level ?? floor.mineShaftLevel : 1,
       };
     }),
   };
@@ -223,6 +224,9 @@ test('buys from a control before scrolling, and from one only scrolling reveals'
   const before = await bootScrollFixture(page);
 
   await pressPurchaseControl(page, FLOOR_1_KEY);
+  await expect(page.getByTestId('mine-upgrade-modal')).toBeVisible();
+  await page.getByTestId('mine-upgrade-x1').click();
+  await page.getByTestId('mine-upgrade-close').click();
 
   await expect
     .poll(async () => (await readCoreState(page)).mineShaftLevels[0], {
@@ -252,6 +256,9 @@ test('buys from a control before scrolling, and from one only scrolling reveals'
   await waitForFrames(page, 1);
 
   await pressPurchaseControl(page, FLOOR_4_KEY);
+  await expect(page.getByTestId('mine-upgrade-modal')).toBeVisible();
+  await page.getByTestId('mine-upgrade-x1').click();
+  await page.getByTestId('mine-upgrade-close').click();
 
   await expect
     .poll(async () => (await readCoreState(page)).mineShaftLevels[3], {
@@ -281,6 +288,9 @@ test('keeps a tap that wobbles below the drag threshold', async ({ page }) => {
     -(MINE_SCROLL_DRAG_THRESHOLD_PX - 1),
     2,
   );
+
+  await expect(page.getByTestId('mine-upgrade-modal')).toBeVisible();
+  await page.getByTestId('mine-upgrade-x1').click();
 
   await expect
     .poll(async () => (await readCoreState(page)).mineShaftLevels[0], {
@@ -347,8 +357,8 @@ test('gives every control a thumb-sized target', async ({ page }) => {
 
   const controls = await readPurchaseControls(page);
 
-  // Four shafts and two shared stages; every open floor offers a purchase.
-  expect(controls.length).toBe(6);
+  // Four open shafts, floor 5's unlock, and two shared stages.
+  expect(controls.length).toBe(7);
 
   for (const control of controls) {
     expect(

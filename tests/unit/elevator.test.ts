@@ -103,6 +103,26 @@ describe('shared elevator', () => {
     expect(delivered.warehouse.inputQueue.equals(50)).toBe(true);
   });
 
+  it('returns instead of passing a floor that still has material', () => {
+    const base = withFloorQueues([10, 10, 0, 0], [0, 1]);
+    const approachingWithNearFullCabin: GameState = {
+      ...base,
+      elevator: {
+        ...base.elevator,
+        capacity: GameNumber.from(50.005),
+        carriedMaterial: GameNumber.from(46.505),
+        roundRobinCursor: 0,
+        transitProgress: 0.99,
+      },
+    };
+
+    const loaded = advanceElevatorFor(approachingWithNearFullCabin, 100);
+
+    expect(loaded.floors[0].materialQueue.equals(6.5)).toBe(true);
+    expect(loaded.elevator.carriedMaterial.equals(50.005)).toBe(true);
+    expect(loaded.elevator.roundRobinCursor).toBe(-1);
+  });
+
   it('slows each leg as carried load gets heavier', () => {
     const emptyDuration = calculateElevatorLegDurationMs(
       BASE_GAME_BALANCE.elevator.cycleDurationMs,

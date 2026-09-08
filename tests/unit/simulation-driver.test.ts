@@ -278,9 +278,9 @@ describe('mine simulation driver', () => {
 
     const { snapshot, state } = driver;
 
-    expect(snapshot.floors.map(({ floorNumber }) => floorNumber)).toEqual([
-      1, 2, 3, 4,
-    ]);
+    expect(snapshot.floors.map(({ floorNumber }) => floorNumber)).toEqual(
+      Array.from({ length: 15 }, (_, index) => index + 1),
+    );
     expect(snapshot.floors[0].extractionProgress).toBe(
       state.floors[0].extractionProgress,
     );

@@ -62,18 +62,18 @@ describe('hud view model', () => {
     ).toBe('14.60qa');
   });
 
-  it('shows the gold currently carried by the elevator', () => {
+  it('shows the authoritative warehouse input queue', () => {
     const state = createFreshState();
     const carrying: GameState = {
       ...state,
-      elevator: {
-        ...state.elevator,
-        carriedMaterial: GameNumber.from(12_345.67),
+      warehouse: {
+        ...state.warehouse,
+        inputQueue: GameNumber.from(12_345.67),
       },
     };
 
-    expect(readHud(state).elevatorValueLabel).toBe('0');
-    expect(readHud(carrying).elevatorValueLabel).toBe('12.34k');
+    expect(readHud(state).warehouseQueueValueLabel).toBe('0');
+    expect(readHud(carrying).warehouseQueueValueLabel).toBe('12.34k');
   });
 
   it('estimates income from the mine rate, not from the shafts alone', () => {

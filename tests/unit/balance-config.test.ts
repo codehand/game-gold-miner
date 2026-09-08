@@ -9,7 +9,7 @@ import {
 describe('base-game balance configuration', () => {
   it('accepts the provisional base-game values', () => {
     expect(() => validateBaseGameBalance(BASE_GAME_BALANCE)).not.toThrow();
-    expect(BASE_GAME_BALANCE.floors).toHaveLength(4);
+    expect(BASE_GAME_BALANCE.floors).toHaveLength(15);
     expect(BASE_GAME_BALANCE.floors[0].startingUnlocked).toBe(true);
     expect(
       BASE_GAME_BALANCE.floors.slice(1).every(({ startingUnlocked }) => {
@@ -23,9 +23,9 @@ describe('base-game balance configuration', () => {
   });
 
   it('rejects missing floors', () => {
-    const config = withFloors(BASE_GAME_BALANCE.floors.slice(0, 3));
+    const config = withFloors(BASE_GAME_BALANCE.floors.slice(0, 14));
 
-    expect(() => validateBaseGameBalance(config)).toThrow(/exactly four/);
+    expect(() => validateBaseGameBalance(config)).toThrow(/exactly 15/);
   });
 
   it('rejects duplicate floor identifiers', () => {

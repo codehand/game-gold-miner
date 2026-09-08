@@ -231,12 +231,11 @@ describe('floor unlock control view model', () => {
       );
     });
 
-    expect(keys).toEqual([
-      'mine-shaft:floor-1',
-      'floor-unlock:floor-2',
-      'floor-unlock:floor-3',
-      'floor-unlock:floor-4',
-    ]);
+    expect(keys).toHaveLength(15);
+    expect(keys[0]).toBe('mine-shaft:floor-1');
+    expect(keys.slice(1)).toEqual(
+      Array.from({ length: 14 }, (_, index) => `floor-unlock:floor-${index + 2}`),
+    );
     expect(new Set(keys).size).toBe(keys.length);
   });
 
@@ -309,6 +308,20 @@ describe('purchase press feedback', () => {
 });
 
 describe('purchase commands through the driver', () => {
+  it('routes an x5 floor batch as one persisted command', () => {
+    let commandCount = 0;
+    const driver = createPausedDriver(
+      createState({ gold: GameNumber.from(10_000) }),
+      () => {
+        commandCount += 1;
+      },
+    );
+
+    expect(driver.purchaseMineShaftBatch('floor-1', 5)).toBe('purchased');
+    expect(driver.state.floors[0].mineShaftLevel).toBe(6);
+    expect(commandCount).toBe(1);
+  });
+
   it('buys a mine shaft once, deducting exactly the displayed price', () => {
     const state = createState({ gold: GameNumber.from(1_000) });
     const driver = createPausedDriver(state);

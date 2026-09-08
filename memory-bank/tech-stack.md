@@ -69,6 +69,8 @@ src/
 
 ## 4. Kết luận
 
+Triển khai hiện tại giữ toàn bộ 15 tầng trong core/config và chỉ mở phần trình bày theo cụm 5 tầng. HUD Phaser cố định cao 52 logical px; số ở giữa lấy `warehouse.inputQueue` và dùng icon warehouse. `BootScene` đổi texture tháp filled/empty từ queue này và căn đội hauler trên một baseline; core elevator chỉ đi sâu hơn sau khi vét hết tầng hiện tại. Các thay đổi không làm đổi lựa chọn stack, ranh giới module, save-document version hoặc IndexedDB version.
+
 Nếu mục tiêu chỉ là App Store/Google Play và không cần Telegram/web, Godot là lựa chọn thứ hai. Nhưng với game tham chiếu hiện tại, **Phaser + TypeScript là lựa chọn tối ưu nhất**.
 
 Capacitor có thể đóng gói cùng codebase thành ứng dụng iOS/Android sau này. Xem [Capacitor documentation](https://capacitorjs.com/docs).

@@ -30,6 +30,10 @@ export class GameNumber {
     return new GameNumber(this.#value.multiply(GameNumber.toDecimal(other)));
   }
 
+  public divide(other: GameNumberSource): GameNumber {
+    return new GameNumber(this.#value.divide(GameNumber.toDecimal(other)));
+  }
+
   public compare(other: GameNumberSource): -1 | 0 | 1 {
     return this.#value.compare(GameNumber.toDecimal(other));
   }

@@ -108,12 +108,19 @@ describe('Step 32 original placeholder assets', () => {
     ) as PlaceholderAssetManifest;
 
     expect(pack.family).toBe('step-32a-layout1-production-pack');
-    expect(pack.assets).toHaveLength(9);
+    expect(pack.assets).toHaveLength(10);
     expect(pack.assets).toContainEqual(
       expect.objectContaining({
         id: 'elevator-tower',
         size: '512x512',
         role: expect.stringContaining('gold hopper'),
+      }),
+    );
+    expect(pack.assets).toContainEqual(
+      expect.objectContaining({
+        id: 'elevator-tower-empty',
+        size: '512x512',
+        role: expect.stringContaining('warehouse.inputQueue is zero'),
       }),
     );
     expect(pack.assets).toContainEqual(

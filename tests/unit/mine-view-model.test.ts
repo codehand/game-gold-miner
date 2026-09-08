@@ -186,12 +186,12 @@ describe('mine view model', () => {
     const state = createInitialGameState(BASE_GAME_BALANCE, FIXTURE_TIMESTAMP_MS);
     const viewModel = createViewModel(state);
 
-    expect(viewModel.floors.map(({ isUnlocked }) => isUnlocked)).toEqual([
+    expect(viewModel.floors).toHaveLength(15);
+    expect(viewModel.floors[0].isUnlocked).toBe(true);
+    expect(viewModel.floors.slice(1).every(({ isUnlocked }) => !isUnlocked)).toBe(
       true,
-      false,
-      false,
-      false,
-    ]);
+    );
+    expect(viewModel.floors.filter(({ isVisible }) => isVisible)).toHaveLength(5);
     expect(viewModel.floors.every(({ levelLabel }) => levelLabel === 'Lv 1')).toBe(
       true,
     );
@@ -202,6 +202,29 @@ describe('mine view model', () => {
     ).toBe(true);
     expect(viewModel.elevator.queueLabel).toBe('Carrying 0');
     expect(viewModel.warehouse.queueLabel).toBe('Queued 0');
+  });
+
+  it('reveals floor rows in groups of five after floors 5 and 10 open', () => {
+    const base = createInitialGameState(BASE_GAME_BALANCE, FIXTURE_TIMESTAMP_MS);
+    const withUnlockedThrough = (floorNumber: number): GameState => ({
+      ...base,
+      floors: base.floors.map((floor) => ({
+        ...floor,
+        isUnlocked: floor.floorNumber <= floorNumber,
+        mineShaftLevel: floor.floorNumber < floorNumber ? 10 : 1,
+      })),
+    });
+    const visibleNumbers = (state: GameState) => createViewModel(state).floors
+      .filter(({ isVisible }) => isVisible)
+      .map(({ floorNumber }) => floorNumber);
+
+    expect(visibleNumbers(withUnlockedThrough(1))).toEqual([1, 2, 3, 4, 5]);
+    expect(visibleNumbers(withUnlockedThrough(5))).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
+    expect(visibleNumbers(withUnlockedThrough(10))).toEqual(
+      Array.from({ length: 15 }, (_, index) => index + 1),
+    );
   });
 
   it('does not mutate the authoritative snapshot it reads', () => {

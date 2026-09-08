@@ -1,4 +1,9 @@
 export {
+  MineShaftUpgradeModal,
+  type MineShaftUpgradeModalOptions,
+  type RenderedMineShaftUpgradeModalState,
+} from './MineShaftUpgradeModal';
+export {
   OFFLINE_REWARD_SAVE_FAILURE_MESSAGE,
   formatOfflineRewardAmount,
   formatCreditedDuration,

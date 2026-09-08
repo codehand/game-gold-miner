@@ -100,12 +100,15 @@ describe('mine-floor extraction', () => {
     };
     const state = advanceFor(unlockedState, 3_500);
 
-    expect(state.floors.map(({ totalExtracted }) => totalExtracted.toJSON())).toEqual(
+    expect(state.floors.slice(0, 4).map(({ totalExtracted }) => totalExtracted.toJSON())).toEqual(
       ['10', '30', '90', '270'],
     );
-    expect(state.floors.map(({ materialQueue }) => materialQueue.toJSON())).toEqual(
+    expect(state.floors.slice(0, 4).map(({ materialQueue }) => materialQueue.toJSON())).toEqual(
       ['0', '30', '90', '270'],
     );
+    expect(
+      state.floors.slice(4).every(({ totalExtracted }) => totalExtracted.equals(0)),
+    ).toBe(true);
     [0.75, 0.4, 1 / 6, 0].forEach((expectedProgress, index) => {
       expect(state.floors[index].extractionProgress).toBeCloseTo(
         expectedProgress,

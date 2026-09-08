@@ -12,7 +12,7 @@
 
 > **Phạm vi tham chiếu:** Video chỉ dài khoảng 8,56 giây nên không thể xác nhận 100% mọi luật, công thức và màn hình. Tài liệu này tách phần quan sát trực tiếp khỏi phần suy luận cần kiểm chứng. Khi phát triển sản phẩm thật, nên dùng tên, hình ảnh, âm thanh và UI nguyên bản để tránh sao chép tài sản sở hữu trí tuệ.
 
-> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chất hàng cho tới khi đầy hoặc hết tầng rồi quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Manager, boost, gift drop và bottom navigation được triển khai sau base-game milestone.
+> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ có tối đa 15 tầng và hiển thị theo cụm 5 tầng: 1–5 lúc bắt đầu, 6–10 sau khi mở tầng 5, 11–15 sau khi mở tầng 10; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chỉ đi sâu hơn sau khi vét hết tầng hiện tại và còn sức chứa, nếu không sẽ quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Manager, boost, gift drop và bottom navigation được triển khai sau base-game milestone.
 
 ## 2. Trải nghiệm cốt lõi
 
@@ -92,8 +92,12 @@ Nếu một công đoạn chậm, vàng chờ sẽ chất đống tại điểm 
 
 ### 5.3 Nâng cấp
 
-- Chạm nút cấp độ của tầng để nâng một cấp.
-- Có tùy chọn mua nhanh `x1`, `x10`, `x50` hoặc `MAX`.
+- Chạm nút cấp độ của tầng để mở popup chi tiết khai thác; thao tác này chưa
+  mua và chưa trừ vàng.
+- Popup hiển thị level, sản lượng mỗi chu kỳ, thời gian chu kỳ, vàng đang chờ,
+  sản lượng level kế tiếp và ba lựa chọn mua nhanh `x1`, `x5`, `MAX`.
+- `MAX` luôn được tính từ số vàng hiện có và tổng giá tuần tự của các level;
+  lựa chọn không đủ vàng hiện trạng thái disabled.
 - Chi phí tăng theo cấp:
 
 ```text
@@ -148,7 +152,7 @@ MVP chỉ dùng tiền ảo nội bộ, không blockchain, NFT, quy đổi tiề
 ### 6.1 Cấu hình cân bằng tạm thời cho base game
 
 - Vàng khởi đầu: `100`.
-- Bốn tầng có sản lượng/chu kỳ lần lượt là `10/2,0s`, `30/2,5s`, `90/3,0s`, và `270/3,5s`.
+- Bốn tầng đầu có sản lượng/chu kỳ lần lượt là `10/2,0s`, `30/2,5s`, `90/3,0s`, và `270/3,5s`; tầng 5–15 tiếp tục theo cấu hình tăng dần, đủ tổng cộng 15 tầng.
 - Chi phí mở tầng 2–4 là `250`, `1.500`, và `7.500`; yêu cầu tầng trước đạt cấp `5`, `5`, và `7`.
 - Elevator dùng chung bắt đầu với sức chứa `50` và chu kỳ `1,5s`; warehouse dùng chung có sức chứa `60` và chu kỳ `1,2s`.
 - Chi phí nâng cấp tăng theo hệ số `1,15`; sản lượng tầng tăng `1,10`; sức chứa elevator/warehouse tăng `1,12`.
@@ -157,28 +161,32 @@ MVP chỉ dùng tiền ảo nội bộ, không blockchain, NFT, quy đổi tiề
   cầm clipboard có idle loop. Nhân vật này chỉ là presentation, không thay đổi
   quyết định base game tự động chạy không cần gameplay Manager.
 - Luồng bề mặt Step 32A thể hiện vật liệu từ tháp sang warehouse bằng xe đẩy:
-  xe rỗng dừng dưới máng, vàng chỉ đổ khi elevator/warehouse đang giữ vật liệu,
+  xe rỗng dừng dưới máng, vàng chỉ đổ khi `warehouse.inputQueue` đang dương,
   mèo công nhân đẩy xe đầy sang kho rồi đưa xe rỗng quay lại. Đây là animation
   presentation-only; simulation vẫn chuyển vật liệu trực tiếp theo core.
+  Vàng còn nằm trong cabin elevator chưa thuộc queue của tháp và không được làm
+  hiện dòng vàng, xe đầy, hoặc mèo đang chở hàng. Khi queue về 0, toàn bộ đội
+  surface lập tức dùng xe rỗng và máng ngừng đổ.
 - Đội vận chuyển phản ánh level warehouse mà không đổi throughput: luôn có một
   mèo cơ bản, sau đó mỗi 10 level warehouse thêm một mèo hỗ trợ. Vì vậy level
   10/20/.../100 hiển thị tổng cộng 2/3/.../11 mèo; level trên 100 vẫn giữ đội
-  tối đa 11 mèo. Mỗi mèo có pha di chuyển riêng trên tuyến surface, lệch làn
-  nhẹ và sở hữu một xe đẩy riêng ở cùng pose vận chuyển, thay vì sao chép vị
-  trí mèo chính hoặc dùng chung xe, để đội hình ít che nhau.
+  tối đa 11 mèo. Mỗi mèo có pha di chuyển và vị trí ngang riêng trên tuyến
+  surface nhưng toàn đội cùng một đường baseline; mỗi mèo sở hữu một xe đẩy
+  riêng ở cùng pose vận chuyển thay vì sao chép mèo chính hoặc dùng chung xe.
 - Đội miner của mọi tầng cũng phản ánh level mà không đổi sản lượng: tầng đã mở
   luôn có một miner, rồi level 50/100/150/200 lần lượt thêm một miner, tạo tổng
   số 2/3/4/5. Trên level 200 vẫn giữ tối đa 5 miner. Các miner phụ dùng cùng
   sprite nhưng có pha tuần tra, frame và làn dọc nông riêng để giảm che nhau;
   extraction progress authoritative vẫn điều khiển tuyến di chuyển chung.
 
-Các giá trị này đã đạt mục tiêu mô phỏng tự động ở Step 19: mở cả bốn tầng (tầng 4 ở giây 317), chạm multiplier nhưng không tăng mất kiểm soát tới cấp 100 trong mười phút, và không kẹt tiến trình. Chúng vẫn là cân bằng tạm thời cho tới khi được kiểm chứng bằng playtest thực tế.
+Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự động: mở cả bốn tầng (tầng 4 hiện ở giây 508 sau khi mở rộng 15 tầng và sửa tuyến elevator), chạm multiplier nhưng không tăng mất kiểm soát tới cấp 100 trong mười phút, và không kẹt tiến trình. Đường cân bằng tầng 5–15 được mở rộng theo cấp số và vẫn là tạm thời cho tới khi được kiểm chứng bằng playtest thực tế.
 
 ## 7. Điều khiển và giao diện
 
 ### Điều khiển
 
-- Chạm nút cấp độ: nâng cấp tầng.
+- Chạm nút cấp độ của tầng: mở popup thông tin và chọn nâng `x1`, `x5`, hoặc
+  toàn bộ level có thể mua qua `MAX`.
 - Chạm Manager: mở bảng Manager của tầng.
 - Vuốt dọc: xem các tầng sâu hơn.
 - Chạm quà: nhận phần thưởng.
@@ -209,15 +217,18 @@ Các giá trị này đã đạt mục tiêu mô phỏng tự động ở Step 1
 - Số vàng bay về thanh tiền khi hoàn thành giao hàng.
 - Thanh tiến độ trên đầu miner/xe goòng.
 - Nút nâng cấp đổi màu khi đủ tiền.
+- Popup nâng cấp tầng chặn input game phía sau cho tới khi đóng; CTA giữ vùng
+  chạm tối thiểu 44 px và cập nhật level/giá ngay sau mỗi giao dịch.
 - Rung nhẹ, âm thanh đồng xu và hiệu ứng bụi khi đào.
 - Ký hiệu số lớn rút gọn: `14.6aa`, `7.2ab`, v.v.
 
 ## 8. Phong cách hình ảnh và âm thanh
 
 - 2D cartoon, màu sáng, hình khối tròn và dễ đọc trên màn hình nhỏ.
-- Typography dùng Fredoka SemiBold/Bold tự host; HUD tài nguyên dùng icon + số,
+- Typography dùng Fredoka SemiBold/Bold tự host; HUD tài nguyên cao 52 px dùng icon + số,
   không lặp lại caption `Gold` hoặc `Income /s`. Khoang giữa HUD dùng icon
-  elevator và số vàng authoritative đang được elevator mang.
+  warehouse và số vàng authoritative trong hàng chờ warehouse (`warehouse.inputQueue`),
+  không phải số đang nằm trong cabin elevator.
 - Nhân vật mèo đầu lớn, chuyển động ngắn và lặp mượt.
 - Mỗi tầng gồm nền đất cắt lớp liền mạch với tầng kế tiếp, đường hầm tối,
   đống vàng trang trí luôn hiển thị cố định ở mọi tầng đã mở, và xe goòng có
@@ -230,6 +241,8 @@ Các giá trị này đã đạt mục tiêu mô phỏng tự động ở Step 1
   Tháp thay cho card elevator cũ.
 - Khu surface dùng nền cảnh quan bầu trời xanh, mây tròn, núi/cây xa và đồng cỏ
   ít tương phản để đọc rõ tháp, xe, mèo và warehouse ở tiền cảnh.
+- Gold hopper trên tháp phản ánh queue vào warehouse: khi `warehouse.inputQueue`
+  bằng 0 phải hiện máng thép rỗng; khi queue dương mới hiện đống vàng.
 - Mỗi mèo vận chuyển surface có một xe riêng. Mọi xe giữ nguyên một footprint
   46×46 ở cả trạng thái rỗng và đầy; đổi trạng thái vật liệu không được phóng
   to hoặc thu nhỏ xe.

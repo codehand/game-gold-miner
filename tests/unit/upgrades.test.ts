@@ -4,13 +4,16 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   advanceSimulation,
   calculateElevatorUpgradeCost,
+  calculateMaxAffordableMineShaftUpgradeQuantity,
   calculateMineProductionRates,
+  calculateMineShaftUpgradeBatchCost,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,
   createInitialGameState,
   GameNumber,
   purchaseElevatorUpgrade,
   purchaseMineShaftUpgrade,
+  purchaseMineShaftUpgrades,
   purchaseWarehouseUpgrade,
   type GameState,
 } from '../../src/core';
@@ -114,6 +117,71 @@ describe('stage upgrades', () => {
     expect(result.state.elevator).toBe(state.elevator);
     expect(result.state.warehouse).toBe(state.warehouse);
     expectSimulationMetadataPreserved(result.state, state);
+  });
+
+  it('quotes and atomically purchases x5 mine-shaft levels', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const cost = calculateMineShaftUpgradeBatchCost(
+      initialState.floors[0],
+      BASE_GAME_BALANCE.floors[0],
+      5,
+    );
+    const state = { ...initialState, gold: cost.add(10) };
+    const result = purchaseMineShaftUpgrades(
+      state,
+      'floor-1',
+      5,
+      BASE_GAME_BALANCE,
+    );
+
+    expect(result.success).toBe(true);
+
+    if (!result.success) {
+      throw new Error('Expected x5 mine-shaft purchase to succeed.');
+    }
+
+    expect(result.cost.equals(cost)).toBe(true);
+    expect(result.state.gold.equals(10)).toBe(true);
+    expect(result.state.floors[0].mineShaftLevel).toBe(6);
+    expect(result.state.floors[0].materialQueue).toBe(
+      state.floors[0].materialQueue,
+    );
+  });
+
+  it('finds the exact MAX quantity affordable by current gold', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const floor = initialState.floors[0];
+    const floorConfig = BASE_GAME_BALANCE.floors[0];
+    const fiveCost = calculateMineShaftUpgradeBatchCost(floor, floorConfig, 5);
+    const sixCost = calculateMineShaftUpgradeBatchCost(floor, floorConfig, 6);
+
+    expect(
+      calculateMaxAffordableMineShaftUpgradeQuantity(
+        floor,
+        floorConfig,
+        fiveCost,
+      ),
+    ).toBe(5);
+    expect(
+      calculateMaxAffordableMineShaftUpgradeQuantity(
+        floor,
+        floorConfig,
+        sixCost.subtract('0.0000001'),
+      ),
+    ).toBe(5);
+    expect(
+      calculateMaxAffordableMineShaftUpgradeQuantity(
+        floor,
+        floorConfig,
+        GameNumber.from(0),
+      ),
+    ).toBe(0);
   });
 
   it('purchases elevator and warehouse upgrades independently', () => {

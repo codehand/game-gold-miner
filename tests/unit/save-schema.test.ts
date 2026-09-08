@@ -39,7 +39,7 @@ describe('versioned save schema', () => {
       expectedRate.serialize(),
     );
     expect(document.state.gold).toBe(state.gold.serialize());
-    expect(document.state.floors).toHaveLength(4);
+    expect(document.state.floors).toHaveLength(15);
     expect(document.state.elevator.capacity).toBe(
       state.elevator.capacity.serialize(),
     );
@@ -112,6 +112,30 @@ describe('versioned save schema', () => {
     expect(migrateSaveDocument(document)).toBe(document);
   });
 
+  it('expands a legacy four-floor save with locked defaults through floor 15', () => {
+    const document = createValidDocument();
+    const legacyDocument = {
+      ...document,
+      state: {
+        ...document.state,
+        floors: document.state.floors.slice(0, 4),
+      },
+    };
+    const migrated = validateSaveDocument(legacyDocument, BASE_GAME_BALANCE);
+
+    expect(migrated.state.floors).toHaveLength(15);
+    expect(migrated.state.floors.slice(0, 4)).toEqual(
+      legacyDocument.state.floors,
+    );
+    expect(
+      migrated.state.floors.slice(4).every((floor) =>
+        !floor.isUnlocked &&
+        floor.mineShaftLevel === 1 &&
+        floor.materialQueue === '0'
+      ),
+    ).toBe(true);
+  });
+
   it('rejects missing and unsupported schema versions', () => {
     const document = createValidDocument();
     const missingVersion = {
@@ -176,7 +200,7 @@ describe('versioned save schema', () => {
       ...document,
       state: {
         ...document.state,
-        floors: document.state.floors.slice(0, 3),
+        floors: document.state.floors.slice(0, 14),
       },
     };
 
@@ -191,7 +215,7 @@ describe('versioned save schema', () => {
     expect(() => validateSaveDocument(
       missingFloor,
       BASE_GAME_BALANCE,
-    )).toThrow(/exactly 4 floors/);
+    )).toThrow(/exactly 15 floors/);
   });
 
   it.each([
@@ -298,7 +322,7 @@ describe('versioned save schema', () => {
 
     expect(() => validateSaveDocument(returning, BASE_GAME_BALANCE)).not.toThrow();
 
-    for (const roundRobinCursor of [-5, 4]) {
+    for (const roundRobinCursor of [-16, 15]) {
       expect(() => validateSaveDocument({
         ...document,
         state: {

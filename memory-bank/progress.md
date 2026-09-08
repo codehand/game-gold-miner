@@ -2,9 +2,17 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 36 is implemented with a passing production-bundle smoke suite and awaits user validation. The user validated Step 35 by authorizing Step 36 and prohibited Step 37 work until the Step 36 test is validated.
+**Phase:** Implementation Plan Step 36 remains implemented; Step 37 has not started. The 2026-09-08 browser-feedback pass is implemented and fully verified.
 
 ## Completed
+
+- 2026-09-08 HUD queue clarification completed: the centre HUD number is the amount already waiting inside `warehouse.inputQueue`, not elevator cargo; its icon is the warehouse texture. Focused verification passes with 9 unit tests and 2 Chromium E2E tests.
+- 2026-09-08 empty tower-hopper feedback completed: a new transparent 512×512 empty-headhouse variant removes the baked gold only for a zero warehouse input queue; runtime texture switching restores the filled headhouse for any positive queue and reapplies the fixed display bounds. Asset provenance/QC is in the Step 32A manifest; 4 focused asset tests and 2 Chromium E2E tests pass.
+- 2026-09-08 elevator floor-priority bug completed: loading now records whether the current floor was drained and whether pickup filled the exact remaining capacity. The route can descend only when the floor is empty and capacity remains; a full decimal load snaps to configured capacity instead of leaking a tiny false remainder. The new regression reproduces the former `50.004999999999995 < 50.005` branch, and 32 focused unit tests pass.
+- 2026-09-08 surface-hauler alignment feedback completed: assistant cats and their paired carts keep distinct phase-shifted X positions but no longer use staggered Y lanes; every visible worker/cart now shares the lead route baseline. Thirty-one focused unit tests and one Chromium E2E regression pass.
+- 2026-09-07 browser feedback implemented: the fixed HUD is 52 logical pixels high; its centre value is the authoritative `warehouse.inputQueue` and uses the warehouse icon; the configuration and authoritative state contain exactly fifteen floors; presentation reveals 1–5 initially, 1–10 after floor 5 opens, and 1–15 after floor 10 opens.
+- The reveal transition resizes the scroll range without restarting the scene, and hidden floors publish no controls or diagnostics. Existing four-floor version-1 save documents migrate in memory to fifteen floors while save-document and IndexedDB versions remain 1.
+- Aggregate revision evidence: 322 unit tests, 38 Chromium E2E tests (including explicit floor-5/floor-10 reveal gates and filled/empty tower states), all 9 production smoke tests, lint, strict build, and `git diff --check` pass. The live in-app browser reports one canvas, the HUD warehouse icon and authoritative queue, the empty tower texture at queue zero, identical lead/assistant cat and cart Y coordinates, and no console errors.
 
 - Reference video reviewed and its visible gameplay elements documented.
 - Simple GDD created in `memory-bank/game-design-document.md`.
@@ -340,6 +348,10 @@
 | 34 — Verify persistence across lifecycle events | Complete | User authorized Step 35 after event-boundary catch-up, hidden/visible equivalence, abrupt-navigation recovery, and exact-once offline settlement passed. |
 | 35 — Profile mobile performance | Complete | User authorized Step 36 after the ten-minute Pixel 5/4× CPU Chrome emulation passed its frame, memory, sampled scene-graph, four-floor, startup, asset, and responsive-input assertions; physical Android evidence remains an open caveat. |
 | 36 — Validate production build behavior | Implemented / awaiting user validation | Lint, unit, E2E, and the production build pass in sequence, then nine smoke tests pass against the built bundle served from the root base path, covering asset loading, bundle identity, canvas rendering, exact save/restore, corrupt/unsupported/unavailable storage recovery, and four viewports. |
+
+- 2026-09-08 tower-empty surface-delivery correction: `BootScene` now passes one queue predicate, `warehouse.queueSteps > 0`, to the lead and every assistant surface-hauler pose. Elevator cargo in transit no longer triggers a filled cart or gold cascade before reaching `warehouse.inputQueue`; a zero tower queue shows the empty tower and empty carts throughout the loop. The new browser regression holds 50 material in the active elevator while forcing warehouse input to zero and samples two animation poses; it and the existing positive-queue cart/pour test pass. Memory Bank was updated immediately after this feedback item. Save/database schema version 1 is unchanged.
+
+- 2026-09-08 mine-floor detail/batch-upgrade feedback: the compact floor Level badge is selection-only and opens `MineShaftUpgradeModal`; it no longer buys on tap. The responsive accessible dialog shows level, output per cycle, cycle time, waiting material, and next output, with x1, x5, and exact MAX affordable CTAs. Core geometric batch quoting and atomic purchasing share one cost calculation, preserve floor progress/queues/totals, and persist once. The open modal refreshes after purchase and disables Phaser input for its full lifetime; this fixes the click-through found when a close gesture also upgraded the warehouse underneath. Unit regressions cover x5 cost/purchase, exact MAX bounds, modal attributes/options, and one persistence hook; browser regressions cover no-spend open, disabled unaffordable choices, exact x1 and MAX deductions, live rebinding, scroll/journey compatibility, and the background-input boundary. Final evidence is lint, 327 unit tests, all 40 Chromium E2E tests, strict build, nine production smoke tests, and clean diff whitespace. Direct browser-app inspection confirms Level 1 → Level 6 through x5 while warehouse stays Level 1 and no console error appears. Memory Bank was updated immediately after completion; save/database schema version 1 is unchanged.
 
 ## Not Started
 

@@ -91,7 +91,10 @@ export function createSaveDocument(
   return validateSaveDocument(document, config);
 }
 
-export function migrateSaveDocument(candidate: unknown): unknown {
+export function migrateSaveDocument(
+  candidate: unknown,
+  config?: BaseGameBalanceConfig,
+): unknown {
   const document = assertRecord(candidate, 'save');
 
   if (!Object.hasOwn(document, 'schemaVersion')) {
@@ -106,14 +109,18 @@ export function migrateSaveDocument(candidate: unknown): unknown {
     );
   }
 
-  return candidate;
+  if (config === undefined) {
+    return candidate;
+  }
+
+  return migrateLegacyFourFloorDocument(document, config) ?? candidate;
 }
 
 export function validateSaveDocument(
   candidate: unknown,
   config: BaseGameBalanceConfig,
 ): SaveDocumentV1 {
-  const migrated = migrateSaveDocument(candidate);
+  const migrated = migrateSaveDocument(candidate, config);
   const document = assertRecord(migrated, 'save');
   assertExactKeys(
     document,
@@ -140,6 +147,57 @@ export function validateSaveDocument(
   }
 
   return migrated as SaveDocumentV1;
+}
+
+/**
+ * Expands the former four-floor version-1 payload into the new fifteen-floor
+ * shape. Existing progress is preserved byte-for-byte and the added floors use
+ * their configured locked defaults, so the schema version can remain 1 while
+ * local prototype saves continue to load.
+ */
+function migrateLegacyFourFloorDocument(
+  document: Record<string, unknown>,
+  config: BaseGameBalanceConfig,
+): unknown | null {
+  const state = document.state;
+
+  if (
+    !isPlainRecord(state) ||
+    !Array.isArray(state.floors) ||
+    state.floors.length !== 4 ||
+    config.floors.length <= state.floors.length
+  ) {
+    return null;
+  }
+
+  const hasLegacyConfiguredPrefix = state.floors.every((candidate, index) => {
+    return isPlainRecord(candidate) &&
+      candidate.id === config.floors[index]?.id &&
+      candidate.floorNumber === config.floors[index]?.floorNumber;
+  });
+
+  if (!hasLegacyConfiguredPrefix) {
+    return null;
+  }
+
+  const addedFloors = config.floors.slice(4).map((floor) => ({
+    id: floor.id,
+    floorNumber: floor.floorNumber,
+    isUnlocked: false,
+    mineShaftLevel: floor.startingLevel,
+    extractionProgress: 0,
+    materialQueue: '0',
+    totalExtracted: '0',
+    totalTransported: '0',
+  }));
+
+  return {
+    ...document,
+    state: {
+      ...state,
+      floors: [...state.floors, ...addedFloors],
+    },
+  };
 }
 
 export function deserializeSaveDocument(
@@ -529,17 +587,19 @@ function parseGameNumber(
 }
 
 function assertRecord(value: unknown, path: string): Record<string, unknown> {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    (Object.getPrototypeOf(value) !== Object.prototype &&
-      Object.getPrototypeOf(value) !== null)
-  ) {
+  if (!isPlainRecord(value)) {
     throw new SaveDocumentError(`${path} must be a plain object.`);
   }
 
   return value as Record<string, unknown>;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    (Object.getPrototypeOf(value) === Object.prototype ||
+      Object.getPrototypeOf(value) === null);
 }
 
 function assertExactKeys(

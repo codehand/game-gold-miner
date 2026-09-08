@@ -183,12 +183,12 @@ describe('sequential floor unlocks', () => {
     state = withFloorLevel(state, 2, 7);
     state = expectSuccessfulUnlock(state, 'floor-4', 7_500);
 
-    expect(state.floors.map(({ isUnlocked }) => isUnlocked)).toEqual([
+    expect(state.floors.slice(0, 4).every(({ isUnlocked }) => isUnlocked)).toBe(
       true,
+    );
+    expect(state.floors.slice(4).every(({ isUnlocked }) => !isUnlocked)).toBe(
       true,
-      true,
-      true,
-    ]);
+    );
     expect(state.gold.equals(750)).toBe(true);
   });
 
@@ -345,7 +345,7 @@ describe('floor unlock description', () => {
 
   it('describes nothing for an unknown floor', () => {
     expect(
-      describeFloorUnlock(createState(1, 0), 'floor-9', BASE_GAME_BALANCE),
+      describeFloorUnlock(createState(1, 0), 'floor-16', BASE_GAME_BALANCE),
     ).toBeNull();
   });
 

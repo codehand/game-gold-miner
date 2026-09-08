@@ -19,8 +19,9 @@ describe('production rates', () => {
     expect(
       rates.floors.map((floor) =>
         floor.theoreticalExtractionPerSecond.toJSON(),
-      ),
+      ).slice(0, 4),
     ).toEqual(['5', '12', '30', '77.14285714285714']);
+    expect(rates.floors).toHaveLength(15);
     expect(rates.aggregateExtractionPerSecond.equals(5)).toBe(true);
     expect(rates.effectiveProductionPerSecond.equals(5)).toBe(true);
     expect(rates.bottleneck).toBe('extraction');

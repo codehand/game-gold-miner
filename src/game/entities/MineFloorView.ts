@@ -48,6 +48,7 @@ export interface RenderedMineFloorMinerState {
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedFloorState {
+  readonly isVisible: boolean;
   readonly floorLabel: string;
   readonly badgeLabel: string;
   readonly levelLabel: string;
@@ -435,6 +436,7 @@ export class MineFloorView {
 
   /** Rebinds every displayed value to a newer read-only snapshot. */
   public applySnapshot(floor: MineFloorViewModel): void {
+    this.#root.setVisible(floor.isVisible);
     this.#background.setFillStyle(
       floor.isUnlocked ? COLOR_PANEL : COLOR_LOCKED_PANEL,
     );
@@ -597,6 +599,7 @@ export class MineFloorView {
       }));
 
     return {
+      isVisible: this.#root.visible,
       floorLabel: this.#title.text,
       badgeLabel: this.#badgeLabel.text,
       levelLabel: this.#level.text,

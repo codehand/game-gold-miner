@@ -4,7 +4,7 @@
 
 This plan gives AI developers an ordered, testable path from the current documentation-only repository to a playable base game. Its recorded base-game decisions are authoritative for this milestone. Complete steps in order, and do not start a step while its dependencies or validation checks are failing.
 
-The base game includes an English-language portrait mine, four floors, the extraction → shared elevator → shared warehouse production chain, gold, three independently upgradeable production stages, milestone multipliers, sequential floor unlocks, local saves, and capped offline income. Production runs automatically without managers. Use original placeholder assets.
+The base game includes an English-language portrait mine, fifteen sequential floors revealed in groups of five, the extraction → shared elevator → shared warehouse production chain, gold, three independently upgradeable production stages, milestone multipliers, sequential floor unlocks, local saves, and capped offline income. Production runs automatically without managers. Use original placeholder assets.
 
 Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Telegram integration, backend services, payments, ads, blockchain, final art, and production audio are explicitly deferred.
 
@@ -44,7 +44,7 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 ### Step 6: Define base-game balance configuration
 
-**Instructions:** Create data-driven configuration for four floors plus the shared elevator and warehouse. Choose and document provisional starting gold, unlock costs and requirements, starting levels, yields, durations, capacities, upgrade base costs, and growth rates. Apply milestones to every upgradeable stage at levels 10/25/50/100 with multipliers x2/x2/x3/x4. Tune values toward unlocking at least three floors and reaching one milestone within ten minutes of real gameplay.
+**Instructions:** Create data-driven configuration for fifteen floors plus the shared elevator and warehouse. Choose and document provisional starting gold, unlock costs and requirements, starting levels, yields, durations, capacities, upgrade base costs, and growth rates. Apply milestones to every upgradeable stage at levels 10/25/50/100 with multipliers x2/x2/x3/x4. Tune the early curve toward unlocking at least three floors and reaching one milestone within ten minutes of real gameplay.
 
 **Test:** Validate the configuration at startup and in a unit test. Reject missing floors, duplicate floor identifiers, negative durations, non-positive yields, and invalid milestone ordering.
 
@@ -56,7 +56,7 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 ### Step 8: Define authoritative game state
 
-**Instructions:** Model the global gold balance, last update timestamp, save version, four floor states, one shared elevator state, and one shared warehouse state. Each floor tracks lock status, mine-shaft level, extraction progress, local material queue, and production totals. The elevator tracks level, capacity, a signed route cursor (retaining the legacy `roundRobinCursor` field name), transit progress, and carried material. The warehouse tracks level, capacity, input queue, and conversion progress. Exclude animation-only state.
+**Instructions:** Model the global gold balance, last update timestamp, save version, fifteen floor states, one shared elevator state, and one shared warehouse state. Each floor tracks lock status, mine-shaft level, extraction progress, local material queue, and production totals. The elevator tracks level, capacity, a signed route cursor (retaining the legacy `roundRobinCursor` field name), transit progress, and carried material. The warehouse tracks level, capacity, input queue, and conversion progress. Exclude animation-only state.
 
 **Test:** Create a fresh state from configuration and assert that only floor one is unlocked, all progress values are valid, and serialized state contains no renderer objects or functions.
 
@@ -74,7 +74,7 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 ### Step 11: Implement the shared elevator
 
-**Instructions:** Move material from floor queues to the warehouse queue through one shared elevator. Starting at the surface, visit every unlocked floor from top to bottom, load up to the remaining capacity at each stop, continue deeper while capacity remains, then return to the surface when full or after the deepest unlocked floor. Make travel slower as carried load increases and idle when no material exists.
+**Instructions:** Move material from floor queues to the warehouse queue through one shared elevator. Starting at the surface, visit every unlocked floor from top to bottom, load up to the remaining capacity at each stop, and continue deeper only when the current floor has been fully drained and capacity remains; otherwise return to the surface before beginning another top-down trip. Make travel slower as carried load increases and idle when no material exists.
 
 **Test:** Verify an empty elevator produces nothing, pickup occurs only after arrival, every unlocked floor is visited in order while capacity remains, limited capacity leaves excess material behind, a full car returns immediately, heavier loads take longer, and multiple routes preserve total material without duplication or loss.
 
@@ -84,7 +84,7 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 **Test:** Trace a known quantity through all three stages and assert conservation: extracted material equals queued material plus in-transit material plus delivered gold.
 
-### Step 13: Run four floors concurrently
+### Step 13: Run unlocked floors concurrently
 
 **Instructions:** Update every unlocked floor during each simulation step, then update the shared elevator and shared warehouse. Locked floors must remain inert. All production runs automatically without a Manager or player tap.
 
@@ -168,11 +168,11 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 **Test:** Use Playwright viewport checks for representative narrow phone, tall phone, tablet portrait, and desktop sizes. Assert the canvas fits, HUD remains visible, and no required control is outside the viewport.
 
-### Step 26: Render four mine floors
+### Step 26: Render the mine floors
 
-**Instructions:** Create a reusable floor view bound to read-only core snapshots. Display floor number, mine-shaft level, placeholder miner, material pile, extraction progress, and shaft-upgrade control. Show locked floors distinctly. Render the shared elevator and warehouse with their own level, queue/progress, and upgrade controls in the surface/shaft area.
+**Instructions:** Create a reusable floor view bound to read-only core snapshots. Keep fifteen floors authoritative, showing floors 1–5 initially, 6–10 after floor 5 opens, and 11–15 after floor 10 opens. Display floor number, mine-shaft level, placeholder miner, material pile, extraction progress, and shaft-upgrade control. Show locked floors distinctly. Render the shared elevator and warehouse with their own level, queue/progress, and upgrade controls in the surface/shaft area.
 
-**Test:** Load a known fixture and compare all four displayed floor numbers, levels, lock states, and progress values with the core snapshot.
+**Test:** Load known fixtures and compare every currently revealed floor number, level, lock state, and progress value with the core snapshot; verify each five-floor reveal gate.
 
 ### Step 27: Visualize the three production stages
 
@@ -188,9 +188,9 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 ### Step 29: Connect upgrade controls
 
-**Instructions:** Show separate English upgrade controls and next costs for each mine shaft, the shared elevator, and the shared warehouse. Enable a control only when affordable, send the matching upgrade command, and provide immediate feedback for success or insufficient funds.
+**Instructions:** Show separate English upgrade controls for each mine shaft, the shared elevator, and the shared warehouse. A mine-floor Level badge opens a detail popup without buying; show its current mining attributes and bottom CTAs for x1, x5, and MAX affordable sequential levels. Keep elevator and warehouse badges on their direct single-level commands. Enable each purchase only when affordable, send the matching authoritative command, and provide immediate feedback.
 
-**Test:** Use an E2E flow to attempt an unaffordable upgrade, grant sufficient gold through a fixture, perform one upgrade, and verify one cost deduction, one level increase, and an updated button price.
+**Test:** Use E2E flows to prove opening a floor popup changes no state, unavailable batches are disabled, x1 deducts one exact cost, MAX buys the exact affordable quantity, attributes and choices update in place, and overlay input cannot activate gameplay underneath. Preserve direct shared-stage purchase coverage.
 
 ### Step 30: Connect floor unlock controls
 
@@ -210,12 +210,12 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 **Test:** Perform a visual review at 100% and reduced mobile scale. Confirm every gameplay object remains distinguishable and no third-party protected asset is included in `public/assets/`.
 
-**Step 32A approved revision:** Implement the locked `layout1.png` floor composition and first asset pack: walking miner with runtime direction flip, unloading attendant plus empty/filled gold-container states, edge-to-edge floor backgrounds and a fixed decorative gold pile on every unlocked floor, and separate shaft/cabin/cargo-cat elevator visuals. Cabin stops align with the gold-container centre and use cosmetic easing at every stop; its return route crosses the mine boundary on the same fixed X axis and ends inside a generated surface headhouse with a top gold hopper and right discharge chute. Position the asymmetric tower so its open bay shares the underground shaft axis. The surface uses an original low-contrast blue-sky landscape behind the headhouse, invariant-size empty/filled delivery carts, worker cats, and right-flush warehouse. Every visible worker owns one cart on its independent route pose; runtime texture swaps must reapply one semantic cart display box so differing source resolutions cannot change apparent size. The headhouse and warehouse replace their legacy cards; compact code-rendered level/upgrade badges retain 44×50 touch targets and existing commands. This does not implement deferred Manager gameplay. Use self-hosted Fredoka SemiBold/Bold, icon-led HUD resources including elevator-carried gold, two-decimal abbreviated tiers, and balanced character bounds. This remains inside Step 32 and must pass its validation gate before Step 33 starts.
+**Step 32A approved revision:** Implement the locked `layout1.png` floor composition and first asset pack: walking miner with runtime direction flip, unloading attendant plus empty/filled gold-container states, edge-to-edge floor backgrounds and a fixed decorative gold pile on every unlocked floor, and separate shaft/cabin/cargo-cat elevator visuals. Cabin stops align with the gold-container centre and use cosmetic easing at every stop; its return route crosses the mine boundary on the same fixed X axis and ends inside a generated surface headhouse with a top gold hopper and right discharge chute. Position the asymmetric tower so its open bay shares the underground shaft axis. The surface uses an original low-contrast blue-sky landscape behind the headhouse, invariant-size empty/filled delivery carts, worker cats, and right-flush warehouse. Every visible worker owns one cart on its independent route pose; runtime texture swaps must reapply one semantic cart display box so differing source resolutions cannot change apparent size. The headhouse and warehouse replace their legacy cards; compact code-rendered level/upgrade badges retain 44×50 touch targets and existing commands. This does not implement deferred Manager gameplay. Use self-hosted Fredoka SemiBold/Bold, an icon-led 52 px HUD whose centre reports authoritative `warehouse.inputQueue` with a warehouse icon, two-decimal abbreviated tiers, and balanced character bounds. This remains inside Step 32 and must pass its validation gate before Step 33 starts.
 
 **Step 32A warehouse crew revision:** Keep one base surface-hauler cat and reveal
 one additional presentation-only assistant at each warehouse level multiple of
-10, capped at ten assistants plus the lead at level 100. Arrange assistants in
-independently phase-shifted route positions with shallow personal lane offsets,
+10, capped at ten assistants plus the lead at level 100. Arrange assistants at
+independently phase-shifted horizontal route positions on one shared baseline,
 reuse the current hauler sheet, and do not change throughput, authoritative
 state, or save schema.
 
@@ -242,7 +242,7 @@ authoritative state, or save schema.
 
 ### Step 35: Profile mobile performance
 
-**Instructions:** Measure frame rate, frame time, memory trend, object counts, asset size, and startup time with all four floors active. Use a representative mid-range Android device running Chrome as the base-game benchmark; Telegram WebView verification belongs to the later integration milestone. Remove avoidable per-frame allocations and pool repeated visual effects.
+**Instructions:** Measure frame rate, frame time, memory trend, object counts, asset size, and startup time with all fifteen floors active. Use a representative mid-range Android device running Chrome as the base-game benchmark; Telegram WebView verification belongs to the later integration milestone. Remove avoidable per-frame allocations and pool repeated visual effects.
 
 **Test:** Run a ten-minute representative session. Confirm the game targets 60 FPS, has no sustained memory growth, and retains responsive input; document device/browser and measured results.
 
@@ -260,4 +260,4 @@ authoritative state, or save schema.
 
 ## Definition of Done
 
-The base game is complete only when all 37 step validations pass, the production bundle is playable in a mobile-sized browser, four floors run concurrently, progression is viable, saves and offline rewards are deterministic, no deferred feature has leaked into scope, and all project documentation reflects the delivered state.
+The base game is complete only when all 37 step validations pass, the production bundle is playable in a mobile-sized browser, all fifteen floors can run concurrently, progression is viable, saves and offline rewards are deterministic, no deferred feature has leaked into scope, and all project documentation reflects the delivered state.

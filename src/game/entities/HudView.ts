@@ -18,7 +18,8 @@ import type { HudViewModel } from '../view-model';
 export interface RenderedHudState {
   readonly goldLabel: string;
   readonly goldValueLabel: string;
-  readonly elevatorValueLabel: string;
+  readonly warehouseQueueIconTexture: string;
+  readonly warehouseQueueValueLabel: string;
   readonly incomeLabel: string;
   readonly incomeValueLabel: string;
 }
@@ -32,18 +33,18 @@ const ORIGIN_RIGHT: HorizontalOrigin = 1;
 const COLOR_HUD_BACKGROUND = toFillColor(HUD_BACKGROUND);
 const COLOR_DIVIDER = toFillColor(DIVIDER);
 
-const HUD_INSET_X = 16;
-const HUD_TEXT_INSET_X = 42;
-const HUD_ELEVATOR_ICON_X = 140;
-const HUD_ELEVATOR_VALUE_X = 157;
-const HUD_ICON_Y = 38;
-const LABEL_Y = 16;
-const VALUE_Y = 26;
+const HUD_INSET_X = 14;
+const HUD_TEXT_INSET_X = 38;
+const HUD_WAREHOUSE_QUEUE_ICON_X = 140;
+const HUD_WAREHOUSE_QUEUE_VALUE_X = 157;
+const HUD_ICON_Y = 26;
+const LABEL_Y = 7;
+const VALUE_Y = 16;
 const DIVIDER_HEIGHT = 2;
 
 /**
- * The fixed top HUD: spendable gold on the left, elevator-carried gold in the
- * centre, and the mine's estimated income per second on the right.
+ * The fixed top HUD: spendable gold on the left, the authoritative warehouse
+ * input queue in the centre, and estimated income per second on the right.
  *
  * Its five text objects are created once and only ever re-bound through
  * `applySnapshot`, so a value that changes ten times a second costs a string
@@ -55,7 +56,8 @@ export class HudView {
   readonly #root: Phaser.GameObjects.Container;
   readonly #goldLabel: Phaser.GameObjects.Text;
   readonly #goldValue: Phaser.GameObjects.Text;
-  readonly #elevatorValue: Phaser.GameObjects.Text;
+  readonly #warehouseQueueIcon: Phaser.GameObjects.Image;
+  readonly #warehouseQueueValue: Phaser.GameObjects.Text;
   readonly #incomeLabel: Phaser.GameObjects.Text;
   readonly #incomeValue: Phaser.GameObjects.Text;
 
@@ -77,23 +79,27 @@ export class HudView {
 
     const goldIcon = scene.add
       .image(HUD_INSET_X + 10, HUD_ICON_Y, PLACEHOLDER_TEXTURES.goldCoin)
-      .setDisplaySize(28, 28);
+      .setDisplaySize(24, 24);
     const incomeIcon = scene.add
       .image(
         region.width - HUD_INSET_X - 10,
         HUD_ICON_Y,
         PLACEHOLDER_TEXTURES.mineCart,
       )
-      .setDisplaySize(32, 32);
-    const elevatorIcon = scene.add
-      .image(HUD_ELEVATOR_ICON_X, HUD_ICON_Y, PLACEHOLDER_TEXTURES.elevator)
       .setDisplaySize(28, 28);
+    this.#warehouseQueueIcon = scene.add
+      .image(
+        HUD_WAREHOUSE_QUEUE_ICON_X,
+        HUD_ICON_Y,
+        PLACEHOLDER_TEXTURES.warehouse,
+      )
+      .setDisplaySize(24, 24);
 
     this.#goldLabel = this.#createLabel(scene, HUD_TEXT_INSET_X, ORIGIN_LEFT);
     this.#goldValue = this.#createValue(scene, HUD_TEXT_INSET_X, ORIGIN_LEFT);
-    this.#elevatorValue = this.#createValue(
+    this.#warehouseQueueValue = this.#createValue(
       scene,
-      HUD_ELEVATOR_VALUE_X,
+      HUD_WAREHOUSE_QUEUE_VALUE_X,
       ORIGIN_LEFT,
     );
     // Anchored to the right edge so a long value grows inwards rather than off
@@ -107,11 +113,11 @@ export class HudView {
       background,
       divider,
       goldIcon,
-      elevatorIcon,
+      this.#warehouseQueueIcon,
       incomeIcon,
       this.#goldLabel,
       this.#goldValue,
-      this.#elevatorValue,
+      this.#warehouseQueueValue,
       this.#incomeLabel,
       this.#incomeValue,
     ]);
@@ -125,7 +131,7 @@ export class HudView {
   public applySnapshot(hud: HudViewModel): void {
     this.#goldLabel.setText(hud.goldLabel);
     this.#goldValue.setText(hud.goldValueLabel);
-    this.#elevatorValue.setText(hud.elevatorValueLabel);
+    this.#warehouseQueueValue.setText(hud.warehouseQueueValueLabel);
     this.#incomeLabel.setText(hud.incomeLabel);
     this.#incomeValue.setText(hud.incomeValueLabel);
   }
@@ -134,7 +140,8 @@ export class HudView {
     return {
       goldLabel: this.#goldLabel.text,
       goldValueLabel: this.#goldValue.text,
-      elevatorValueLabel: this.#elevatorValue.text,
+      warehouseQueueIconTexture: this.#warehouseQueueIcon.texture.key,
+      warehouseQueueValueLabel: this.#warehouseQueueValue.text,
       incomeLabel: this.#incomeLabel.text,
       incomeValueLabel: this.#incomeValue.text,
     };
@@ -164,7 +171,7 @@ export class HudView {
       .text(x, VALUE_Y, '', {
         color: TEXT_ACCENT,
         fontFamily: FONT_FAMILY,
-        fontSize: '20px',
+        fontSize: '18px',
         fontStyle: FONT_STYLE_BOLD,
       })
       .setOrigin(originX, 0);

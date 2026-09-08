@@ -12,13 +12,17 @@ const REQUIRED_MILESTONES = [
   { level: 100, multiplier: 4 },
 ] as const satisfies readonly MilestoneConfig[];
 
+export const REQUIRED_MINE_FLOOR_COUNT = 15;
+
 export function validateBaseGameBalance(
   config: BaseGameBalanceConfig,
 ): void {
   assertNonNegativeFinite(config.startingGold, 'startingGold');
 
-  if (config.floors.length !== 4) {
-    throw new Error('Balance config must define exactly four floors.');
+  if (config.floors.length !== REQUIRED_MINE_FLOOR_COUNT) {
+    throw new Error(
+      `Balance config must define exactly ${REQUIRED_MINE_FLOOR_COUNT} floors.`,
+    );
   }
 
   const floorIds = new Set<string>();

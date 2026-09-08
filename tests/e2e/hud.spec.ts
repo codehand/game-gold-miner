@@ -10,6 +10,7 @@ import {
 // The view's own read-back type, imported rather than restated, so a renamed
 // diagnostic field fails type-check instead of silently reading `undefined`.
 import type { RenderedHudState } from '../../src/game/entities';
+import { PLACEHOLDER_TEXTURES } from '../../src/game/assets/placeholderAssets';
 import { formatAmount } from '../../src/game/view-model';
 import { createSaveDocument } from '../../src/persistence';
 
@@ -29,16 +30,16 @@ function createLargeBalanceState(): GameState {
   return {
     ...base,
     gold: GameNumber.from('1.46e16'),
-    elevator: {
-      ...base.elevator,
-      carriedMaterial: GameNumber.from(42.12),
+    warehouse: {
+      ...base.warehouse,
+      inputQueue: GameNumber.from(42.12),
     },
     floors: base.floors.map((floor, index) => {
       return {
         ...floor,
-        isUnlocked: true,
+        isUnlocked: index < 4,
         // Satisfies the configured 5 / 5 / 7 sequential unlock gates.
-        mineShaftLevel: [6, 6, 8, 1][index],
+        mineShaftLevel: [6, 6, 8, 1][index] ?? floor.mineShaftLevel,
       };
     }),
   };
@@ -77,7 +78,10 @@ test('shows abbreviated gold and the mine income estimate', async ({ page }) => 
   // rather than fall back to a serialized exponent.
   expect(hud.goldValueLabel, 'abbreviated gold').toBe('14.60qa');
   expect(hud.goldValueLabel).toBe(formatAmount(fixture.gold));
-  expect(hud.elevatorValueLabel, 'gold carried by the elevator').toBe('42.12');
+  expect(hud.warehouseQueueIconTexture, 'warehouse queue icon').toBe(
+    PLACEHOLDER_TEXTURES.warehouse,
+  );
+  expect(hud.warehouseQueueValueLabel, 'warehouse input queue').toBe('42.12');
   // Derived through the same core calculation the HUD uses, so a balance
   // change cannot silently invalidate the expectation.
   expect(hud.incomeValueLabel, 'income estimate').toBe(

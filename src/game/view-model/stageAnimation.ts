@@ -149,7 +149,7 @@ export function calculateSurfaceHaulerCount(warehouseLevel: number): number {
 }
 
 /**
- * Stagger assistants behind the lead worker in two shallow rows.
+ * Stagger assistants horizontally along the lead worker's single route line.
  * The formation mirrors when the crew returns so helpers never stack exactly.
  */
 export function calculateSurfaceHaulerAssistantOffset(
@@ -165,12 +165,11 @@ export function calculateSurfaceHaulerAssistantOffset(
   }
 
   const column = assistantIndex % 3 + 1;
-  const row = assistantIndex % 2 + 1;
   const direction = facesLeft ? 1 : -1;
 
   return {
     x: direction * column * 8,
-    y: -row * 10,
+    y: 0,
   };
 }
 

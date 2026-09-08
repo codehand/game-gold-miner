@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 
+import { MineShaftUpgradeModal } from '../../ui/MineShaftUpgradeModal';
+
 import { createBacklogTextures } from '../assets/backlogTextures';
 import {
   PLACEHOLDER_ANIMATION_ASSETS,
@@ -77,6 +79,7 @@ import {
   dragMineScroll,
   endMineScrollGesture,
   easeElevatorTravelProgress,
+  resizeMineScrollContent,
   scrollMineByWheel,
   DEFAULT_ANIMATION_SPEED_MULTIPLIER,
   SURFACE_HAULER_ASSISTANT_COUNT,
@@ -202,8 +205,12 @@ export class BootScene extends Phaser.Scene {
   #surfaceHaulerAssistantCarts: readonly Phaser.GameObjects.Image[] = [];
   #surfaceHaulerAssistants: readonly Phaser.GameObjects.Sprite[] = [];
   #surfaceGoldPour: Phaser.GameObjects.Sprite | null = null;
+  #floorUpgradeModal: MineShaftUpgradeModal | null = null;
+  #selectedFloorUpgradeId: string | null = null;
   /** Scroll offset and tap-versus-drag state for the mine; null before `create`. */
   #scroll: MineScrollState | null = null;
+  /** Number of floor rows currently revealed to the player: 5, 10, or 15. */
+  #visibleFloorCount: number;
 
   public constructor(options: BootSceneOptions) {
     super({ key: BOOT_SCENE_KEY });
@@ -215,6 +222,7 @@ export class BootScene extends Phaser.Scene {
 
     this.#source = options.source;
     this.#viewModel = options.source.snapshot;
+    this.#visibleFloorCount = countVisibleFloors(options.source.snapshot);
     this.#animationSpeedMultiplier =
       options.animationSpeedMultiplier ?? DEFAULT_ANIMATION_SPEED_MULTIPLIER;
   }
@@ -246,6 +254,22 @@ export class BootScene extends Phaser.Scene {
     ];
     const mineContent = this.#createMineContent(layout.width);
 
+    this.#floorUpgradeModal = new MineShaftUpgradeModal({
+      parent: this.game.canvas.parentElement ?? document.body,
+      onUpgrade: (floorId, quantity) => {
+        return this.#requestMineShaftBatch(floorId, quantity);
+      },
+      onClose: () => {
+        this.#selectedFloorUpgradeId = null;
+        this.input.enabled = true;
+        this.#publishViewDiagnostics(true);
+      },
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.#floorUpgradeModal?.destroy();
+      this.#floorUpgradeModal = null;
+    });
+
     this.#bindSnapshot(this.#source.snapshot, true);
     this.#applyAnimation();
     this.#applyPurchaseFeedback(this.time.now);
@@ -270,7 +294,7 @@ export class BootScene extends Phaser.Scene {
     this.#mineRegion = layout.mine;
     this.#scroll = createMineScrollState({
       region: layout.mine,
-      contentHeight: calculateMineContentHeight(MINE_FLOOR_COUNT),
+      contentHeight: calculateMineContentHeight(this.#visibleFloorCount),
     });
     this.#bindScrollInput();
 
@@ -323,6 +347,22 @@ export class BootScene extends Phaser.Scene {
     assertRenderableMineViewModel(viewModel, MINE_FLOOR_COUNT);
 
     this.#viewModel = viewModel;
+    const nextVisibleFloorCount = countVisibleFloors(viewModel);
+
+    if (nextVisibleFloorCount !== this.#visibleFloorCount) {
+      this.#visibleFloorCount = nextVisibleFloorCount;
+
+      if (this.#scroll !== null) {
+        this.#scroll = resizeMineScrollContent(
+          this.#scroll,
+          calculateMineContentHeight(nextVisibleFloorCount),
+        );
+        this.#mineCamera?.setScroll(0, this.#scroll.scrollY);
+        this.game.canvas.dataset.layoutMineContentHeight = String(
+          this.#scroll.contentHeight,
+        );
+      }
+    }
 
     if (
       this.#hudView === null ||
@@ -338,6 +378,16 @@ export class BootScene extends Phaser.Scene {
     });
     this.#elevatorView.applySnapshot(viewModel.elevator);
     this.#warehouseView.applySnapshot(viewModel.warehouse);
+    this.#surfaceElevatorTower
+      ?.setTexture(
+        viewModel.warehouse.queueSteps > 0
+          ? PLACEHOLDER_TEXTURES.elevatorTower
+          : PLACEHOLDER_TEXTURES.elevatorTowerEmpty,
+      )
+      .setDisplaySize(
+        SURFACE_ELEVATOR_TOWER_WIDTH,
+        SURFACE_ELEVATOR_TOWER_HEIGHT,
+      );
     this.#surfaceElevatorUpgradeControl?.applySnapshot(
       viewModel.elevator.upgradeControl,
     );
@@ -352,6 +402,18 @@ export class BootScene extends Phaser.Scene {
       'Level',
       String(viewModel.warehouse.level),
     );
+
+    if (this.#selectedFloorUpgradeId !== null) {
+      const selected = viewModel.floors.find(
+        ({ id }) => id === this.#selectedFloorUpgradeId,
+      );
+
+      if (selected?.upgradeModal !== null && selected !== undefined) {
+        this.#floorUpgradeModal?.applySnapshot(selected.upgradeModal);
+      } else {
+        this.#floorUpgradeModal?.close();
+      }
+    }
   }
 
   /**
@@ -384,6 +446,35 @@ export class BootScene extends Phaser.Scene {
     this.#bindSnapshot(this.#source.snapshot, false);
     this.#applyPurchaseFeedback(this.time.now);
     this.#publishViewDiagnostics(true);
+  }
+
+  #openFloorUpgrade(index: number): void {
+    if (this.#scroll?.hasDragged === true) {
+      return;
+    }
+
+    const floor = this.#viewModel.floors[index];
+
+    if (floor?.upgradeModal === null || floor === undefined) {
+      return;
+    }
+
+    this.#selectedFloorUpgradeId = floor.id;
+    // Phaser listens above the canvas as well as on it. A DOM overlay therefore
+    // owns input explicitly while open, so its CTA/close pointer cannot also
+    // activate a surface or mine object underneath.
+    this.input.enabled = false;
+    this.#floorUpgradeModal?.open(floor.upgradeModal);
+    this.#publishViewDiagnostics(true);
+  }
+
+  #requestMineShaftBatch(floorId: string, quantity: number) {
+    const outcome = this.#source.purchaseMineShaftBatch(floorId, quantity);
+
+    this.#bindSnapshot(this.#source.snapshot, false);
+    this.#publishViewDiagnostics(true);
+
+    return outcome;
   }
 
   /**
@@ -526,6 +617,10 @@ export class BootScene extends Phaser.Scene {
 
   #applyAnimation(): void {
     for (const view of this.#floorViews) {
+      if (!view.root.visible) {
+        continue;
+      }
+
       view.applyAnimation(this.#animationTimeMs);
     }
 
@@ -542,11 +637,13 @@ export class BootScene extends Phaser.Scene {
     const goldPour = this.#surfaceGoldPour;
 
     if (haulerCart !== null && haulerCat !== null && goldPour !== null) {
+      // Surface delivery represents material already present in the tower's
+      // warehouse input queue. Elevator cargo still underground or returning
+      // cannot fill a cart or create a pour before it reaches that queue.
+      const towerHasGold = this.#viewModel.warehouse.queueSteps > 0;
       const pose = calculateSurfaceHaulerPose(
         this.#animationTimeMs,
-        this.#viewModel.elevator.isRunning ||
-          this.#viewModel.elevator.queueSteps > 0 ||
-          this.#viewModel.warehouse.queueSteps > 0,
+        towerHasGold,
       );
       const cartX = Phaser.Math.Linear(
         SURFACE_HAULER_START_X,
@@ -588,9 +685,7 @@ export class BootScene extends Phaser.Scene {
 
         const assistantPose = calculateSurfaceHaulerAssistantPose(
           this.#animationTimeMs,
-          this.#viewModel.elevator.isRunning ||
-            this.#viewModel.elevator.queueSteps > 0 ||
-            this.#viewModel.warehouse.queueSteps > 0,
+          towerHasGold,
           index,
           activeHaulerCount,
         );
@@ -985,7 +1080,7 @@ export class BootScene extends Phaser.Scene {
         // Resolved from the current snapshot at press time, not captured here:
         // the control's price and target change as the mine does.
         onUpgrade: () => {
-          this.#requestPurchase(this.#viewModel.floors[index].upgradeControl);
+          this.#openFloorUpgrade(index);
         },
         onUnlock: () => {
           this.#requestPurchase(this.#viewModel.floors[index].unlockControl);
@@ -1013,7 +1108,7 @@ export class BootScene extends Phaser.Scene {
     this.#floorViews.forEach((view, index) => {
       const floor = this.#viewModel.floors[index];
 
-      if (camera === null || mine === null) {
+      if (camera === null || mine === null || !floor.isVisible) {
         return;
       }
 
@@ -1091,7 +1186,7 @@ export class BootScene extends Phaser.Scene {
     canvas.dataset.layoutSurface = serializeRegion(layout.surface);
     canvas.dataset.layoutMine = serializeRegion(layout.mine);
     canvas.dataset.layoutMineContentHeight = String(
-      calculateMineContentHeight(MINE_FLOOR_COUNT),
+      calculateMineContentHeight(this.#visibleFloorCount),
     );
     canvas.dataset.layoutBottomNavigation = 'none';
     canvas.setAttribute('aria-label', 'Cat Mine Idle game canvas');
@@ -1172,7 +1267,9 @@ export class BootScene extends Phaser.Scene {
     }
 
     canvas.dataset.floorViews = JSON.stringify(
-      this.#floorViews.map((view) => view.describeRenderedState()),
+      this.#floorViews
+        .filter((_, index) => this.#viewModel.floors[index].isVisible)
+        .map((view) => view.describeRenderedState()),
     );
     canvas.dataset.surfaceViews = JSON.stringify([
       this.#elevatorView?.describeRenderedState() ?? null,
@@ -1180,6 +1277,9 @@ export class BootScene extends Phaser.Scene {
     ]);
     canvas.dataset.purchaseControls = JSON.stringify(
       this.#describePurchaseControls(),
+    );
+    canvas.dataset.floorUpgradeModal = JSON.stringify(
+      this.#floorUpgradeModal?.describeRenderedState() ?? null,
     );
     canvas.dataset.animation = JSON.stringify({
       speedMultiplier: this.#animationSpeedMultiplier,
@@ -1201,6 +1301,7 @@ export class BootScene extends Phaser.Scene {
       elevatorTower: this.#surfaceElevatorTower === null
         ? null
         : {
+            texture: this.#surfaceElevatorTower.texture.key,
             centerX: this.#surfaceElevatorTower.x,
             centerY: this.#surfaceElevatorTower.y,
             width: this.#surfaceElevatorTower.displayWidth,
@@ -1283,6 +1384,10 @@ export class BootScene extends Phaser.Scene {
       canvas.dataset.mineScroll = JSON.stringify(describeMineScroll(this.#scroll));
     }
   }
+}
+
+function countVisibleFloors(viewModel: MineViewModel): number {
+  return viewModel.floors.filter((floor) => floor.isVisible).length;
 }
 
 /** Counts the full scene graph, including objects nested inside containers. */

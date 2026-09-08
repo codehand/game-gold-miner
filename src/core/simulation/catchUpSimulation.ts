@@ -6,10 +6,11 @@ import { advanceSimulation, MAX_FOREGROUND_DELTA_MS } from './advanceSimulation'
  *
  * The bound exists because catch-up runs inside the frame that discovers the
  * gap, so an unbounded walk would freeze the tab for as long as the player was
- * away. Two hours is what the cap costs at its worst: with all four floors
- * open it walks 72,000 ticks in roughly 50 ms on a development machine, so a
- * mid-range phone pays a few hundred milliseconds once, on the frame the tab
- * comes back. Raising the cap raises that hitch in proportion.
+ * away. The historical four-floor benchmark walked 72,000 ticks in roughly
+ * 50 ms on a development machine; the current fifteen-floor benchmark keeps
+ * this path covered as the mine expands. A mid-range phone pays the catch-up
+ * cost once, on the frame the tab comes back. Raising the cap raises that hitch
+ * in proportion.
  *
  * The value matches `offlineIncome.capDurationMs`, so no absence is credited
  * for longer than two hours however the player spent it, and time past the cap

@@ -128,6 +128,28 @@ function createFixtureState(): GameState {
   };
 }
 
+const REVEAL_GATE_LEVELS = [
+  5, 5, 7, 7, 7, 7, 7, 7, 7, 10, 10, 10, 10, 10, 1,
+] as const;
+
+function createRevealGateState(deepestUnlockedFloor: 5 | 10): GameState {
+  const base = createInitialGameState(BASE_GAME_BALANCE, FIXTURE_TIMESTAMP_MS);
+
+  return {
+    ...base,
+    floors: base.floors.map((floor, index) => {
+      if (index >= deepestUnlockedFloor) {
+        return floor;
+      }
+
+      return withFloor(floor, {
+        isUnlocked: true,
+        mineShaftLevel: REVEAL_GATE_LEVELS[index],
+      });
+    }),
+  };
+}
+
 function withFloor(
   floor: MineFloorState,
   overrides: Partial<MineFloorState>,
@@ -135,7 +157,7 @@ function withFloor(
   return { ...floor, ...overrides };
 }
 
-test('binds four floor views and both shared stages to a known core snapshot', async ({
+test('binds the first floor group and both shared stages to a known core snapshot', async ({
   page,
 }) => {
   const browserErrors: string[] = [];
@@ -186,7 +208,7 @@ test('binds four floor views and both shared stages to a known core snapshot', a
 
   const floors = await readRenderedFloors(page);
 
-  expect(floors).toHaveLength(fixture.floors.length);
+  expect(floors).toHaveLength(5);
 
   fixture.floors.forEach((source, index) => {
     const rendered = floors[index];
@@ -261,9 +283,16 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     );
   });
 
+  expect(floors[4]).toMatchObject({
+    badgeLabel: '5',
+    statusLabel: 'Locked',
+    isLockedAppearance: true,
+  });
+
   expect(floors.map(({ levelLabel }) => levelLabel)).toEqual([
     'Lv 6',
     'Lv 3',
+    'Lv 1',
     'Lv 1',
     'Lv 1',
   ]);
@@ -272,16 +301,19 @@ test('binds four floor views and both shared stages to a known core snapshot', a
     '50%',
     '0%',
     '0%',
+    '0%',
   ]);
   expect(floors.map(({ materialQueueLabel }) => materialQueueLabel)).toEqual([
     '40',
     '20.50',
     '0',
     '0',
+    '0',
   ]);
   expect(floors.map(({ isGoldContainerFilled }) => isGoldContainerFilled)).toEqual([
     true,
     true,
+    false,
     false,
     false,
   ]);
@@ -349,6 +381,52 @@ test('binds four floor views and both shared stages to a known core snapshot', a
   expect(browserErrors).toEqual([]);
 });
 
+for (const scenario of [
+  { deepestUnlockedFloor: 5, visibleFloorCount: 10 },
+  { deepestUnlockedFloor: 10, visibleFloorCount: 15 },
+] as const) {
+  test(`reveals ${scenario.visibleFloorCount} floors after floor ${scenario.deepestUnlockedFloor} opens`, async ({
+    page,
+  }) => {
+    const browserErrors: string[] = [];
+
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        browserErrors.push(message.text());
+      }
+    });
+    page.on('pageerror', (error) => {
+      browserErrors.push(error.message);
+    });
+
+    await page.clock.install({ time: FIXED_TIME });
+    await page.clock.setFixedTime(FIXED_TIME);
+    await seedActiveSave(
+      page,
+      createRevealGateState(scenario.deepestUnlockedFloor),
+    );
+    await page.goto('/');
+
+    const canvas = page.locator(CANVAS_SELECTOR);
+    await expect(canvas).toHaveAttribute(
+      'data-floor-views',
+      new RegExp(`\\"badgeLabel\\":\\"${scenario.visibleFloorCount}\\"`),
+    );
+    const floors = await readRenderedFloors(page);
+
+    expect(floors).toHaveLength(scenario.visibleFloorCount);
+    expect(floors.map(({ badgeLabel }) => Number(badgeLabel))).toEqual(
+      Array.from(
+        { length: scenario.visibleFloorCount },
+        (_, index) => index + 1,
+      ),
+    );
+    expect(floors[scenario.deepestUnlockedFloor - 1].isLockedAppearance).toBe(false);
+    expect(floors[scenario.deepestUnlockedFloor].isLockedAppearance).toBe(true);
+    expect(browserErrors).toEqual([]);
+  });
+}
+
 test('reveals the same level-derived miner crew progression on every floor', async ({
   page,
 }) => {
@@ -379,8 +457,8 @@ test('reveals the same level-derived miner crew progression on every floor', asy
           ...base,
           floors: base.floors.map((floor, index) => ({
             ...floor,
-            isUnlocked: true,
-            mineShaftLevel: levels[index],
+            isUnlocked: index < 4,
+            mineShaftLevel: levels[index] ?? floor.mineShaftLevel,
             extractionProgress: 0.25,
           })),
         };
@@ -417,11 +495,11 @@ test('reveals the same level-derived miner crew progression on every floor', asy
     }, {
       message: 'each floor reveals its miner crew at the same level thresholds',
     })
-    .toEqual([1, 2, 3, 5]);
+    .toEqual([1, 2, 3, 5, 0]);
 
   const floors = await readRenderedFloors(page);
 
-  floors.forEach((floor, index) => {
+  floors.slice(0, 4).forEach((floor, index) => {
     expect(floor.minerCrew, `floor ${index + 1} visible miner read-back`)
       .toHaveLength([1, 2, 3, 5][index]);
     expect(

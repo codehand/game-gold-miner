@@ -9,6 +9,7 @@ export { createHudViewModel, type HudViewModel } from './hudViewModel';
 export {
   assertRenderableMineViewModel,
   calculateMaterialPileSteps,
+  calculateVisibleMineFloorCount,
   createElevatorViewModel,
   createMineFloorViewModel,
   createMineViewModel,
@@ -24,11 +25,20 @@ export {
   type SharedStageViewModelInput,
 } from './mineViewModel';
 export {
+  createMineShaftUpgradeModalViewModel,
+  type MineShaftUpgradeAttributeViewModel,
+  type MineShaftUpgradeModalInput,
+  type MineShaftUpgradeModalViewModel,
+  type MineShaftUpgradeOptionId,
+  type MineShaftUpgradeOptionViewModel,
+} from './mineShaftUpgradeModal';
+export {
   beginMineScrollGesture,
   createMineScrollState,
   describeMineScroll,
   dragMineScroll,
   endMineScrollGesture,
+  resizeMineScrollContent,
   scrollMineByWheel,
   MINE_SCROLL_DRAG_THRESHOLD_PX,
   type MineScrollGesture,

@@ -79,7 +79,7 @@ describe('fixed-step simulation time', () => {
    * sides are not the same calculation: offline income multiplies an analytic
    * rate by time, while catch-up runs the real pipeline, whose routed
    * pickup and per-cycle capacities quantize it to roughly ninety percent of
-   * that rate once all four floors compete for one elevator.
+   * that rate once every unlocked floor competes for one elevator.
    */
   it('keeps background catch-up and route-agnostic offline rewards bounded', () => {
     const initialState = createInitialGameState(

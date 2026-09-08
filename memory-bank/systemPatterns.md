@@ -22,9 +22,10 @@ Persistence and Platform Adapters
 
 ## Core Patterns
 
-- Model mining as a three-stage pipeline: four independent mine shafts → one shared elevator → one shared warehouse.
+- Model mining as a three-stage pipeline: fifteen independent mine shafts → one shared elevator → one shared warehouse.
+- Reveal mine presentation in groups of five: floors 1–5 initially, floors 6–10 once floor 5 opens, and floors 11–15 once floor 10 opens. Hidden floors remain authoritative but create no visible controls and do not extend the active scroll range.
 - Run base-game production automatically without managers or player tapping.
-- Let the shared elevator descend through every unlocked floor in order, load at each stop while capacity remains, and return to the surface when full or after the deepest stop.
+- Let the shared elevator descend through every unlocked floor in order, load at each stop, and continue only when that floor is fully drained and capacity remains; otherwise return to the surface before starting another top-down trip.
 - Upgrade each mine shaft, the elevator, and the warehouse independently; shaft levels derive higher extraction yield, shared-stage levels derive higher capacity, and all upgrades retain queued material and in-progress completion percentage.
 - Derive cumulative level 10/25/50/100 milestone multipliers from the current level for every stage; never store grant flags or mutate bonuses that could be applied twice after reload.
 - Unlock deeper floors only through a distinct immutable command after the immediately previous floor is unlocked at its configured shaft level; deduct once and initialize the target from balance data. Derive what a locked floor shows from the same private predicate that command uses, so the description and the charge cannot disagree.
@@ -32,7 +33,7 @@ Persistence and Platform Adapters
 - Use events/commands between presentation and core logic; never mutate economy state directly from a scene.
 - Advance foreground simulation through 100 ms fixed ticks, retain sub-tick remainder in authoritative state, and credit at most 1,000 ms per update after suspension while consuming the full wall-clock delta.
 - Advance extraction only for unlocked floors, retain normalized overflow progress, and place completed level-adjusted output in the producing floor's local queue without changing spendable gold.
-- Encode the elevator route in its legacy signed cursor: non-negative means descending toward that floor, negative `-(index + 1)` means returning from that floor. Load only on arrival, slow each leg linearly with load up to 75% at full capacity, and deliver only on reaching the surface.
+- Encode the elevator route in its legacy signed cursor: non-negative means descending toward that floor, negative `-(index + 1)` means returning from that floor. Load only on arrival, snap a pickup that consumes the computed remainder to exact configured capacity, never pass a floor whose queue remains, slow each leg linearly with load up to 75% at full capacity, and deliver only on reaching the surface.
 - Clamp accumulated transported material to the producing floor's extracted total at pickup. Fractional yields reach those counters through different arithmetic histories and may otherwise drift by one final decimal digit after many routes; the semantic upper bound is exact and must remain serializable.
 - Advance warehouse conversion only with queued input, consume no more than capacity at a completed cycle, and add converted material 1:1 to spendable and cumulative delivered gold.
 - Within each fixed tick, advance every floor's extraction in configured order, then the shared elevator, then the shared warehouse so stage handoffs are immediately eligible while locked floors remain inert.
@@ -45,6 +46,7 @@ Persistence and Platform Adapters
 - Construct fresh state from validated balance data and an injected timestamp; never read the wall clock inside deterministic state creation.
 - Version every save and test migrations.
 - Route every save candidate through migration dispatch and strict schema/config validation before reconstructing runtime `GameNumber` values; keep this pure document boundary independent of the later IndexedDB adapter.
+- Expand legacy four-floor version-1 payloads to the current fifteen-floor shape before strict validation, preserving the original four floor objects and initializing floors 5–15 as configured locked defaults.
 - Access local storage through an `ActiveSaveRepository`; let the Dexie adapter replace one fixed record, let the coordinator debounce routine writes and absorb failures into diagnostics, and keep browser lifecycle event binding in `src/platform/web/`.
 - Advance authoritative state to the lifecycle event boundary before stamping a hidden/pagehide save. Mirror that exact document synchronously into a validated localStorage journal because document teardown may abort the asynchronous IndexedDB transaction; select only a newer valid journal on the next boot and clear it after IndexedDB catches up.
 - Restore a save only after complete migration, validation, and deserialization; otherwise classify it as corrupt or incompatible, preserve a safe detached diagnostic payload, warn without throwing, and return a fully fresh authoritative state.
@@ -69,9 +71,8 @@ Persistence and Platform Adapters
 - Keep environmental decoration stable. If queue fullness needs a discrete capacity signal, expose it through the receiving container, amount label, or diagnostic rather than hiding, blinking, or rescaling a fixed landmark.
 - Let visual workforce milestones derive from an existing authoritative level,
   not new saved presentation state. Pool the maximum crew once, reveal only the
-  reached assistants, phase-shift each worker around the cosmetic route, and
-  apply shallow personal lane offsets so progression is readable without
-  copying transforms or changing production throughput.
+  reached assistants, and phase-shift each worker horizontally around one
+  shared route baseline without copying transforms or changing throughput.
 - Reuse that workforce rule per mine floor: one base miner plus one assistant
   every 50 shaft levels through level 200. Apply the same pure count function to
   every floor view, cap the pool at five visible miners, and keep all assistant
@@ -79,11 +80,23 @@ Persistence and Platform Adapters
 - Pool one cart beside every pooled surface worker and bind both objects to the
   same independent route pose. A visible cat without its own visible cart, or
   multiple cats sharing the lead cart, violates the workforce presentation.
+- Treat `warehouse.inputQueue` as the sole material source for the entire
+  surface-delivery presentation. Elevator cargo is still in transit: it must
+  not enable the gold-pour effect, filled carts, or loaded hauler poses before
+  the core transfers it into the tower queue at surface arrival.
 - Keep one lowercase magnitude-tier resolver shared by every number surface,
   including DOM overlays, so HUD, prices, queues, income, and offline rewards
   cannot disagree about suffix boundaries.
 - Keep rendering steps free of interaction: a step that renders a control renders it inert, and the later ordered step adds costs, affordability, commands, and feedback.
 - Model every purchase as one control: a labelled button with a price that either can or cannot be pressed to effect right now. A second kind of purchase reuses the button, the command sink, the feedback, and the diagnostic rather than duplicating them.
+- Separate floor selection from floor purchase: the compact Level badge opens a
+  detail overlay and never spends by itself. Derive x1, x5, and MAX quotes from
+  the same geometric core cost function the batch command charges, and commit
+  one immutable state transition plus one persistence notification per CTA.
+- When a DOM modal overlays a Phaser canvas, disable scene input for the whole
+  modal lifetime. DOM pointer events can still be observed by Phaser's global
+  listeners; visual coverage alone does not prevent a close/CTA gesture from
+  activating the game object underneath.
 - Enable a control from everything the purchase needs, not from the price alone; put a second requirement beside the button as its own line, and colour it by whether it is met, so a player short of gold is not told to keep upgrading.
 - Give a slot exactly one live control and assert it: two overlapping buttons on one panel is a rendering bug the view model can catch before the scene draws it.
 - Name only the refusals a player can act on. Every other core failure is a press that should not have been reachable, and reads as unavailable rather than as advice the player cannot use.
@@ -111,6 +124,7 @@ Persistence and Platform Adapters
 - Let the surface that owns a gesture claim it in CSS as well as in code: without `touch-action: none` a browser can start panning the page and no canvas listener can take the gesture back.
 - Publish whether an element is actually reachable, not only where it is: a scrolled-away control's rectangle outlives the control, and a test aiming at it would press whatever took its place.
 - Format every displayed amount through one shared function, so a value never reads one way in the HUD and another in the mine.
+- Bind the HUD centre value and warehouse icon to `warehouse.inputQueue`, the authoritative queue awaiting warehouse conversion, rather than `elevator.carriedMaterial` in transit.
 - Self-host the approved game font and await its required weights before creating Canvas text; otherwise the renderer rasterizes a fallback that does not automatically become the intended face. Keep font family and SemiBold/Bold weights as shared presentation constants.
 - Truncate a displayed balance rather than rounding it: a number that reads higher than it is promises a purchase the player cannot make.
 - Read a magnitude through the numeric boundary's own mantissa and exponent, never through `Number`, which collapses everything past its range to the same value.

@@ -11,7 +11,7 @@ export const GAME_WIDTH = 360;
 export const GAME_HEIGHT = 640;
 
 /** Fixed top HUD that never scrolls with the mine. */
-export const HUD_HEIGHT = 72;
+export const HUD_HEIGHT = 52;
 /**
  * Surface strip holding the shared elevator and warehouse.
  *
@@ -69,8 +69,9 @@ export const FLOOR_SLOT_HEIGHT = 132;
 /** Floor art tiles edge-to-edge so the brown mine backdrop stays continuous. */
 export const FLOOR_SLOT_GAP = 0;
 
-/** Base-game floor count; deeper mines are out of scope. */
-export const MINE_FLOOR_COUNT = 4;
+/** Full mine depth. Presentation reveals these floors in groups of five. */
+export const MINE_FLOOR_COUNT = 15;
+export const MINE_FLOOR_REVEAL_GROUP_SIZE = 5;
 
 /**
  * Smallest side of anything the player presses, in logical pixels.

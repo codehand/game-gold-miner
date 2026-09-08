@@ -196,18 +196,18 @@ describe('surface hauler loop', () => {
     expect(calculateSurfaceHaulerCount(101)).toBe(11);
   });
 
-  it('arranges assistants in mirrored rows instead of exact overlap', () => {
+  it('spaces assistants horizontally on one mirrored route line', () => {
     expect(calculateSurfaceHaulerAssistantOffset(0, false)).toEqual({
       x: -8,
-      y: -10,
+      y: 0,
     });
     expect(calculateSurfaceHaulerAssistantOffset(4, false)).toEqual({
       x: -16,
-      y: -10,
+      y: 0,
     });
     expect(calculateSurfaceHaulerAssistantOffset(5, true)).toEqual({
       x: 24,
-      y: -20,
+      y: 0,
     });
   });
 

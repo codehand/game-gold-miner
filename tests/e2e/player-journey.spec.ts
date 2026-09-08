@@ -506,6 +506,12 @@ async function pressPurchaseControl(page: Page, key: string): Promise<void> {
     box.x + (control.screenBounds.x + control.screenBounds.width / 2) * scaleX,
     box.y + (control.screenBounds.y + control.screenBounds.height / 2) * scaleY,
   );
+
+  if (key.startsWith('mine-shaft:')) {
+    await expect(page.getByTestId('mine-upgrade-modal')).toBeVisible();
+    await page.getByTestId('mine-upgrade-x1').click();
+    await page.getByTestId('mine-upgrade-close').click();
+  }
 }
 
 async function readPurchaseControl(

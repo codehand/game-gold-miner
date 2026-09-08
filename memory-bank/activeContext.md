@@ -2,10 +2,15 @@
 
 ## Current Focus
 
-Implementation Plan Step 36 is implemented with a passing production-bundle smoke suite and awaits user review. The user validated Step 35 by explicitly authorizing Step 36 on 2026-09-03 and required work to stop before Step 37. Step 37 has not started.
+Implementation Plan Step 36 remains implemented and Step 37 has not started. The 2026-09-08 live-browser review now includes the compact warehouse-queue HUD, progressive fifteen-floor disclosure, filled/empty tower hopper, strict top-down elevator pickup priority, and one-baseline surface-hauler formation.
 
 ## Recent Changes
 
+- Completed the 2026-09-08 HUD queue clarification: the centre slot now uses the warehouse icon, reads only authoritative `warehouse.inputQueue`, and exposes the unambiguous `warehouseQueueValueLabel` diagnostic. Nine focused unit assertions and two Chromium HUD regressions pass.
+- Completed the 2026-09-08 tower-hopper feedback independently: `BootScene` swaps between filled and empty 512×512 headhouse textures from `warehouse.queueSteps`, so zero `warehouse.inputQueue` exposes an empty steel bin and any positive queue restores the gold pile. The generated edit is recorded in the asset manifest; four asset unit tests and two focused Chromium regressions pass.
+- Completed the 2026-09-08 elevator priority bug independently: a cabin continues deeper only after the current floor queue is fully drained and capacity remains. Filling the computed remainder now snaps cargo to the authoritative capacity, preventing decimal round-off from making a full cabin appear fractionally under capacity. Thirty-two focused elevator/driver/time tests pass, including the `50.005` capacity regression.
+- Completed the 2026-09-08 surface-crew alignment feedback independently: every assistant retains its phase-shifted horizontal route position and personal cart, but all cat and cart Y offsets are now zero so the full crew shares the lead baseline. Thirty-one animation unit tests and one focused Chromium crew regression pass.
+- Completed aggregate verification on 2026-09-08: all 322 unit tests, 38 Chromium E2E tests, 9 production smoke tests, lint, strict build, and `git diff --check` pass. Direct inspection of `http://127.0.0.1:5174/` reports the warehouse icon/value, empty-hopper texture at queue zero, shared crew baselines, one canvas, and no console errors.
 - Analyzed the supplied 8.56-second gameplay video.
 - Created `memory-bank/game-design-document.md` with the core loop, systems, UI, MVP, and uncertainties.
 - Selected a web-first Phaser/TypeScript stack in `memory-bank/tech-stack.md`.
@@ -577,9 +582,17 @@ Implementation Plan Step 36 is implemented with a passing production-bundle smok
   production smoke tests, lint, the strict production build, and
   `git diff --check` pass. Save document and IndexedDB schema versions remain 1.
 
+The newest tower-empty feedback is complete and recorded immediately: every surface delivery visual now reads only `warehouse.inputQueue` through `warehouse.queueSteps > 0`. Elevator cargo can no longer make the chute pour, a cart fill, or a hauler carry gold before the cabin actually delivers to the tower. A browser regression holds elevator cargo in transit while forcing the tower queue to zero and proves both sampled poses keep the empty tower/cart textures and hide the pour; the two focused surface-cart browser tests pass. Save document and IndexedDB schema versions remain 1.
+
+The mine-floor popup feedback is also complete and recorded immediately. A Level badge now opens an accessible DOM detail dialog without purchasing; it shows current level, output/cycle, cycle time, waiting gold, next output, and x1/x5/MAX CTAs derived from exact core batch quotes. Batch purchases are atomic, preserve production state, persist once, and rebind the open dialog immediately. Phaser input is disabled while the popup is visible after regression testing exposed a close-button gesture reaching the warehouse underneath. Final evidence: lint, 327 unit tests, all 40 Chromium E2E flows, the strict production build, all nine optimized-bundle smoke tests, and `git diff --check` pass. Direct in-app browser review at `http://localhost:5174/` confirms the responsive popup, correct four attributes, x1/x5/MAX prices, an x5 transition from Level 1 to Level 6, an unchanged warehouse level (no click-through), and no console errors. Save document and IndexedDB schemas remain version 1; no database fields changed.
+
 ## Next Steps
 
-1. Wait for the user to review the Step 36 production-bundle smoke suite.
+The follow-up HUD clarification renames the centre field and rendered diagnostic to `warehouseQueueValueLabel` and replaces the elevator icon with the warehouse icon. The value remains sourced directly from authoritative `warehouse.inputQueue`; this is a semantic/UI correction only and does not change conversion timing, economy state, or save/database schema.
+
+The 2026-09-07 browser-feedback revision is implemented: `HUD_HEIGHT` is 52, the centre HUD value reads `warehouse.inputQueue`, and balance/state/view construction now supports exactly fifteen floors. Floors 1–5 are visible initially; opening floor 5 expands the mine to floors 1–10, and opening floor 10 expands it to floors 1–15 without restarting the scene. The active scroll range resizes with each reveal while retaining the current scroll position. Save document and IndexedDB versions remain 1; legacy four-floor version-1 documents are expanded to the fifteen-floor shape before strict validation, preserving floors 1–4 and adding locked configured defaults. The game UI/UX skill guided the compact fixed-region and progressive-disclosure implementation without weakening safe-area scaling or touch targets. Automated evidence: 321 unit tests, 37 Chromium E2E tests, all nine production smoke tests, lint, build, and `git diff --check` pass; direct in-app browser inspection confirms the 52 px HUD, five initially visible floors, and no console errors.
+
+1. Ask the user to review the three applied browser-feedback changes.
 2. Do not begin Step 37 without explicit user authorization.
 3. Keep the outstanding physical mid-range Android Chrome pass on the record as
    a Step 35 caveat to close before the milestone is called done.

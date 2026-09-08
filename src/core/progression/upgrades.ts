@@ -44,6 +44,92 @@ export function calculateMineShaftUpgradeCost(
   return calculateNextUpgradeCost(floor.mineShaftLevel, config.upgrade);
 }
 
+export function calculateMineShaftUpgradeBatchCost(
+  floor: MineFloorState,
+  config: MineFloorConfig,
+  quantity: number,
+): GameNumber {
+  if (floor.id !== config.id) {
+    throw new Error(
+      `Floor state ${floor.id} does not match balance configuration ${config.id}.`,
+    );
+  }
+
+  validateUpgradeQuantity(floor.mineShaftLevel, quantity);
+
+  const firstCost = calculateNextUpgradeCost(
+    floor.mineShaftLevel,
+    config.upgrade,
+  );
+
+  if (quantity === 1) {
+    return firstCost;
+  }
+
+  const growth = config.upgrade.costGrowthRate;
+
+  if (growth === 1) {
+    return firstCost.multiply(quantity);
+  }
+
+  return firstCost
+    .multiply(integerPower(growth, quantity).subtract(1))
+    .divide(growth - 1);
+}
+
+export function calculateMaxAffordableMineShaftUpgradeQuantity(
+  floor: MineFloorState,
+  config: MineFloorConfig,
+  gold: GameNumber,
+): number {
+  const maximum = Number.MAX_SAFE_INTEGER - floor.mineShaftLevel;
+
+  if (
+    maximum < 1 ||
+    gold.lessThan(calculateMineShaftUpgradeCost(floor, config))
+  ) {
+    return 0;
+  }
+
+  let affordable = 1;
+  let unaffordable = Math.min(2, maximum);
+
+  while (
+    unaffordable < maximum &&
+    gold.greaterThanOrEqualTo(
+      calculateMineShaftUpgradeBatchCost(floor, config, unaffordable),
+    )
+  ) {
+    affordable = unaffordable;
+    unaffordable = Math.min(unaffordable * 2, maximum);
+  }
+
+  if (
+    unaffordable === maximum &&
+    gold.greaterThanOrEqualTo(
+      calculateMineShaftUpgradeBatchCost(floor, config, maximum),
+    )
+  ) {
+    return maximum;
+  }
+
+  while (unaffordable - affordable > 1) {
+    const candidate = affordable + Math.floor((unaffordable - affordable) / 2);
+
+    if (
+      gold.greaterThanOrEqualTo(
+        calculateMineShaftUpgradeBatchCost(floor, config, candidate),
+      )
+    ) {
+      affordable = candidate;
+    } else {
+      unaffordable = candidate;
+    }
+  }
+
+  return affordable;
+}
+
 export function calculateElevatorUpgradeCost(
   elevator: ElevatorState,
   config: SharedStageConfig,
@@ -67,6 +153,15 @@ export function purchaseMineShaftUpgrade(
   floorId: string,
   config: BaseGameBalanceConfig,
 ): UpgradePurchaseResult {
+  return purchaseMineShaftUpgrades(state, floorId, 1, config);
+}
+
+export function purchaseMineShaftUpgrades(
+  state: GameState,
+  floorId: string,
+  quantity: number,
+  config: BaseGameBalanceConfig,
+): UpgradePurchaseResult {
   const floorIndex = state.floors.findIndex(({ id }) => id === floorId);
 
   if (floorIndex === -1) {
@@ -75,7 +170,7 @@ export function purchaseMineShaftUpgrade(
 
   const floor = state.floors[floorIndex];
   const floorConfig = findFloorConfig(config, floorId);
-  const cost = calculateMineShaftUpgradeCost(floor, floorConfig);
+  const cost = calculateMineShaftUpgradeBatchCost(floor, floorConfig, quantity);
 
   if (!floor.isUnlocked) {
     return failure(state, cost, 'floor-locked');
@@ -91,12 +186,29 @@ export function purchaseMineShaftUpgrade(
       gold: state.gold.subtract(cost),
       floors: state.floors.map((currentFloor, index) => {
         return index === floorIndex
-          ? { ...currentFloor, mineShaftLevel: currentFloor.mineShaftLevel + 1 }
+          ? {
+              ...currentFloor,
+              mineShaftLevel: currentFloor.mineShaftLevel + quantity,
+            }
           : currentFloor;
       }),
     },
     cost,
   );
+}
+
+function validateUpgradeQuantity(currentLevel: number, quantity: number): void {
+  validateUpgradeableLevel(currentLevel);
+
+  if (
+    !Number.isSafeInteger(quantity) ||
+    quantity < 1 ||
+    quantity > Number.MAX_SAFE_INTEGER - currentLevel
+  ) {
+    throw new Error(
+      'Upgrade quantity must be a positive safe integer that leaves a safe level.',
+    );
+  }
 }
 
 export function purchaseElevatorUpgrade(

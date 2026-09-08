@@ -108,6 +108,31 @@ export function createMineScrollState(
 }
 
 /**
+ * Changes the revealed mine depth while retaining the player's current place.
+ * Unlocking floors 5 and 10 expands the content after the release that bought
+ * them, so no live gesture needs to survive the resize.
+ */
+export function resizeMineScrollContent(
+  state: MineScrollState,
+  contentHeight: number,
+): MineScrollState {
+  const resized = createMineScrollState({
+    region: state.region,
+    contentHeight,
+  });
+
+  if (contentHeight === state.contentHeight) {
+    return state;
+  }
+
+  return {
+    ...resized,
+    scrollY: clampScrollY(state.scrollY, resized.maxScrollY),
+    hasDragged: state.hasDragged,
+  };
+}
+
+/**
  * Starts tracking a pointer, and clears the previous gesture's tap suppression.
  *
  * Every press is tracked, not only one that landed on the mine, because the two

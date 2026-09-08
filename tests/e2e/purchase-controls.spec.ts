@@ -3,6 +3,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   calculateElevatorUpgradeCost,
+  calculateMaxAffordableMineShaftUpgradeQuantity,
+  calculateMineShaftUpgradeBatchCost,
   calculateMineShaftUpgradeCost,
   calculateWarehouseUpgradeCost,
   createInitialGameState,
@@ -91,7 +93,7 @@ function nextCosts(state: GameState) {
   };
 }
 
-test('refuses an unaffordable upgrade and changes nothing', async ({ page }) => {
+test('opens floor details and disables unaffordable upgrade choices', async ({ page }) => {
   const errors = collectBrowserErrors(page);
   const fixture = createFixtureState(GameNumber.from(1));
 
@@ -105,12 +107,13 @@ test('refuses an unaffordable upgrade and changes nothing', async ({ page }) => 
   );
 
   await pressPurchaseControl(page, FLOOR_1_KEY);
+  const modal = page.getByTestId('mine-upgrade-modal');
 
-  await expect
-    .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).feedbackLabel, {
-      message: 'a refused press must say why',
-    })
-    .toBe('Need more gold');
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole('heading', { name: 'Floor 1' })).toBeVisible();
+  await expect(page.getByTestId('mine-upgrade-x1')).toBeDisabled();
+  await expect(page.getByTestId('mine-upgrade-x5')).toBeDisabled();
+  await expect(page.getByTestId('mine-upgrade-max')).toBeDisabled();
 
   const after = await readCoreState(page);
 
@@ -118,13 +121,9 @@ test('refuses an unaffordable upgrade and changes nothing', async ({ page }) => 
   expect(after.mineShaftLevels, 'a refusal must not raise a level').toEqual(
     before.mineShaftLevels,
   );
-  // The refusal covers the price while it is showing, so the price is checked
-  // once it has cleared: a refused press must leave the same figure behind.
-  await expect
-    .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).costLabel, {
-      message: 'the price must be unchanged',
-    })
-    .toBe(control.costLabel);
+  expect((await readPurchaseControl(page, FLOOR_1_KEY)).costLabel).toBe(
+    control.costLabel,
+  );
   expect(errors).toEqual([]);
 });
 
@@ -144,12 +143,15 @@ test('buys one mine-shaft level, deducting the price once', async ({ page }) => 
   expect(beforeControl.costLabel).toBe('5');
 
   await pressPurchaseControl(page, FLOOR_1_KEY);
+  const modal = page.getByTestId('mine-upgrade-modal');
 
-  await expect
-    .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).feedbackLabel, {
-      message: 'a completed purchase must confirm itself',
-    })
-    .toBe('Upgraded!');
+  await expect(modal).toBeVisible();
+  expect(
+    (await readCoreState(page)).mineShaftLevels,
+    'opening details must not buy anything',
+  ).toEqual(before.mineShaftLevels);
+  await page.getByTestId('mine-upgrade-x1').click();
+  await expect(modal.getByText('Upgraded x1')).toBeVisible();
 
   const after = await readCoreState(page);
 
@@ -171,12 +173,56 @@ test('buys one mine-shaft level, deducting the price once', async ({ page }) => 
   // feedback came from rebinding text, not from rebuilding the control.
   expect(after.displayObjectCount).toBe(before.displayObjectCount);
 
-  // Once the confirmation expires the compact badge shows the new level.
+  // The compact badge and still-open modal both rebind to the new level.
   await expect
     .poll(async () => (await readPurchaseControl(page, FLOOR_1_KEY)).costLabel, {
       message: 'the level badge must follow the new level',
     })
     .toBe('6');
+  await expect(modal.getByText('Level 6')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('shows floor attributes and buys every affordable level with MAX', async ({
+  page,
+}) => {
+  const errors = collectBrowserErrors(page);
+  const fixture = createFixtureState(GameNumber.from(1_000));
+  const floor = fixture.floors[0];
+  const config = BASE_GAME_BALANCE.floors[0];
+  const quantity = calculateMaxAffordableMineShaftUpgradeQuantity(
+    floor,
+    config,
+    fixture.gold,
+  );
+  const cost = calculateMineShaftUpgradeBatchCost(floor, config, quantity);
+  const before = await bootDriverFixture(page, fixture);
+
+  await pressPurchaseControl(page, FLOOR_1_KEY);
+
+  const modal = page.getByTestId('mine-upgrade-modal');
+
+  await expect(modal).toContainText('Output / cycle');
+  await expect(modal).toContainText('Cycle time');
+  await expect(modal).toContainText('Gold waiting');
+  await expect(modal).toContainText('Next output');
+  await expect(page.getByTestId('mine-upgrade-x1')).toContainText('x1');
+  await expect(page.getByTestId('mine-upgrade-x5')).toContainText('x5');
+  await expect(page.getByTestId('mine-upgrade-max')).toContainText(
+    `MAX x${quantity}`,
+  );
+
+  await page.getByTestId('mine-upgrade-max').click();
+
+  const after = await readCoreState(page);
+
+  expect(after.mineShaftLevels[0]).toBe(before.mineShaftLevels[0] + quantity);
+  expect(
+    GameNumber.deserialize(after.gold).equals(
+      GameNumber.deserialize(before.gold).subtract(cost),
+    ),
+  ).toBe(true);
+  await expect(modal).toContainText(`Level ${after.mineShaftLevels[0]}`);
   expect(errors).toEqual([]);
 });
 

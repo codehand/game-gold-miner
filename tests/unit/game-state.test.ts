@@ -10,7 +10,7 @@ import {
 const TIMESTAMP_MS = 1_788_000_000_000;
 
 describe('initial authoritative game state', () => {
-  it('creates the configured four-floor starting state', () => {
+  it('creates the configured fifteen-floor starting state', () => {
     const state = createInitialGameState(BASE_GAME_BALANCE, TIMESTAMP_MS);
 
     expect(state.saveVersion).toBe(INITIAL_SAVE_VERSION);
@@ -19,13 +19,11 @@ describe('initial authoritative game state', () => {
     expect(state.simulationRemainderMs).toBe(0);
     expect(state.gold).toBeInstanceOf(GameNumber);
     expect(state.gold.equals(BASE_GAME_BALANCE.startingGold)).toBe(true);
-    expect(state.floors).toHaveLength(4);
-    expect(state.floors.map(({ isUnlocked }) => isUnlocked)).toEqual([
+    expect(state.floors).toHaveLength(15);
+    expect(state.floors[0].isUnlocked).toBe(true);
+    expect(state.floors.slice(1).every(({ isUnlocked }) => !isUnlocked)).toBe(
       true,
-      false,
-      false,
-      false,
-    ]);
+    );
 
     state.floors.forEach((floor, index) => {
       const config = BASE_GAME_BALANCE.floors[index];
@@ -63,7 +61,7 @@ describe('initial authoritative game state', () => {
       state.warehouse.conversionProgress,
     ];
 
-    expect(progressValues).toHaveLength(6);
+    expect(progressValues).toHaveLength(17);
     expect(progressValues.every((progress) => progress >= 0 && progress < 1)).toBe(
       true,
     );
