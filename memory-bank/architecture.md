@@ -290,8 +290,8 @@ reward, and once after boot reconcile. Boot never waits on the network.
 
 ## Server Stack Contract
 
-Landed in server-milestone Steps 4 and 5, both on 2026-09-08. The whole backend
-runs locally through the Supabase CLI, pinned at 2.117.0 as an exact
+Landed in server-milestone Steps 4 through 6, all on 2026-09-08. The whole
+backend runs locally through the Supabase CLI, pinned at 2.117.0 as an exact
 devDependency so a clean checkout resolves the same version rather than
 whatever is installed globally. `.github/workflows/ci.yml` runs a `client` job
 (`npm run verify`) and a `server` job (`npm run verify:server`) on every push
@@ -305,7 +305,13 @@ supabase/
 │   ├── 20260908120000_bootstrap_platform_requirements.sql
 │   └── 20260908130000_create_platform_tables.sql
 └── functions/
-    └── save-sync/index.ts          the save-sync protocol's one HTTP surface
+    ├── save-sync/index.ts          the save-sync protocol's one HTTP surface
+    ├── core-portability-check/     Step 6 proof, not part of the protocol
+    │   ├── index.ts
+    │   └── (imports ../_shared/generated/core-bundle.js — see below)
+    └── _shared/
+        ├── coreBundleEntry.ts      pure re-export; the bundler's real entry
+        └── generated/              git-ignored; `npm run build:server-core`
 ```
 
 Local ports are the CLI defaults and do not collide with the client's 5173,
@@ -352,6 +358,48 @@ local-only fixture guest so Studio shows a real row without the Step 8 sign-in
 flow existing yet; `saves`, `save_audit`, `leaderboard_entries`, and
 `entitlements` stay unseeded until the steps that produce real rows for them
 (16, 26, 31) exist.
+
+**`src/core`, `src/config`, and the save-document boundary run on Deno,
+unmodified, via a generated bundle rather than a raw import.** Deno's edge
+runtime does not append a `.ts` extension to an extension-less relative
+specifier — `src/core/index.ts`'s own `from './economy/calculateProductionRates'`
+fails to resolve unmodified inside it, a blocker independent of and prior to
+`break_infinity.js`, discovered empirically while implementing Step 6 and
+recorded as finding F10 in `memory-bank/server-threat-model.md` §8. `npm run
+build:server-core` (`vite.server-core.config.ts`, Vite library mode) compiles
+`supabase/functions/_shared/coreBundleEntry.ts` — a zero-logic file whose only
+content is `export * from '../../../src/core'` and its two siblings — into
+`supabase/functions/_shared/generated/core-bundle.js`: one dependency-free ES
+module with every specifier already resolved, `break_infinity.js` included,
+inlined by the same resolution the client bundle already relies on. That
+resolves finding F2 (`break_infinity.js` importing into Deno was unproven): it
+imports cleanly once bundled, and no shim was needed. The bundle is
+git-ignored and rebuilt by `npm run verify:server` before the stack starts, so
+it is a build artifact rather than a maintained copy and cannot drift from
+`src/` the way a hand-forked port could.
+
+`supabase/functions/core-portability-check` imports that bundle and, on
+request, runs a fixed input document (`tests/fixtures/ten-minute-core-fixture.json`)
+through the real `migrateSaveDocument` → `validateSaveDocument` →
+`deserializeSaveDocument` → one explicit `advanceSimulation` tick →
+`catchUpSimulation` for the remaining 599,900 ms → `createSaveDocument`, and
+returns the resulting document. `tests/unit/server-core-portability.test.ts`
+runs the identical sequence against the unbundled source and pins the same
+result (gold `"100"` → `"3080"` over ten minutes); `npm run verify:server`
+fetches the live function and asserts its response is byte-for-byte identical
+to that pinned document. This function is not part of the save-sync protocol
+and carries no protocol version prefix; `verify_jwt = false` because it reads
+and writes no data, the same reasoning as the health route.
+
+`eslint.config.mjs` extends `src/core/**/*.ts`'s purity rules with a
+`no-restricted-globals` entry for `Deno` and a `no-restricted-imports` pattern
+for any specifier matching `(^|/)supabase(/|$)` — the boundary runs one
+direction only, `supabase/` importing `src/core`, never the reverse.
+`tests/unit/architecture.test.ts` probes both. Mutation-proven end to end:
+doubling a floor's extraction yield in
+`src/core/simulation/advanceSimulation.ts` broke the pinned client assertion
+and moved the live function's returned gold from `3080` to `6060` in the same
+run, before the edit was reverted.
 
 **The secret boundary is the `VITE_` prefix.** Vite inlines `VITE_`-prefixed
 variables into the browser bundle, so that prefix separates a public value from

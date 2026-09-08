@@ -36,10 +36,11 @@ jobs:
       - run: npm run verify
 
   server:
-    name: Server gate (Supabase migrations from empty, health check)
+    name: Server gate (migrations from empty, health check, core portability)
     runs-on: ubuntu-latest
-    # The health check retries for 20 s against a cold-starting edge runtime;
-    # a runtime that never comes up must fail the job rather than hold a runner.
+    # Two independent checks each retry for up to ~20 s against a cold-starting
+    # edge runtime (health, then core-portability-check); a worker that never
+    # comes up must fail the job rather than hold a runner indefinitely.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

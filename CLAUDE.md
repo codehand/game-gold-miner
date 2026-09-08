@@ -20,6 +20,15 @@ or writes any of it yet. `.github/workflows/ci.yml` gates every push and pull
 request with a `client` job (`npm run verify`) and a `server` job
 (`npm run verify:server`).
 
+`src/core`, `src/config`, and `src/persistence/saveSchema.ts` also run
+unmodified inside a Deno Edge Function, `supabase/functions/core-portability-check`
+— not part of the save-sync protocol, just proof this works. Deno does not
+extension-complete a relative specifier the way the client's bundler does, so
+the function imports a Vite-built bundle (`npm run build:server-core`, from the
+zero-logic `supabase/functions/_shared/coreBundleEntry.ts`) rather than a raw
+relative import; that bundle is git-ignored and rebuilt before every
+`npm run verify:server` run.
+
 ## Commands
 
 ```bash
@@ -32,8 +41,9 @@ npm run test:prod      # build dist/, serve it from / on :4175, run the producti
 npm run verify         # lint → test → test:e2e → build → scan:secrets → test:prod (the full gate)
 npm run scan:secrets   # fail if dist/ carries a service-role key or other non-public secret
 npm run supabase:start # local Supabase stack in Docker (supabase:stop / :reset / :status)
-npm run verify:server  # local stack: starts, applies migrations from empty, health check (needs Docker)
+npm run verify:server  # local stack: starts, migrations, health, core-portability check (needs Docker)
 npm run verify:all     # verify && verify:server, in sequence
+npm run build:server-core # bundle src/core+config+saveSchema.ts for the Deno Edge Function
 npm run test:perf      # optional ten-minute Chrome benchmark (Pixel 5 emulation, 4x CPU throttle)
 npm run dev:sim        # boot iPhone Simulator + Safari + serve-sim stream (macOS/Xcode)
 npm run sim:list       # list active simulator streams

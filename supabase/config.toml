@@ -384,6 +384,15 @@ allow_dynamic_registration = false
 enabled = true
 verify_jwt = false
 
+# Server-milestone Step 6 proof, not part of the save-sync protocol: reproduces
+# a fixed ten-minute simulation run through the real `src/core`/`src/config`/
+# save-document code and returns the result for a client-side test to compare
+# against. It reads and writes nothing, so it is exempt from auth the same way
+# the health route is.
+[functions.core-portability-check]
+enabled = true
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

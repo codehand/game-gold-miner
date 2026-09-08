@@ -371,7 +371,10 @@ Step 1's test requires that no step's instructions rest on an unrecorded
 assumption. Auditing all 37 steps against §7 found nine, listed below and traced
 step by step in §9. Eight now carry a recorded default; F5 is left open because
 closing it means adding a step. Each names the step whose instructions must
-absorb it before that step begins.
+absorb it before that step begins. A tenth, F10, was not found by this audit —
+it surfaced empirically while implementing Step 6, which is exactly the kind of
+gap an audit of *stated* assumptions cannot catch, and is recorded here with the
+same numbering rather than in a separate list.
 
 **F1 — Step 12 presumes a Telegram Mini App host that does not exist.**
 Recorded in §7.3. Step 12 gains an explicit prerequisite.
@@ -383,11 +386,44 @@ installed package is version 2.2.0 with `main: dist/break_infinity.common.js`
 (CommonJS) and `module: dist/break_infinity.esm.js`; it declares no `type`
 field. Deno's npm specifier support makes this very likely to work and it is
 not proven.
-**Default:** treat it as unproven. Step 6's first action is to import
-`GameNumber` in a Deno Edge Function and evaluate one arithmetic result before
-any other Step 6 work. If it fails, the fallback is a thin ESM shim at the
-`GameNumber` boundary — never a reimplementation of `GameNumber` itself, which
-would be exactly the drift Step 6 exists to prevent.
+**Resolved at Step 6, 2026-09-08 — it imports cleanly, once bundled.** Step 6's
+first action was exactly this proof, on the real local edge runtime rather than
+a standalone script: `GameNumber`, and every other symbol `src/core`,
+`src/config`, and `src/persistence/saveSchema.ts` export, run inside
+`supabase/functions/core-portability-check` and reproduce a ten-minute
+simulation byte-for-byte against the client. No shim was needed — see F10,
+which is the reason bundling turned out to be the mechanism rather than an
+import map, and which made the shim question moot.
+
+**F10 — Deno's module resolver does not add a `.ts` extension to an
+extension-less relative specifier, discovered while implementing Step 6.**
+`src/core/index.ts` and its siblings write relative imports the way the rest of
+the codebase always has — `from './economy/calculateProductionRates'`, no
+extension — because `tsconfig.json`'s `"moduleResolution": "bundler"` (and
+Vite/Rolldown at build time) resolve that unambiguously. Deno's own graph
+builder does not: pointing an Edge Function at `src/core/index.ts` directly
+failed to boot with `Module not found "file:///…/src/core/economy/
+calculateProductionRates"`, reproduced identically through both `supabase
+functions serve` and the real `supabase start` edge runtime. Deno's "sloppy
+imports" unstable feature is designed for exactly this gap, but a `deno.json`
+enabling it — tried at the project root and inside the function's own
+directory — was not honoured by the bundled Supabase edge-runtime
+(`supabase-edge-runtime-1.74.3`, Deno v2.1.4); `supabase functions serve
+--import-map` did not help either, since sloppy-imports is a `deno.json`
+`"unstable"` entry, not an import-map key. This blocks *any* unmodified
+multi-file `src/core` import into this specific runtime, independent of
+`break_infinity.js` entirely — a strictly earlier and harder blocker than F2.
+**Resolution:** bundle rather than import raw. `npm run build:server-core`
+(Vite library mode, `vite.server-core.config.ts`) compiles
+`supabase/functions/_shared/coreBundleEntry.ts` — a zero-logic re-export of the
+three portability targets — into one dependency-free ES module with every
+specifier already resolved, including `break_infinity.js` inlined by the same
+resolution the client bundle already relies on. The Edge Function imports that
+one generated file, which has no extension-less specifier left to resolve. The
+bundle is regenerated before every `npm run verify:server` run and is
+git-ignored, so it is a build artifact rather than a maintained copy — it
+cannot drift from source the way a hand-forked port of `src/core` could,
+because there is nothing hand-written in it to drift.
 
 **F3 — Step 23's upper bound has an unstated modelling rule.**
 Bounding cumulative counters requires knowing what the mine *could* have

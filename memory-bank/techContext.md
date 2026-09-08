@@ -67,6 +67,44 @@ version change is authorized in this phase.
   declared in `eslint.config.mjs`, but is deliberately outside `tsconfig.json`:
   `Deno` has no type in the Node/DOM libraries the client compiles against.
   Server-side type checking and unit testing arrive with the Step 7 harness.
+- Deno's edge runtime does not resolve an extension-less relative specifier the
+  way `tsc`'s `"moduleResolution": "bundler"` does — pointing a function
+  straight at `src/core/index.ts` fails to boot with `Module not found` on its
+  own internal `from './economy/calculateProductionRates'`-style imports,
+  reproduced identically via `supabase functions serve` and `supabase start`
+  (`supabase-edge-runtime-1.74.3`, Deno v2.1.4). Neither a root nor a
+  per-function `deno.json` with `"unstable": ["sloppy-imports"]` was honoured by
+  this runtime. Recorded as finding F10 in `memory-bank/server-threat-model.md`
+  §8 — discovered empirically while implementing Step 6, not assumed.
+- `npm run build:server-core` (`vite.server-core.config.ts`, Vite library mode)
+  is Step 6's fix for F10: it compiles
+  `supabase/functions/_shared/coreBundleEntry.ts` — a zero-logic
+  `export * from '../../../src/core'` (and its `src/config` and
+  `src/persistence/saveSchema.ts` siblings) — into one dependency-free ES
+  module at the git-ignored `supabase/functions/_shared/generated/core-bundle.js`,
+  with every specifier already resolved, `break_infinity.js` included. That
+  also resolves finding F2 (`break_infinity.js` into Deno was unproven): it
+  imports cleanly once bundled, through the same resolution the client bundle
+  already relies on, so no shim was needed. `scripts/verify-server-stack.mjs`
+  rebuilds this bundle before every `supabase start`, so a function can never
+  boot against a stale one.
+- `supabase/functions/core-portability-check` is not part of the save-sync
+  protocol. It imports the generated bundle and, on request, runs the fixed
+  document at `tests/fixtures/ten-minute-core-fixture.json` through the real
+  `migrateSaveDocument`, `validateSaveDocument`, `deserializeSaveDocument`, one
+  explicit `advanceSimulation` tick, and `catchUpSimulation` for the rest of ten
+  minutes, returning the resulting document.
+  `tests/unit/server-core-portability.test.ts` runs the identical sequence
+  against the unbundled source and pins the same result (gold `"100"` →
+  `"3080"`); `npm run verify:server`'s "core portability check" fetches the
+  live function and asserts byte-for-byte identity against that pinned
+  document. Mutation-proven: doubling a floor's extraction yield in
+  `src/core/simulation/advanceSimulation.ts` moved both the pinned client
+  assertion and the live function's returned gold (to `6060`) together, before
+  the edit was reverted. `eslint.config.mjs` extends `src/core/**/*.ts`'s
+  purity rules with a `Deno` global ban and a `(^|/)supabase(/|$)` import ban —
+  the dependency direction is `supabase/` on `src/core`, never the reverse —
+  and `tests/unit/architecture.test.ts` probes both.
 - `scripts/scan-bundle-secrets.mjs` (`npm run scan:secrets`) fails the build when
   `dist/` contains a JWT declaring `role=service_role`, an `sb_secret_*` key, an
   exact non-`VITE_` value from `.env.local` or the running stack, or any
@@ -543,7 +581,7 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: 335 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, and the ten-minute fractional-transport save-invariant regression.
+- `npm run test`: 378 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, and — added at server-milestone Step 6 — the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture.
 - `npm run test:e2e`: all 42 Chromium tests pass, including explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios.
 - `npm run test:perf`: the repeated ten-minute benchmark passes with all fifteen floors unlocked — 60.000 FPS, 16.67 ms mean, 17.6 ms p95, 17.8 ms maximum, zero of 36,139 frames beyond the 18.34 ms threshold, +229,928 bytes post-GC live-heap growth at +188 B/s, 665 Phaser objects and 371 DOM nodes constant across twenty samples, and 81.9 ms scroll p95 against a 100 ms budget. It presented at 60 Hz, so mean frame time equals the vsync interval and carries no headroom information. This is Pixel 5 emulation under 4× CPU throttling in desktop Chrome and is not physical Android-device evidence.
 - `npm run lint`: the repository passes the ESLint flat configuration.
@@ -557,9 +595,13 @@ If a database is introduced, replace this statement with the complete authoritat
   the Step 36 validation sequence with server-milestone Step 4's secret scan
   inserted after the build.
 - `npm run verify:server`: verified on 2026-09-08 from a clean checkout against
-  an empty Docker volume set — nine checks pass, including both committed
-  migrations applied from empty and an unauthenticated `GET /v1/health`
-  returning 200 within 9 ms of the local clock. Requires Docker.
+  an empty Docker volume set — checks include both committed migrations applied
+  from empty, an unauthenticated `GET /v1/health` returning 200 within 9 ms of
+  the local clock, and — added at Step 6 — a rebuild of
+  `supabase/functions/_shared/generated/core-bundle.js` from current source
+  followed by a byte-for-byte comparison of the live `core-portability-check`
+  function's ten-minute reproduction against the pinned fixture. Requires
+  Docker.
 - `npm run verify:all`: `verify` then `verify:server` in sequence, added at Step
   5 as the sibling command its own test named; `.github/workflows/ci.yml` runs
   the same two checks as separate CI jobs rather than one sequential command, so

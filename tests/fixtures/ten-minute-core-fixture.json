@@ -1,0 +1,360 @@
+{
+  "fixtureTimestampMs": 1735689600000,
+  "tenMinutesMs": 600000,
+  "inputDocument": {
+    "schemaVersion": 1,
+    "savedAtTimestampMs": 1735689600000,
+    "effectiveProductionRatePerSecond": "5",
+    "state": {
+      "saveVersion": 1,
+      "lastUpdateTimestampMs": 1735689600000,
+      "simulationTick": 0,
+      "simulationRemainderMs": 0,
+      "gold": "100",
+      "floors": [
+        {
+          "id": "floor-1",
+          "floorNumber": 1,
+          "isUnlocked": true,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-2",
+          "floorNumber": 2,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-3",
+          "floorNumber": 3,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-4",
+          "floorNumber": 4,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-5",
+          "floorNumber": 5,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-6",
+          "floorNumber": 6,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-7",
+          "floorNumber": 7,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-8",
+          "floorNumber": 8,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-9",
+          "floorNumber": 9,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-10",
+          "floorNumber": 10,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-11",
+          "floorNumber": 11,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-12",
+          "floorNumber": 12,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-13",
+          "floorNumber": 13,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-14",
+          "floorNumber": 14,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-15",
+          "floorNumber": 15,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        }
+      ],
+      "elevator": {
+        "level": 1,
+        "capacity": "50",
+        "roundRobinCursor": 0,
+        "transitProgress": 0,
+        "carriedMaterial": "0"
+      },
+      "warehouse": {
+        "level": 1,
+        "capacity": "60",
+        "inputQueue": "0",
+        "conversionProgress": 0,
+        "totalGoldDelivered": "0"
+      }
+    }
+  },
+  "expectedOutputDocument": {
+    "schemaVersion": 1,
+    "savedAtTimestampMs": 1735690200000,
+    "effectiveProductionRatePerSecond": "5",
+    "state": {
+      "saveVersion": 1,
+      "lastUpdateTimestampMs": 1735690200000,
+      "simulationTick": 6000,
+      "simulationRemainderMs": 0,
+      "gold": "3080",
+      "floors": [
+        {
+          "id": "floor-1",
+          "floorNumber": 1,
+          "isUnlocked": true,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "10",
+          "totalExtracted": "3000",
+          "totalTransported": "2990"
+        },
+        {
+          "id": "floor-2",
+          "floorNumber": 2,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-3",
+          "floorNumber": 3,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-4",
+          "floorNumber": 4,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-5",
+          "floorNumber": 5,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-6",
+          "floorNumber": 6,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-7",
+          "floorNumber": 7,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-8",
+          "floorNumber": 8,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-9",
+          "floorNumber": 9,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-10",
+          "floorNumber": 10,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-11",
+          "floorNumber": 11,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-12",
+          "floorNumber": 12,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-13",
+          "floorNumber": 13,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-14",
+          "floorNumber": 14,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        },
+        {
+          "id": "floor-15",
+          "floorNumber": 15,
+          "isUnlocked": false,
+          "mineShaftLevel": 1,
+          "extractionProgress": 0,
+          "materialQueue": "0",
+          "totalExtracted": "0",
+          "totalTransported": "0"
+        }
+      ],
+      "elevator": {
+        "level": 1,
+        "capacity": "50",
+        "roundRobinCursor": 0,
+        "transitProgress": 0.13333333333333333,
+        "carriedMaterial": "0"
+      },
+      "warehouse": {
+        "level": 1,
+        "capacity": "60",
+        "inputQueue": "10",
+        "conversionProgress": 0.41666666666666663,
+        "totalGoldDelivered": "2980"
+      }
+    }
+  }
+}

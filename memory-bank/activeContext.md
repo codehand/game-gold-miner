@@ -4,7 +4,7 @@
 
 The base-game milestone is complete and validated. A second milestone is now planned but not started: `memory-bank/server-milestone-plan.md` takes the game from client-only to account-backed — guest play, Google/Apple/Telegram sign-in, cloud save, server-verified progress, leaderboards, and entitlement groundwork, on Supabase.
 
-Steps 1 through 4 are validated. **Step 5 is implemented on 2026-09-08 and awaiting user validation**; no step past it has started. Step 6 must not begin before that gate. See `## Next Steps` below for the Step 4 and Step 5 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
+Steps 1 through 5 are validated. **Step 6 is implemented on 2026-09-08 and awaiting user validation**; no step past it has started. Step 7 must not begin before that gate. See `## Next Steps` below for the Step 4 through Step 6 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
 
 Step 3 designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — with all 42 columns, every type, default, nullability, key, constraint, index, and relationship, plus the RLS matrix in which `saves` denies the client every write. Step 5 landed all six as `supabase/migrations/20260908130000_create_platform_tables.sql`, with RLS enabled and exactly the policies that matrix names; they exist in the local development database, not in any deployment.
 
@@ -25,6 +25,20 @@ Auditing all 37 steps also found nine assumptions the plan relied on without rec
 Two findings from the planning discussion are recorded in that plan. Canvas/WebGL fingerprinting was proposed as a guest identity mechanism and rejected: it collides across identically-configured devices, which would hand one player another player's save; it is unstable across routine updates; Brave randomizes it per session while Firefox and Tor make every user identical; and it is an observable identifier rather than a secret credential, so it cannot prove ownership. It is permitted only as a weak abuse signal in Step 25. Separately, Safari deletes all script-writable storage after seven days of use without first-party interaction, which means the shipped client-only build already loses a lapsed player's entire save — both the Dexie database and the localStorage lifecycle journal fall under that rule. Step 21 handles it for players with an account; whether to fix the shipped build first is undecided. Other post-milestone work — managers, boosts, gift drops, audio, final art — remains unplanned and unauthorized.
 
 ## Recent Changes
+
+- Generated **Aureon** (`surfaceElevatorTower`, catalog role
+  `surface-elevator-tower`, tier `UR`) on 2026-09-08 from the user-supplied
+  Gemini tower reference. Aureon preserves the front-facing open headhouse,
+  symmetrical navy-steel pillars, dominant polished-gold armor, suspended
+  gold-filled hopper, wooden floor, sun/moon ornament, attached purple
+  crystals, and right-side tray/badge bracket. The generated cleanup removes
+  detached bottom glow/sparkle artifacts. Its 512×512 transparent candidate,
+  128×128 native-scale preview, raw/reference files, prompt, QC metadata, and
+  provenance live under
+  `art-source/cat-role-catalog/surface-elevator-tower/ur/aureon/`. Strict QC
+  passes with zero empty, source/output edge-touch, or paste-clamped frames.
+  Aureon is not copied into `public/assets`; runtime, gameplay, saves, and
+  schemas are unchanged.
 
 - Generated **Elon** (`elevatorCargoCat`, catalog role `elevator-cargo-cat`,
   tier `SSR`) on 2026-09-08 as the third named SSR elevator cargo steward.
@@ -963,10 +977,78 @@ Each fix ships with a regression test. After them: `npm run lint` clean,
 `npm run verify:server` passes with both migrations applying to an empty
 database.
 
-The base-game 37-step plan is finished. The server milestone is at its Step 5 gate: Steps 1 through 4 are validated, Step 5 is implemented and awaiting validation, and Step 6 may not begin until the user validates it. F5 — whether to add an XSS/CSP step — is still open and was not answered at the Step 1 gate; Step 2's D1 makes it slightly more pressing, since the session credential now definitively lives in script-writable storage. Every other open item carries a recorded default that can be overturned later at documented cost.
+The user validated Step 5 and authorized Step 6 on 2026-09-08.
+
+Server-milestone Step 6 is implemented on 2026-09-08: `src/core`, `src/config`,
+and the save-document boundary run on Deno without forking them. The blocker
+was not the anticipated one. Finding F2 asked whether `break_infinity.js`
+imports into Deno; the real obstacle, discovered empirically rather than
+assumed, is finding F10 — Deno's edge runtime does not add a `.ts` extension to
+an extension-less relative specifier, so pointing a function straight at
+`src/core/index.ts` failed to boot on that file's own internal
+`from './economy/calculateProductionRates'`-style imports. Reproduced
+identically through `supabase functions serve` and the real `supabase start`
+edge runtime (`supabase-edge-runtime-1.74.3`, Deno v2.1.4); a `deno.json` with
+`"unstable": ["sloppy-imports"]`, tried at the project root and inside the
+function's own directory, was not honoured by either.
+
+The fix is a generated bundle, not an import map. `supabase/functions/_shared/coreBundleEntry.ts`
+contains no logic — `export * from '../../../src/core'` and its `src/config`
+and `src/persistence/saveSchema.ts` siblings, nothing else — so it cannot fork
+the behavior it names. `npm run build:server-core` (`vite.server-core.config.ts`,
+Vite library mode) compiles it into the git-ignored
+`supabase/functions/_shared/generated/core-bundle.js`: one dependency-free ES
+module with every specifier already resolved, `break_infinity.js` included,
+through the same resolution the client bundle already relies on. That resolved
+F2 as a side effect: it imports cleanly once bundled, no shim needed.
+`scripts/verify-server-stack.mjs` rebuilds this bundle before every
+`supabase start`, so it can never be tested stale.
+
+`supabase/functions/core-portability-check` — deliberately not part of the
+save-sync protocol, since it reads and writes no data and exists only to prove
+this step — imports that bundle and runs the fixed document at
+`tests/fixtures/ten-minute-core-fixture.json` through the real
+`migrateSaveDocument` → `validateSaveDocument` → `deserializeSaveDocument` → one
+explicit `advanceSimulation` tick → `catchUpSimulation` for the rest of ten
+minutes → `createSaveDocument`. `tests/unit/server-core-portability.test.ts`
+runs the identical sequence against the unbundled source and pins the result:
+gold `"100"` → `"3080"`. `npm run verify:server` fetches the live function and
+asserts byte-for-byte identity against that pinned document.
+
+Mutation-proven directly, not only asserted: `calculateExtractionYield` in
+`src/core/simulation/advanceSimulation.ts` was temporarily doubled. The client
+test failed immediately; rebuilding the bundle and re-fetching the live
+function showed the identical doubled numbers (gold `"6060"`,
+`totalGoldDelivered` `"5960"`) in the same run, before the edit was reverted and
+both sides matched the original fixture again. `eslint.config.mjs` extends
+`src/core/**/*.ts`'s purity rules with a `Deno` global ban and a
+`(^|/)supabase(/|$)` import ban — the dependency direction is `supabase/` on
+`src/core`, never the reverse — and `tests/unit/architecture.test.ts` gained a
+probe for both. `npm run lint` and `npm run test` (378 unit tests, up from 364)
+pass; no gameplay, save-document, or IndexedDB schema version changed.
+
+A 2026-09-09 review found six defects, all fixed with direct verification
+rather than only reasoned about. The bundle config was missing
+`publicDir: false`, so Vite's default copied ~2.9 MB of game art into
+`supabase/functions/` on every build (measured 3.0 MB before, 80 KB/one file
+after). The `src/core` import ban covered `supabase/` but not the
+`@supabase/*` npm scope Step 7 adds. `scripts/verify-server-stack.mjs`
+compared serialized JSON text while the unit test used `toEqual`, so a
+harmless key-order difference would fail one and not the other; both now
+compare structurally, with a live reorder-the-fixture test proving the script
+still passes with an "identical values, differing key order" detail rather
+than a false failure. A non-200 response from the portability check was
+retried up to twenty times though it can only mean a deterministic failure;
+timed live against an injected throw, it now reports in 30 ms instead of a
+multi-second loop. `vite.server-core.config.ts` was outside `tsconfig.json`'s
+`include`. The CI job name/comment no longer described the job after this
+step extended it. `npm run lint`, 378 unit tests, and `npm run verify:server`
+(including the still-80-KB bundle) all pass after the fixes.
+
+The base-game 37-step plan is finished. The server milestone is at its Step 6 gate: Steps 1 through 5 are validated, Step 6 is implemented and awaiting validation, and Step 7 may not begin until the user validates it. F5 — whether to add an XSS/CSP step — is still open and was not answered at the Step 1 gate; Step 2's D1 makes it slightly more pressing, since the session credential now definitively lives in script-writable storage. Every other open item, including the two findings Step 6 resolved or added (F2, F10), carries a recorded default or resolution that can be reviewed at documented cost.
 
 1. Two workstreams are authorized, and only these two. The **server milestone**
-   is at its Step 5 gate — implemented, awaiting validation, Step 6 blocked
+   is at its Step 6 gate — implemented, awaiting validation, Step 7 blocked
    (`memory-bank/server-milestone-plan.md`). The **cat-role asset catalog** is
    authorized as asset preproduction only, under `art-source/`, with no runtime
    loader entry, gameplay attribute, or schema change. Everything else —

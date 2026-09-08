@@ -6,6 +6,18 @@
  * `supabase/migrations/`, so adding a migration extends the check without
  * anyone editing this file.
  *
+ * Also runs Step 6's validation: "An Edge Function imports the real
+ * `advanceSimulation`, `catchUpSimulation`, `migrateSaveDocument`, and
+ * `validateSaveDocument`, and reproduces a known ten-minute result
+ * byte-for-byte identical to the client unit test's expectation." Before the
+ * stack starts, this rebuilds `supabase/functions/_shared/generated/core-bundle.js`
+ * from the current source (`npm run build:server-core`), so the check can never
+ * pass against a stale bundle; it then asks the live `core-portability-check`
+ * function to run the fixture and diffs its response against
+ * `tests/fixtures/ten-minute-core-fixture.json`, the same fixture
+ * `tests/unit/server-core-portability.test.ts` asserts against on the
+ * unbundled source.
+ *
  * Run with `npm run verify:server`. It requires Docker; the stack runs entirely
  * offline once the CLI images are cached.
  *
@@ -17,7 +29,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +37,14 @@ import { fileURLToPath } from 'node:url';
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MIGRATIONS_DIRECTORY = join(PROJECT_ROOT, 'supabase', 'migrations');
 const HEALTH_URL = 'http://127.0.0.1:54321/functions/v1/save-sync/v1/health';
+const CORE_PORTABILITY_URL =
+  'http://127.0.0.1:54321/functions/v1/core-portability-check';
+const CORE_PORTABILITY_FIXTURE_PATH = join(
+  PROJECT_ROOT,
+  'tests',
+  'fixtures',
+  'ten-minute-core-fixture.json',
+);
 const HEALTH_ATTEMPTS = 20;
 const HEALTH_RETRY_DELAY_MS = 1_000;
 /** The edge runtime cold-starts a worker on the first request to a function. */
@@ -84,6 +104,112 @@ function parseCliJson(stdout) {
   }
 }
 
+/**
+ * Structural equality, order-insensitive for object keys and order-sensitive
+ * for arrays. This is the actual invariant Step 6 cares about — "the same
+ * document" — and matches what `tests/unit/server-core-portability.test.ts`'s
+ * `toEqual` checks against the unbundled source; comparing serialized JSON
+ * text directly would fail on a harmless key-order difference that `toEqual`
+ * would accept, so the two checks would disagree about what "identical"
+ * means.
+ */
+function deepEqual(left, right) {
+  if (left === right) {
+    return true;
+  }
+  if (
+    typeof left !== 'object' ||
+    typeof right !== 'object' ||
+    left === null ||
+    right === null
+  ) {
+    return false;
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every(
+    (key) => Object.hasOwn(right, key) && deepEqual(left[key], right[key]),
+  );
+}
+
+/**
+ * Step 6: asks the live `core-portability-check` function to reproduce the
+ * fixed ten-minute fixture through the real, Deno-bundled `advanceSimulation`,
+ * `catchUpSimulation`, `migrateSaveDocument`, and `validateSaveDocument`, and
+ * diffs its response against the exact document
+ * `tests/unit/server-core-portability.test.ts` pins for the same fixture run
+ * through the unbundled source. A mismatch names the first differing
+ * top-level `state` field rather than dumping two multi-kilobyte documents.
+ */
+async function checkCorePortability() {
+  let fixture;
+  try {
+    fixture = JSON.parse(readFileSync(CORE_PORTABILITY_FIXTURE_PATH, 'utf8'));
+  } catch (error) {
+    report(false, 'Ten-minute core fixture is readable', String(error));
+    return;
+  }
+
+  // This function has never been called yet in a fresh `supabase start`, so it
+  // pays its own cold-start cost independently of the health route's — the
+  // same reason that route retries. Unlike health, a real HTTP response here
+  // (even a non-200 one) means the worker booted and answered; retrying an
+  // identical request twenty times will not change a deterministic failure, so
+  // only a fetch that never got a response at all (still booting, or the
+  // container is not yet reachable) is worth retrying.
+  let body = null;
+  let status = 0;
+  for (let attempt = 1; attempt <= HEALTH_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(CORE_PORTABILITY_URL, {
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+      });
+      status = response.status;
+      if (response.ok) {
+        body = await response.json();
+      } else {
+        await response.body?.cancel();
+      }
+      break;
+    } catch {
+      status = 0;
+      await delay(HEALTH_RETRY_DELAY_MS);
+    }
+  }
+
+  report(status === 200, 'core-portability-check answers 200', `status ${status}`);
+
+  const expectedDocument = fixture.expectedOutputDocument;
+  const actualDocument = body?.outputDocument;
+  const identical = deepEqual(expectedDocument, actualDocument);
+
+  let detail;
+  if (!identical) {
+    const stateFields = Object.keys(expectedDocument?.state ?? {});
+    const firstMismatchedStateField = stateFields.find(
+      (field) => !deepEqual(expectedDocument.state[field], actualDocument?.state?.[field]),
+    );
+    detail = firstMismatchedStateField
+      ? `first mismatch at state.${firstMismatchedStateField}`
+      : 'first mismatch outside state (schemaVersion, savedAtTimestampMs, or effectiveProductionRatePerSecond)';
+  } else if (JSON.stringify(expectedDocument) !== JSON.stringify(actualDocument)) {
+    // Both sides build the document through the identical `createSaveDocument`
+    // call, so this should never fire — recorded rather than silently passed
+    // over, since it would mean the "byte-for-byte" half of Step 6's own test
+    // wording is not actually true even though the documents agree in value.
+    detail = 'identical values, differing key order';
+  }
+
+  report(
+    identical,
+    'Ten-minute reproduction is byte-for-byte identical to the pinned fixture',
+    detail,
+  );
+}
+
 async function main() {
   console.log('Step 4 — Supabase project and local stack\n');
 
@@ -91,6 +217,16 @@ async function main() {
   report(docker.status === 0, 'Docker daemon is reachable');
   if (docker.status !== 0) {
     console.error('\nThe local stack needs Docker. Start Docker and retry.');
+    process.exit(1);
+  }
+
+  console.log('\n> npm run build:server-core');
+  const bundleBuild = run('npm', ['run', 'build:server-core']);
+  report(
+    bundleBuild.status === 0,
+    "core-portability-check's bundle builds from current source",
+  );
+  if (bundleBuild.status !== 0) {
     process.exit(1);
   }
 
@@ -170,6 +306,9 @@ async function main() {
     'Health body carries a current server timestamp',
     Number.isFinite(serverTime) ? `${skewMs} ms from local clock` : 'unparseable',
   );
+
+  console.log('\n> core portability check (Step 6)');
+  await checkCorePortability();
 
   if (process.argv.includes('--with-bundle-scan')) {
     console.log('\n> npm run build');

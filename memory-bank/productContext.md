@@ -57,14 +57,16 @@ role/tier art will be created from a user-supplied role name, tier, and design
 reference. Different tier attributes are future design work: this catalog does
 not yet change the playable product, economy, state, save format, or UI.
 
-Server-milestone Steps 4 and 5 landed on 2026-09-08 and change nothing a player
-can see or do. They are infrastructure: the whole backend now runs locally in
-Docker through the Supabase CLI, one Edge Function answers the save-sync
-protocol's health check, the local database holds all six designed tables with
-row-level security enforced, a CI workflow gates every push and pull request,
-and the repository has an enforced boundary between values that may ship in the
-browser bundle and credentials that may not. No account exists, no save leaves
-the device, and the game still boots, plays, and saves entirely offline. The
-player-facing promises of this milestone — a save that survives a new device,
-cleared storage, or a lost browser — start at Phase 2 and are only kept from
-Phase 3.
+Server-milestone Steps 4 through 6 landed on 2026-09-08 and change nothing a
+player can see or do. They are infrastructure: the whole backend now runs
+locally in Docker through the Supabase CLI, one Edge Function answers the
+save-sync protocol's health check, the local database holds all six designed
+tables with row-level security enforced, a CI workflow gates every push and
+pull request, the repository has an enforced boundary between values that may
+ship in the browser bundle and credentials that may not, and the exact
+simulation and save-document code the client runs now also runs, unmodified,
+inside a Deno Edge Function — proven by reproducing a fixed ten-minute run
+byte-for-byte. No account exists, no save leaves the device, and the game
+still boots, plays, and saves entirely offline. The player-facing promises of
+this milestone — a save that survives a new device, cleared storage, or a lost
+browser — start at Phase 2 and are only kept from Phase 3.

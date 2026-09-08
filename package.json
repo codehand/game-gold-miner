@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc && vite build",
+    "build:server-core": "vite build --config vite.server-core.config.ts",
     "dev": "vite",
     "dev:sim": "node scripts/dev-simulator.mjs",
     "lint": "eslint .",

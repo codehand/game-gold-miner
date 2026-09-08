@@ -62,6 +62,25 @@ describe('core architecture boundary', () => {
     expect(restrictedImportMessages).toHaveLength(3);
     expect(restrictedGlobalMessages).toHaveLength(2);
   });
+
+  it('rejects the Deno/server runtime (Step 6)', async () => {
+    const messages = await lintCore(`
+      import { handleRequest } from '../../supabase/functions/save-sync/index.ts';
+      import { createClient } from '@supabase/supabase-js';
+
+      Deno.serve(handleRequest);
+      createClient('', '');
+    `);
+    const restrictedImportMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-imports',
+    );
+    const restrictedGlobalMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-globals',
+    );
+
+    expect(restrictedImportMessages).toHaveLength(2);
+    expect(restrictedGlobalMessages).toHaveLength(1);
+  });
 });
 
 describe('layout geometry boundary', () => {

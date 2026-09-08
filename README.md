@@ -186,12 +186,29 @@ every `supabase db reset`, never applied to a deployed database.
 `.github/workflows/ci.yml` runs `npm run verify` and `npm run verify:server` as
 two required jobs on every push and pull request.
 
-The one endpoint that exists:
+The one save-sync endpoint that exists:
 
 ```bash
 curl http://127.0.0.1:54321/functions/v1/save-sync/v1/health
 # {"status":"ok","serverTime":"..."}
 ```
+
+`src/core`, `src/config`, and `src/persistence/saveSchema.ts` run unmodified
+inside a second, non-protocol Edge Function,
+`supabase/functions/core-portability-check`, which reproduces a fixed
+ten-minute simulation and returns it for comparison against
+`tests/unit/server-core-portability.test.ts`'s pinned result. Deno does not
+extension-complete a relative specifier the way the client's bundler does, so
+the function imports a generated bundle rather than a raw relative import:
+
+```bash
+npm run build:server-core   # src/core + src/config + saveSchema.ts → one ES module
+curl http://127.0.0.1:54321/functions/v1/core-portability-check
+```
+
+That bundle lives at `supabase/functions/_shared/generated/core-bundle.js`,
+is git-ignored, and is rebuilt by `npm run verify:server` before the stack
+starts — so it can never be checked against stale source.
 
 **Secrets.** `.env.local` is git-ignored; `.env.example` is the committed
 template. The `VITE_` prefix is the boundary: Vite inlines exactly those
