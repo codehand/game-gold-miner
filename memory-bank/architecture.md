@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Steps 1 through 35 are complete. Step 36 production-build validation is implemented with a passing nine-test smoke suite against the served optimized bundle and awaits user validation; Step 37 is explicitly untouched. The Step 35 physical mid-range Android pass remains an open caveat rather than a blocking gate. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
+Steps 1 through 36 are complete. Step 37, the base-game closing review, is implemented and awaits user validation. It changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -14,6 +14,8 @@ Steps 1 through 35 are complete. Step 36 production-build validation is implemen
 | `src/game/runtime/MineSimulationDriver.ts`, `src/game/runtime/index.ts` | Phaser-free live bridge between the core and the screen: holds authoritative state and the balance data prices and the HUD estimate are derived from, advances state to an injected wall clock on each pull, memoizes the derived snapshot, routes upgrade presses to the matching core command, and accepts state replaced by a command. |
 | `src/game/entities/HudView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `HudView` owns the fixed top bar: its background, divider, three resource icons, and five text objects. `PurchaseControlView` is the one pressable button, shared by the floor panels — where an upgrade and an unlock instance share one slot — and both shared stages. |
 | `src/game/assets/placeholderAssets.ts` | Semantic Phaser texture keys and public paths for the original Step 32 family plus the Step 32A floor, filled/empty elevator-tower, warehouse, and supervisor pack loaded by `BootScene.preload`. |
+| `src/game/assets/backlogTextures.ts` | Generates the solid backlog-colour silhouette once at boot from the source sprite, so the cue survives a Canvas fallback that would drop a WebGL-only tint. |
+| `src/game/entities/setTextColor.ts` | The shared guard that compares a Phaser text colour before writing it, because `Text.setColor` re-rasterizes and re-uploads the caption texture on every call. |
 | `src/game/layout/mineFloorPanel.ts` | Pure semantic geometry for the approved 288×132 floor composition; renderer and browser probes share its anchors and regions. |
 | `public/assets/placeholder/`, `art-source/placeholder/` | Runtime-ready 128×128 RGBA sprites plus their art-direction/provenance manifest, and retained generated source, prompt, transparent sheet, frames, GIF, and deterministic QC metadata. |
 | `package.json`, `package-lock.json`, `tsconfig.json` | Locked dependencies, strict compiler settings, and verified development/build/test scripts including the `verify` sequence and the production smoke run. |
@@ -54,6 +56,7 @@ Steps 1 through 35 are complete. Step 36 production-build validation is implemen
 
 | File | Purpose |
 |---|---|
+| `README.md` | Human-facing entry point: requirements, install, every npm command and its port, architecture summary, testing layout, documentation map, delivered versus deferred scope, and style. |
 | `AGENTS.md` | Repository-wide contributor rules, coding conventions, test expectations, and mandatory Memory Bank workflow. |
 | `memory-bank/architecture.md` | Architectural map, file/module responsibilities, dependency rules, critical data flow, and complete database schema when one exists. |
 | `memory-bank/activeContext.md` | Current focus, recent decisions, immediate next steps, and unresolved questions. |
@@ -100,7 +103,7 @@ The production pipeline is fifteen independent mine shafts → one shared sequen
 
 | State | Authoritative fields |
 |---|---|
-| Global | `saveVersion`, `lastUpdateTimestampMs`, `simulationTick`, `simulationRemainderMs`, `gold`, four floor states, elevator state, warehouse state |
+| Global | `saveVersion`, `lastUpdateTimestampMs`, `simulationTick`, `simulationRemainderMs`, `gold`, fifteen floor states, elevator state, warehouse state |
 | Floor | Identifier/number, unlock status, mine-shaft level, normalized extraction progress, local material queue, total extracted, total transported |
 | Elevator | Level, `GameNumber` capacity, signed route cursor, normalized leg progress, carried material |
 | Warehouse | Level, `GameNumber` capacity, input queue, normalized conversion progress, total delivered gold |
@@ -139,7 +142,7 @@ Milestones are cumulative pure functions of the current stage level. Reaching le
 
 ## Floor Unlock Contract
 
-Floors 2–4 unlock only through an immutable purchase command. The target must exist and still be locked; its configured immediately previous floor must already be unlocked and meet the required shaft level before affordability is checked. Success deducts the configured cost exactly once and replaces the locked target with a configured starting floor marked unlocked, resetting its level, progress, queues, and totals while preserving every unrelated state field. Repeated, premature, unaffordable, and unknown requests return explicit failures with the original state object.
+Floors 2–15 unlock only through an immutable purchase command. The target must exist and still be locked; its configured immediately previous floor must already be unlocked and meet the required shaft level before affordability is checked. Success deducts the configured cost exactly once and replaces the locked target with a configured starting floor marked unlocked, resetting its level, progress, queues, and totals while preserving every unrelated state field. Repeated, premature, unaffordable, and unknown requests return explicit failures with the original state object.
 
 ## Economy Progression Simulation Contract
 
@@ -216,7 +219,7 @@ The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inse
 
 The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT` (416). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 424-pixel mine region scrolls by 256. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
 
-`MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects any smaller interactive region. The visible shared-stage cards are replaced by art, so their live level/upgrade controls are compact 30×34 badges inside 44×50 hit regions: the elevator region is `(124,58,44,50)` relative to the surface and sits right of the discharge tray; the warehouse region is `(263,0,44,50)` and places its chrome above the roof. The hidden `SharedStageView` controls remain read-back models only. The surface strip remains 164 pixels tall.
+`MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects any smaller interactive region. The visible shared-stage cards are replaced by art, so their live level/upgrade controls are compact 30×34 badges inside 44×50 hit regions: the elevator region is `(106,48,44,50)` relative to the surface and sits immediately right of and no lower than the discharge tray; the warehouse region is `(263,0,44,50)` and places its chrome above the roof. The hidden `SharedStageView` controls remain read-back models only. The surface strip remains 164 pixels tall.
 
 Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD and surface never scroll and the scroll gesture drives only the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
 
@@ -268,7 +271,7 @@ The fixed 52-pixel top bar shows three icon-led numbers: spendable gold on the l
 
 `formatAmount` is the one formatter every displayed amount goes through, in the HUD and in the mine views alike. It shows two stable decimal places for abbreviated tiers (`2.00m`, `14.60qa`) followed by the lowercase suffix for the value's magnitude; ordinary unsuffixed integers remain unpadded and non-integers retain two decimals. Named suffixes are `k`, `m`, `b`, `t`, `qa`, `qi`, `sx`, `sp`, `oc`, `no`, and `dc` for `10^3` through `10^33`; the alphabetic run begins with `aa` at `10^36`, continues `ab`, ... `az`, `ba`, and extends through three-letter suffixes. `describeAmountTier` is shared by the main formatter and the offline-reward formatter, so overlays cannot drift to a different unit system. Past three letters — beyond 1e54000, which no reachable balance approaches — the serialized scientific form is shown instead of an unbounded run of letters. Main-display digits are truncated rather than rounded, because a balance that reads higher than it is would promise an upgrade the player cannot afford; a value that is present but smaller than the displayed precision reads `<0.01` rather than `0`. Values are read through `GameNumber`'s normalized `mantissa` and `exponent` rather than converted to a `number`, so magnitudes past `Number.MAX_VALUE` format like any other instead of collapsing to `Infinity`.
 
-`HudView` builds its background, divider, and four text objects once and changes only through `applySnapshot`, so a value that moves ten times a second costs a string assignment rather than a rebuilt display list. `describeRenderedState` reads the four strings back from those objects and `BootScene` publishes them as `data-hud-view` on the same 100 ms cadence as the other rendered-state diagnostics.
+`HudView` builds its background, divider, three resource icons, and five text objects once and changes only through `applySnapshot`, so a value that moves ten times a second costs a string assignment rather than a rebuilt display list. `describeRenderedState` reads the five strings plus the warehouse icon's texture key back from those objects, and `BootScene` publishes them as `data-hud-view` on the same 100 ms cadence as the other rendered-state diagnostics.
 
 ## Purchase Control Contract
 

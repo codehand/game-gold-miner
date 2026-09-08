@@ -7,246 +7,246 @@
     "cpuThrottlingRate": 4,
     "durationMs": 600000
   },
-  "startupMs": 819,
+  "startupMs": 1177,
   "frame": {
-    "samples": 72188,
-    "fps": 120.0148962912225,
-    "meanMs": 8.332298997063225,
-    "p50Ms": 8.3,
-    "p95Ms": 9.2,
-    "p99Ms": 9.3,
-    "maxMs": 16,
+    "samples": 36135,
+    "fps": 59.99992029898507,
+    "meanMs": 16.66668880586689,
+    "p50Ms": 16.7,
+    "p95Ms": 17.6,
+    "p99Ms": 17.7,
+    "maxMs": 17.800000000046566,
     "framesOverBudget": 0,
     "framesOver33Ms": 0
   },
   "memory": {
     "samples": [
       {
-        "elapsedMs": 30004,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8145768,
-        "usedHeapBytes": 8063608,
-        "domNodes": 176,
+        "elapsedMs": 30003,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9243708,
+        "usedHeapBytes": 8973436,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 147
+        "eventListeners": 155
       },
       {
-        "elapsedMs": 60116,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8775636,
-        "usedHeapBytes": 8709628,
-        "domNodes": 176,
+        "elapsedMs": 60174,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9109124,
+        "usedHeapBytes": 8839640,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 169
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 90204,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8789652,
-        "usedHeapBytes": 8695384,
-        "domNodes": 176,
+        "elapsedMs": 90288,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9138260,
+        "usedHeapBytes": 8871348,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 120270,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8813280,
-        "usedHeapBytes": 8750108,
-        "domNodes": 176,
+        "elapsedMs": 120393,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9186652,
+        "usedHeapBytes": 8924716,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 150352,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8071168,
-        "usedHeapBytes": 8030640,
-        "domNodes": 176,
+        "elapsedMs": 150503,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9169524,
+        "usedHeapBytes": 8913540,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 180466,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8109936,
-        "usedHeapBytes": 8044292,
-        "domNodes": 176,
+        "elapsedMs": 180604,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9242556,
+        "usedHeapBytes": 8987956,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 210537,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8151520,
-        "usedHeapBytes": 8044396,
-        "domNodes": 176,
+        "elapsedMs": 210715,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9722768,
+        "usedHeapBytes": 9007668,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 240618,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8164364,
-        "usedHeapBytes": 8075204,
-        "domNodes": 176,
+        "elapsedMs": 240855,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9356576,
+        "usedHeapBytes": 9094760,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 270684,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8187480,
-        "usedHeapBytes": 8103244,
-        "domNodes": 176,
+        "elapsedMs": 270962,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9371888,
+        "usedHeapBytes": 9101636,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 300750,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8221480,
-        "usedHeapBytes": 8130232,
-        "domNodes": 176,
+        "elapsedMs": 301060,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9407468,
+        "usedHeapBytes": 9179576,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 330826,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8231648,
-        "usedHeapBytes": 8173344,
-        "domNodes": 176,
+        "elapsedMs": 331161,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9407812,
+        "usedHeapBytes": 9166192,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 360897,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8239944,
-        "usedHeapBytes": 8176760,
-        "domNodes": 176,
+        "elapsedMs": 361277,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9422772,
+        "usedHeapBytes": 9178152,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 390967,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8239036,
-        "usedHeapBytes": 8177260,
-        "domNodes": 176,
+        "elapsedMs": 391377,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9419496,
+        "usedHeapBytes": 9163872,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 421032,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8270208,
-        "usedHeapBytes": 8158940,
-        "domNodes": 176,
+        "elapsedMs": 421493,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9425360,
+        "usedHeapBytes": 9150888,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 451106,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8274528,
-        "usedHeapBytes": 8202688,
-        "domNodes": 176,
+        "elapsedMs": 451611,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9867384,
+        "usedHeapBytes": 9581380,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 481170,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8294740,
-        "usedHeapBytes": 8215972,
-        "domNodes": 176,
+        "elapsedMs": 481708,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9431692,
+        "usedHeapBytes": 9151816,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 511249,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8295120,
-        "usedHeapBytes": 8262044,
-        "domNodes": 176,
+        "elapsedMs": 511811,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9423116,
+        "usedHeapBytes": 9159972,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 541314,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8298980,
-        "usedHeapBytes": 8256164,
-        "domNodes": 176,
+        "elapsedMs": 541910,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9874840,
+        "usedHeapBytes": 9579408,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 571382,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8298616,
-        "usedHeapBytes": 8285628,
-        "domNodes": 176,
+        "elapsedMs": 572010,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9871032,
+        "usedHeapBytes": 9584920,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       },
       {
-        "elapsedMs": 601453,
-        "phaserGameObjects": 258,
-        "liveHeapBytes": 8301128,
-        "usedHeapBytes": 8232872,
-        "domNodes": 176,
+        "elapsedMs": 602155,
+        "phaserGameObjects": 665,
+        "liveHeapBytes": 9437388,
+        "usedHeapBytes": 9182056,
+        "domNodes": 371,
         "documents": 1,
-        "eventListeners": 160
+        "eventListeners": 168
       }
     ],
-    "liveHeapGrowthBytes": 155360,
-    "trendStartsAtMs": 60116,
-    "liveHeapSlopeBytesPerSecond": -501.79859736150996
+    "liveHeapGrowthBytes": 193680,
+    "trendStartsAtMs": 60174,
+    "liveHeapSlopeBytesPerSecond": 990.3266543860606
   },
   "objects": {
-    "bootPhaserGameObjects": 258,
-    "minPhaserGameObjects": 258,
-    "maxPhaserGameObjects": 258,
-    "minDomNodes": 176,
-    "maxDomNodes": 176
+    "bootPhaserGameObjects": 665,
+    "minPhaserGameObjects": 665,
+    "maxPhaserGameObjects": 665,
+    "minDomNodes": 371,
+    "maxDomNodes": 371
   },
   "floors": {
-    "unlockedAtBoot": 4,
-    "unlockedAtEnd": 4
+    "unlockedAtBoot": 15,
+    "unlockedAtEnd": 15
   },
   "assets": {
-    "distBytes": 3887708,
-    "imageBytes": 2200266,
+    "distBytes": 4134573,
+    "imageBytes": 2435609,
     "fontBytes": 95720,
-    "transferredBytes": 2343440
+    "transferredBytes": 2582193
   },
   "input": {
     "samplesMs": [
-      50.10000002384186,
-      39.10000002384186,
-      29.200000047683716,
-      40.60000002384186,
-      52.5,
-      31.399999976158142,
-      41.5,
-      27.5,
-      32.700000047683716,
-      37.299999952316284,
-      34.89999997615814,
-      36.60000002384186,
-      27.100000023841858,
-      32.300000071525574,
-      30.600000023841858,
-      45.5,
-      27.700000047683716,
-      31.90000009536743,
-      39.89999997615814,
-      32.699999928474426
+      82.59999990463257,
+      62,
+      54.90000009536743,
+      66.5,
+      47.5,
+      57.80000019073486,
+      83.5,
+      64.09999990463257,
+      53.80000019073486,
+      54.799999952316284,
+      72.29999995231628,
+      54.200000047683716,
+      68.79999995231628,
+      65.70000004768372,
+      44.700000047683716,
+      48.19999980926514,
+      51.5,
+      46.40000009536743,
+      87.79999995231628,
+      56.700000047683716
     ],
-    "p95Ms": 50.10000002384186,
-    "maxMs": 52.5
+    "p95Ms": 83.5,
+    "maxMs": 87.79999995231628
   }
 }

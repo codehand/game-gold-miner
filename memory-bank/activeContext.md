@@ -2,9 +2,14 @@
 
 ## Current Focus
 
-Implementation Plan Step 36 remains implemented and Step 37 has not started. The 2026-09-08 live-browser review now includes the compact warehouse-queue HUD, progressive fifteen-floor disclosure, filled/empty tower hopper, strict top-down elevator pickup priority, and one-baseline surface-hauler formation.
+Implementation Plan Step 37 — closing the base-game milestone — is implemented and awaits user validation. It is a review and documentation step and changed no runtime code, no balance value, and no schema version. Steps 1 through 36 are complete.
 
 ## Recent Changes
+
+- Step 37 implemented on 2026-09-08 as a review-and-documentation step with no runtime, balance, or schema change. It reviewed the delivered base game against `memory-bank/implementation-plan.md` and the GDD acceptance criteria, recorded every deferred feature instead of building it, added `README.md`, and corrected the repository documentation that still described a four-floor mine and a round-robin elevator.
+- Step 37 documentation findings, all corrected in place: the repository had no `README.md` at all, so the step's own gate — a new developer working from repository documentation alone — could not have been met; `AGENTS.md` still opened with "this repository is currently in the design phase" and "no application scaffold or package scripts exist yet"; `CLAUDE.md` described 4 floors, a round-robin elevator cursor, and `K/M/B/T` formatting; `architecture.md` still said four floor states and "Floors 2–4 unlock"; `techContext.md` said startup validation requires exactly four floors; `activeContext.md` still listed four mine shafts as an active decision; and `systemPatterns.md` described the benchmark as holding an all-four-floor scene. Historical dated entries were left as written, because they record what was true at the time.
+- Step 37 evidence gap closed rather than recorded: the Step 35 benchmark result on file measured the former four-floor maximum, while the plan requires all fifteen floors active and the fixture had already been changed to seed fifteen. The ten-minute benchmark was re-run against the full mine and passes every budget — 60.00 FPS, 17.6 ms p95, 17.8 ms maximum, zero of 36,135 frames over the 18.34 ms threshold, 665 Phaser objects and 371 DOM nodes constant, fifteen floors at boot and at end, 83.5 ms scroll p95. Startup rose to 1,177 ms, scroll p95 to 83.5 ms, and the heap slope to +990 bytes/s; all stay inside budget and all are recorded in `performance-results/step-35-report.md` rather than smoothed over. This run presented at 60 Hz, so its mean frame time is the vsync interval and says nothing about remaining headroom.
+- Step 37 scope audit: no deferred feature has leaked into `src/`. Authoritative state carries only gold, timing counters, fifteen floor records, elevator, and warehouse; there is no manager, boost, gift, shop, premium-currency, Telegram, or payment code, and every `manager` identifier in the tree names the cosmetic warehouse supervisor sprite.
 
 - Completed the 2026-09-08 HUD queue clarification: the centre slot now uses the warehouse icon, reads only authoritative `warehouse.inputQueue`, and exposes the unambiguous `warehouseQueueValueLabel` diagnostic. Nine focused unit assertions and two Chromium HUD regressions pass.
 - Completed the 2026-09-08 tower-hopper feedback independently: `BootScene` swaps between filled and empty 512×512 headhouse textures from `warehouse.queueSteps`, so zero `warehouse.inputQueue` exposes an empty steel bin and any positive queue restores the gold pile. The generated edit is recorded in the asset manifest; four asset unit tests and two focused Chromium regressions pass.
@@ -169,7 +174,7 @@ Implementation Plan Step 36 remains implemented and Step 37 has not started. The
 - Keep MVP client-only and exclude monetization, blockchain, and social systems.
 - Treat balance values in the GDD as starting hypotheses requiring playtests.
 - Use English UI at a 360×640 logical resolution with no deferred bottom navigation.
-- Run production automatically through four mine shafts, one shared sequential-stop elevator, and one shared warehouse.
+- Run production automatically through fifteen mine shafts, one shared sequential-stop elevator, and one shared warehouse.
 - Upgrade mine shafts, elevator, and warehouse independently while preserving progress percentage.
 - Use saved-rate offline rewards, lowercase `k/m/b/t/qa/qi/sx/sp/oc/no/dc`
   tiers followed by `aa` from `10^36`, Phaser 4.2.1, and a mid-range Android
@@ -190,7 +195,7 @@ Implementation Plan Step 36 remains implemented and Step 37 has not started. The
 - Calculate an upgrade's next price from the stage's current level without rounding; expected player-action failures return the original state, while invalid/non-incrementable levels are invariant errors.
 - Recalculate each stage effect as `baseValue × outputGrowthRate^(level - 1) × cumulativeMilestoneMultiplier`; shared-stage cycle durations remain fixed.
 - Derive milestone effects from the current level rather than storing grant state, so each threshold activates once and reloads cannot apply it twice.
-- Unlock floors 2–4 only in sequence after the immediately previous unlocked mine shaft reaches levels 5, 5, and 7 respectively and the configured 250/1,500/7,500 gold cost can be paid.
+- Unlock floors 2–15 only in sequence after the immediately previous unlocked mine shaft reaches its configured level; floors 2–4 require levels 5, 5, and 7 at costs 250/1,500/7,500, and the generated depth curve continues from floor 5.
 - Initialize a successfully opened floor at its configured starting level with zero progress, queues, and totals; preserve unrelated floors, shared stages, and simulation metadata.
 - Format every displayed amount through one shared two-decimal function, so a value never reads one way in the HUD and another in the mine.
 - Truncate a displayed balance rather than rounding it: a number that reads higher than it is promises a purchase the player cannot make.
@@ -592,11 +597,18 @@ The follow-up HUD clarification renames the centre field and rendered diagnostic
 
 The 2026-09-07 browser-feedback revision is implemented: `HUD_HEIGHT` is 52, the centre HUD value reads `warehouse.inputQueue`, and balance/state/view construction now supports exactly fifteen floors. Floors 1–5 are visible initially; opening floor 5 expands the mine to floors 1–10, and opening floor 10 expands it to floors 1–15 without restarting the scene. The active scroll range resizes with each reveal while retaining the current scroll position. Save document and IndexedDB versions remain 1; legacy four-floor version-1 documents are expanded to the fifteen-floor shape before strict validation, preserving floors 1–4 and adding locked configured defaults. The game UI/UX skill guided the compact fixed-region and progressive-disclosure implementation without weakening safe-area scaling or touch targets. Automated evidence: 321 unit tests, 37 Chromium E2E tests, all nine production smoke tests, lint, build, and `git diff --check` pass; direct in-app browser inspection confirms the 52 px HUD, five initially visible floors, and no console errors.
 
-1. Ask the user to review the three applied browser-feedback changes.
-2. Do not begin Step 37 without explicit user authorization.
-3. Keep the outstanding physical mid-range Android Chrome pass on the record as
-   a Step 35 caveat to close before the milestone is called done.
-4. Defer managers, boosts, gift drops, and other expanded features until the base-game milestone passes.
+1. Ask the user to validate Step 37, the final gate in the 37-step plan. The
+   base game is complete only when this validation passes.
+2. Do not begin any post-milestone work — managers, boosts, gift drops, audio,
+   Telegram integration, final art — without explicit user authorization. The
+   deferred list in `memory-bank/progress.md` is the record, not a backlog to
+   start from.
+3. Two open verification items survive the milestone and are recorded rather
+   than closed: a physical mid-range Android Chrome pass, and a human playtest
+   of the GDD's 30-second-comprehension criterion. Neither is automatable, and
+   neither blocks the Step 37 gate.
+4. Playtest the provisional balance curve, especially the generated floor 5–15
+   depth curve, which no human has played through.
 - Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.
 - Confirmed as deliberate that a backgrounded tab is credited at full pipeline rate while a closed one is credited through the 50% offline efficiency, so the same two-hour absence is worth about twice as much with the tab left open. Documented the asymmetry on `MAX_CATCH_UP_MS` and pinned the ratio in `tests/unit/simulation-time.test.ts`, verified by mutation to fail if either side changes.
 - Extracted the `Text.setColor` repaint guard into a shared `setTextColor` helper and applied it to the mine-floor and shared-stage views, which were repainting fourteen captions per simulation tick to produce the colours already on screen.

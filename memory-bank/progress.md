@@ -2,9 +2,16 @@
 
 ## Status Summary
 
-**Phase:** Implementation Plan Step 36 remains implemented; Step 37 has not started. The 2026-09-08 browser-feedback pass is implemented and fully verified.
+**Phase:** Implementation Plan Step 37 — the base-game closing review — is implemented and awaits user validation. Steps 1 through 36 are complete. Step 37 changed no runtime code.
 
 ## Completed
+
+- Step 37 implemented on 2026-09-08: the base-game closing review. It changed no runtime code, no balance value, and no schema version. It reviewed the delivered game against `memory-bank/implementation-plan.md` and the GDD acceptance criteria, recorded every deferred feature rather than implementing it, and brought the repository documentation in line with what actually ships.
+- Step 37 documentation gap — the step's own gate requires that a new developer can install, run, test, and understand the base game from repository documentation alone, and the repository had no `README.md` at all. One was added covering requirements, install, every npm script with its port, the layering and its four load-bearing rules, the simulation and persistence contracts, the testing layout, a map of `memory-bank/`, delivered versus deferred scope, and style.
+- Step 37 documentation corrections — six documents still described a mine that no longer exists. `AGENTS.md` opened with "this repository is currently in the design phase" and "no application scaffold or package scripts exist yet", and claimed no Git history existed to infer a commit convention from. `CLAUDE.md` described 4 floors, a round-robin elevator cursor, and `K/M/B/T` formatting, and omitted `test:prod`, `verify`, and `test:perf`. `architecture.md` listed four floor states, said "Floors 2–4 unlock", carried a stale `(124,58,44,50)` elevator badge region contradicting its own later section, and described a four-text-object HUD that has five text objects and three icons. `techContext.md` said startup validation requires exactly four sequential floors. `activeContext.md` listed four mine shafts as a current active decision. `systemPatterns.md` described the benchmark as holding an all-four-floor scene. All are corrected; dated historical entries were left as written, because they record what was true when written.
+- Step 37 scope audit — no deferred feature leaked into `src/`. Authoritative state carries only gold, timing counters, fifteen floor records, elevator, and warehouse. There is no manager, boost, gift, shop, premium-currency, Telegram, or payment code; every `manager` identifier in the tree names the cosmetic warehouse supervisor sprite.
+- Step 37 evidence gap closed rather than recorded — the Step 35 result on file measured the former four-floor mine, while the plan requires all fifteen floors active and the fixture had already been changed to seed fifteen. The ten-minute benchmark was re-run against the full mine and passes every budget: 60.00 FPS, 16.67 ms mean, 17.6 ms p95, 17.8 ms maximum, zero of 36,135 frames beyond the 18.34 ms threshold, +193,680 bytes post-GC heap growth at a +990 bytes/s slope, 665 Phaser objects and 371 DOM nodes exactly constant across all twenty samples, fifteen floors unlocked at boot and at end, and 83.5 ms scroll p95. Three figures moved materially from the four-floor run and are recorded rather than smoothed over: startup 819 → 1,177 ms, scroll p95 50.1 → 83.5 ms (the tightest remaining margin against its 100 ms budget), and the heap slope from −502 to +990 bytes/s, which oscillates rather than climbing and sits well inside the 2,048 bytes/s budget. This run presented at 60 Hz where the earlier one presented at 120 Hz, so mean frame time is the vsync interval and carries no headroom information; the meaningful result is that no frame missed its interval. `performance-results/step-35-report.md` was rewritten with the new figures and keeps the four-floor numbers for comparison.
+- Step 37 prior-step evidence — all thirty-six prior steps carry recorded passing evidence in the step-status table below, and every one of Steps 3 through 36 records explicit user validation.
 
 - 2026-09-08 HUD queue clarification completed: the centre HUD number is the amount already waiting inside `warehouse.inputQueue`, not elevator cargo; its icon is the warehouse texture. Focused verification passes with 9 unit tests and 2 Chromium E2E tests.
 - 2026-09-08 empty tower-hopper feedback completed: a new transparent 512×512 empty-headhouse variant removes the baked gold only for a zero warehouse input queue; runtime texture switching restores the filled headhouse for any positive queue and reapplies the fixed display bounds. Asset provenance/QC is in the Step 32A manifest; 4 focused asset tests and 2 Chromium E2E tests pass.
@@ -324,7 +331,7 @@
 | 10 — Implement extraction | Complete | User validated the passing Step 10 checks and authorized Step 11. |
 | 11 — Implement the shared elevator | Complete | User validated the passing Step 11 checks and authorized Step 12. |
 | 12 — Implement warehouse conversion | Complete | User validated the passing Step 12 checks and authorized Step 13. |
-| 13 — Run four floors concurrently | Complete | User validated the passing Step 13 checks and authorized Step 14. |
+| 13 — Run unlocked floors concurrently | Complete | User validated the passing Step 13 checks and authorized Step 14. |
 | 14 — Add production-rate calculations | Complete | User validated the passing Step 14 checks and authorized Step 15. |
 | 15 — Implement upgrade costs for all three stages | Complete | User validated the passing Step 15 checks and authorized Step 16. |
 | 16 — Apply stage-specific upgrade effects | Complete | User validated the passing Step 16 checks and authorized Step 17. |
@@ -337,7 +344,7 @@
 | 23 — Calculate capped offline income | Complete | User validated the passing Step 23 checks and authorized Step 24. |
 | 24 — Present and claim offline rewards | Complete | User validated the passing Step 24 checks and authorized Step 25. |
 | 25 — Establish responsive portrait layout | Complete | User validated the passing Step 25 checks and authorized Step 26. |
-| 26 — Render four mine floors | Complete | User validated the passing Step 26 checks and authorized Step 27. |
+| 26 — Render the mine floors | Complete | User validated the passing Step 26 checks and authorized Step 27. |
 | 27 — Visualize the three production stages | Complete | User validated the passing Step 27 checks and authorized Step 28. |
 | 28 — Connect the HUD | Complete | User validated the passing Step 28 checks and authorized Step 29. |
 | 29 — Connect upgrade controls | Complete | User validated the passing Step 29 checks and authorized Step 30. |
@@ -347,26 +354,91 @@
 | 33 — Add the complete player-journey E2E test | Complete | User authorized Step 34 after the deterministic two-profile journey passed. |
 | 34 — Verify persistence across lifecycle events | Complete | User authorized Step 35 after event-boundary catch-up, hidden/visible equivalence, abrupt-navigation recovery, and exact-once offline settlement passed. |
 | 35 — Profile mobile performance | Complete | User authorized Step 36 after the ten-minute Pixel 5/4× CPU Chrome emulation passed its frame, memory, sampled scene-graph, four-floor, startup, asset, and responsive-input assertions; physical Android evidence remains an open caveat. |
-| 36 — Validate production build behavior | Implemented / awaiting user validation | Lint, unit, E2E, and the production build pass in sequence, then nine smoke tests pass against the built bundle served from the root base path, covering asset loading, bundle identity, canvas rendering, exact save/restore, corrupt/unsupported/unavailable storage recovery, and four viewports. |
+| 36 — Validate production build behavior | Complete | User authorized Step 37 on 2026-09-08. Lint, unit, E2E, and the production build pass in sequence, then nine smoke tests pass against the built bundle served from the root base path, covering asset loading, bundle identity, canvas rendering, exact save/restore, corrupt/unsupported/unavailable storage recovery, and four viewports. |
+| 37 — Close the base-game milestone | Implemented / awaiting user validation | Every prior step carries recorded passing evidence; `npm run verify` passes end to end (lint, 327 unit, 40 Chromium E2E, strict build, 9 production smoke); the fifteen-floor benchmark was re-run to replace four-floor evidence; `README.md` added; documentation corrected to the delivered fifteen-floor mine and sequential elevator; deferred features recorded rather than built. |
 
 - 2026-09-08 tower-empty surface-delivery correction: `BootScene` now passes one queue predicate, `warehouse.queueSteps > 0`, to the lead and every assistant surface-hauler pose. Elevator cargo in transit no longer triggers a filled cart or gold cascade before reaching `warehouse.inputQueue`; a zero tower queue shows the empty tower and empty carts throughout the loop. The new browser regression holds 50 material in the active elevator while forcing warehouse input to zero and samples two animation poses; it and the existing positive-queue cart/pour test pass. Memory Bank was updated immediately after this feedback item. Save/database schema version 1 is unchanged.
 
 - 2026-09-08 mine-floor detail/batch-upgrade feedback: the compact floor Level badge is selection-only and opens `MineShaftUpgradeModal`; it no longer buys on tap. The responsive accessible dialog shows level, output per cycle, cycle time, waiting material, and next output, with x1, x5, and exact MAX affordable CTAs. Core geometric batch quoting and atomic purchasing share one cost calculation, preserve floor progress/queues/totals, and persist once. The open modal refreshes after purchase and disables Phaser input for its full lifetime; this fixes the click-through found when a close gesture also upgraded the warehouse underneath. Unit regressions cover x5 cost/purchase, exact MAX bounds, modal attributes/options, and one persistence hook; browser regressions cover no-spend open, disabled unaffordable choices, exact x1 and MAX deductions, live rebinding, scroll/journey compatibility, and the background-input boundary. Final evidence is lint, 327 unit tests, all 40 Chromium E2E tests, strict build, nine production smoke tests, and clean diff whitespace. Direct browser-app inspection confirms Level 1 → Level 6 through x5 while warehouse stays Level 1 and no console error appears. Memory Bank was updated immediately after completion; save/database schema version 1 is unchanged.
 
-## Not Started
+## Deferred Features — recorded at the Step 37 close, not implemented
 
-- Expanded manager, boost, and gift-drop systems after the base milestone.
-- Original art, sprite atlases, audio, and visual polish.
-- Physical mid-range Android Chrome verification of the Step 35 benchmark, and Telegram integration testing.
-- Deployment pipeline.
+Step 37 records these instead of building them. Each was excluded deliberately
+by the base-game boundary in `memory-bank/implementation-plan.md`, and a
+codebase audit confirms none of them leaked into `src/`: authoritative state
+carries only gold, timing counters, fifteen floor records, elevator, and
+warehouse, and no manager, boost, gift, shop, premium-currency, Telegram, or
+payment code exists. The only `manager` identifiers in the tree name the
+cosmetic warehouse supervisor sprite.
 
-## Acceptance Targets
+**Deferred gameplay systems**
 
-- The production chain is understandable within 30 seconds.
-- Four floors animate concurrently at 60 FPS on target mobile hardware.
-- A player can open at least three floors and reach a multiplier milestone within ten minutes.
-- Save restoration and capped offline income are deterministic and tested.
-- The economy cannot enter an unrecoverable progression stall.
+- Managers and manager-driven automation, including the manager slot, rarity,
+  and bonuses described in the GDD. Base-game production already runs
+  automatically, so no manager is required to play.
+- The temporary x4 boost and the auto/infinity indicator.
+- Random gift drops on the surface.
+- Manager Token and Boost Ticket currencies; gold remains the only resource.
+- Deeper-floor resource variety (coal, ruby, gems) and multiple mine types.
+- More than fifteen floors.
+
+**Deferred presentation and platform work**
+
+- Audio: background music and all SFX.
+- Final production art, sprite atlases, and visual polish; the shipped family is
+  original placeholder art with recorded provenance.
+- The bottom navigation bar and the screens behind it (Daily/Treasure, Shop,
+  Task, Boost, Manager, Land, News). It is deliberately neither reserved nor
+  rendered.
+- Telegram Mini App integration and WebView verification.
+- Capacitor native packaging.
+- Backend services, accounts, cloud save, leaderboards, referrals, monetization,
+  ads, blockchain/NFT/Play-to-Earn.
+- A deployment pipeline.
+
+**Open verification items carried past the milestone**
+
+- Physical mid-range Android Chrome verification. The benchmark is repeatable
+  Pixel 5 emulation in desktop Chrome and must not be represented as
+  physical-device evidence.
+- A human playtest of the GDD's 30-second-comprehension criterion. It is a
+  subjective judgement no automated suite can make.
+- Playtest validation of the provisional balance curve, especially the generated
+  floor 5–15 depth curve, which no human has played through.
+- The main JavaScript chunk measures about 1.56 MB raw / 414 kB gzip, recorded
+  in Step 35 as a future startup-budget concern rather than a current failure.
+
+## Acceptance Results — reviewed at the Step 37 close
+
+### GDD section 10 prototype criteria
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| The player understands how gold is earned and spent within 30 seconds, without a long tutorial | **Not verified** | Subjective; no automated suite can judge it. The supporting structure exists — each stage has its own indicator, queued material renders wherever it accumulates, and the HUD is three icon-led numbers — but the criterion needs a human playtest and is carried forward as an open item. |
+| All floors run concurrently at 60 FPS on the target device | **Pass, with a caveat** | The ten-minute benchmark with all fifteen floors unlocked measured 60.00 FPS, 17.6 ms p95, 17.8 ms maximum, and zero frames beyond the 18.34 ms threshold across 36,135 samples. `tests/unit/concurrent-production.test.ts` proves every unlocked floor advances from its own configured duration in the same tick. Caveat: Pixel 5 emulation under 4× CPU throttling in desktop Chrome, not a physical Android device. |
+| Balance and progress restore exactly after closing and reopening | **Pass** | Step 34 pins hidden/visible catch-up as byte-for-byte equal to uninterrupted play, plus pagehide journal recovery and abrupt navigation. The production smoke suite repeats the check against the served bundle: a 40-second session flushed at a `visibilitychange` boundary equals the document derived independently in the test process, and a reload continues from the deserialized state. |
+| Offline reward never exceeds the configured limit | **Pass** | `offlineIncome.capDurationMs` is 7,200,000 and `efficiency` is 0.5, both validated at startup. `tests/unit/offline-income.test.ts` covers zero elapsed time, a normal absence, capping at two hours, future timestamps awarding zero, very large saved rates, and invalid inputs. Step 33 and Step 34 prove the same interval cannot be claimed twice. |
+| After ten minutes the player has opened at least three floors and hit at least one multiplier milestone | **Pass** | The deterministic Step 19 harness opens floors 2, 3, and 4 at 45 s, 175 s, and 508 s and reaches a level-10 milestone within the ten-minute session — four floors against the required three. Step 33 drives the same trace through real canvas presses in the browser twice. |
+| No progression stall where costs outrun income | **Pass** | The same harness asserts a positive effective production rate at the end, finite non-negative balances throughout, and only positive-cost actions with non-negative modeled improvement. It is deterministic and replays identically. |
+
+### Plan Definition of Done
+
+| Requirement | Result |
+|---|---|
+| All 37 step validations pass | Steps 1–36 complete with recorded evidence and explicit user validation; Step 37 awaits this gate. |
+| The production bundle is playable in a mobile-sized browser | Pass — nine production smoke tests against the served `dist/` at base path `/`, including pixel probes of the real canvas and four viewports. |
+| All fifteen floors can run concurrently | Pass — unit-proven per-tick, and held active for the full ten-minute benchmark. |
+| Progression is viable | Pass — see the ten-minute harness above. |
+| Saves and offline rewards are deterministic | Pass — Steps 20–24 and 33–34, re-proven against the shipped bundle in Step 36. |
+| No deferred feature has leaked into scope | Pass — audited at the Step 37 close; authoritative state and `src/` contain no manager, boost, gift, shop, premium-currency, Telegram, or payment code. |
+| All project documentation reflects the delivered state | Pass — `README.md` added; eight stale-documentation defects corrected across `AGENTS.md`, `CLAUDE.md`, the GDD, and four Memory Bank files. |
+
+### Aggregate verification, 2026-09-08
+
+`npm run verify` passes end to end: lint, 327 unit tests, 40 Chromium E2E tests,
+the strict production build, and 9 production smoke tests, in that order.
+`npm run test:perf` passes every budget with fifteen floors active. Save-document
+and IndexedDB schema versions remain 1.
 
 ## Known Risks
 

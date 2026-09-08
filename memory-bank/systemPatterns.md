@@ -208,14 +208,14 @@ Prefer sprite atlases, object pooling, tweens/state machines, and minimal dynami
 Measure the optimized bundle before changing runtime code. The Step 35 harness
 uses a constant-memory frame histogram, forces GC before retained-heap samples,
 ignores the bounded first-minute V8/Phaser warm-up when calculating sustained
-memory slope, and holds the all-four-floor scene active while alternating input
-probes.
+memory slope, and holds the full fifteen-floor scene active while alternating
+input probes.
 
 Sample every trend metric; never publish one once and read it back later. A
 counter written at boot and re-read after ten minutes is a boot-time value
 wearing a trend's clothes, and the object-count metric exists precisely to catch
 growth it could not have seen. For the same reason, assert the benchmark's own
-preconditions — the seeded four-floor save is verified as loaded before and
+preconditions — the seeded fifteen-floor save is verified as loaded before and
 after the run, so a save that silently recovered into a fresh single-floor state
 fails the benchmark instead of passing every budget while measuring the wrong
 mine. A frame-rate figure derived from `requestAnimationFrame` deltas reports
@@ -224,3 +224,11 @@ the host's presentation cadence, so state conclusions in frame time against the
 production bundles remove them. Treat Pixel/CPU-throttled desktop Chrome as
 repeatable emulation evidence only; it does not replace a physical mid-range
 Android Chrome pass.
+
+Re-run a benchmark when its fixture's scope changes, rather than keeping a
+result that no longer measures what the plan requires. A recorded pass whose
+fixture has since grown from four floors to fifteen is evidence about a mine
+that no longer exists. For the same reason, read a frame-rate result against the
+cadence the host actually presented at: a 16.67 ms mean on a 60 Hz host is the
+vsync interval, not a measurement of headroom, and comparing it to an 8.33 ms
+mean from a 120 Hz run is not a like-for-like delta.

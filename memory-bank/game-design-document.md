@@ -262,7 +262,7 @@ Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự đ
 
 ### Bắt buộc
 
-- Một màn hình mỏ dọc với 4 tầng.
+- Một màn hình mỏ dọc với 15 tầng, hiển thị theo cụm 5 tầng.
 - Chuỗi đào → vận chuyển → cộng vàng chạy liên tục.
 - Nâng cấp từng tầng và hiển thị cấp độ.
 - Mở khóa tầng theo thứ tự.
@@ -276,12 +276,12 @@ Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự đ
 - Tài khoản, máy chủ, leaderboard và social/referral.
 - Shop tiền thật, quảng cáo, token, NFT hoặc blockchain.
 - Land, News, Daily Morse và hệ thống thẻ phức tạp.
-- Hơn 4 tầng và nhiều loại mỏ.
+- Hơn 15 tầng và nhiều loại mỏ.
 
 ## 10. Tiêu chí nghiệm thu prototype
 
 - Người chơi hiểu cách kiếm và dùng vàng trong 30 giây đầu mà không cần hướng dẫn dài.
-- Tất cả 4 tầng có thể chạy đồng thời ở 60 FPS trên thiết bị mục tiêu.
+- Tất cả 15 tầng có thể chạy đồng thời ở 60 FPS trên thiết bị mục tiêu.
 - Số dư và tiến trình được khôi phục chính xác sau khi đóng/mở game.
 - Offline reward không vượt quá giới hạn cấu hình.
 - Sau 10 phút chơi, người chơi đã mở ít nhất 3 tầng và trải nghiệm ít nhất một mốc multiplier.

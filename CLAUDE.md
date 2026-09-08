@@ -14,6 +14,9 @@ npm run build          # tsc type-check, then vite build
 npm run lint           # eslint .
 npm run test           # vitest run (tests/unit/**/*.test.ts, node environment)
 npm run test:e2e       # playwright (chromium) against a dev server on 127.0.0.1:4173
+npm run test:prod      # build dist/, serve it from / on :4175, run the production smoke suite
+npm run verify         # lint → test → test:e2e → build → test:prod (the full gate)
+npm run test:perf      # optional ten-minute Chrome benchmark (Pixel 5 emulation, 4x CPU throttle)
 npm run dev:sim        # boot iPhone Simulator + Safari + serve-sim stream (macOS/Xcode)
 npm run sim:list       # list active simulator streams
 npm run sim:stop       # stop simulator streams
@@ -27,7 +30,9 @@ npx vitest run -t 'round-robin'          # by test-name substring
 npx playwright test tests/e2e/scaffold.spec.ts -g 'offline'
 ```
 
-Playwright starts its own server (`reuseExistingServer: false`), so stop any process on port 4173 first. E2E reports land in `playwright-report/`.
+Every Playwright config starts its own server (`reuseExistingServer: false`), so free ports 4173 (E2E), 4174 (performance), and 4175 (production) first. E2E reports land in `playwright-report/`; benchmark reports in `performance-results/`.
+
+`README.md` is the human-facing entry point: install, commands, architecture summary, and scope.
 
 ## Architecture
 
@@ -50,15 +55,15 @@ src/persistence (save schema + IndexedDB)  →  src/platform/web (lifecycle adap
 
 `advanceSimulation(state, elapsedMs)` (`src/core/simulation/advanceSimulation.ts`) advances in deterministic 100 ms fixed ticks (`SIMULATION_STEP_MS`), carries `simulationRemainderMs` in authoritative state, and credits at most `MAX_FOREGROUND_DELTA_MS` (1,000 ms) per update while still consuming the full wall-clock delta in `lastUpdateTimestampMs`. Each tick runs, in order: every unlocked floor's extraction → shared elevator → shared warehouse, so handoffs are same-tick eligible.
 
-Pipeline: 4 mine floors extract into per-floor `materialQueue` → one shared elevator picks up round-robin (`roundRobinCursor` = next index to scan) up to capacity and carries during timed transit → one warehouse converts input 1:1 into `gold` on completed cycles.
+Pipeline: 15 mine floors extract into per-floor `materialQueue` → one shared elevator runs a sequential top-down route, loading only on arrival at each unlocked floor and descending deeper only once the current floor is drained and capacity remains → one warehouse converts input 1:1 into `gold` on completed cycles. `roundRobinCursor` keeps its legacy name for save compatibility but now encodes the route: non-negative `i` means descending toward floor index `i`, negative `-(i + 1)` means returning from that floor. Leg duration scales with carried load, and delivery into `warehouse.inputQueue` happens only on surface arrival.
 
 ### Numbers
 
-All gold, material, yields, and costs go through `GameNumber` (`src/core/numbers/GameNumber.ts`), an immutable wrapper that keeps `break_infinity.js` private and serializes to a decimal/scientific string. Never leak `Decimal` across the boundary; keep display formatting (K/M/B/T) outside the arithmetic type.
+All gold, material, yields, and costs go through `GameNumber` (`src/core/numbers/GameNumber.ts`), an immutable wrapper that keeps `break_infinity.js` private and serializes to a decimal/scientific string. Never leak `Decimal` across the boundary; keep display formatting outside the arithmetic type — `src/game/view-model/formatAmount.ts` is the one formatter, using lowercase `k/m/b/t/qa/qi/sx/sp/oc/no/dc` and then `aa` from `10^36`.
 
 ### Balance config
 
-`src/config/balance.ts` holds all economy values as data; `validateBaseGameBalance` runs at startup (`src/main.ts`) and in unit tests, and hard-requires exactly 4 sequentially numbered floors and milestones at levels 10/25/50/100 (×2/×2/×3/×4). Stage effects are always derived: `baseValue × outputGrowthRate^(level-1) × cumulativeMilestoneMultiplier` (`calculateLevelEffect`). Milestones are computed from the current level — never stored as grant flags — so reloads cannot double-apply them.
+`src/config/balance.ts` holds all economy values as data; `validateBaseGameBalance` runs at startup (`src/main.ts`) and in unit tests, and hard-requires exactly 15 sequentially numbered floors (`REQUIRED_MINE_FLOOR_COUNT`) and milestones at levels 10/25/50/100 (×2/×2/×3/×4). Stage effects are always derived: `baseValue × outputGrowthRate^(level-1) × cumulativeMilestoneMultiplier` (`calculateLevelEffect`). Milestones are computed from the current level — never stored as grant flags — so reloads cannot double-apply them.
 
 ### Persistence
 

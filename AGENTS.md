@@ -2,25 +2,30 @@
 
 ## Project Structure & Module Organization
 
-This repository is currently in the design phase. The three source-of-truth documents are:
+The base game is implemented; `README.md` is the human entry point. The three source-of-truth documents are:
 
 - `memory-bank/game-design-document.md`: gameplay loop, systems, UI, economy, and MVP scope.
 - `memory-bank/tech-stack.md`: approved TypeScript, Phaser, and Vite architecture.
 - `memory-bank/implementation-plan.md`: ordered, testable instructions for delivering the base game.
 
-When implementation begins, follow `memory-bank/tech-stack.md`: keep simulation code in `src/core/`, Phaser code in `src/game/`, interface components in `src/ui/`, save logic in `src/persistence/`, platform adapters in `src/platform/`, and balance data in `src/config/`. Store media under `public/assets/`. Place unit tests beside source files or in `tests/unit/`; keep browser flows in `tests/e2e/`.
+Follow `memory-bank/tech-stack.md`: keep simulation code in `src/core/`, Phaser code in `src/game/`, interface components in `src/ui/`, save logic in `src/persistence/`, platform adapters in `src/platform/`, and balance data in `src/config/`. Store media under `public/assets/`. Place unit tests beside source files or in `tests/unit/`; keep browser flows in `tests/e2e/`.
 
 ## Build, Test, and Development Commands
 
-No application scaffold or package scripts exist yet. Once the Vite project is created, expose these standard commands in `package.json`:
+These `package.json` scripts exist and are verified in this repository:
 
 - `npm run dev`: start the local Vite development server.
 - `npm run dev:sim`: boot an iPhone Simulator, open the Vite app in Safari, and stream it through `serve-sim` for AI-assisted visual review.
 - `npm run sim:list` / `npm run sim:stop`: inspect or stop active simulator streams.
 - `npm run build`: type-check and create the production bundle.
 - `npm run test`: run Vitest unit tests.
-- `npm run test:e2e`: run Playwright browser tests.
+- `npm run test:e2e`: run Playwright browser tests against a dev server on port 4173.
+- `npm run test:prod`: build `dist/`, serve it from `/` on port 4175, and run the production smoke suite.
+- `npm run verify`: run lint, unit, E2E, build, and the production smoke suite in that order.
+- `npm run test:perf`: run the optional ten-minute mobile-emulation benchmark on port 4174.
 - `npm run lint`: run the configured linter and report style errors.
+
+Each Playwright config starts its own server, so free ports 4173, 4174, and 4175 before running those suites.
 
 Do not document a command as supported until it runs successfully in this repository.
 
@@ -34,7 +39,7 @@ Use Vitest for economy, progression, save migration, and offline-income logic. N
 
 ## Commit & Pull Request Guidelines
 
-There is no Git history available from which to infer an existing convention. Use Conventional Commits, for example `feat: add mine-floor simulation` or `fix: cap offline rewards`. Keep commits focused. Pull requests should explain the player-facing effect, list verification commands, link the relevant issue, and include screenshots or short recordings for visual changes. Call out balance, save-format, dependency, or platform compatibility changes explicitly.
+Use Conventional Commits, for example `feat: add mine-floor simulation` or `fix: cap offline rewards`. Keep commits focused. Pull requests should explain the player-facing effect, list verification commands, link the relevant issue, and include screenshots or short recordings for visual changes. Call out balance, save-format, dependency, or platform compatibility changes explicitly.
 
 ## Security & Configuration
 
@@ -44,6 +49,6 @@ Never commit bot tokens, API keys, production save data, or Telegram `initData`.
 
 - At the start of every task, read every Markdown file in `memory-bank/` before planning or editing.
 - Before writing or modifying code, always read `memory-bank/architecture.md`, `memory-bank/techContext.md`, `memory-bank/productContext.md`, and the complete `memory-bank/game-design-document.md`.
-- Keep the entire current database schema in both `memory-bank/architecture.md` and `memory-bank/techContext.md`, including tables, columns, types, constraints, indexes, and relationships. Update both files in the same change as every schema migration. While no database exists, `architecture.md` may remain an empty placeholder.
+- Keep the entire current database schema in both `memory-bank/architecture.md` and `memory-bank/techContext.md`, including tables, columns, types, constraints, indexes, and relationships. Update both files in the same change as every schema migration. No relational or server database exists; the client-side IndexedDB and localStorage journal schemas are documented in full in both files.
 - After adding a major feature or completing a milestone, update `memory-bank/architecture.md`, `memory-bank/techContext.md`, and `memory-bank/productContext.md`. Also refresh `activeContext.md`, `progress.md`, and any other affected context file.
 - When asked to “update memory bank,” review every Memory Bank file, even if some require no edits.
