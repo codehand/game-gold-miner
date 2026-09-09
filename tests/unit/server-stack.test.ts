@@ -345,6 +345,47 @@ describe('the Step 4 verification script', () => {
   });
 });
 
+describe('the guest-session bootstrap in src/main.ts', () => {
+  // A static-source assertion, deliberately, and for the reason this file
+  // already applies the pattern to `save-sync`/`whoami-check`: the contract
+  // lives in `src/main.ts`, a module of top-level side effects that no unit
+  // test can import, and the only behavioural test of it —
+  // `tests/production/production-smoke.spec.ts`'s lazy-chunk spec — can run
+  // solely against a *configured* build. CI has no `.env.local`, so that build
+  // eliminates the SDK entirely and the spec skips. This runs on every push.
+  const mainSource = readProjectFile('src/main.ts');
+  const chain = mainSource.slice(mainSource.indexOf('void supabaseClientPromise'));
+  const bootstrap = chain.slice(0, chain.indexOf('\n\nconst indexedRepository'));
+
+  it('is never awaited before the game boots', () => {
+    // `void`, not `await`: identity resolution must not delay the first frame.
+    expect(bootstrap).toContain('void supabaseClientPromise');
+    expect(bootstrap).not.toContain('await supabaseClientPromise');
+  });
+
+  it('catches a rejected client promise instead of leaving it unhandled', () => {
+    // `ensureGuestSession`'s own try/catch covers only the collaborator calls
+    // made *inside* it, not `createSupabaseClient`'s dynamic `import()` one
+    // level above — which can reject on a flaky network or a stale chunk hash
+    // after a redeploy. Without a `.catch` here that rejection escapes the
+    // `void`-ed chain as an unhandled rejection, breaking the "this never
+    // throws" contract `src/platform/web/guestSession.ts` documents for the
+    // whole bootstrap. A 2026-09-09 review found exactly that defect.
+    expect(bootstrap).toContain('.catch(');
+    expect(bootstrap.indexOf('.catch(')).toBeLessThan(
+      bootstrap.lastIndexOf('.then('),
+    );
+  });
+
+  it('publishes the diagnostic without the live access token', () => {
+    // The dev-only `data-guest-session` attribute carries status and user id
+    // only: a live credential in the DOM bought no coverage the client's own
+    // storage did not already provide.
+    expect(bootstrap).toContain('toPublicGuestSessionDiagnostic');
+    expect(mainSource).not.toMatch(/dataset\.guestSession\s*=\s*JSON\.stringify\(result\)/);
+  });
+});
+
 describe('verification wiring', () => {
   const packageJson = JSON.parse(readProjectFile('package.json'));
 
@@ -363,22 +404,23 @@ describe('verification wiring', () => {
       'scan:secrets',
       'test:server-unit',
       'test:server-integration',
+      'test:server-e2e',
     ]) {
       expect(packageJson.scripts[script]).toBeTruthy();
     }
   });
 
-  it('pins @supabase/supabase-js as a devDependency, not a client one', () => {
-    // Nothing in `src/` imports it yet — only `supabase/functions/**` (Deno,
-    // via an `npm:` specifier) and this repository's own tooling need it.
-    // Step 8's client-side sign-in is what should promote it to
-    // `dependencies`, deliberately, in the same change that adds the first
-    // `src/` import.
-    expect(packageJson.dependencies['@supabase/supabase-js']).toBeUndefined();
-    expect(packageJson.devDependencies['@supabase/supabase-js']).toBeTruthy();
+  it('pins @supabase/supabase-js as a client dependency', () => {
+    // Step 8 added the first `src/` import (`src/platform/web/supabaseClient.ts`,
+    // for anonymous guest sign-in), promoting the package out of
+    // `devDependencies` in the same change — it now ships in the browser
+    // bundle, not just this repository's own tooling and
+    // `supabase/functions/**` (Deno, via an `npm:` specifier).
+    expect(packageJson.devDependencies['@supabase/supabase-js']).toBeUndefined();
+    expect(packageJson.dependencies['@supabase/supabase-js']).toBeTruthy();
   });
 
-  it('pins the Deno import of @supabase/supabase-js to the installed devDependency version', () => {
+  it('pins the Deno import of @supabase/supabase-js to the installed dependency version', () => {
     // Locally, `deno test`/`supabase start` resolve the bare `npm:` specifier
     // from this repository's own `node_modules` (Deno's byonm mode, since a
     // `package.json` exists at the workspace root) — but a function deployed
@@ -388,7 +430,7 @@ describe('verification wiring', () => {
     // no deployment ever runs. Pinning both to the identical exact version
     // removes the skew instead of merely documenting it.
     const whoamiSource = readProjectFile('supabase/functions/whoami-check/index.ts');
-    const installedVersion: string = packageJson.devDependencies['@supabase/supabase-js'];
+    const installedVersion: string = packageJson.dependencies['@supabase/supabase-js'];
     expect(installedVersion).toMatch(/^\d+\.\d+\.\d+$/);
     expect(whoamiSource).toContain(`npm:@supabase/supabase-js@${installedVersion}`);
   });

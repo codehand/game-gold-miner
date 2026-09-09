@@ -132,16 +132,21 @@ version change is authorized in this phase.
   real client. `verify_jwt = false` at the platform level — verification
   happens by hand inside the handler on purpose, since that is the pattern
   `save-sync`'s own authenticated routes need from Step 16.
-  `@supabase/supabase-js` is a `devDependency`, exact-pinned at `2.116.0`, not
-  a client `dependency` — nothing in `src/` imports it yet — and the Deno
-  import in `whoami-check/index.ts` pins that identical exact version
+  `@supabase/supabase-js`, exact-pinned at `2.116.0`, was a `devDependency`
+  through Step 7 — nothing in `src/` imported it yet — and the Deno import in
+  `whoami-check/index.ts` pins that identical exact version
   (`npm:@supabase/supabase-js@2.116.0`, not a floating `@2`), because a
   deployed function has no local `node_modules` to resolve a bare specifier
   against and would otherwise fetch whatever currently satisfies `@2` from the
   registry — a version the local unit tests never actually ran. A 2026-09-09
   review found this drift risk along with the dependency's misplacement (it
-  was in `dependencies`); `tests/unit/server-stack.test.ts` now asserts both
-  the placement and the version match, so they cannot silently diverge again.
+  was briefly in `dependencies`); `tests/unit/server-stack.test.ts` asserted
+  both the placement and the version match, so they could not silently diverge.
+  **Step 8 promoted it to `dependencies`** — `src/platform/web/supabaseClient.ts`
+  is the first `src/` import — and the same two assertions in
+  `tests/unit/server-stack.test.ts` were flipped to pin `dependencies` instead,
+  so the placement stays intentional at every future step rather than drifting
+  back silently.
 - `tests/server-integration/authFixture.ts` is Step 7's fixed "fixture pattern
   for an authenticated caller": `mintFixtureUserToken()` signs an HS256 JWT
   (`sub`/`role: authenticated`/`aud: authenticated`/`exp`) for the seeded
@@ -171,6 +176,115 @@ version change is authorized in this phase.
   writes for a real sign-up. No step before Step 7 ever triggered this: Steps
   4 through 6 only ever handed PostgREST a hand-signed JWT directly, never
   asking GoTrue to load the user row.
+- Server-milestone Step 8 flips `enable_anonymous_sign_ins` from `false` to
+  `true` in `supabase/config.toml`; `[auth.rate_limit] anonymous_users = 30`
+  (per IP per hour) was already configured and needed no change. This setting
+  is read by the GoTrue container at boot, not by `supabase db reset` — a
+  stack already running from before the edit still answered
+  `anonymous_provider_disabled` until it was fully stopped and restarted, which
+  a genuinely clean checkout (every CI run, and any `supabase start` after a
+  `supabase stop`) never hits.
+- `src/platform/web/supabaseClient.ts`'s `createSupabaseClient()` reads
+  `import.meta.env.VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` and returns
+  `null`, attempting no network call, when either is unset or blank — the
+  contract that keeps a checkout with no `.env.local` exactly as playable as
+  before this step. `src/platform/web/guestSession.ts`'s `ensureGuestSession`
+  takes only the narrow `GuestAuthClient` slice of `SupabaseClient['auth']`
+  it needs (`getSession`/`signInAnonymously`), mirroring the injected-collaborator
+  pattern `whoami-check/index.ts`'s `ResolveCaller` already established: unit
+  tests (`tests/unit/guest-session.test.ts`) fake that collaborator rather than
+  mocking the SDK, and it never throws — every failure (no session, a rejected
+  call, a disabled or unreachable auth service) resolves to a typed
+  `sign-in-failed`/`unconfigured` result instead. `src/main.ts` constructs the
+  client once and calls `ensureGuestSession` without awaiting it before
+  `loadActiveGame`/`createGame`, publishing the resolved result as a
+  `DEV`-only `app.dataset.guestSession` diagnostic — the same
+  `import.meta.env.DEV` convention `BootScene` already uses for its own
+  `canvas.dataset.*` diagnostics, stripped from production builds identically.
+- Proving "two browsers receive different identities" needs a real GoTrue
+  issuing real sessions — nothing fakeable locally proves that, so Step 8 adds
+  a second, Docker-dependent Playwright suite: `playwright.server-e2e.config.ts`
+  (port 4176, `testDir: tests/server-e2e`) and
+  `tests/server-e2e/guest-session.spec.ts`. Kept out of
+  `playwright.config.ts`/`tests/e2e/` deliberately, for the same reason
+  `vitest.server-integration.config.ts` is kept out of `vitest.config.ts`:
+  `npm test`/`npm run verify` must work with no Docker running. Three
+  scenarios: a fresh browser boots playable and holds a real anonymous session
+  (a UUID `user.id`, `isAnonymous: true`); with every `**/auth/v1/**` request
+  aborted, the game still boots and a forced `visibilitychange` flush (the
+  same mechanism `tests/e2e/lifecycle-persistence.spec.ts` already drives)
+  still reaches IndexedDB, surviving a reload; and two fresh browser contexts
+  receive distinct `user.id`s whose access tokens, sent directly from the Node
+  test process (no CORS concern — the call never goes through a page) to the
+  live `whoami-check` function, each answer only with their own id. `npm run
+  test:server-e2e` runs this suite; `scripts/verify-server-stack.mjs` invokes
+  it after `test:server-integration`, reading `API_URL`/`ANON_KEY` from a live
+  `supabase status --output json` and passing them as `VITE_SUPABASE_URL`/
+  `VITE_SUPABASE_ANON_KEY` into the spawned dev-server process's environment —
+  Vite gives `process.env` priority over `.env.local`, so CI needs no such file
+  and a developer's own `.env.local` (already required for `npm run dev`) is
+  untouched either way.
+- A 2026-09-09 review of Step 8 found six issues fixed before the gate and two
+  applied as cleanups. `.github/workflows/ci.yml`'s `server` job ran
+  `npm run verify:server` with no Chromium installed, so its new browser
+  suite would have died with "Executable doesn't exist" on the first real CI
+  run — fixed with its own `npx playwright install --with-deps chromium` step
+  (the `client` job already has one on its own runner), and the job's stale
+  name/`timeout-minutes: 20` were corrected/bumped to 25. `playwright.server-e2e.config.ts`'s
+  default `'html'` reporter opens a blocking `show-report` server on any local
+  failure — fatal under `scripts/verify-server-stack.mjs`'s `spawnSync`
+  invocation — and its default output folder collides with the main suite's
+  report; switched to `'line'`, the same choice
+  `playwright.production.config.ts`/`playwright.performance.config.ts` already
+  make for the identical reason. `callWhoAmI`'s retry loop treated any
+  response, including a transient cold-start error, as final, and its
+  10-attempt budget could exceed the config's implicit 30 s test timeout — the
+  same class of bug a Step 7 review already fixed once for a comparable
+  warm-up loop; now retries on `!response.ok` too, at 6 attempts under an
+  explicit 60 s `timeout` in the config. A static `@supabase/supabase-js`
+  import cost +58 kB gzip on the single entry chunk every boot parses first —
+  exactly what this step's "never delay the first frame" rule exists to
+  prevent — so `createSupabaseClient` now `await import()`s the SDK only once
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are confirmed present, putting
+  it in its own on-demand chunk (measured: the entry chunk returned to
+  ~417.69 kB gzip from 472 kB, with the SDK itself in a separate 55.05 kB gzip
+  chunk). The "documented commands" test in `tests/unit/server-stack.test.ts`
+  was missing `test:server-e2e` — added, the same fix a Step 7 review already
+  applied for its two Step 7 scripts. Cleanups: the dev-only
+  `data-guest-session` diagnostic no longer carries the access token (dropped
+  to `{status, user}`; the server-e2e suite now reads the token directly from
+  the Supabase client's own `localStorage` entry, `sb-<host>-auth-token`,
+  which needed no new surface), and the client promise is cached on
+  `import.meta.hot.data` across HMR reloads rather than constructing a second
+  GoTrue client every cycle — the cause of the SDK's own "Multiple
+  GoTrueClient instances detected" console warning; `src/main.ts`'s dispose
+  handler no longer stops auto-refresh on the (now-reused) client for the same
+  reason.
+- A follow-up review caught an eleventh Step 8 finding: the dynamic-import fix
+  above made `createSupabaseClient` reject-capable (a flaky network, or a
+  stale chunk hash after a redeploy), and `src/main.ts`'s promise chain had no
+  `.catch` — `ensureGuestSession`'s own try/catch covers only its internal
+  collaborator calls, not the client-construction promise one level above it
+  in `main.ts`, so a rejection there reached an unhandled rejection, breaking
+  `guestSession.ts`'s documented "this never throws" contract from one level
+  up even though the game itself keeps playing. Fixed with one `.catch`
+  folding any rejection into `sign-in-failed`. `tests/production/production-smoke.spec.ts`
+  gained "continues playing when the lazily-loaded Supabase chunk fails to
+  fetch," blocking the SDK's own chunk against the real built bundle and
+  asserting no `pageerror` — mutation-proven: reverting the `.catch`
+  reproduces the exact unhandled-rejection message as a `pageerror`. Neither
+  `tests/e2e/` (no bundling, so no lazy chunk exists) nor
+  `tests/server-e2e/`'s auth-only network block could have caught this. That
+  spec locates the chunk by its *contents* (`GoTrueClient` present,
+  entry-chunk marker absent), not by a `dist-*` glob: that name is one
+  rolldown derives from the `dist/` directory inside `@supabase/supabase-js`,
+  and a glob that stops matching aborts nothing while every assertion stays
+  trivially true. It counts its aborts and asserts the count is non-zero for
+  the same reason, and `test.skip`s with a stated reason when the build
+  emitted no chunk at all — which is the CI case, since a build with neither
+  `VITE_` variable set inlines both as `undefined` and lets the bundler
+  eliminate the dynamic import. `tests/unit/server-stack.test.ts`'s
+  static-source assertions on `src/main.ts` carry the CI gate instead.
 - `scripts/scan-bundle-secrets.mjs` (`npm run scan:secrets`) fails the build when
   `dist/` contains a JWT declaring `role=service_role`, an `sb_secret_*` key, an
   exact non-`VITE_` value from `.env.local` or the running stack, or any
@@ -647,9 +761,10 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: 386 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture (Step 6), and — Step 7 — `tests/unit/server-stack.test.ts`'s Retry-After assertion updated to read the response envelope from its new home in `_shared/http.ts`, its "never reads the service-role key" and `config.toml` `verify_jwt` checks generalized to `it.each` loops over every directory under `supabase/functions/` rather than hardcoding `save-sync` (a 2026-09-09 review finding), and two new assertions pinning `@supabase/supabase-js` to `devDependencies` at the exact version `whoami-check/index.ts`'s Deno import also pins.
+- `npm run test`: 401 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture (Step 6), and — Step 7 — `tests/unit/server-stack.test.ts`'s Retry-After assertion updated to read the response envelope from its new home in `_shared/http.ts`, its "never reads the service-role key" and `config.toml` `verify_jwt` checks generalized to `it.each` loops over every directory under `supabase/functions/` rather than hardcoding `save-sync` (a 2026-09-09 review finding). Step 8 added `tests/unit/guest-session.test.ts` (`createSupabaseClient`'s null-when-unconfigured behavior; `ensureGuestSession` reusing a session including a linked non-anonymous one, defaulting `isAnonymous` to `false` when absent, signing in fresh, and never throwing on a fake `GuestAuthClient`'s rejection) and flipped `tests/unit/server-stack.test.ts`'s two `@supabase/supabase-js` pin assertions from `devDependencies` to `dependencies`, plus added `test:server-e2e` to its documented-commands list (a 2026-09-09 Step 8 review finding). A third Step 8 review pass added `describe('the guest-session bootstrap in src/main.ts')` — three static-source assertions (the chain is never awaited before boot, a `.catch` sits between its two `.then`s, and the DEV diagnostic is published through `toPublicGuestSessionDiagnostic` rather than stringifying the raw result with its access token). They are static because `src/main.ts` is a module of top-level side effects no unit test can import, and because the only behavioural test of that contract — the production-smoke lazy-chunk spec — can run solely against a build with Supabase configuration inlined, which CI has not; the same static-beside-behavioural pattern a Step 7 review established for `resolveCallerViaSupabaseAuth`.
 - `npm run test:server-unit` (`deno test supabase/functions`): 19 tests pass across `_shared/http.test.ts`, `save-sync/index.test.ts`, and `whoami-check/index.test.ts` (Step 7), every one with zero `--allow-*` permission flags. Needs no Docker and no database.
 - `npm run test:server-integration` (`vitest run --config vitest.server-integration.config.ts`): 6 tests pass against the live local stack (Step 7) — the seeded fixture guest's real `profiles.display_name` for a valid token, and 401 for no header / a syntactically invalid token / a wrong-secret-signed token / an expired token, plus 400 for a non-GET method. Assumes `supabase start` and `supabase db reset` already ran.
+- `npm run test:server-e2e` (`playwright.server-e2e.config.ts`, port 4176): 3 Chromium tests pass against the live local stack (Step 8) — a fresh browser boots playable and holds a real anonymous session with a UUID `user.id`; every `**/auth/v1/**` request aborted still boots the game and a forced `visibilitychange` flush still reaches IndexedDB across a reload; two fresh browser contexts receive distinct `user.id`s whose access tokens each answer only for themselves through the live `whoami-check` function. Assumes `supabase start` and `supabase db reset` already ran and needs `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` pointed at that stack.
 - `npm run test:e2e`: all 42 Chromium tests pass, including explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios.
 - `npm run test:perf`: the repeated ten-minute benchmark passes with all fifteen floors unlocked — 60.000 FPS, 16.67 ms mean, 17.6 ms p95, 17.8 ms maximum, zero of 36,139 frames beyond the 18.34 ms threshold, +229,928 bytes post-GC live-heap growth at +188 B/s, 665 Phaser objects and 371 DOM nodes constant across twenty samples, and 81.9 ms scroll p95 against a 100 ms budget. It presented at 60 Hz, so mean frame time equals the vsync interval and carries no headroom information. This is Pixel 5 emulation under 4× CPU throttling in desktop Chrome and is not physical Android-device evidence.
 - `npm run lint`: the repository passes the ESLint flat configuration.
@@ -663,14 +778,17 @@ If a database is introduced, replace this statement with the complete authoritat
   the Step 36 validation sequence with server-milestone Step 4's secret scan
   inserted after the build.
 - `npm run verify:server`: verified on 2026-09-09 from a completely clean
-  `supabase stop`/`start`/`db reset` cycle — 13 checks: Docker reachable, the
+  `supabase stop`/`start`/`db reset` cycle — Docker reachable, the
   server-core bundle rebuilds, `npm run test:server-unit` (Step 7), the stack
   starts, both committed migrations apply from empty, an unauthenticated
   `GET /v1/health` returning 200, a byte-for-byte-identical
-  `core-portability-check` reproduction (Step 6), and `npm run test:server-integration`
-  (Step 7). `--with-bundle-scan` additionally passes the production build and
-  secret scan. Requires Docker. Its final pass/fail line reads
-  "npm run verify:server" rather than the Step-4-era "Step 4 validation."
+  `core-portability-check` reproduction (Step 6), `npm run test:server-integration`
+  (Step 7), and `npm run test:server-e2e` (Step 8), which the script feeds
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` read from a live
+  `supabase status --output json`. `--with-bundle-scan` additionally passes
+  the production build and secret scan. Requires Docker. Its final pass/fail
+  line reads "npm run verify:server" rather than the Step-4-era "Step 4
+  validation."
 - `npm run verify:all`: `verify` then `verify:server` in sequence, added at Step
   5 as the sibling command its own test named; `.github/workflows/ci.yml` runs
   the same two checks as separate CI jobs rather than one sequential command, so
@@ -741,12 +859,16 @@ round trip, verified by stopping the PostgREST container and observing a 503
 `service_unavailable` from the same route.
 
 Server-milestone Step 2 fixed the save-sync contract in
-`memory-bank/server-save-sync-protocol.md`; no code implements it yet. The
-decisions with technical consequences: the session credential lives in the
+`memory-bank/server-save-sync-protocol.md`; no code implemented it at the time.
+The decisions with technical consequences: the session credential lives in the
 Supabase client's default **script-writable storage, not a first-party HttpOnly
 cookie**, because no domain is registered — which means the session token and
 the local save fall under iOS Safari's same seven-day deletion, so for an
 unlinked guest the Step 14 recovery code, not cloud save, is what survives it.
+Step 8 landed the credential itself (`createSupabaseClient`'s default storage,
+unchanged from this decision) after confirming no domain had since been
+registered — the trigger this decision's own §8 named for revisiting it before
+Step 8 shipped.
 Concurrency uses a server-owned monotonic `revision` rather than an ETag. Cloud
 upload runs at most once per 60 seconds with forced lifecycle/claim/boot
 triggers, leaving `DEFAULT_SAVE_DEBOUNCE_MS = 500` untouched for local writes.

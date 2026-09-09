@@ -23,6 +23,7 @@
     "playwright.config.ts",
     "playwright.performance.config.ts",
     "playwright.production.config.ts",
+    "playwright.server-e2e.config.ts",
     "vite.config.ts",
     "vite.server-core.config.ts",
     "vitest.config.ts"

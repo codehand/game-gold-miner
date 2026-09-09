@@ -11,8 +11,12 @@ import {
 } from './persistence';
 import {
   bindSaveLifecycle,
+  createSupabaseClient,
+  ensureGuestSession,
   LifecycleSafeActiveSaveRepository,
   WebLifecycleSaveJournal,
+  type GuestSessionResult,
+  type SupabaseClient,
 } from './platform/web';
 import {
   createSaveDiagnosticBanner,
@@ -24,6 +28,57 @@ const app = getRequiredElement('#app', 'Application root');
 const gameViewport = getRequiredElement('#game-viewport', 'Game viewport');
 
 validateBaseGameBalance(BASE_GAME_BALANCE);
+
+// Server-milestone Step 8: a first-time player gets a real anonymous session
+// from the first frame, with no prompt and no blocking network wait. `null`
+// when no Supabase project is configured — the client-only build this
+// milestone extends stays exactly as playable either way, so this is never
+// awaited before boot; only its result is published, once resolved, as a
+// DEV-only diagnostic the same way `BootScene` already publishes its own.
+//
+// The client promise is cached on `import.meta.hot.data` across a hot
+// reload: without this, every HMR cycle would construct a second GoTrue
+// client alongside the first one still holding its auto-refresh timer,
+// which is what the SDK's own "Multiple GoTrueClient instances detected"
+// console warning is reporting.
+const supabaseClientPromise: Promise<SupabaseClient | null> =
+  import.meta.hot?.data.supabaseClientPromise ?? createSupabaseClient();
+if (import.meta.hot) {
+  import.meta.hot.data.supabaseClientPromise = supabaseClientPromise;
+}
+
+void supabaseClientPromise
+  .then((client) => ensureGuestSession(client?.auth ?? null))
+  // `ensureGuestSession` itself never rejects — its own try/catch covers only
+  // the collaborator calls made *inside* it — but `supabaseClientPromise` can:
+  // `createSupabaseClient`'s dynamic `import()` can reject on a flaky network
+  // or, in production, a stale chunk hash after a redeploy. Without this the
+  // rejection skips straight past the `.then` above to an unhandled
+  // rejection, breaking `guestSession.ts`'s own "never throws" contract from
+  // one level up. Folded into `sign-in-failed` rather than `unconfigured`,
+  // which is reserved for "no Supabase project configured at all."
+  .catch(
+    (error: unknown): GuestSessionResult => ({
+      status: 'sign-in-failed',
+      reason: error instanceof Error ? error.message : String(error),
+    }),
+  )
+  .then((result) => {
+    if (import.meta.env.DEV) {
+      app.dataset.guestSession = JSON.stringify(toPublicGuestSessionDiagnostic(result));
+    }
+  });
+
+/**
+ * Drops the live access token before this reaches the DOM. It is never
+ * needed there: the dev-only server-e2e suite that once read it now reads
+ * the same token directly from the Supabase client's own `localStorage`
+ * entry, so publishing it a second place bought no test coverage, only a
+ * second place a page script could read it from.
+ */
+function toPublicGuestSessionDiagnostic(result: GuestSessionResult): unknown {
+  return result.status === 'signed-in' ? { status: result.status, user: result.user } : result;
+}
 
 const indexedRepository = new DexieActiveSaveRepository();
 const lifecycleJournal = new WebLifecycleSaveJournal(
@@ -188,6 +243,10 @@ if (import.meta.hot) {
 
     persistence.cancelScheduledSave();
     indexedRepository.close();
+    // Deliberately does not stop the Supabase client's auto-refresh here: the
+    // client (and its promise) is cached on `import.meta.hot.data` precisely
+    // so the *same* instance survives this reload, and stopping its refresh
+    // timer now would leave the reused instance unable to refresh afterward.
     game?.destroy(true);
   });
 }

@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-**Phase:** The base-game milestone is complete. All 37 implementation-plan steps are implemented and validated; the user validated Step 37 on 2026-09-08. No plan step remains open. Two non-blocking verification items are carried past the milestone: a physical mid-range Android Chrome pass and a human playtest of the 30-second-comprehension criterion. A server milestone is planned in `memory-bank/server-milestone-plan.md` (37 steps, Supabase, anonymous guest session plus recovery code, Google/Apple/Telegram identity, validate-on-save anti-cheat). Its Steps 1 through 6 are validated and its Step 7 is implemented on 2026-09-09 and awaiting user validation; no step past Step 7 has started, and Phase 1 (server foundation) is complete pending that validation. The local Supabase stack holds all six designed tables with row-level security matching the documented matrix, landed by one migration and exercised by a seeded local-only fixture guest; no deployment exists, and no client code reads or writes any of it yet. Step 6 proved that `src/core`, `src/config`, and the save-document boundary run unmodified inside a Deno Edge Function — bundled rather than imported raw, because Deno's module resolver does not extension-complete a relative specifier the way the client's bundler does (finding F10) — and reproduces a pinned ten-minute simulation byte-for-byte against the client. Step 7 established the test harness every later Edge Function step reuses: `deno test` runs pure-handler unit tests with zero permission flags, and a real Deno-authenticated integration suite proves the one thing those unit tests fake — Supabase Auth verification — against the live stack, using a formalized JWT-minting fixture for the seeded guest. That plan also records device fingerprinting as a rejected identity mechanism, and records a base-game defect it does not itself fix: iOS Safari deletes all script-writable storage after seven days without interaction, so a lapsed player loses the entire local save today. Other post-milestone work — managers, boosts, gift drops, audio, final art — requires explicit authorization and has no plan yet.
+**Phase:** The base-game milestone is complete. All 37 implementation-plan steps are implemented and validated; the user validated Step 37 on 2026-09-08. No plan step remains open. Two non-blocking verification items are carried past the milestone: a physical mid-range Android Chrome pass and a human playtest of the 30-second-comprehension criterion. A server milestone is planned in `memory-bank/server-milestone-plan.md` (37 steps, Supabase, anonymous guest session plus recovery code, Google/Apple/Telegram identity, validate-on-save anti-cheat). Its Steps 1 through 7 are validated (Step 7 validated on 2026-09-09, closing Phase 1) and its Step 8 — the first step of Phase 2 (Identity) — is implemented on 2026-09-09 and awaiting user validation; no step past Step 8 has started. The local Supabase stack holds all six designed tables with row-level security matching the documented matrix, landed by one migration and exercised by a seeded local-only fixture guest; no deployment exists, and no client code reads or writes any of those tables yet. Step 6 proved that `src/core`, `src/config`, and the save-document boundary run unmodified inside a Deno Edge Function — bundled rather than imported raw, because Deno's module resolver does not extension-complete a relative specifier the way the client's bundler does (finding F10) — and reproduces a pinned ten-minute simulation byte-for-byte against the client. Step 7 established the test harness every later Edge Function step reuses: `deno test` runs pure-handler unit tests with zero permission flags, and a real Deno-authenticated integration suite proves the one thing those unit tests fake — Supabase Auth verification — against the live stack, using a formalized JWT-minting fixture for the seeded guest. Step 8 is the first step where `src/` itself talks to the network: a first-time player gets a real anonymous `auth.users` row from the first frame, through a non-blocking call that never delays boot and never throws, proven by a new Docker-dependent Playwright suite (`tests/server-e2e/`) that a real GoTrue is the only thing that can prove — two browsers really do receive two different identities. That plan also records device fingerprinting as a rejected identity mechanism, and records a base-game defect it does not itself fix: iOS Safari deletes all script-writable storage after seven days without interaction, so a lapsed player loses the entire local save today. Other post-milestone work — managers, boosts, gift drops, audio, final art — requires explicit authorization and has no plan yet.
 
 ## Completed
 
@@ -548,8 +548,9 @@
 | 4 — Stand up the Supabase project and local stack | Validated by the user on 2026-09-08 | Supabase CLI 2.117.0 pinned exactly; `supabase/config.toml`, one bootstrap migration, `save-sync` Edge Function serving protocol §10.1, `.env.example`, `npm run verify:server`, `npm run scan:secrets`, and 19 static invariants in `tests/unit/server-stack.test.ts` plus 10 scanner regressions in `tests/unit/bundle-secret-scan.test.ts`. All nine checks pass from a clean checkout against an empty Docker volume set; four defects found in user review are fixed with regressions. No client code, gameplay, balance value, or schema version changed. |
 | 5 — Add migrations and CI | Validated by the user on 2026-09-08 | `supabase/migrations/20260908130000_create_platform_tables.sql` lands all six Step 3 tables plus RLS matching the Step 3 matrix exactly; `supabase/seed.sql` gains one local-only fixture guest; `.github/workflows/ci.yml` adds `client` and `server` jobs; `package.json` gains `verify:all`. `npm run verify:server` passes with the expected migration list read from disk. No client code, gameplay, balance value, or schema version changed. Further hardening before the Step 6 gate: `search_path = ''` pinned on the shared trigger function, `leaderboard_entries` closed a `?select=user_id` enumeration path with column-level grants, and `EXPECTED_MIGRATIONS` was replaced by a directory read. |
 | 6 — Make the core simulation runnable on the server | Validated by the user on 2026-09-09 | `supabase/functions/core-portability-check` imports `npm run build:server-core`'s generated bundle of `src/core`, `src/config`, and `src/persistence/saveSchema.ts` and reproduces a fixed ten-minute run on the real local edge runtime — gold `"100"` → `"3080"` — byte-for-byte identical to `tests/unit/server-core-portability.test.ts`'s pinned result for the unbundled source. `eslint.config.mjs` bans the `Deno` global and `(^|/)supabase(/|$)` imports inside `src/core/**`; `tests/unit/architecture.test.ts` probes both. Mutation-proven: doubling a floor's yield moved the pinned client assertion and the live function's gold (to `6060`) together before the edit was reverted. Resolved finding F2 (`break_infinity.js`/Deno, unproven) and discovered a new one, F10 (Deno does not extension-complete a relative specifier — a bundle, not an import map, is what makes `src/core` portable here), both recorded in `memory-bank/server-threat-model.md` §8. No client code, gameplay, balance value, or schema version changed. A 2026-09-09 review found and fixed six defects before the gate: a missing `publicDir: false` was copying 2.9 MB of game art into `supabase/functions/` on every build; the new import ban missed the `@supabase/*` npm scope; the verification script's JSON-text comparison could disagree with the unit test's structural one; a non-200 portability response was retried 20 times though it can only be deterministic; `vite.server-core.config.ts` was untyped-checked; and the CI job name was stale. |
-| 7 — Add the Edge Function test harness | Implemented on 2026-09-09, awaiting user validation | `deno-bin@2.1.4` (pinned to the edge runtime's own reported Deno compatibility version) gives `npm run test:server-unit` a real `deno test` runner: 19 tests across `_shared/http.test.ts`, `save-sync/index.test.ts`, and the new `whoami-check/index.test.ts`, every one importing its handler directly and running with zero `--allow-*` flags. `whoami-check` — Step 7's "trivial authenticated endpoint" — splits `handleWhoAmI` (pure HTTP logic over an injected `ResolveCaller`) from `resolveCallerViaSupabaseAuth` (the one real collaborator, using the new `@supabase/supabase-js` client dependency), so the unit suite fakes the former and `tests/server-integration/whoami.integration.test.ts` — a separate Vitest suite in `vitest.server-integration.config.ts`, excluded from `npm test`'s glob — exercises the latter against the live stack. `tests/server-integration/authFixture.ts` mints an HS256 JWT for the seeded fixture guest, fixing "the fixture pattern for an authenticated caller." `save-sync` and `core-portability-check` gained an `import.meta.main` guard around `Deno.serve` (proven live: both still serve after the change) and their duplicated response envelope moved to `supabase/functions/_shared/http.ts`. `scripts/verify-server-stack.mjs` runs the unit suite before the stack starts and the integration suite once the database is reset — both from a clean `supabase db reset`. A real bug surfaced live rather than being assumed away: the seeded `auth.users` row left four GoTrue token columns NULL, which GoTrue's own row scanner cannot read as a string, so any real `auth.getUser` call 500'd — never triggered by Steps 4-6, which only ever handed PostgREST a hand-signed JWT directly. Fixed by seeding those columns as `''`. A first review pass fixed four smaller findings and missed a sixth, more serious one: `resolveCallerViaSupabaseAuth` answered a missing `SUPABASE_URL`/`SUPABASE_ANON_KEY` with the same `401 unauthenticated` a genuinely bad token gets, inverting `save-sync`'s own established "does not answer a configuration mistake with a retryable code" rule — a client treating 401 as "sign out and re-authenticate" would sign every user out in a loop against a deployment that was simply misconfigured. A follow-up review caught it; fixed by making the resolver throw so the existing `Deno.serve` catch turns it into `500 server_error` instead, guarded by a new pure-handler propagation test plus a static-source assertion mirroring `save-sync`'s, both mutation-proven. |
-| 8–37 | Not started | Blocked by the Step 7 gate. |
+| 7 — Add the Edge Function test harness | Validated by the user on 2026-09-09 | `deno-bin@2.1.4` (pinned to the edge runtime's own reported Deno compatibility version) gives `npm run test:server-unit` a real `deno test` runner: 19 tests across `_shared/http.test.ts`, `save-sync/index.test.ts`, and the new `whoami-check/index.test.ts`, every one importing its handler directly and running with zero `--allow-*` flags. `whoami-check` — Step 7's "trivial authenticated endpoint" — splits `handleWhoAmI` (pure HTTP logic over an injected `ResolveCaller`) from `resolveCallerViaSupabaseAuth` (the one real collaborator, using the new `@supabase/supabase-js` client dependency), so the unit suite fakes the former and `tests/server-integration/whoami.integration.test.ts` — a separate Vitest suite in `vitest.server-integration.config.ts`, excluded from `npm test`'s glob — exercises the latter against the live stack. `tests/server-integration/authFixture.ts` mints an HS256 JWT for the seeded fixture guest, fixing "the fixture pattern for an authenticated caller." `save-sync` and `core-portability-check` gained an `import.meta.main` guard around `Deno.serve` (proven live: both still serve after the change) and their duplicated response envelope moved to `supabase/functions/_shared/http.ts`. `scripts/verify-server-stack.mjs` runs the unit suite before the stack starts and the integration suite once the database is reset — both from a clean `supabase db reset`. A real bug surfaced live rather than being assumed away: the seeded `auth.users` row left four GoTrue token columns NULL, which GoTrue's own row scanner cannot read as a string, so any real `auth.getUser` call 500'd — never triggered by Steps 4-6, which only ever handed PostgREST a hand-signed JWT directly. Fixed by seeding those columns as `''`. A first review pass fixed four smaller findings and missed a sixth, more serious one: `resolveCallerViaSupabaseAuth` answered a missing `SUPABASE_URL`/`SUPABASE_ANON_KEY` with the same `401 unauthenticated` a genuinely bad token gets, inverting `save-sync`'s own established "does not answer a configuration mistake with a retryable code" rule — a client treating 401 as "sign out and re-authenticate" would sign every user out in a loop against a deployment that was simply misconfigured. A follow-up review caught it; fixed by making the resolver throw so the existing `Deno.serve` catch turns it into `500 server_error` instead, guarded by a new pure-handler propagation test plus a static-source assertion mirroring `save-sync`'s, both mutation-proven. |
+| 8 — Anonymous guest session | Implemented on 2026-09-09, awaiting user validation | `enable_anonymous_sign_ins = true` in `supabase/config.toml`; `@supabase/supabase-js` promoted to `dependencies` (exact `2.116.0`, matching the Deno-side pin) as `src/platform/web/supabaseClient.ts` becomes the first `src/` import of it — dynamically, so the SDK ships in its own on-demand chunk rather than the entry chunk every boot parses first (a 2026-09-09 review measured +58 kB gzip from a static import and required the fix). `createSupabaseClient()` resolves `null`, attempting no network call and downloading nothing, when `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` is unset. `src/platform/web/guestSession.ts`'s `ensureGuestSession` takes an injected `GuestAuthClient` (mirroring `whoami-check`'s `ResolveCaller`), never throws, and resolves `signed-in`/`sign-in-failed`/`unconfigured`; `src/main.ts` calls it without awaiting before boot and publishes `{status, user}` — no access token — as a `DEV`-only diagnostic, and caches the client promise on `import.meta.hot.data` so HMR reuses one GoTrue instance rather than leaking a new one every reload. A new Docker-dependent Playwright suite (`playwright.server-e2e.config.ts`, port 4176, `line` reporter, `tests/server-e2e/guest-session.spec.ts`) proves what nothing fakeable locally can: a fresh browser holds a real anonymous session; a blocked auth service never delays boot and local saves still persist through a forced lifecycle flush; two browser contexts get distinct identities whose access tokens — read from the Supabase client's own `localStorage` entry, not the DOM — each authenticate as themselves only against the live `whoami-check` function. `scripts/verify-server-stack.mjs` runs this suite after `test:server-integration`, feeding it `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` from a live `supabase status --output json`; `.github/workflows/ci.yml`'s `server` job gained its own `npx playwright install --with-deps chromium` step. `tests/unit/server-stack.test.ts`'s two `@supabase/supabase-js` pin assertions flipped from `devDependencies` to `dependencies`, and its documented-commands list gained `test:server-e2e`. `CLAUDE.md`/`README.md` corrected: "nothing in `src/` makes a network call" no longer holds. A 2026-09-09 review found ten issues, fixed the first six before the gate (the CI job's missing browser install, the E2E config's blocking `'html'` reporter, `callWhoAmI`'s retry-math/error-handling bug, the static-import bundle regression, the missing `test:server-e2e` test-list entry, and the CI job's stale name), applied two more as cleanups (dropping the DOM access token, the HMR client cache), added two `ensureGuestSession` unit tests ahead of Step 9, and confirmed one pasted CI failure (`production-stages.spec.ts`'s animation-speed test) as a pre-existing, unrelated flake. `npm run verify:server` (all checks, including the fixed suite) and the full client gate (398 unit tests, 42 E2E, build, secret scan, 9 production smoke) pass after the fixes. A follow-up review caught an eleventh finding: the dynamic-import fix made `createSupabaseClient` reject-capable (a flaky network or a stale chunk hash after redeploy), and `src/main.ts`'s promise chain had no `.catch`, so a rejection reached an unhandled rejection past `ensureGuestSession`'s own try/catch, which only covers its internal collaborator calls. Fixed with one `.catch` folding any rejection into `sign-in-failed`; a new production-smoke test blocks the SDK's own lazy chunk (`**/assets/dist-*.js`) against the real built bundle and asserts no `pageerror`, mutation-proven against the pre-fix code. Final: 401 unit tests, 42 E2E, 10 production smoke, `npm run verify` exits 0, `npm run verify:server` all pass. A third review pass caught a twelfth finding in the eleventh's own fix: that production-smoke test was a false green on CI, because a build without `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` inlines both as `undefined`, makes `createSupabaseClient`'s guard constantly true, and lets the bundler eliminate the dynamic import — so no lazy chunk is emitted and the `dist-*` route matched nothing (reproduced: with the `.catch` removed it still passed in 4.3 s against such a build). The spec now identifies the chunk by contents rather than by a fragile rolldown-derived name, counts its aborts and asserts the count is non-zero, and `test.skip`s visibly when the build emitted no chunk; `tests/unit/server-stack.test.ts` gained three static-source assertions on `src/main.ts`'s bootstrap that carry the gate on every CI push with no Docker. Mutation-proven in all four combinations. |
+| 9–37 | Not started | Blocked by the Step 8 gate. |
 
 - 2026-09-08 server-milestone Step 3: designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — and documented all 42 columns with every type, default, nullability, key, constraint, index, and relationship, plus the row-level-security matrix and the rule for storing a `GameNumber`. The same block is written byte-identically into both required files, which is what the step's test asks a reviewer to confirm. Nothing was created: no migration exists and no database holds it. Step 5 lands the migrations.
 
@@ -767,6 +768,206 @@
 
 - 2026-09-09 first real GitHub Actions run (`.github/workflows/ci.yml`, added at Step 5) surfaced a genuine E2E flake unrelated to the server milestone: `tests/e2e/production-stages.spec.ts`'s "keeps surface carts empty when the tower queue is empty" failed once on the shared runner with `cartX` unchanged after a fixed 1,500 ms `page.waitForTimeout`, while every sibling assertion on the same cosmetic surface-hauler clock elsewhere in that file already polls with `expect.poll(..., { timeout: 6_500 })` instead of sampling once after a flat delay. The animation clock accumulates from zero at boot rather than from wall-clock time, so a frozen read only happens when the browser drops real frames for the whole sampled window — plausible on a slower/contended shared runner, not reproduced across several local repeats. Fixed by switching this one assertion to the same `expect.poll` idiom and timeout budget the rest of the file already uses, rather than touching any game logic; the now-redundant direct re-check of `cartX` after the poll was removed. Verified: 3 repeated local runs pass, the full 42-test E2E suite passes, and lint/unit tests are unaffected. No gameplay, save-document, or schema change; unrelated to Steps 1-7 of the server milestone.
 
+- The user validated Step 7 and authorized Step 8 on 2026-09-09.
+
+- 2026-09-09 server-milestone Step 8: the anonymous guest session, opening
+  Phase 2 (Identity). `enable_anonymous_sign_ins` flips to `true` in
+  `supabase/config.toml` (`anonymous_users = 30`/hour was already configured).
+  `@supabase/supabase-js` moves from `devDependencies` to `dependencies`,
+  exact-pinned at the same `2.116.0` `whoami-check`'s Deno import already
+  used, because `src/platform/web/supabaseClient.ts` is the first `src/`
+  import of it: `createSupabaseClient()` returns `null`, attempting no network
+  call, when `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` is unset — a
+  checkout with no `.env.local` stays exactly as playable as before.
+- `src/platform/web/guestSession.ts`'s `ensureGuestSession` mirrors the
+  injected-collaborator pattern `whoami-check`'s `ResolveCaller` established:
+  a narrow `GuestAuthClient` slice of `SupabaseClient['auth']`
+  (`getSession`/`signInAnonymously`), faked by
+  `tests/unit/guest-session.test.ts` rather than mocking the SDK. It never
+  throws — reusing a session, signing in fresh, a rejected call, and a
+  disabled/unreachable auth service all resolve to a typed
+  `signed-in`/`sign-in-failed`/`unconfigured` result. `src/main.ts` constructs
+  the client once and calls it without awaiting before
+  `loadActiveGame`/`createGame`, publishing the result as a `DEV`-only
+  `app.dataset.guestSession` diagnostic, the same convention `BootScene`
+  already uses.
+- Proving "two browsers receive different identities" needs a real GoTrue, so
+  Step 8 adds a second, Docker-dependent Playwright suite kept out of the
+  Docker-free `npm run test:e2e`: `playwright.server-e2e.config.ts` (port
+  4176) and `tests/server-e2e/guest-session.spec.ts`. Three scenarios: a fresh
+  browser boots playable holding a real anonymous session; every
+  `**/auth/v1/**` request aborted still boots the game and a forced
+  `visibilitychange` flush (the same mechanism
+  `tests/e2e/lifecycle-persistence.spec.ts` already drives) still reaches
+  IndexedDB across a reload; two fresh browser contexts receive distinct
+  `user.id`s whose access tokens each answer only for themselves through the
+  live `whoami-check` function, called directly from the Node test process
+  (no CORS concern). `scripts/verify-server-stack.mjs` runs
+  `npm run test:server-e2e` after `test:server-integration`, feeding it
+  `API_URL`/`ANON_KEY` read from a live `supabase status --output json` —
+  CI needs no `.env.local`, and a developer's own file is untouched.
+- One empirical finding, not assumed: `enable_anonymous_sign_ins` is read by
+  the GoTrue container at boot, not by `supabase db reset` — a stack already
+  running from before the config edit still answered
+  `anonymous_provider_disabled` (confirmed directly with `curl` against
+  `/auth/v1/signup`) until fully stopped and restarted. A genuinely clean
+  checkout never hits this.
+- `CLAUDE.md` and `README.md` both asserted "nothing in `src/` makes a network
+  call" — corrected in the same change to name the one non-blocking call this
+  step adds and confirm the game stays exactly as playable without it.
+- Step 8 evidence: `npm run verify:server` passes end to end from a
+  completely clean `supabase stop`/`start`/`db reset` cycle, including all
+  three new `test:server-e2e` scenarios. The full client gate was re-run:
+  lint clean, 398 unit tests, all 42 Chromium E2E tests, strict build, secret
+  scan (confirming `VITE_SUPABASE_ANON_KEY` is the only Supabase-related
+  value in `dist/`, no service-role key), and all 9 production smoke tests
+  pass.
+
+- 2026-09-09 review of the Step 8 working tree: ten findings, six fixed in
+  place before the gate, three fixed as valuable cleanups, one confirmed
+  unrelated. (1) `.github/workflows/ci.yml`'s `server` job ran `npm ci` then
+  straight into `npm run verify:server`, which now runs a real Chromium
+  suite — the job had no browser installed at all and would have died with
+  "Executable doesn't exist" on its first CI run. Added
+  `npx playwright install --with-deps chromium` between them, matching the
+  `client` job's own step; bumped `timeout-minutes` from 20 to 25 for the
+  added suite; corrected the job's name/comment, which still described only
+  Steps 4–7 (the same staleness a Step 6 review already found and fixed
+  once). (2) `playwright.server-e2e.config.ts` used the default `'html'`
+  reporter, which on a local failure opens a blocking `show-report` server on
+  `:9323` — fatal under `scripts/verify-server-stack.mjs`'s `spawnSync`
+  invocation, which would hang rather than report `FAIL`, and whose default
+  `playwright-report/` output would also collide with the main E2E suite's
+  report. Switched to `'line'`, the same choice
+  `playwright.production.config.ts`/`playwright.performance.config.ts` already
+  made for the identical reason. (3) `callWhoAmI`'s retry loop broke on any
+  response at all, including a transient non-200 cold-start error, so it
+  would not actually retry the case it exists for; and its 10-attempt budget
+  (up to 30 s) could exceed the config's implicit 30 s default test timeout
+  once a page boot and session round trip were added on top — the same
+  margin bug a Step 7 review already fixed once for the comparable
+  integration-suite warm-up loop. Now retries on `!response.ok` too, at 6
+  attempts (18 s worst case) under an explicit 60 s per-test `timeout` in
+  the config. (4) A static `@supabase/supabase-js` import added +58 kB gzip
+  to the single entry chunk (measured: 1.78 MB raw / 472 kB gzip against a
+  1.56 MB / 414 kB Step 35 baseline) — sitting in front of every boot's
+  parse/eval cost, configured or not, which is exactly what this step's own
+  "must never delay the first frame" rule was written to prevent.
+  `createSupabaseClient` now dynamically imports the SDK only once
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are confirmed present; measured
+  after the fix, the main chunk is back to 1,570,900 bytes raw / 417.69 kB
+  gzip (a few kB, not 58) and the SDK ships in its own 214.56 kB raw /
+  55.05 kB gzip chunk fetched only on demand. (5) The "documented commands"
+  test in `tests/unit/server-stack.test.ts` listed every server script README
+  and CLAUDE.md name except the new `test:server-e2e` — added, the same fix a
+  Step 7 review already applied for `test:server-unit`/`test:server-integration`.
+  (6, cleanup) The dev-only `data-guest-session` diagnostic published a live
+  access token into the DOM; dropped from the published shape (`{status,
+  user}` only) since the server-e2e suite that needed a token to call
+  `whoami-check` now reads it directly from the Supabase client's own
+  `localStorage` entry (`sb-<host>-auth-token`), which existed already and
+  needed no new surface. (7, cleanup) Every HMR reload constructed a second
+  Supabase/GoTrue client alongside the first one, which is what the SDK's own
+  "Multiple GoTrueClient instances detected" console warning was reporting;
+  the client promise is now cached on `import.meta.hot.data` and reused
+  across reloads, and the dispose handler no longer stops its auto-refresh
+  timer, since doing so would have left the *reused* instance unable to
+  refresh afterward. (8, cleanup) Added two `ensureGuestSession` unit tests
+  ahead of Step 9's identity linking: reusing an existing linked
+  (`is_anonymous: false`) session without treating it as a fresh guest, and
+  defaulting `isAnonymous` to `false` when a session omits the field
+  entirely. (9) Confirmed unrelated to this step: a pasted CI log showed
+  `tests/e2e/production-stages.spec.ts`'s "cannot change gold output by
+  changing the animation speed" failing on a GitHub Actions runner with
+  `page.evaluate: Target page, context or browser has been closed" after
+  `page.clock.runFor` — that test does not touch anything Step 8 changed, it
+  passed in every local run of the full 42-test suite during this step
+  (including after every fix above), and this file already has one prior,
+  separately-fixed CI-only flake in the same cosmetic-animation-clock family
+  (recorded above, 2026-09-09). Recorded here rather than investigated
+  further, since it is out of this step's scope. Verified after fixes 1–8:
+  lint clean, 398 unit tests, all 42 Chromium E2E tests, strict build, secret
+  scan, 9 production smoke tests, and `npm run verify:server` (all checks,
+  including the reorganized `test:server-e2e`) pass.
+
+- 2026-09-09 a follow-up review caught an eleventh finding: fix 4 above
+  (dynamic import) made `createSupabaseClient` return a promise that can
+  reject — a flaky network fetching the lazy chunk, or a stale chunk hash
+  after a redeploy — and `src/main.ts`'s `void`-ed promise chain had no
+  `.catch` around it. `ensureGuestSession`'s own try/catch covers only the
+  collaborator calls made *inside* it, not the client-construction promise
+  one level above it in `main.ts`, so the rejection skipped straight past
+  `.then((client) => ensureGuestSession(...))` to an unhandled rejection —
+  breaking `guestSession.ts`'s own documented "this never throws" contract
+  from one level up, even though the game itself keeps playing (Phaser boots
+  independently of this chain). Neither existing suite could have caught it:
+  the Docker-free `tests/e2e/` dev server never bundles, so there is no lazy
+  chunk to fail, and `tests/server-e2e/`'s network-blocking test only targets
+  `**/auth/v1/**`. Fixed with one `.catch` between the two `.then`s, folding
+  any rejection into `sign-in-failed` (not `unconfigured`, which stays
+  reserved for "no Supabase project configured at all"). A new production
+  smoke test, `tests/production/production-smoke.spec.ts`'s "continues
+  playing when the lazily-loaded Supabase chunk fails to fetch," blocks
+  `**/assets/dist-*.js` (the SDK's own chunk; confirmed stable across two
+  separate builds) against the real optimized bundle and asserts both that
+  the HUD still renders and that no `pageerror` fires — mutation-proven
+  directly: reverting the `.catch` fix reproduces the exact unhandled
+  rejection message
+  ("Failed to fetch dynamically imported module: .../assets/dist-*.js") as a
+  `pageerror`, restoring it passes again. Verified: lint clean, 398 unit
+  tests, 42 Chromium E2E tests, strict build, secret scan, 10 production
+  smoke tests (up from 9), and `npm run verify:server` all pass.
+
+- 2026-09-09 a third review pass caught a twelfth finding, in the eleventh's own fix: the
+  new production-smoke test was a false green on CI, the one place it gates.
+  `createSupabaseClient` checks `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
+  *before* its dynamic `import()`, and Vite inlines both at build time, so a
+  build with neither set makes the guard constantly true and the bundler
+  eliminates the import entirely — no lazy chunk is emitted at all. CI has no
+  `.env.local`, so `page.route('**/assets/dist-*.js', abort)` matched nothing,
+  aborted nothing, and left every assertion trivially true. Reproduced
+  directly, three ways: a build without the two variables emits only
+  `index-*.js` and the CSS (no `dist-*.js`); with the `.catch` deliberately
+  removed, the test still passed in 4.3 s against that build; with the same
+  mutation against a configured build, it failed as intended. The chunk's
+  absence is correct behaviour, not a defect — an unconfigured build *should*
+  ship no SDK — so the test simply cannot be meaningful there, and the fix
+  splits the concern rather than forcing a chunk into existence. One rejected
+  approach is recorded because it looked obvious and was wrong: giving
+  `playwright.production.config.ts` placeholder `VITE_` values so the chunk
+  always builds broke 8 unrelated specs, because the resulting sign-in attempt
+  surfaces as a real failed request (`net::ERR_UNSAFE_PORT` for the first
+  placeholder tried; any unreachable host gives `ERR_CONNECTION_REFUSED`
+  instead) in the specs that assert no request fails and no browser error
+  fires. Any placeholder producing real network traffic has that problem, so
+  the config was left untouched. Fixed in two parts instead. (a)
+  `tests/production/production-smoke.spec.ts` now identifies the SDK chunk by
+  its *contents* (`GoTrueClient` present, entry-chunk marker absent) rather
+  than by a `dist-*` glob — that name is one rolldown derives from the `dist/`
+  directory inside `@supabase/supabase-js`, so an SDK layout change or bundler
+  rename would have silently unhooked the route even on a configured build —
+  counts the aborts it performs and asserts the count is non-zero, and
+  `test.skip`s with a stated reason when the build emitted no chunk, so an
+  unconfigured build reports a visible skip rather than a false pass or a false
+  failure. (b) `tests/unit/server-stack.test.ts` gained
+  `describe('the guest-session bootstrap in src/main.ts')` — three
+  static-source assertions (the chain is `void`-ed and never awaited before
+  boot, a `.catch` sits between its two `.then`s, and the published diagnostic
+  goes through `toPublicGuestSessionDiagnostic` rather than stringifying the
+  raw result with its token) — carrying the gate that actually runs on every
+  CI push, with no Docker and no `.env.local`. This is the same
+  static-assertion-beside-behavioural-test pattern a Step 7 review already
+  established for `resolveCallerViaSupabaseAuth`, and for the same reason:
+  `src/main.ts` is a module of top-level side effects no unit test can import.
+  Mutation-proven across all four combinations — with the `.catch` removed the
+  unit gate fails (CI condition, no Docker or env needed) and the production
+  spec fails against a configured build; with it restored the production spec
+  passes and reports a real aborted chunk request, and the full production
+  suite in the CI condition is 9 passed with 1 visible skip, the 8 specs the
+  rejected placeholder approach had broken all healthy again. Verified: lint
+  clean, 401 unit tests (up from 398), 42 Chromium E2E tests, strict build,
+  secret scan, 10 production smoke tests, `npm run verify` exits 0.
+
 ## Deferred Features — recorded at the Step 37 close, not implemented
 
 Step 37 records these instead of building them. Each was excluded deliberately
@@ -811,8 +1012,15 @@ cosmetic warehouse supervisor sprite.
   subjective judgement no automated suite can make.
 - Playtest validation of the provisional balance curve, especially the generated
   floor 5–15 depth curve, which no human has played through.
-- The main JavaScript chunk measures about 1.56 MB raw / 414 kB gzip, recorded
-  in Step 35 as a future startup-budget concern rather than a current failure.
+- The main JavaScript chunk measures about 1.56 MB raw / 414 kB gzip (Step 35),
+  recorded as a future startup-budget concern rather than a current failure.
+  Server-milestone Step 8 added `@supabase/supabase-js` as a client
+  dependency; a 2026-09-09 review measured a static import at +58 kB gzip on
+  this same chunk and required the SDK to be dynamically imported instead
+  (`src/platform/web/supabaseClient.ts`), so the built main chunk is
+  essentially unchanged (1,570,900 bytes raw / 417.69 kB gzip) and the SDK
+  ships in its own on-demand chunk (214.56 kB raw / 55.05 kB gzip) fetched
+  only once `createSupabaseClient` actually runs.
 
 ## Acceptance Results — reviewed at the Step 37 close
 

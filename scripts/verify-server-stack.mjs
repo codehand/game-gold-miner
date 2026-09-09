@@ -31,6 +31,20 @@
  * those unit tests faked out, `resolveCallerViaSupabaseAuth`, actually works
  * against live GoTrue and Postgres.
  *
+ * Also runs Step 8's validation: "A fresh browser boots into a playable game
+ * holding a session. With the network disabled the game still boots, still
+ * plays, and still saves locally. Two browsers on the same machine receive
+ * different identities, and neither can read the other's data."
+ * `npm run test:server-e2e` (`playwright.server-e2e.config.ts`) drives a real
+ * browser against a real dev server pointed at this live stack, proving what
+ * nothing fakeable locally can: that Supabase Auth hands two different
+ * browsers two different anonymous identities. The dev server it starts
+ * needs `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`; this script reads both
+ * from `supabase status` once the stack is confirmed live and passes them
+ * through the spawned process's environment, so CI needs no `.env.local` —
+ * Vite gives `process.env` priority over `.env.local`, so a developer's own
+ * file (already required for `npm run dev`) is untouched either way.
+ *
  * Run with `npm run verify:server`. It requires Docker; the stack runs entirely
  * offline once the CLI images are cached.
  *
@@ -74,10 +88,11 @@ function report(ok, label, detail) {
   }
 }
 
-function run(command, args, { capture = false } = {}) {
+function run(command, args, { capture = false, env } = {}) {
   return spawnSync(command, args, {
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     encoding: 'utf8',
+    ...(env ? { env } : {}),
   });
 }
 
@@ -337,6 +352,25 @@ async function main() {
     run('npm', ['run', 'test:server-integration']).status === 0,
     'Edge Function integration tests pass against the live stack',
   );
+
+  console.log('\n> npm run test:server-e2e (Step 8)');
+  const statusResult = supabase(['status', '--output', 'json'], { capture: true });
+  const parsedStatus = parseCliJson(statusResult.stdout);
+
+  if (parsedStatus?.API_URL && parsedStatus?.ANON_KEY) {
+    report(
+      run('npm', ['run', 'test:server-e2e'], {
+        env: {
+          ...process.env,
+          VITE_SUPABASE_URL: parsedStatus.API_URL,
+          VITE_SUPABASE_ANON_KEY: parsedStatus.ANON_KEY,
+        },
+      }).status === 0,
+      'Guest-session browser tests pass against the live stack',
+    );
+  } else {
+    report(false, "'supabase status --output json' exposed API_URL and ANON_KEY");
+  }
 
   if (process.argv.includes('--with-bundle-scan')) {
     console.log('\n> npm run build');

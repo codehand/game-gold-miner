@@ -4,7 +4,7 @@
 
 The base-game milestone is complete and validated. A second milestone is now planned but not started: `memory-bank/server-milestone-plan.md` takes the game from client-only to account-backed — guest play, Google/Apple/Telegram sign-in, cloud save, server-verified progress, leaderboards, and entitlement groundwork, on Supabase.
 
-Steps 1 through 6 are validated. **Step 7 is implemented on 2026-09-09 and awaiting user validation**; no step past it has started, and Phase 1 (server foundation) is complete pending that gate. See `## Next Steps` below for the Step 4 through Step 7 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
+Steps 1 through 7 are validated — Step 7 was validated by the user's 2026-09-09 authorization to proceed with Step 8, closing Phase 1 (server foundation). **Step 8 (Phase 2 — Identity: anonymous guest session) is implemented on 2026-09-09 and awaiting user validation**; no step past it has started. See `## Next Steps` below for the Step 4 through Step 8 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
 
 Step 3 designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — with all 42 columns, every type, default, nullability, key, constraint, index, and relationship, plus the RLS matrix in which `saves` denies the client every write. Step 5 landed all six as `supabase/migrations/20260908130000_create_platform_tables.sql`, with RLS enabled and exactly the policies that matrix names; they exist in the local development database, not in any deployment.
 
@@ -1106,10 +1106,186 @@ client gate was re-run given the scope of change: lint clean, 378 unit tests
 to), all 42 Chromium E2E tests, strict build, secret scan, and all 9
 production smoke tests pass.
 
-The base-game 37-step plan is finished. The server milestone is at its Step 7 gate, closing Phase 1: Steps 1 through 6 are validated, Step 7 is implemented and awaiting validation, and Step 8 — the first step of Phase 2, anonymous guest sign-in — may not begin until the user validates it. F5 — whether to add an XSS/CSP step — is still open and was not answered at the Step 1 gate; Step 2's D1 makes it slightly more pressing, since the session credential now definitively lives in script-writable storage. Every other open item carries a recorded default or resolution that can be reviewed at documented cost.
+The user validated Step 7 and authorized Step 8 on 2026-09-09.
+
+Server-milestone Step 8 is implemented on 2026-09-09: the anonymous guest
+session, opening Phase 2 (Identity). `enable_anonymous_sign_ins` flips to
+`true` in `supabase/config.toml` — the existing `anonymous_users = 30`/hour
+rate limit already covered this path. `@supabase/supabase-js` moves from
+`devDependencies` to `dependencies`, exact-pinned at the same `2.116.0`
+`whoami-check`'s Deno import already used, because `src/platform/web/supabaseClient.ts`
+is the first `src/` code to import it: `createSupabaseClient()` reads
+`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` and returns `null`, attempting no
+network call, when either is unset — a checkout with no `.env.local` stays
+exactly as playable as before this step.
+
+`src/platform/web/guestSession.ts`'s `ensureGuestSession` mirrors the injected-collaborator
+pattern `whoami-check`'s `ResolveCaller` already established: it takes only
+the narrow `GuestAuthClient` slice of `SupabaseClient['auth']` it needs
+(`getSession`/`signInAnonymously`), so `tests/unit/guest-session.test.ts` fakes
+that collaborator instead of mocking the SDK. It never throws — reusing an
+existing session, signing in fresh, a rejected call, and a disabled or
+unreachable auth service all resolve to a typed result
+(`signed-in`/`sign-in-failed`/`unconfigured`) rather than rejecting.
+`src/main.ts` constructs the client once and calls `ensureGuestSession`
+without awaiting it before `loadActiveGame`/`createGame` — identity
+resolution must never delay the first frame, the same "boot from local,
+reconcile after" principle Step 17 will apply to save reconciliation, landing
+one step early for identity itself — and publishes the resolved result as a
+`DEV`-only `app.dataset.guestSession` diagnostic, the same
+`import.meta.env.DEV` convention `BootScene` already uses, stripped from
+production identically.
+
+Proving "two browsers receive different identities" needs a real GoTrue
+issuing real sessions, so Step 8 adds a second, Docker-dependent Playwright
+suite kept out of the Docker-free `npm run test:e2e`: `playwright.server-e2e.config.ts`
+(port 4176) and `tests/server-e2e/guest-session.spec.ts`. Three scenarios: a
+fresh browser boots playable and holds a real anonymous session (a UUID
+`user.id`, `isAnonymous: true`); every `**/auth/v1/**` request aborted still
+boots the game, and forcing the same `visibilitychange` flush
+`tests/e2e/lifecycle-persistence.spec.ts` already drives still reaches
+IndexedDB across a reload; two fresh browser contexts receive distinct
+`user.id`s whose access tokens, sent directly from the Node test process (no
+CORS concern), each answer only for themselves through the live
+`whoami-check` function. `scripts/verify-server-stack.mjs` now runs
+`npm run test:server-e2e` after `test:server-integration`, reading
+`API_URL`/`ANON_KEY` from a live `supabase status --output json` into the
+spawned dev server's environment — no `.env.local` needed in CI, and a
+developer's own file is untouched.
+
+One empirical finding, not assumed: `enable_anonymous_sign_ins` is read by the
+GoTrue container at boot, not by `supabase db reset` — a stack already
+running from before the config edit still answered
+`anonymous_provider_disabled` (verified directly via `curl` against
+`/auth/v1/signup`) until fully stopped and restarted. A genuinely clean
+checkout never hits this, since every CI run and any `supabase start` after a
+`supabase stop` starts the container fresh.
+
+`CLAUDE.md` and `README.md` both asserted "nothing in `src/` makes a network
+call" — now false, corrected in the same change to name the one non-blocking
+call this step adds and confirm the game stays exactly as playable without it.
+
+Step 8 evidence (pre-review): `npm run verify:server` passed end to end from a
+completely clean `supabase stop`/`start`/`db reset` cycle, including all three
+new `test:server-e2e` scenarios. The full client gate was re-run: lint clean,
+396 unit tests, all 42 Chromium E2E tests, strict build, secret scan
+(confirming `VITE_SUPABASE_ANON_KEY` is the only Supabase-related value in
+`dist/`, no service-role key), and all 9 production smoke tests passed.
+
+A 2026-09-09 review of the Step 8 working tree found ten issues. Six fixed
+before the gate: `.github/workflows/ci.yml`'s `server` job had no Chromium
+installed at all for the new browser suite `verify:server` now runs (fixed
+with its own `npx playwright install --with-deps chromium` step, and its
+stale name/comment and 20-minute timeout corrected/bumped to 25); `playwright.server-e2e.config.ts`'s
+default `'html'` reporter would hang `scripts/verify-server-stack.mjs`'s
+`spawnSync` on any local failure and collide with the main suite's report
+folder (switched to `'line'`, matching why the production/performance configs
+already avoid `'html'`); `callWhoAmI`'s retry loop broke on any response
+including a transient cold-start error and its 10-attempt budget could exceed
+the config's implicit 30 s test timeout — the same class of bug a Step 7
+review already fixed once for a comparable warm-up loop (now retries on
+`!response.ok` too, at 6 attempts under an explicit 60 s test timeout); a
+static `@supabase/supabase-js` import cost +58 kB gzip on the single entry
+chunk that every boot parses first, which is exactly what this step's "never
+delay the first frame" rule exists to prevent (`createSupabaseClient` now
+dynamically imports the SDK only once the env vars are confirmed present,
+putting it in its own on-demand chunk); and the "documented commands" test
+was missing `test:server-e2e`. Two more applied as cleanups: the dev-only
+diagnostic dropped its published access token (the server-e2e suite now
+reads it from the Supabase client's own `localStorage` entry instead), and
+the client promise is now cached on `import.meta.hot.data` so HMR reuses one
+GoTrue instance instead of leaking a new one every reload (previously the
+cause of the SDK's own "Multiple GoTrueClient instances detected" console
+warning). Two `ensureGuestSession` unit tests were added ahead of Step 9's
+identity linking (reusing a linked non-anonymous session; defaulting
+`isAnonymous` to `false` when the field is absent). One pasted CI failure —
+`tests/e2e/production-stages.spec.ts`'s animation-speed test closing its page
+mid-`page.clock.runFor` — was checked and confirmed unrelated: nothing in
+this step touches that file, it passed in every local run during this step,
+and the same file already has one earlier, separately-fixed CI-only flake in
+the same cosmetic-animation-clock family. Verified after these fixes: lint
+clean, 398 unit tests, all 42 Chromium E2E tests, strict build, secret scan,
+9 production smoke tests, and `npm run verify:server` (including the fixed
+`test:server-e2e`) all pass.
+
+A follow-up review caught an eleventh finding on top of those ten: fix 4
+above (the dynamic import) made `createSupabaseClient` return a promise that
+can reject — a flaky network fetching the lazy chunk, or a stale chunk hash
+after a redeploy — and `src/main.ts`'s `void`-ed promise chain had no
+`.catch` around it. `ensureGuestSession`'s own try/catch covers only the
+collaborator calls made *inside* it, not the client-construction promise one
+level above it in `main.ts`, so the rejection skipped straight past
+`.then((client) => ensureGuestSession(...))` to an unhandled rejection —
+breaking `guestSession.ts`'s own documented "this never throws" contract from
+one level up, even though the game itself keeps playing (Phaser boots
+independently of this chain). Neither existing suite could catch it: the
+Docker-free `tests/e2e/` dev server never bundles, so there is no lazy chunk
+to fail, and `tests/server-e2e/`'s network-blocking test only targets
+`**/auth/v1/**`. Fixed with one `.catch` folding any rejection into
+`sign-in-failed` (not `unconfigured`, reserved for "no Supabase project
+configured"). A new production-smoke test blocks the SDK's own lazy chunk
+(`**/assets/dist-*.js`, confirmed stable across two separate builds) against
+the real optimized bundle and asserts the HUD still renders with no
+`pageerror` — mutation-proven directly: reverting the `.catch` reproduces the
+exact unhandled-rejection message as a `pageerror`, restoring it passes
+again. Verified: lint clean, 398 unit tests, 42 Chromium E2E tests, strict
+build, secret scan, 10 production smoke tests (up from 9), and
+`npm run verify:server` all pass.
+
+A third review pass caught a twelfth finding, in the eleventh's own fix: the
+new production-smoke test was a false green on CI, the one place it gates.
+`createSupabaseClient` checks `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
+*before* its dynamic `import()`, and Vite inlines both at build time, so a
+build with neither set makes the guard constantly true and the bundler
+eliminates the import entirely — no lazy chunk is emitted at all. CI has no
+`.env.local`, so `page.route('**/assets/dist-*.js', abort)` matched nothing,
+aborted nothing, and left every assertion trivially true. Reproduced
+directly, three ways: a build without the two variables emits only
+`index-*.js` and the CSS (no `dist-*.js`); with the `.catch` deliberately
+removed, the test still passed in 4.3 s against that build; with the same
+mutation against a configured build, it failed as intended. The chunk's
+absence is correct behaviour, not a defect — an unconfigured build *should*
+ship no SDK — so the test simply cannot be meaningful there, and the fix
+splits the concern rather than forcing a chunk into existence. One rejected
+approach is recorded because it looked obvious and was wrong: giving
+`playwright.production.config.ts` placeholder `VITE_` values so the chunk
+always builds broke 8 unrelated specs, because the resulting sign-in attempt
+surfaces as a real failed request (`net::ERR_UNSAFE_PORT` for the first
+placeholder tried; any unreachable host gives `ERR_CONNECTION_REFUSED`
+instead) in the specs that assert no request fails and no browser error
+fires. Any placeholder producing real network traffic has that problem, so
+the config was left untouched. Fixed in two parts instead. (a)
+`tests/production/production-smoke.spec.ts` now identifies the SDK chunk by
+its *contents* (`GoTrueClient` present, entry-chunk marker absent) rather
+than by a `dist-*` glob — that name is one rolldown derives from the `dist/`
+directory inside `@supabase/supabase-js`, so an SDK layout change or bundler
+rename would have silently unhooked the route even on a configured build —
+counts the aborts it performs and asserts the count is non-zero, and
+`test.skip`s with a stated reason when the build emitted no chunk, so an
+unconfigured build reports a visible skip rather than a false pass or a false
+failure. (b) `tests/unit/server-stack.test.ts` gained
+`describe('the guest-session bootstrap in src/main.ts')` — three
+static-source assertions (the chain is `void`-ed and never awaited before
+boot, a `.catch` sits between its two `.then`s, and the published diagnostic
+goes through `toPublicGuestSessionDiagnostic` rather than stringifying the
+raw result with its token) — carrying the gate that actually runs on every
+CI push, with no Docker and no `.env.local`. This is the same
+static-assertion-beside-behavioural-test pattern a Step 7 review already
+established for `resolveCallerViaSupabaseAuth`, and for the same reason:
+`src/main.ts` is a module of top-level side effects no unit test can import.
+Mutation-proven across all four combinations — with the `.catch` removed the
+unit gate fails (CI condition, no Docker or env needed) and the production
+spec fails against a configured build; with it restored the production spec
+passes and reports a real aborted chunk request, and the full production
+suite in the CI condition is 9 passed with 1 visible skip, the 8 specs the
+rejected placeholder approach had broken all healthy again. Verified: lint
+clean, 401 unit tests (up from 398), 42 Chromium E2E tests, strict build,
+secret scan, 10 production smoke tests, `npm run verify` exits 0.
+
+The base-game 37-step plan is finished. The server milestone is at its Step 8 gate, inside Phase 2 (Identity): Steps 1 through 7 are validated, Step 8 is implemented and awaiting validation, and Step 9 — profiles and row-level security — may not begin until the user validates it. F5 — whether to add an XSS/CSP step — is still open and was not answered at the Step 1 gate; Step 2's D1 makes it slightly more pressing now that the session credential actually exists in script-writable storage rather than only being planned there. Every other open item carries a recorded default or resolution that can be reviewed at documented cost.
 
 1. Two workstreams are authorized, and only these two. The **server milestone**
-   is at its Step 7 gate — implemented, awaiting validation, Step 8 blocked
+   is at its Step 8 gate — implemented, awaiting validation, Step 9 blocked
    (`memory-bank/server-milestone-plan.md`). The **cat-role asset catalog** is
    authorized as asset preproduction only, under `art-source/`, with no runtime
    loader entry, gameplay attribute, or schema change. Everything else —

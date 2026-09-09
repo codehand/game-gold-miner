@@ -3,6 +3,17 @@ export {
   type SaveLifecycleTargets,
 } from './bindSaveLifecycle';
 export {
+  ensureGuestSession,
+  type GuestAuthClient,
+  type GuestSessionResult,
+  type GuestSessionToken,
+  type GuestSessionUser,
+} from './guestSession';
+export {
+  createSupabaseClient,
+  type SupabaseClient,
+} from './supabaseClient';
+export {
   LIFECYCLE_SAVE_JOURNAL_KEY,
   LifecycleSafeActiveSaveRepository,
   WebLifecycleSaveJournal,

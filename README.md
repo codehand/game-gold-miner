@@ -7,14 +7,19 @@ spendable gold. The player spends that gold on independent stage upgrades and
 sequential floor unlocks, and receives a capped reward for time spent away.
 
 The game runs in a mobile browser at a fixed 360×640 portrait logical viewport.
-**The playable game is client-only** — no accounts, no cloud save, and no network
-call on any path; it boots, plays, and saves entirely offline in IndexedDB. A
-separate server milestone is under way in `memory-bank/server-milestone-plan.md`;
-its local Supabase stack lives in `supabase/`, holds all six designed tables
-with row-level security, and its save-sync Edge Function currently serves
-nothing but a health check. Nothing in `src/` talks to it.
-`.github/workflows/ci.yml` gates every push and pull request, including a real
-Deno test harness for the Edge Functions.
+**The playable game stays fully playable offline** — no account or cloud save is
+required on any path; it boots, plays, and saves entirely in IndexedDB even with
+no network at all. A separate server milestone is under way in
+`memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
+`supabase/`, holds all six designed tables with row-level security, and its
+save-sync Edge Function currently serves nothing but a health check — nothing
+in `src/` reads or writes any of those tables yet. The one exception, since
+server-milestone Step 8, is a single non-blocking anonymous-auth call at boot
+(`src/platform/web/guestSession.ts`) that gives a first-time player a real
+session with no prompt and no wait; it is never awaited before the first
+frame, and a failed or absent call leaves the game exactly as playable as
+before this step. `.github/workflows/ci.yml` gates every push and pull
+request, including a real Deno test harness for the Edge Functions.
 
 ## Requirements
 
@@ -52,12 +57,14 @@ already open; production runs automatically with no tapping required.
 | `npm run dev:sim` | Optional macOS iPhone Simulator preview stream (`sim:list` / `sim:stop` manage it). |
 | `npm run scan:secrets` | Fails if a built `dist/` carries a service-role key or any other non-public secret. Runs inside `verify`. |
 | `npm run supabase:start` | Start the local Supabase stack in Docker (`supabase:stop`, `supabase:reset`, `supabase:status` manage it). |
-| `npm run verify:server` | Server stack check: the stack starts, migrations apply from empty, and the health check answers. Requires Docker. |
+| `npm run verify:server` | Server stack check: the stack starts, migrations apply from empty, health/portability/integration checks pass, and the guest-session browser suite passes. Requires Docker. |
 | `npm run verify:all` | `verify` then `verify:server`, in sequence — what `.github/workflows/ci.yml` runs as two parallel jobs. |
+| `npm run test:server-e2e` | Playwright Chromium suite (`tests/server-e2e/`) against a dev server on port 4176, proving real anonymous sign-in against the live local stack. Assumes it is already running. |
 
 Each Playwright config starts its own server with `reuseExistingServer: false`,
-so free ports 4173 (E2E), 4174 (performance), and 4175 (production) before
-running those suites. E2E reports land in `playwright-report/`.
+so free ports 4173 (E2E), 4174 (performance), 4175 (production), and 4176
+(server E2E) before running those suites. E2E reports land in
+`playwright-report/`.
 
 Focused runs:
 
@@ -88,7 +95,7 @@ src/persistence (save schema + IndexedDB)  →  src/platform/web (lifecycle adap
 | `src/game/` | Phaser scene and entities, plus pure Phaser-free `layout/`, `view-model/`, and `runtime/` submodules. |
 | `src/ui/` | The three DOM overlays: offline reward, mine-floor upgrade, save diagnostic. |
 | `src/persistence/` | Save document schema, validation, migration, Dexie adapter, debounced coordinator, load/recovery boundary. |
-| `src/platform/web/` | Browser lifecycle save binding and the synchronous pagehide journal. |
+| `src/platform/web/` | Browser lifecycle save binding, the synchronous pagehide journal, and (since server-milestone Step 8) the Supabase client and anonymous guest-session bootstrap. |
 
 Four rules matter more than the rest:
 
@@ -174,7 +181,7 @@ npm run supabase:stop
 ```
 
 Ports are the Supabase CLI defaults — API 54321, database 54322, Studio 54323,
-mail 54324 — and do not collide with the client's 5173, 4173, 4174, or 4175.
+mail 54324 — and do not collide with the client's 5173, 4173, 4174, 4175, or 4176.
 
 `supabase/migrations/` holds two forward-only migrations: a bootstrap file that
 creates nothing (it only asserts the PostgreSQL 13+ premise the schema relies on
@@ -230,6 +237,22 @@ npm run test:server-integration                       # needs the live stack
 curl http://127.0.0.1:54321/functions/v1/whoami-check  # 401, no token
 ```
 
+**Guest identity.** Server-milestone Step 8 enables anonymous sign-in
+(`enable_anonymous_sign_ins` in `supabase/config.toml`) and adds the first
+`src/` code that talks to the network: `ensureGuestSession` in
+`src/platform/web/guestSession.ts` gives a first-time player a real `auth.users`
+row from the first frame, never awaited before boot and never throwing.
+Proving that two browsers receive two different identities needs a real
+Supabase Auth service, so `npm run test:server-e2e`
+(`playwright.server-e2e.config.ts`, port 4176) is a second Playwright suite,
+kept out of the Docker-free `npm run test:e2e` and run as part of
+`npm run verify:server` instead:
+
+```bash
+npm run supabase:start && npm run supabase:reset
+npm run test:server-e2e   # needs the live stack; a fresh anonymous session per browser
+```
+
 **Secrets.** `.env.local` is git-ignored; `.env.example` is the committed
 template. The `VITE_` prefix is the boundary: Vite inlines exactly those
 variables into the browser bundle, so a service-role key, a recovery-code pepper,
@@ -248,7 +271,8 @@ privileged credential reaches `dist/`, and it runs inside `npm run verify`.
   IndexedDB contents, and the DOM instead.
 - Edge Function unit tests are `supabase/functions/**/*.test.ts` (`deno test`,
   no Docker); integration tests are `tests/server-integration/*.test.ts`
-  (Vitest, against the live stack).
+  (Vitest, against the live stack); guest-identity browser tests are
+  `tests/server-e2e/*.spec.ts` (Playwright, against the live stack).
 - Bug fixes ship with a regression test.
 
 ## Documentation

@@ -36,13 +36,14 @@ jobs:
       - run: npm run verify
 
   server:
-    name: Server gate (migrations, health, core portability, Edge Function tests)
+    name: Server gate (migrations, health, core portability, Edge Function tests, guest-session browser tests)
     runs-on: ubuntu-latest
     # Three independent checks each retry for up to ~20 s against a
     # cold-starting edge runtime (health, core-portability-check, then
-    # whoami-check via the integration suite); a worker that never comes up
-    # must fail the job rather than hold a runner indefinitely.
-    timeout-minutes: 20
+    # whoami-check via the integration suite), plus Step 8's browser suite
+    # driving a real dev server against the live stack; a worker that never
+    # comes up must fail the job rather than hold a runner indefinitely.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,6 +51,10 @@ jobs:
           node-version: '22.18.0'
           cache: npm
       - run: npm ci
+      # Server-milestone Step 8: `npm run verify:server` now also runs
+      # `npm run test:server-e2e`, a real Chromium browser suite. The `client`
+      # job installs its own Chromium on its own runner; this job needs one too.
+      - run: npx playwright install --with-deps chromium
       # `npm run verify:server` starts the local stack fresh on this runner —
       # there is no prior database, so `supabase db reset` applies every
       # committed migration to an empty one — and then checks the health

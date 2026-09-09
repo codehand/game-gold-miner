@@ -302,7 +302,10 @@ Three consequences, and the first is the one that matters most:
    script on the origin, and no plan step adds a Content Security Policy.
 3. **Revisit trigger:** if a domain is registered, this decision must be
    reconsidered **before Step 8 ships**. Once guests hold sessions, moving where
-   the session lives is a migration, not an edit.
+   the session lives is a migration, not an edit. Checked at Step 8
+   (2026-09-09): no domain is registered, so D1 stands unrevisited and Step 8
+   ships the credential in the Supabase client's default storage as decided
+   here.
 
 ## 9. Cadence and retry — decision D5, resolving F6
 

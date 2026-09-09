@@ -324,7 +324,8 @@ Step 4 begins by creating the Supabase organization. Step 5 creates CI from
 nothing; GitHub Actions is the default, since the remote is GitHub.
 **If wrong:** A domain becomes available → revisit Step 2's cookie decision
 before Step 8 ships, because changing where the session lives after guests hold
-sessions is a migration, not an edit.
+sessions is a migration, not an edit. Checked at Step 8 (2026-09-09): still no
+domain registered, so this default stood unrevisited.
 
 ### 7.6 Who operates the server after delivery — Steps 34, 35
 
