@@ -11,9 +11,10 @@ The game runs in a mobile browser at a fixed 360×640 portrait logical viewport.
 call on any path; it boots, plays, and saves entirely offline in IndexedDB. A
 separate server milestone is under way in `memory-bank/server-milestone-plan.md`;
 its local Supabase stack lives in `supabase/`, holds all six designed tables
-with row-level security, and its one Edge Function currently serves nothing but
-a health check. Nothing in `src/` talks to it. `.github/workflows/ci.yml` gates
-every push and pull request.
+with row-level security, and its save-sync Edge Function currently serves
+nothing but a health check. Nothing in `src/` talks to it.
+`.github/workflows/ci.yml` gates every push and pull request, including a real
+Deno test harness for the Edge Functions.
 
 ## Requirements
 
@@ -210,6 +211,25 @@ That bundle lives at `supabase/functions/_shared/generated/core-bundle.js`,
 is git-ignored, and is rebuilt by `npm run verify:server` before the stack
 starts — so it can never be checked against stale source.
 
+**Edge Function tests.** `npm run test:server-unit` (`deno-bin@2.1.4`, an
+exact devDependency) runs `deno test supabase/functions`: every function's
+handler is unit-tested by importing it directly, with zero `--allow-*`
+permission flags, because `Deno.serve(...)` is guarded by
+`if (import.meta.main)` and every real network/database call is an injected,
+fakeable collaborator. `npm run test:server-integration`
+(`vitest.server-integration.config.ts`, kept out of `npm test`'s glob) hits
+the real running stack instead — `supabase/functions/whoami-check` verifies a
+bearer token against Supabase Auth and returns the caller's own `profiles`
+row under row-level security, and `tests/server-integration/authFixture.ts`
+mints that bearer token for the seeded fixture guest:
+
+```bash
+npm run test:server-unit                              # no Docker needed
+npm run supabase:start && npm run supabase:reset
+npm run test:server-integration                       # needs the live stack
+curl http://127.0.0.1:54321/functions/v1/whoami-check  # 401, no token
+```
+
 **Secrets.** `.env.local` is git-ignored; `.env.example` is the committed
 template. The `VITE_` prefix is the boundary: Vite inlines exactly those
 variables into the browser bundle, so a service-role key, a recovery-code pepper,
@@ -226,6 +246,9 @@ privileged credential reaches `dist/`, and it runs inside `npm run verify`.
 - `tests/production/production-smoke.spec.ts` verifies the shipped bundle: the
   dev-only diagnostics are stripped from it, so it leans on pixel probes,
   IndexedDB contents, and the DOM instead.
+- Edge Function unit tests are `supabase/functions/**/*.test.ts` (`deno test`,
+  no Docker); integration tests are `tests/server-integration/*.test.ts`
+  (Vitest, against the live stack).
 - Bug fixes ship with a regression test.
 
 ## Documentation

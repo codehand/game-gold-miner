@@ -29,6 +29,15 @@ zero-logic `supabase/functions/_shared/coreBundleEntry.ts`) rather than a raw
 relative import; that bundle is git-ignored and rebuilt before every
 `npm run verify:server` run.
 
+Edge Functions have a real test harness: `npm run test:server-unit`
+(`deno test supabase/functions`, via the `deno-bin` devDependency) unit-tests
+pure handlers with zero permission flags — every function's
+`Deno.serve(...)` is guarded by `if (import.meta.main)` so importing it for a
+test never starts a live listener — and `npm run test:server-integration`
+(Vitest, its own `vitest.server-integration.config.ts`) exercises the one
+"trivial authenticated endpoint," `whoami-check`, against the real running
+stack using a JWT minted by `tests/server-integration/authFixture.ts`.
+
 ## Commands
 
 ```bash
@@ -41,9 +50,11 @@ npm run test:prod      # build dist/, serve it from / on :4175, run the producti
 npm run verify         # lint → test → test:e2e → build → scan:secrets → test:prod (the full gate)
 npm run scan:secrets   # fail if dist/ carries a service-role key or other non-public secret
 npm run supabase:start # local Supabase stack in Docker (supabase:stop / :reset / :status)
-npm run verify:server  # local stack: starts, migrations, health, core-portability check (needs Docker)
+npm run verify:server  # local stack: unit tests, starts, migrations, health, portability, integration tests (needs Docker)
 npm run verify:all     # verify && verify:server, in sequence
-npm run build:server-core # bundle src/core+config+saveSchema.ts for the Deno Edge Function
+npm run build:server-core       # bundle src/core+config+saveSchema.ts for the Deno Edge Function
+npm run test:server-unit        # deno test supabase/functions — pure handlers, no Docker needed
+npm run test:server-integration # vitest against the live stack — assumes it is already running
 npm run test:perf      # optional ten-minute Chrome benchmark (Pixel 5 emulation, 4x CPU throttle)
 npm run dev:sim        # boot iPhone Simulator + Safari + serve-sim stream (macOS/Xcode)
 npm run sim:list       # list active simulator streams

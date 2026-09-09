@@ -4,7 +4,7 @@
 
 The base-game milestone is complete and validated. A second milestone is now planned but not started: `memory-bank/server-milestone-plan.md` takes the game from client-only to account-backed — guest play, Google/Apple/Telegram sign-in, cloud save, server-verified progress, leaderboards, and entitlement groundwork, on Supabase.
 
-Steps 1 through 5 are validated. **Step 6 is implemented on 2026-09-08 and awaiting user validation**; no step past it has started. Step 7 must not begin before that gate. See `## Next Steps` below for the Step 4 through Step 6 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
+Steps 1 through 6 are validated. **Step 7 is implemented on 2026-09-09 and awaiting user validation**; no step past it has started, and Phase 1 (server foundation) is complete pending that gate. See `## Next Steps` below for the Step 4 through Step 7 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
 
 Step 3 designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — with all 42 columns, every type, default, nullability, key, constraint, index, and relationship, plus the RLS matrix in which `saves` denies the client every write. Step 5 landed all six as `supabase/migrations/20260908130000_create_platform_tables.sql`, with RLS enabled and exactly the policies that matrix names; they exist in the local development database, not in any deployment.
 
@@ -1045,10 +1045,71 @@ multi-second loop. `vite.server-core.config.ts` was outside `tsconfig.json`'s
 step extended it. `npm run lint`, 378 unit tests, and `npm run verify:server`
 (including the still-80-KB bundle) all pass after the fixes.
 
-The base-game 37-step plan is finished. The server milestone is at its Step 6 gate: Steps 1 through 5 are validated, Step 6 is implemented and awaiting validation, and Step 7 may not begin until the user validates it. F5 — whether to add an XSS/CSP step — is still open and was not answered at the Step 1 gate; Step 2's D1 makes it slightly more pressing, since the session credential now definitively lives in script-writable storage. Every other open item, including the two findings Step 6 resolved or added (F2, F10), carries a recorded default or resolution that can be reviewed at documented cost.
+The user validated Step 6 and authorized Step 7 on 2026-09-09.
+
+Server-milestone Step 7 is implemented on 2026-09-09: the Edge Function test
+harness, closing Phase 1. `deno-bin@2.1.4` is a new exact devDependency — a
+real, pinned Deno CLI matching the edge runtime's own reported "compatible
+with Deno v2.1.4" — since the Supabase CLI's own `test` subcommand only wraps
+pgTAP, not Deno. `npm run test:server-unit` (`deno test supabase/functions`)
+runs 19 tests across three files, each importing its handler directly rather
+than making an HTTP request, and every one passes with zero `--allow-*`
+permission flags — proof of purity by construction, since Deno's sandbox
+would refuse real network or env access without an explicit grant.
+
+`whoami-check` is Step 7's "trivial authenticated endpoint," not part of the
+save-sync protocol. `handleWhoAmI` takes caller resolution as an injected
+`ResolveCaller` collaborator rather than calling Supabase Auth itself, so its
+unit tests fake every response the route can give; the one real
+collaborator, `resolveCallerViaSupabaseAuth` (new `@supabase/supabase-js`
+client dependency), verifies the bearer token against GoTrue and reads the
+caller's own `profiles.display_name` under row-level security — the
+authenticate-then-read-under-RLS shape every real route from Step 9 onward
+needs. `tests/server-integration/authFixture.ts` mints an HS256 JWT for the
+seeded fixture guest, signed with the Supabase CLI's fixed local
+`JWT_SECRET` — "the fixture pattern for an authenticated caller" the step
+asks for, replacing the ad hoc inline script Step 5's evidence-gathering used.
+`tests/server-integration/whoami.integration.test.ts` exercises the real
+collaborator against the live stack from its own `vitest.server-integration.config.ts`,
+deliberately excluded from `vitest.config.ts`'s glob so `npm test` never needs
+Docker.
+
+`save-sync/index.ts` and `core-portability-check/index.ts` both gained an
+`import.meta.main` guard around `Deno.serve(...)`, so importing them for unit
+tests does not also start a live listener — proven live: after the change,
+both functions still answered real requests exactly as before. Their
+duplicated response envelope moved to the new
+`supabase/functions/_shared/http.ts`, itself unit-tested.
+`scripts/verify-server-stack.mjs` runs the unit suite before the stack even
+starts and the integration suite once the database is reset, both from a
+clean `supabase db reset` — satisfying the step's "both run in CI from a
+clean database" test. Its final pass/fail line, hardcoded as "Step 4
+validation" since Step 4, now reads "npm run verify:server," since it has
+covered four steps for a while.
+
+A real bug surfaced live while wiring the integration test, not assumed
+away: `auth.getUser` against the seeded fixture guest 500'd with
+`"Scan error on column ... confirmation_token: converting NULL to string is
+unsupported"` — `supabase/seed.sql` had never set `confirmation_token`,
+`recovery_token`, `email_change_token_new`, or `email_change`, columns with no
+default that GoTrue's Go row scanner cannot read as NULL. No step before this
+one ever triggered it, since Steps 4 through 6 only ever handed PostgREST a
+hand-signed JWT directly, never asking GoTrue to load the user row. Fixed by
+seeding those four columns as `''`, matching a real sign-up; verified with a
+direct `curl` to `/auth/v1/user` before (500) and after (200) the fix.
+
+Step 7 evidence: `npm run verify:server` passes 13 checks end to end from a
+completely clean `supabase stop`/`start`/`db reset` cycle, and
+`--with-bundle-scan` additionally passes the build and secret scan. The full
+client gate was re-run given the scope of change: lint clean, 378 unit tests
+(one static-source test needed updating to read the file its assertion moved
+to), all 42 Chromium E2E tests, strict build, secret scan, and all 9
+production smoke tests pass.
+
+The base-game 37-step plan is finished. The server milestone is at its Step 7 gate, closing Phase 1: Steps 1 through 6 are validated, Step 7 is implemented and awaiting validation, and Step 8 — the first step of Phase 2, anonymous guest sign-in — may not begin until the user validates it. F5 — whether to add an XSS/CSP step — is still open and was not answered at the Step 1 gate; Step 2's D1 makes it slightly more pressing, since the session credential now definitively lives in script-writable storage. Every other open item carries a recorded default or resolution that can be reviewed at documented cost.
 
 1. Two workstreams are authorized, and only these two. The **server milestone**
-   is at its Step 6 gate — implemented, awaiting validation, Step 7 blocked
+   is at its Step 7 gate — implemented, awaiting validation, Step 8 blocked
    (`memory-bank/server-milestone-plan.md`). The **cat-role asset catalog** is
    authorized as asset preproduction only, under `art-source/`, with no runtime
    loader entry, gameplay attribute, or schema change. Everything else —

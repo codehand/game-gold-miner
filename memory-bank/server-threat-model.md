@@ -371,10 +371,11 @@ Step 1's test requires that no step's instructions rest on an unrecorded
 assumption. Auditing all 37 steps against §7 found nine, listed below and traced
 step by step in §9. Eight now carry a recorded default; F5 is left open because
 closing it means adding a step. Each names the step whose instructions must
-absorb it before that step begins. A tenth, F10, was not found by this audit —
-it surfaced empirically while implementing Step 6, which is exactly the kind of
-gap an audit of *stated* assumptions cannot catch, and is recorded here with the
-same numbering rather than in a separate list.
+absorb it before that step begins. Two more, F10 and F11, were not found by
+this audit — both surfaced empirically while implementing Steps 6 and 7,
+which is exactly the kind of gap an audit of *stated* assumptions cannot
+catch, and both are recorded here with the same numbering rather than in a
+separate list.
 
 **F1 — Step 12 presumes a Telegram Mini App host that does not exist.**
 Recorded in §7.3. Step 12 gains an explicit prerequisite.
@@ -424,6 +425,23 @@ bundle is regenerated before every `npm run verify:server` run and is
 git-ignored, so it is a build artifact rather than a maintained copy — it
 cannot drift from source the way a hand-forked port of `src/core` could,
 because there is nothing hand-written in it to drift.
+
+**F11 — no Edge Function handles CORS or `OPTIONS`, noticed while implementing
+Step 7's `whoami-check`.** Every function today answers `malformed_request` /
+400 for any method it does not explicitly recognize, `OPTIONS` included, and
+neither `memory-bank/server-save-sync-protocol.md` nor any Phase 1 step
+mentions a CORS policy. This is not yet a defect: nothing calls any function
+directly from a browser context that would trigger a preflight — Step 8's
+anonymous sign-in goes through the Supabase Auth client SDK against the Auth
+service, which Supabase already configures, not against a function in this
+repository. **Default:** the first step whose own client code calls a
+function in `supabase/functions/` directly from `src/` (concretely, Step 16 or
+17's save download/upload — `whoami-check` itself is server-side test
+scaffolding, never called from the browser) must add an explicit CORS
+policy — allowed origins, headers, and an `OPTIONS` handler answering before
+the §4 envelope's method check runs — as part of its own instructions, and
+record the decision in the protocol document rather than each function
+inventing its own.
 
 **F3 — Step 23's upper bound has an unstated modelling rule.**
 Bounding cumulative counters requires knowing what the mine *could* have

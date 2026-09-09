@@ -18,6 +18,19 @@
  * `tests/unit/server-core-portability.test.ts` asserts against on the
  * unbundled source.
  *
+ * Also runs Step 7's validation: "A trivial authenticated endpoint has both a
+ * unit and an integration test, and both run in CI from a clean database."
+ * `npm run test:server-unit` (`deno test supabase/functions`) runs first,
+ * before the stack even starts — every unit test injects a fake collaborator
+ * in place of Supabase Auth/Postgres, so none of them need Docker, a
+ * database, or any `--allow-*` permission flag. `npm run test:server-integration`
+ * runs after the database is reset and the health/portability checks confirm
+ * the stack is live, and hits the real `whoami-check` function with a token
+ * minted by `tests/server-integration/authFixture.ts` — Step 7's "fixture
+ * pattern for an authenticated caller" — to prove the one real collaborator
+ * those unit tests faked out, `resolveCallerViaSupabaseAuth`, actually works
+ * against live GoTrue and Postgres.
+ *
  * Run with `npm run verify:server`. It requires Docker; the stack runs entirely
  * offline once the CLI images are cached.
  *
@@ -230,6 +243,15 @@ async function main() {
     process.exit(1);
   }
 
+  console.log('\n> npm run test:server-unit (Step 7)');
+  // Needs nothing this script has started yet — no Docker, no database, no
+  // permission flag — which is the point: these are unit tests against pure
+  // handlers, not the live stack.
+  report(
+    run('npm', ['run', 'test:server-unit']).status === 0,
+    'Edge Function unit tests pass (no live stack required)',
+  );
+
   console.log('\n> supabase start');
   const start = supabase(['start']);
   report(start.status === 0, 'Local stack starts');
@@ -310,6 +332,12 @@ async function main() {
   console.log('\n> core portability check (Step 6)');
   await checkCorePortability();
 
+  console.log('\n> npm run test:server-integration (Step 7)');
+  report(
+    run('npm', ['run', 'test:server-integration']).status === 0,
+    'Edge Function integration tests pass against the live stack',
+  );
+
   if (process.argv.includes('--with-bundle-scan')) {
     console.log('\n> npm run build');
     report(run('npm', ['run', 'build']).status === 0, 'Production build succeeds');
@@ -318,7 +346,7 @@ async function main() {
   }
 
   console.log(
-    `\n${failures === 0 ? 'Step 4 validation passed.' : `Step 4 validation failed: ${failures} check(s).`}`,
+    `\n${failures === 0 ? 'npm run verify:server passed.' : `npm run verify:server failed: ${failures} check(s).`}`,
   );
   process.exit(failures === 0 ? 0 : 1);
 }

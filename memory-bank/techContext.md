@@ -63,10 +63,14 @@ version change is authorized in this phase.
   `analytics` are disabled in `supabase/config.toml`; no milestone step uses
   them and each is a container at start-up.
 - Supabase Edge Functions run on Deno inside the CLI's edge runtime, so no local
-  Deno install is required. `supabase/functions/**` is linted with Deno globals
-  declared in `eslint.config.mjs`, but is deliberately outside `tsconfig.json`:
-  `Deno` has no type in the Node/DOM libraries the client compiles against.
-  Server-side type checking and unit testing arrive with the Step 7 harness.
+  Deno install is required to *serve* them. `supabase/functions/**` is linted
+  with Deno globals declared in `eslint.config.mjs`, but is deliberately
+  outside `tsconfig.json`: `Deno` has no type in the Node/DOM libraries the
+  client compiles against. `deno-bin@2.1.4` (Step 7), an exact devDependency,
+  gives `npm run test:server-unit` a real, separately-installed Deno CLI —
+  pinned to the version the edge runtime itself reports being compatible
+  with — for testing and type-checking, since the Supabase CLI's own `test`
+  subcommand only wraps pgTAP, not Deno.
 - Deno's edge runtime does not resolve an extension-less relative specifier the
   way `tsc`'s `"moduleResolution": "bundler"` does — pointing a function
   straight at `src/core/index.ts` fails to boot with `Module not found` on its
@@ -102,9 +106,71 @@ version change is authorized in this phase.
   `src/core/simulation/advanceSimulation.ts` moved both the pinned client
   assertion and the live function's returned gold (to `6060`) together, before
   the edit was reverted. `eslint.config.mjs` extends `src/core/**/*.ts`'s
-  purity rules with a `Deno` global ban and a `(^|/)supabase(/|$)` import ban —
-  the dependency direction is `supabase/` on `src/core`, never the reverse —
-  and `tests/unit/architecture.test.ts` probes both.
+  purity rules with a `Deno` global ban and two import bans —
+  `(^|/)supabase(/|$)` and (Step 7) `^@supabase/`, once that npm scope existed
+  to ban — the dependency direction is `supabase/` on `src/core`, never the
+  reverse — and `tests/unit/architecture.test.ts` probes both.
+- `save-sync/index.ts` and `core-portability-check/index.ts` guard their
+  trailing `Deno.serve(...)` with `if (import.meta.main)` (Step 7), so
+  `index.test.ts` can import `resolveFunctionRoute`/`handleRequest` and
+  `runTenMinuteReproduction` directly without also starting a second live
+  listener; proven live rather than assumed safe, by curling both functions
+  again after the change. Their duplicated `JSON_HEADERS`/`jsonResponse`/
+  `errorResponse` moved to `supabase/functions/_shared/http.ts`, itself
+  unit-tested (`http.test.ts`), so a third function never grows a third copy.
+- `whoami-check` is Step 7's "trivial authenticated endpoint," not part of the
+  save-sync protocol. `handleWhoAmI(request, resolveCaller)` takes caller
+  resolution as an injected collaborator — `extractBearerToken` parses
+  `Authorization: Bearer <token>`, `resolveCaller` either rejects it or
+  returns `{ userId, displayName }` — so `index.test.ts` fakes every outcome
+  (missing token, rejected token, resolved caller, wrong method) with zero
+  `--allow-*` permission flags. The one real collaborator,
+  `resolveCallerViaSupabaseAuth`, uses `@supabase/supabase-js` to call
+  `auth.getUser(token)` against live GoTrue, then reads
+  `profiles.display_name` for that same user id with a client scoped to the
+  caller's own token, so row-level security applies exactly as it would for a
+  real client. `verify_jwt = false` at the platform level — verification
+  happens by hand inside the handler on purpose, since that is the pattern
+  `save-sync`'s own authenticated routes need from Step 16.
+  `@supabase/supabase-js` is a `devDependency`, exact-pinned at `2.116.0`, not
+  a client `dependency` — nothing in `src/` imports it yet — and the Deno
+  import in `whoami-check/index.ts` pins that identical exact version
+  (`npm:@supabase/supabase-js@2.116.0`, not a floating `@2`), because a
+  deployed function has no local `node_modules` to resolve a bare specifier
+  against and would otherwise fetch whatever currently satisfies `@2` from the
+  registry — a version the local unit tests never actually ran. A 2026-09-09
+  review found this drift risk along with the dependency's misplacement (it
+  was in `dependencies`); `tests/unit/server-stack.test.ts` now asserts both
+  the placement and the version match, so they cannot silently diverge again.
+- `tests/server-integration/authFixture.ts` is Step 7's fixed "fixture pattern
+  for an authenticated caller": `mintFixtureUserToken()` signs an HS256 JWT
+  (`sub`/`role: authenticated`/`aud: authenticated`/`exp`) for the seeded
+  fixture guest with the Supabase CLI's fixed local `JWT_SECRET` — the same
+  value on every local stack anyone runs, printed by `npx supabase status`,
+  not a secret this repository protects. `tests/server-integration/whoami.integration.test.ts`
+  uses it against the real running stack, in its own
+  `vitest.server-integration.config.ts` (`tests/server-integration/**/*.test.ts`)
+  deliberately excluded from `vitest.config.ts`'s `tests/unit/**` glob, so
+  `npm test`/`npm run verify` — which must work with no Docker running — never
+  picks it up.
+- `npm run test:server-unit` (`deno test supabase/functions`) and
+  `npm run test:server-integration` (the Vitest config above) are Step 7's two
+  test categories. `scripts/verify-server-stack.mjs` runs the unit suite
+  before the stack even starts — it needs no Docker, no database, and no
+  permission flag — and the integration suite once the database is reset and
+  the health/portability checks confirm the stack is live, so both "run in CI
+  from a clean database" as the step's test requires. Its final pass/fail
+  line, hardcoded as "Step 4 validation" since Step 4, now reads
+  "npm run verify:server."
+- A real bug, not an assumed one, surfaced while wiring the integration test:
+  `supabase/seed.sql`'s fixture `auth.users` row left `confirmation_token`,
+  `recovery_token`, `email_change_token_new`, and `email_change` NULL — columns
+  with no default — and GoTrue's Go row scanner cannot read them as a nullable
+  string, so any real `auth.getUser` call 500'd with a `Scan error` until the
+  seed explicitly set those four columns to `''`, matching what GoTrue itself
+  writes for a real sign-up. No step before Step 7 ever triggered this: Steps
+  4 through 6 only ever handed PostgREST a hand-signed JWT directly, never
+  asking GoTrue to load the user row.
 - `scripts/scan-bundle-secrets.mjs` (`npm run scan:secrets`) fails the build when
   `dist/` contains a JWT declaring `role=service_role`, an `sb_secret_*` key, an
   exact non-`VITE_` value from `.env.local` or the running stack, or any
@@ -581,7 +647,9 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: 378 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, and — added at server-milestone Step 6 — the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture.
+- `npm run test`: 386 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture (Step 6), and — Step 7 — `tests/unit/server-stack.test.ts`'s Retry-After assertion updated to read the response envelope from its new home in `_shared/http.ts`, its "never reads the service-role key" and `config.toml` `verify_jwt` checks generalized to `it.each` loops over every directory under `supabase/functions/` rather than hardcoding `save-sync` (a 2026-09-09 review finding), and two new assertions pinning `@supabase/supabase-js` to `devDependencies` at the exact version `whoami-check/index.ts`'s Deno import also pins.
+- `npm run test:server-unit` (`deno test supabase/functions`): 19 tests pass across `_shared/http.test.ts`, `save-sync/index.test.ts`, and `whoami-check/index.test.ts` (Step 7), every one with zero `--allow-*` permission flags. Needs no Docker and no database.
+- `npm run test:server-integration` (`vitest run --config vitest.server-integration.config.ts`): 6 tests pass against the live local stack (Step 7) — the seeded fixture guest's real `profiles.display_name` for a valid token, and 401 for no header / a syntactically invalid token / a wrong-secret-signed token / an expired token, plus 400 for a non-GET method. Assumes `supabase start` and `supabase db reset` already ran.
 - `npm run test:e2e`: all 42 Chromium tests pass, including explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios.
 - `npm run test:perf`: the repeated ten-minute benchmark passes with all fifteen floors unlocked — 60.000 FPS, 16.67 ms mean, 17.6 ms p95, 17.8 ms maximum, zero of 36,139 frames beyond the 18.34 ms threshold, +229,928 bytes post-GC live-heap growth at +188 B/s, 665 Phaser objects and 371 DOM nodes constant across twenty samples, and 81.9 ms scroll p95 against a 100 ms budget. It presented at 60 Hz, so mean frame time equals the vsync interval and carries no headroom information. This is Pixel 5 emulation under 4× CPU throttling in desktop Chrome and is not physical Android-device evidence.
 - `npm run lint`: the repository passes the ESLint flat configuration.
@@ -594,14 +662,15 @@ If a database is introduced, replace this statement with the complete authoritat
   build-output secret scan, and the production smoke suite in that order. This is
   the Step 36 validation sequence with server-milestone Step 4's secret scan
   inserted after the build.
-- `npm run verify:server`: verified on 2026-09-08 from a clean checkout against
-  an empty Docker volume set — checks include both committed migrations applied
-  from empty, an unauthenticated `GET /v1/health` returning 200 within 9 ms of
-  the local clock, and — added at Step 6 — a rebuild of
-  `supabase/functions/_shared/generated/core-bundle.js` from current source
-  followed by a byte-for-byte comparison of the live `core-portability-check`
-  function's ten-minute reproduction against the pinned fixture. Requires
-  Docker.
+- `npm run verify:server`: verified on 2026-09-09 from a completely clean
+  `supabase stop`/`start`/`db reset` cycle — 13 checks: Docker reachable, the
+  server-core bundle rebuilds, `npm run test:server-unit` (Step 7), the stack
+  starts, both committed migrations apply from empty, an unauthenticated
+  `GET /v1/health` returning 200, a byte-for-byte-identical
+  `core-portability-check` reproduction (Step 6), and `npm run test:server-integration`
+  (Step 7). `--with-bundle-scan` additionally passes the production build and
+  secret scan. Requires Docker. Its final pass/fail line reads
+  "npm run verify:server" rather than the Step-4-era "Step 4 validation."
 - `npm run verify:all`: `verify` then `verify:server` in sequence, added at Step
   5 as the sibling command its own test named; `.github/workflows/ci.yml` runs
   the same two checks as separate CI jobs rather than one sequential command, so

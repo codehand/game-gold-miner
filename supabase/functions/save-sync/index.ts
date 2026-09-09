@@ -21,7 +21,16 @@
  *    vocabulary has no `not_found` and no `method_not_allowed`, so a request
  *    for a path or method the contract does not define is a client bug and is
  *    answered `malformed_request` / 400.
+ *
+ * Server-milestone Step 7 added `index.test.ts`, unit-testing
+ * `resolveFunctionRoute` and `handleRequest` by importing them directly — the
+ * pure-handler half of the harness Step 7 establishes; see
+ * `whoami-check/index.ts` for the fuller pattern with an injected
+ * authentication collaborator. The response envelope moved to
+ * `../_shared/http.ts` for reuse rather than being redefined per function.
  */
+
+import { errorResponse, jsonResponse } from '../_shared/http.ts';
 
 const FUNCTION_ROUTE_PREFIX = '/save-sync';
 const PLATFORM_ROUTE_PREFIX = '/functions/v1';
@@ -34,44 +43,6 @@ const DATABASE_PROBE_TIMEOUT_MS = 2_000;
  * `503` — the client is told to wait for it, so the response has to carry it.
  */
 const RETRY_AFTER_SECONDS = 5;
-
-const JSON_HEADERS: Readonly<Record<string, string>> = {
-  'content-type': 'application/json; charset=utf-8',
-  'cache-control': 'no-store',
-};
-
-interface ErrorBody {
-  readonly error: {
-    readonly code: string;
-    readonly message: string;
-    readonly detail?: Readonly<Record<string, unknown>>;
-  };
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
-}
-
-interface ErrorOptions {
-  readonly detail?: Readonly<Record<string, unknown>>;
-  /** Seconds to wait before retrying. Set it on every code §4 marks retryable. */
-  readonly retryAfterSeconds?: number;
-}
-
-function errorResponse(
-  status: number,
-  code: string,
-  message: string,
-  options: ErrorOptions = {},
-): Response {
-  const { detail, retryAfterSeconds } = options;
-  const body: ErrorBody = { error: detail ? { code, message, detail } : { code, message } };
-  const headers =
-    retryAfterSeconds === undefined
-      ? JSON_HEADERS
-      : { ...JSON_HEADERS, 'retry-after': String(retryAfterSeconds) };
-  return new Response(JSON.stringify(body), { status, headers });
-}
 
 /**
  * Reduces a request URL to this function's own route, so the handler matches
@@ -164,11 +135,17 @@ export async function handleRequest(request: Request): Promise<Response> {
   return errorResponse(400, 'malformed_request', 'Unknown route.', { detail: { route } });
 }
 
-Deno.serve(async (request: Request) => {
-  try {
-    return await handleRequest(request);
-  } catch (error) {
-    console.error('save-sync: unhandled error.', error);
-    return errorResponse(500, 'server_error', 'Unhandled error.');
-  }
-});
+// Guarded so importing this module — as `index.test.ts` does, to unit-test
+// `resolveFunctionRoute` and `handleRequest` in isolation — does not also
+// start a live listener. `import.meta.main` is true only when the edge
+// runtime runs this file directly to serve real requests.
+if (import.meta.main) {
+  Deno.serve(async (request: Request) => {
+    try {
+      return await handleRequest(request);
+    } catch (error) {
+      console.error('save-sync: unhandled error.', error);
+      return errorResponse(500, 'server_error', 'Unhandled error.');
+    }
+  });
+}

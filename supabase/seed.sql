@@ -18,7 +18,17 @@
 -- exactly the kind of drift this milestone exists to avoid. Steps 16, 26, and
 -- 31 add fixtures for those tables once the code that produces real rows for
 -- them exists.
-
+--
+-- `confirmation_token`, `recovery_token`, `email_change_token_new`, and
+-- `email_change` have no column default, so an insert that omits them leaves
+-- them NULL. GoTrue's own row scanner reads them as plain (non-nullable)
+-- strings, so a real request through it — `auth.getUser`, which
+-- `whoami-check` calls in Step 7's integration test — fails with "Unhandled
+-- server error: sql: Scan error on column ... converting NULL to string is
+-- unsupported" the moment it has to load this row. This was never exercised
+-- before Step 7: Steps 4-6 only ever handed a manually-signed JWT to
+-- PostgREST directly, which never asks GoTrue to load the user. Explicit
+-- empty strings here match what GoTrue itself writes for a real sign-up.
 insert into auth.users (
   instance_id,
   id,
@@ -27,6 +37,10 @@ insert into auth.users (
   is_anonymous,
   raw_app_meta_data,
   raw_user_meta_data,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
   created_at,
   updated_at
 ) values (
@@ -37,6 +51,10 @@ insert into auth.users (
   true,
   '{"provider": "anonymous", "providers": ["anonymous"]}',
   '{}',
+  '',
+  '',
+  '',
+  '',
   now(),
   now()
 );

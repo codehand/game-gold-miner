@@ -290,8 +290,9 @@ reward, and once after boot reconcile. Boot never waits on the network.
 
 ## Server Stack Contract
 
-Landed in server-milestone Steps 4 through 6, all on 2026-09-08. The whole
-backend runs locally through the Supabase CLI, pinned at 2.117.0 as an exact
+Landed in server-milestone Steps 4 through 7, spanning 2026-09-08 to
+2026-09-09 — Step 7 closes Phase 1 (server foundation). The whole backend
+runs locally through the Supabase CLI, pinned at 2.117.0 as an exact
 devDependency so a clean checkout resolves the same version rather than
 whatever is installed globally. `.github/workflows/ci.yml` runs a `client` job
 (`npm run verify`) and a `server` job (`npm run verify:server`) on every push
@@ -305,13 +306,20 @@ supabase/
 │   ├── 20260908120000_bootstrap_platform_requirements.sql
 │   └── 20260908130000_create_platform_tables.sql
 └── functions/
-    ├── save-sync/index.ts          the save-sync protocol's one HTTP surface
+    ├── save-sync/                  the save-sync protocol's one HTTP surface
+    │   ├── index.ts
+    │   └── index.test.ts           Step 7: unit tests, direct import, no HTTP
     ├── core-portability-check/     Step 6 proof, not part of the protocol
     │   ├── index.ts
     │   └── (imports ../_shared/generated/core-bundle.js — see below)
+    ├── whoami-check/               Step 7's "trivial authenticated endpoint"
+    │   ├── index.ts
+    │   └── index.test.ts
     └── _shared/
         ├── coreBundleEntry.ts      pure re-export; the bundler's real entry
-        └── generated/              git-ignored; `npm run build:server-core`
+        ├── generated/              git-ignored; `npm run build:server-core`
+        ├── http.ts                 Step 7: shared response envelope
+        └── http.test.ts
 ```
 
 Local ports are the CLI defaults and do not collide with the client's 5173,
@@ -329,7 +337,18 @@ router, envelope, and vocabulary rather than opening a second contract.
 health route must answer an unauthenticated caller and platform verification
 would reject it before the handler ran. The authenticated routes therefore
 verify their own bearer token inside the handler; Step 16 implements that, and
-until it does, no route reads or writes any data.
+until it does, no route reads or writes any data. `whoami-check` below is the
+dress rehearsal for that manual-verification pattern.
+
+`Deno.serve(...)` in `save-sync` and `core-portability-check` is guarded by
+`if (import.meta.main)` (Step 7): `index.test.ts` imports the module directly
+to unit-test `resolveFunctionRoute`/`handleRequest` without starting a second
+live listener, and `import.meta.main` is true only when the edge runtime runs
+the file itself to serve real requests — proven live rather than assumed:
+after adding the guard, both functions still answered real requests exactly as
+before. Their previously-duplicated `JSON_HEADERS`/`jsonResponse`/`errorResponse`
+moved to `supabase/functions/_shared/http.ts`, itself unit-tested, so a third
+function never grows a third copy to drift from the other two.
 
 **The health route never touches the service-role key.** It is the one route
 open to unauthenticated callers, so it must not hold the credential that
@@ -392,8 +411,9 @@ and carries no protocol version prefix; `verify_jwt = false` because it reads
 and writes no data, the same reasoning as the health route.
 
 `eslint.config.mjs` extends `src/core/**/*.ts`'s purity rules with a
-`no-restricted-globals` entry for `Deno` and a `no-restricted-imports` pattern
-for any specifier matching `(^|/)supabase(/|$)` — the boundary runs one
+`no-restricted-globals` entry for `Deno` and two `no-restricted-imports`
+patterns — any specifier matching `(^|/)supabase(/|$)`, and (added at Step 7,
+once the npm scope existed to ban) `^@supabase/` — the boundary runs one
 direction only, `supabase/` importing `src/core`, never the reverse.
 `tests/unit/architecture.test.ts` probes both. Mutation-proven end to end:
 doubling a floor's extraction yield in
@@ -409,10 +429,100 @@ contains a service-role JWT, an `sb_secret_*` key, any exact non-`VITE_` value
 from the environment, or any server-only variable name, and it runs inside
 `npm run verify` between `build` and `test:prod`.
 
-Server-side type checking and unit testing are **not** established yet.
-`supabase/functions/**` is linted with Deno globals declared but sits outside
-`tsconfig.json`, because `Deno` has no type in the Node/DOM libraries the client
-compiles against. Step 7 adds the Edge Function harness that closes this.
+**The Edge Function test harness (Step 7).** `deno-bin@2.1.4` is an exact
+devDependency — a real Deno CLI, pinned to the version the edge runtime itself
+reports being compatible with — because the Supabase CLI's own `test`
+subcommand only wraps pgTAP, not Deno. `npm run test:server-unit`
+(`deno test supabase/functions`) type-checks and runs every `*.test.ts` file
+under the directory: `_shared/http.test.ts`, `save-sync/index.test.ts`, and
+`whoami-check/index.test.ts`, 19 tests total, each importing its handler
+directly and running with **zero `--allow-*` permission flags** — a Deno
+sandbox refusing real network/env access without an explicit grant is exactly
+what makes "unit test against a pure handler" checkable rather than asserted.
+`supabase/functions/**` still sits outside `tsconfig.json` (`Deno` has no type
+in the Node/DOM libraries the client compiles against), but Deno's own
+type-checker now covers it.
+
+`whoami-check` is Step 7's "trivial authenticated endpoint," not part of the
+save-sync protocol. `handleWhoAmI` takes caller resolution as an injected
+`ResolveCaller` collaborator instead of calling Supabase Auth itself, so unit
+tests exercise every response the route can give — missing token, rejected
+token, resolved caller, wrong method — with a fake. The one real
+implementation, `resolveCallerViaSupabaseAuth`, uses `@supabase/supabase-js`
+to verify the bearer token against GoTrue's `/auth/v1/user` and then read the
+caller's own `profiles.display_name` with that same token, so row-level
+security applies exactly as it would for a real client — the
+authenticate-then-read-under-RLS shape every real authenticated route from
+Step 9 onward needs. That package is a `devDependency`, exact-pinned
+(`2.116.0`), not a client `dependency`: nothing in `src/` imports it yet, and
+the Deno import specifier in `whoami-check/index.ts` pins the identical exact
+version rather than a floating `@2` — locally, Deno resolves the bare
+specifier from this repository's own `node_modules` (byonm mode), but a
+function deployed without that context would otherwise let Deno fetch
+whatever currently satisfies `@2` from the registry, testing a version no
+deployment runs. `tests/unit/server-stack.test.ts` asserts both facts so they
+cannot drift apart silently. Step 8's client-side sign-in is what should
+promote the package to `dependencies`, deliberately, in the same change that
+adds the first `src/` import.
+
+**A server misconfiguration must never look like a bad token.**
+`resolveCallerViaSupabaseAuth` **throws** if `SUPABASE_URL`/`SUPABASE_ANON_KEY`
+is missing, rather than returning `null` the way it does for a genuinely
+invalid token. `handleWhoAmI` does not catch the throw, so it propagates to
+the `Deno.serve` wrapper's existing catch, which turns it into `500
+server_error` — never the `401 unauthenticated` a bad token gets. This is the
+identical distinction `save-sync`'s `probeDatabase`/`handleHealth` already
+draw between `misconfigured` and a real per-caller rejection, and it matters
+for the same reason: a deployment missing its environment would otherwise
+tell every caller, valid token or not, that their credential was bad, and a
+client that reasonably treats 401 as "sign out and re-authenticate" would
+sign every user out in a loop against a database that was never broken. A
+first Step 7 review pass missed this; a follow-up caught it. Two tests guard
+it: `whoami-check/index.test.ts` asserts a thrown resolver error rejects
+`handleWhoAmI`'s promise instead of resolving to 401 (the fake-resolver unit
+tests can prove that contract but can never see which branch the *real*
+resolver takes), and `tests/unit/server-stack.test.ts` gained a static-source
+assertion, mirroring `save-sync`'s own, that the missing-config branch throws
+rather than returning `null` — mutation-proven: reverting to `return null`
+fails only the static assertion, unaffected pure-handler tests included,
+which is why both exist together.
+
+**"Fix the fixture pattern for an authenticated caller."**
+`tests/server-integration/authFixture.ts` mints an HS256 JWT — `sub`,
+`role: authenticated`, `aud: authenticated`, an expiry — for the seeded
+fixture guest, signed with the Supabase CLI's fixed local `JWT_SECRET` (the
+same value on every local stack anyone runs; not a secret this repository
+protects). This is the one place any test that needs an authenticated caller
+mints a token, replacing the ad hoc inline script Step 5's evidence-gathering
+used. `tests/server-integration/whoami.integration.test.ts` uses it against
+the real running stack — from its own `vitest.server-integration.config.ts`
+(`tests/server-integration/**/*.test.ts`), deliberately excluded from
+`vitest.config.ts`'s `tests/unit/**` glob so `npm test`/`npm run verify`, which
+must work with no Docker running, never picks it up by accident.
+`scripts/verify-server-stack.mjs` runs `npm run test:server-unit` before the
+stack even starts and `npm run test:server-integration` once the database is
+reset and the stack is confirmed live, satisfying Step 7's "both run in CI
+from a clean database."
+
+A real bug surfaced live while wiring the integration test, not assumed away:
+`auth.getUser` against the seeded fixture guest 500'd with a GoTrue scan
+error, because `supabase/seed.sql` left `confirmation_token`, `recovery_token`,
+`email_change_token_new`, and `email_change` NULL — columns with no default
+that GoTrue's Go row scanner cannot read as a nullable string. No step before
+this one ever triggered it, since Steps 4 through 6 only ever handed
+PostgREST a hand-signed JWT directly, never asking GoTrue to load the user
+row. Fixed by seeding those four columns as `''`, matching what GoTrue itself
+writes for a real sign-up.
+
+**No Edge Function handles CORS or `OPTIONS` yet** — recorded as finding F11
+in `memory-bank/server-threat-model.md` §8, noticed while implementing
+`whoami-check`. Every function answers `malformed_request` / 400 for a method
+it does not recognize, `OPTIONS` included, and this is not yet a defect:
+nothing calls a function directly from a browser context that would trigger a
+preflight request. The first step whose own client code does — concretely,
+Step 16 or 17's save download/upload, not Step 8's sign-in, which goes
+through the Auth client SDK rather than a function here — must add an
+explicit CORS policy as part of its own instructions.
 
 ## Cat Role Asset Catalog Contract
 

@@ -36,11 +36,12 @@ jobs:
       - run: npm run verify
 
   server:
-    name: Server gate (migrations from empty, health check, core portability)
+    name: Server gate (migrations, health, core portability, Edge Function tests)
     runs-on: ubuntu-latest
-    # Two independent checks each retry for up to ~20 s against a cold-starting
-    # edge runtime (health, then core-portability-check); a worker that never
-    # comes up must fail the job rather than hold a runner indefinitely.
+    # Three independent checks each retry for up to ~20 s against a
+    # cold-starting edge runtime (health, core-portability-check, then
+    # whoami-check via the integration suite); a worker that never comes up
+    # must fail the job rather than hold a runner indefinitely.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

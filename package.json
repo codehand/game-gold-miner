@@ -21,6 +21,8 @@
     "test:e2e": "playwright test",
     "test:perf": "playwright test --config playwright.performance.config.ts",
     "test:prod": "playwright test --config playwright.production.config.ts",
+    "test:server-unit": "deno test supabase/functions",
+    "test:server-integration": "vitest run --config vitest.server-integration.config.ts",
     "verify": "npm run lint && npm run test && npm run test:e2e && npm run build && npm run scan:secrets && npm run test:prod",
     "verify:server": "node scripts/verify-server-stack.mjs",
     "verify:all": "npm run verify && npm run verify:server"
@@ -34,7 +36,9 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
+    "@supabase/supabase-js": "2.116.0",
     "@types/node": "^26.4.0",
+    "deno-bin": "2.1.4",
     "eslint": "^10.9.1",
     "fake-indexeddb": "^6.2.5",
     "serve-sim": "^0.1.46",

@@ -16,6 +16,7 @@
  *
  * `verify_jwt = false` in `supabase/config.toml`: this reads and writes no
  * data, so it needs no more protection than the health route already has.
+ * Response envelope from `../_shared/http.ts` (server-milestone Step 7).
  */
 import ten_minute_fixture from '../../../tests/fixtures/ten-minute-core-fixture.json' with { type: 'json' };
 import {
@@ -28,11 +29,7 @@ import {
   SIMULATION_STEP_MS,
   validateSaveDocument,
 } from '../_shared/generated/core-bundle.js';
-
-const JSON_HEADERS: Readonly<Record<string, string>> = {
-  'content-type': 'application/json; charset=utf-8',
-  'cache-control': 'no-store',
-};
+import { errorResponse, jsonResponse } from '../_shared/http.ts';
 
 /**
  * The exact ten-minute reproduction: migrate and validate the fixture's input
@@ -63,30 +60,25 @@ function runTenMinuteReproduction(): unknown {
   );
 }
 
-Deno.serve((request: Request) => {
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return new Response(
-      JSON.stringify({ error: { code: 'malformed_request', message: 'GET only.' } }),
-      { status: 400, headers: JSON_HEADERS },
-    );
-  }
+// Guarded the same way `save-sync/index.ts` is (server-milestone Step 7): a
+// unit test importing `runTenMinuteReproduction` in isolation must not also
+// start a live listener.
+if (import.meta.main) {
+  Deno.serve((request: Request) => {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      return errorResponse(400, 'malformed_request', 'GET only.');
+    }
 
-  try {
-    const outputDocument = runTenMinuteReproduction();
-    return new Response(JSON.stringify({ outputDocument }), {
-      status: 200,
-      headers: JSON_HEADERS,
-    });
-  } catch (error) {
-    console.error('core-portability-check: reproduction failed.', error);
-    return new Response(
-      JSON.stringify({
-        error: {
-          code: 'server_error',
-          message: error instanceof Error ? error.message : 'Unknown error.',
-        },
-      }),
-      { status: 500, headers: JSON_HEADERS },
-    );
-  }
-});
+    try {
+      const outputDocument = runTenMinuteReproduction();
+      return jsonResponse(200, { outputDocument });
+    } catch (error) {
+      console.error('core-portability-check: reproduction failed.', error);
+      return errorResponse(
+        500,
+        'server_error',
+        error instanceof Error ? error.message : 'Unknown error.',
+      );
+    }
+  });
+}

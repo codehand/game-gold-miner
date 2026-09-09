@@ -15,9 +15,22 @@ import { describe, expect, it } from 'vitest';
  */
 
 const PROJECT_ROOT = join(import.meta.dirname, '..', '..');
+const FUNCTIONS_DIRECTORY = join(PROJECT_ROOT, 'supabase', 'functions');
 
 const readProjectFile = (relativePath: string): string =>
   readFileSync(join(PROJECT_ROOT, relativePath), 'utf8');
+
+/**
+ * Every deployable Edge Function, read from disk rather than hand-listed
+ * (server-milestone Step 7 review) — `_shared/` holds library code with no
+ * `index.ts` of its own and no `config.toml` entry, so it is excluded rather
+ * than exempted by name.
+ */
+const edgeFunctionNames = (): string[] =>
+  readdirSync(FUNCTIONS_DIRECTORY, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== '_shared')
+    .map((entry) => entry.name)
+    .sort();
 
 /** A JWT whose payload declares the row-level-security-bypassing role. */
 const JWT_PATTERN = /eyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}/g;
@@ -72,6 +85,23 @@ describe('local Supabase stack configuration', () => {
     // before the handler ran; the authenticated routes verify their own token.
     expect(config).toMatch(/\[functions\.save-sync\]\nenabled = true\nverify_jwt = false/);
   });
+
+  it.each(edgeFunctionNames())(
+    '%s is declared with an explicit enabled/verify_jwt pair',
+    (name) => {
+      // Read from disk rather than hardcoded per function (server-milestone
+      // Step 7 review), the same fix Step 4's review applied to
+      // `EXPECTED_MIGRATIONS`: a function added without its own config block
+      // would otherwise go unchecked rather than failing. All three functions
+      // that exist today set `verify_jwt = false` and verify by hand inside
+      // the handler instead; a function that legitimately needs platform
+      // verification is a deliberate exception this test must gain, not a
+      // silent gap in it.
+      expect(config).toMatch(
+        new RegExp(`\\[functions\\.${name}\\]\\nenabled = true\\nverify_jwt = false`),
+      );
+    },
+  );
 
   it('holds at least one migration, every one named by ordering timestamp', () => {
     // Forward-only migrations apply in filename order, so the name is the
@@ -174,16 +204,32 @@ describe('secret handling', () => {
   });
 });
 
-describe('save-sync Edge Function', () => {
-  const source = readProjectFile('supabase/functions/save-sync/index.ts');
+describe('every Edge Function', () => {
+  const functionNames = edgeFunctionNames();
 
-  it('never reads the service-role key', () => {
-    // The health route answers unauthenticated callers. It must not hold the
-    // credential that bypasses row-level security and is, from Step 15, the
-    // only writer of `saves`.
+  it('found more than one function, so the checks below cover something real', () => {
+    // Guards the loop the way Step 4's review made every "reads everything,
+    // finds nothing wrong" check assert it actually read something — an
+    // empty function list would make every `it.each` below pass vacuously.
+    expect(functionNames.length).toBeGreaterThan(1);
+  });
+
+  it.each(functionNames)('%s never reads the service-role key', (name) => {
+    // True of all three functions today: the health and portability routes
+    // answer unauthenticated callers, and whoami-check verifies identity
+    // through the caller's own token. None needs the credential that bypasses
+    // row-level security and is, from Step 15, the only writer of `saves`.
+    // Step 16's save upload will be the first function that legitimately
+    // needs it — that step must add its own exception here, not find this
+    // check silently no longer covering it.
+    const source = readProjectFile(`supabase/functions/${name}/index.ts`);
     expect(source).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
     expect(source).not.toContain('SECRET_KEY');
   });
+});
+
+describe('save-sync Edge Function', () => {
+  const source = readProjectFile('supabase/functions/save-sync/index.ts');
 
   it('answers only the routes the protocol defines', () => {
     expect(source).toContain("const HEALTH_ROUTE = '/v1/health'");
@@ -199,8 +245,12 @@ describe('save-sync Edge Function', () => {
 
   it('carries Retry-After on the retryable failure it can return', () => {
     // §4 tells the client to retry `service_unavailable` *after* `Retry-After`,
-    // so the response has to actually carry the header.
-    expect(source).toContain("'retry-after'");
+    // so the response has to actually carry the header. The header itself is
+    // set in `../_shared/http.ts` (server-milestone Step 7 extracted the
+    // envelope for reuse); the call site naming the retryable code and the
+    // seconds to wait still lives here.
+    const sharedHttpSource = readProjectFile('supabase/functions/_shared/http.ts');
+    expect(sharedHttpSource).toContain("'retry-after'");
     expect(source).toMatch(/service_unavailable[\s\S]{0,120}retryAfterSeconds/);
   });
 
@@ -212,6 +262,29 @@ describe('save-sync Edge Function', () => {
     expect(source).toContain("'malformed_request'");
     expect(source).toContain("'service_unavailable'");
     expect(source).toContain("'server_error'");
+  });
+});
+
+describe('whoami-check Edge Function', () => {
+  const source = readProjectFile('supabase/functions/whoami-check/index.ts');
+
+  it('does not answer a server misconfiguration as an authentication failure', () => {
+    // A caller cannot fix a missing SUPABASE_URL/SUPABASE_ANON_KEY by
+    // presenting a different token, so a missing one must not produce the
+    // same 401 a genuinely bad token gets — every caller, valid token or not,
+    // would otherwise see "unauthenticated" and a client that treats 401 as
+    // "sign out and re-authenticate" would sign every user out in a loop
+    // against a database that was never the problem. This is the identical
+    // distinction save-sync's own "does not answer a configuration mistake
+    // with a retryable code" test protects, applied to whoami-check's
+    // mechanism: throwing, so `Deno.serve`'s catch turns it into `500
+    // server_error`, rather than returning `null`, which `handleWhoAmI` reads
+    // as "invalid token" and answers 401.
+    const guardClause = source.slice(source.indexOf('if (!supabaseUrl || !anonKey)'));
+    const guardBody = guardClause.slice(0, guardClause.indexOf('}') + 1);
+
+    expect(guardBody).toMatch(/throw new Error/);
+    expect(guardBody).not.toContain('return null');
   });
 });
 
@@ -282,8 +355,41 @@ describe('verification wiring', () => {
   });
 
   it('exposes the local stack commands the documentation names', () => {
-    for (const script of ['supabase:start', 'supabase:stop', 'supabase:reset', 'verify:server', 'scan:secrets']) {
+    for (const script of [
+      'supabase:start',
+      'supabase:stop',
+      'supabase:reset',
+      'verify:server',
+      'scan:secrets',
+      'test:server-unit',
+      'test:server-integration',
+    ]) {
       expect(packageJson.scripts[script]).toBeTruthy();
     }
+  });
+
+  it('pins @supabase/supabase-js as a devDependency, not a client one', () => {
+    // Nothing in `src/` imports it yet — only `supabase/functions/**` (Deno,
+    // via an `npm:` specifier) and this repository's own tooling need it.
+    // Step 8's client-side sign-in is what should promote it to
+    // `dependencies`, deliberately, in the same change that adds the first
+    // `src/` import.
+    expect(packageJson.dependencies['@supabase/supabase-js']).toBeUndefined();
+    expect(packageJson.devDependencies['@supabase/supabase-js']).toBeTruthy();
+  });
+
+  it('pins the Deno import of @supabase/supabase-js to the installed devDependency version', () => {
+    // Locally, `deno test`/`supabase start` resolve the bare `npm:` specifier
+    // from this repository's own `node_modules` (Deno's byonm mode, since a
+    // `package.json` exists at the workspace root) — but a function deployed
+    // without that `node_modules` context would let Deno fetch whatever
+    // version currently satisfies the specifier from the npm registry
+    // instead. A floating `@2` would let local tests pass against a version
+    // no deployment ever runs. Pinning both to the identical exact version
+    // removes the skew instead of merely documenting it.
+    const whoamiSource = readProjectFile('supabase/functions/whoami-check/index.ts');
+    const installedVersion: string = packageJson.devDependencies['@supabase/supabase-js'];
+    expect(installedVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(whoamiSource).toContain(`npm:@supabase/supabase-js@${installedVersion}`);
   });
 });
