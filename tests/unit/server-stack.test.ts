@@ -1,0 +1,437 @@
+import { execFileSync, spawnSync } from 'node:child_process';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+/**
+ * Server-milestone Step 4 — the half of its validation that needs no Docker and
+ * no build, so it runs in `npm run test` on every change.
+ *
+ * The rest of Step 4's test is split by what it requires: the local stack,
+ * migrations, and the health check are exercised by `npm run verify:server`,
+ * and the production-bundle secret scan by `npm run scan:secrets` inside
+ * `npm run verify`. These are the standing invariants those two commands
+ * assume.
+ */
+
+const PROJECT_ROOT = join(import.meta.dirname, '..', '..');
+const FUNCTIONS_DIRECTORY = join(PROJECT_ROOT, 'supabase', 'functions');
+
+const readProjectFile = (relativePath: string): string =>
+  readFileSync(join(PROJECT_ROOT, relativePath), 'utf8');
+
+/**
+ * Every deployable Edge Function, read from disk rather than hand-listed
+ * (server-milestone Step 7 review) — `_shared/` holds library code with no
+ * `index.ts` of its own and no `config.toml` entry, so it is excluded rather
+ * than exempted by name.
+ */
+const edgeFunctionNames = (): string[] =>
+  readdirSync(FUNCTIONS_DIRECTORY, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== '_shared')
+    .map((entry) => entry.name)
+    .sort();
+
+/** A JWT whose payload declares the row-level-security-bypassing role. */
+const JWT_PATTERN = /eyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}/g;
+const SUPABASE_SECRET_KEY_PATTERN = /sb_secret_[A-Za-z0-9_-]{8,}/;
+
+const declaresServiceRole = (token: string): boolean => {
+  const payload = token.split('.')[1];
+  try {
+    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).role === 'service_role';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Binary assets, excluded from the repository-wide credential scan below.
+ * A credential cannot survive in one in a form these text patterns would match,
+ * and reading them is nearly all of the scan's cost: `art-source/` alone is 363
+ * images, untracked but not ignored, and it grows with the art.
+ */
+const BINARY_EXTENSIONS =
+  /\.(png|jpe?g|gif|webp|avif|ico|mp3|ogg|wav|m4a|mp4|webm|woff2?|ttf|otf|eot|zip|gz|pdf|psd|aseprite)$/i;
+
+const parseEnvNames = (contents: string): string[] =>
+  contents
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#') && line.includes('='))
+    .map((line) => line.slice(0, line.indexOf('=')).trim());
+
+describe('local Supabase stack configuration', () => {
+  const config = readProjectFile('supabase/config.toml');
+
+  it('is committed and names this project rather than the directory', () => {
+    expect(config).toContain('project_id = "cat-mine-idle"');
+  });
+
+  it('pins the ports the verification script and documentation assume', () => {
+    expect(config).toMatch(/\[api\][\s\S]*?port = 54321/);
+    expect(config).toMatch(/\[db\][\s\S]*?port = 54322/);
+    expect(config).toMatch(/\[studio\][\s\S]*?port = 54323/);
+  });
+
+  it('keeps the migration and seed pipeline enabled so a reset applies them', () => {
+    expect(config).toMatch(/\[db\.migrations\]\n(?:#[^\n]*\n)*enabled = true/);
+    expect(config).toMatch(/\[db\.seed\]\n(?:#[^\n]*\n)*enabled = true/);
+  });
+
+  it('serves save-sync without platform JWT verification', () => {
+    // §10.1 of the save-sync protocol requires GET /v1/health to answer an
+    // unauthenticated caller. Platform-level verification would reject it
+    // before the handler ran; the authenticated routes verify their own token.
+    expect(config).toMatch(/\[functions\.save-sync\]\nenabled = true\nverify_jwt = false/);
+  });
+
+  it.each(edgeFunctionNames())(
+    '%s is declared with an explicit enabled/verify_jwt pair',
+    (name) => {
+      // Read from disk rather than hardcoded per function (server-milestone
+      // Step 7 review), the same fix Step 4's review applied to
+      // `EXPECTED_MIGRATIONS`: a function added without its own config block
+      // would otherwise go unchecked rather than failing. All three functions
+      // that exist today set `verify_jwt = false` and verify by hand inside
+      // the handler instead; a function that legitimately needs platform
+      // verification is a deliberate exception this test must gain, not a
+      // silent gap in it.
+      expect(config).toMatch(
+        new RegExp(`\\[functions\\.${name}\\]\\nenabled = true\\nverify_jwt = false`),
+      );
+    },
+  );
+
+  it('holds at least one migration, every one named by ordering timestamp', () => {
+    // Forward-only migrations apply in filename order, so the name is the
+    // ordering contract. Step 5 adds the schema migrations to this directory.
+    const migrations = readdirSync(join(PROJECT_ROOT, 'supabase', 'migrations'))
+      .filter((entry) => entry.endsWith('.sql'));
+
+    expect(migrations.length).toBeGreaterThan(0);
+    for (const migration of migrations) {
+      expect(migration).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+    }
+  });
+});
+
+/** True when git would ignore `path`, whether or not the file exists. */
+const isIgnored = (path: string): boolean =>
+  spawnSync('git', ['check-ignore', '-q', '--no-index', path], { cwd: PROJECT_ROOT }).status === 0;
+
+describe('secret handling', () => {
+  const envExample = readProjectFile('.env.example');
+
+  it('ignores every local environment file but the template', () => {
+    // Asserted through git rather than through the text of `.gitignore`: a
+    // commented-out rule still reads as present in the file.
+    expect(isIgnored('.env.local')).toBe(true);
+    expect(isIgnored('.env')).toBe(true);
+    expect(isIgnored('.env.production.local')).toBe(true);
+    expect(isIgnored('.env.example')).toBe(false);
+  });
+
+  it('ignores Supabase CLI local state but not its committed configuration', () => {
+    expect(isIgnored('supabase/.temp/cli-latest')).toBe(true);
+    expect(isIgnored('supabase/.branches/current-branch')).toBe(true);
+    expect(isIgnored('supabase/config.toml')).toBe(false);
+    expect(isIgnored('supabase/migrations/20260908120000_bootstrap_platform_requirements.sql')).toBe(
+      false,
+    );
+  });
+
+  it('never gives a privileged credential a VITE_ prefix', () => {
+    // Vite inlines VITE_-prefixed variables into the browser bundle, so the
+    // prefix is the whole boundary between a public value and a secret one.
+    const privileged = ['SERVICE_ROLE', 'BOT_TOKEN', 'PEPPER', 'SECRET'];
+    for (const name of parseEnvNames(envExample)) {
+      if (privileged.some((fragment) => name.includes(fragment))) {
+        expect(name.startsWith('VITE_')).toBe(false);
+      }
+    }
+  });
+
+  it('declares the server-only names the bundle scan enforces', () => {
+    const names = parseEnvNames(envExample);
+    expect(names).toContain('VITE_SUPABASE_URL');
+    expect(names).toContain('VITE_SUPABASE_ANON_KEY');
+    expect(names).toContain('SUPABASE_SERVICE_ROLE_KEY');
+  });
+
+  it('holds placeholders rather than credentials', () => {
+    expect(envExample).not.toMatch(SUPABASE_SECRET_KEY_PATTERN);
+    expect(envExample.match(JWT_PATTERN) ?? []).toHaveLength(0);
+  });
+
+  it('has no privileged credential in any tracked file', () => {
+    // Tracked files plus untracked-but-not-ignored ones: a credential pasted
+    // into a new file must fail before it is ever committed.
+    const listed = execFileSync(
+      'git',
+      ['ls-files', '--cached', '--others', '--exclude-standard'],
+      { cwd: PROJECT_ROOT, encoding: 'utf8' },
+    );
+    const tracked = listed
+      .split('\n')
+      .filter(
+        (path) =>
+          path !== '' && !path.startsWith('public/assets/') && !BINARY_EXTENSIONS.test(path),
+      );
+
+    const offenders: string[] = [];
+    for (const path of tracked) {
+      let contents: string;
+      try {
+        contents = readFileSync(join(PROJECT_ROOT, path), 'utf8');
+      } catch (error) {
+        // Not skipped silently: a file this scan could not read is a file it
+        // cannot vouch for, and "unscanned" must never report as "clean".
+        offenders.push(`${path}: unreadable (${(error as Error).message})`);
+        continue;
+      }
+      if (SUPABASE_SECRET_KEY_PATTERN.test(contents)) {
+        offenders.push(`${path}: sb_secret_ key`);
+      }
+      for (const token of contents.match(JWT_PATTERN) ?? []) {
+        if (declaresServiceRole(token)) {
+          offenders.push(`${path}: service_role JWT`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('every Edge Function', () => {
+  const functionNames = edgeFunctionNames();
+
+  it('found more than one function, so the checks below cover something real', () => {
+    // Guards the loop the way Step 4's review made every "reads everything,
+    // finds nothing wrong" check assert it actually read something — an
+    // empty function list would make every `it.each` below pass vacuously.
+    expect(functionNames.length).toBeGreaterThan(1);
+  });
+
+  it.each(functionNames)('%s never reads the service-role key', (name) => {
+    // True of all three functions today: the health and portability routes
+    // answer unauthenticated callers, and whoami-check verifies identity
+    // through the caller's own token. None needs the credential that bypasses
+    // row-level security and is, from Step 15, the only writer of `saves`.
+    // Step 16's save upload will be the first function that legitimately
+    // needs it — that step must add its own exception here, not find this
+    // check silently no longer covering it.
+    const source = readProjectFile(`supabase/functions/${name}/index.ts`);
+    expect(source).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
+    expect(source).not.toContain('SECRET_KEY');
+  });
+});
+
+describe('save-sync Edge Function', () => {
+  const source = readProjectFile('supabase/functions/save-sync/index.ts');
+
+  it('answers only the routes the protocol defines', () => {
+    expect(source).toContain("const HEALTH_ROUTE = '/v1/health'");
+  });
+
+  it('does not answer a configuration mistake with a retryable code', () => {
+    // `service_unavailable` tells the client to retry until it succeeds. A
+    // function deployed without SUPABASE_URL/SUPABASE_ANON_KEY never will, so
+    // answering it would have every client back off forever against a database
+    // that is perfectly healthy.
+    expect(source).toContain("return errorResponse(500, 'server_error', 'Function is not configured.')");
+  });
+
+  it('carries Retry-After on the retryable failure it can return', () => {
+    // §4 tells the client to retry `service_unavailable` *after* `Retry-After`,
+    // so the response has to actually carry the header. The header itself is
+    // set in `../_shared/http.ts` (server-milestone Step 7 extracted the
+    // envelope for reuse); the call site naming the retryable code and the
+    // seconds to wait still lives here.
+    const sharedHttpSource = readProjectFile('supabase/functions/_shared/http.ts');
+    expect(sharedHttpSource).toContain("'retry-after'");
+    expect(source).toMatch(/service_unavailable[\s\S]{0,120}retryAfterSeconds/);
+  });
+
+  it('uses codes from the protocol error vocabulary', () => {
+    // §4 defines the whole vocabulary; `not_found` and `method_not_allowed`
+    // are deliberately absent from it.
+    expect(source).not.toContain("'not_found'");
+    expect(source).not.toContain("'method_not_allowed'");
+    expect(source).toContain("'malformed_request'");
+    expect(source).toContain("'service_unavailable'");
+    expect(source).toContain("'server_error'");
+  });
+});
+
+describe('whoami-check Edge Function', () => {
+  const source = readProjectFile('supabase/functions/whoami-check/index.ts');
+
+  it('does not answer a server misconfiguration as an authentication failure', () => {
+    // A caller cannot fix a missing SUPABASE_URL/SUPABASE_ANON_KEY by
+    // presenting a different token, so a missing one must not produce the
+    // same 401 a genuinely bad token gets — every caller, valid token or not,
+    // would otherwise see "unauthenticated" and a client that treats 401 as
+    // "sign out and re-authenticate" would sign every user out in a loop
+    // against a database that was never the problem. This is the identical
+    // distinction save-sync's own "does not answer a configuration mistake
+    // with a retryable code" test protects, applied to whoami-check's
+    // mechanism: throwing, so `Deno.serve`'s catch turns it into `500
+    // server_error`, rather than returning `null`, which `handleWhoAmI` reads
+    // as "invalid token" and answers 401.
+    const guardClause = source.slice(source.indexOf('if (!supabaseUrl || !anonKey)'));
+    const guardBody = guardClause.slice(0, guardClause.indexOf('}') + 1);
+
+    expect(guardBody).toMatch(/throw new Error/);
+    expect(guardBody).not.toContain('return null');
+  });
+});
+
+describe('the platform tables migration', () => {
+  const source = readProjectFile(
+    'supabase/migrations/20260908130000_create_platform_tables.sql',
+  );
+
+  it('pins the search path of the shared updated_at trigger', () => {
+    // Unqualified `now()` in a function without a pinned search_path resolves
+    // against the caller's — Supabase's `function_search_path_mutable` lint.
+    // Migrations are forward-only, so this is fixed at creation or not at all.
+    expect(source).toContain("set search_path = ''");
+    expect(source).toContain('new.updated_at = pg_catalog.now();');
+  });
+
+  it('withholds leaderboard user_id at the grant level', () => {
+    // The select policy admits every row and PostgREST lets the caller pick its
+    // columns, so `?select=user_id` against a world-readable table would
+    // enumerate every publishing player's auth.users id unauthenticated.
+    expect(source).toContain('revoke select on public.leaderboard_entries from anon, authenticated;');
+    const grant = source.slice(source.indexOf('grant select (board_key'));
+    expect(grant.slice(0, grant.indexOf(';'))).not.toContain('user_id');
+  });
+});
+
+describe('the Step 4 verification script', () => {
+  const source = readProjectFile('scripts/verify-server-stack.mjs');
+
+  it('reads the expected migrations from disk rather than a hand-kept list', () => {
+    // A hand-maintained list someone forgets to extend still reports PASS while
+    // checking nothing about the migration that was just added.
+    expect(source).toContain('function readExpectedMigrations()');
+    expect(source).toContain('readdirSync(MIGRATIONS_DIRECTORY)');
+    expect(source).not.toContain('const EXPECTED_MIGRATIONS = [');
+  });
+
+  it('fails rather than passing vacuously when no migration is found', () => {
+    expect(source).toContain("'Committed migrations were found on disk'");
+  });
+
+  it('asks the Supabase CLI for JSON explicitly', () => {
+    // The CLI's default output is a text table; it emits JSON on its own only
+    // when it auto-detects an agent. Without the flag this check parses nothing
+    // in an ordinary terminal and reports a healthy stack as a missing
+    // migration.
+    expect(source).toContain("'migration', 'list', '--local', '--output-format', 'json'");
+  });
+
+  it('reports an unreadable CLI response as its own failure', () => {
+    // Conflating "could not parse" with "migration not applied" sends whoever
+    // hits it to debug the database instead of the parser.
+    expect(source).toContain("report(false, 'Migration list is readable'");
+  });
+
+  it('never slices a JSON payload it did not find', () => {
+    expect(source).toContain("if (start === -1) {");
+  });
+});
+
+describe('the guest-session bootstrap in src/main.ts', () => {
+  // A static-source assertion, deliberately, and for the reason this file
+  // already applies the pattern to `save-sync`/`whoami-check`: the contract
+  // lives in `src/main.ts`, a module of top-level side effects that no unit
+  // test can import, and the only behavioural test of it —
+  // `tests/production/production-smoke.spec.ts`'s lazy-chunk spec — can run
+  // solely against a *configured* build. CI has no `.env.local`, so that build
+  // eliminates the SDK entirely and the spec skips. This runs on every push.
+  const mainSource = readProjectFile('src/main.ts');
+  const chain = mainSource.slice(mainSource.indexOf('void supabaseClientPromise'));
+  const bootstrap = chain.slice(0, chain.indexOf('\n\nconst indexedRepository'));
+
+  it('is never awaited before the game boots', () => {
+    // `void`, not `await`: identity resolution must not delay the first frame.
+    expect(bootstrap).toContain('void supabaseClientPromise');
+    expect(bootstrap).not.toContain('await supabaseClientPromise');
+  });
+
+  it('catches a rejected client promise instead of leaving it unhandled', () => {
+    // `ensureGuestSession`'s own try/catch covers only the collaborator calls
+    // made *inside* it, not `createSupabaseClient`'s dynamic `import()` one
+    // level above — which can reject on a flaky network or a stale chunk hash
+    // after a redeploy. Without a `.catch` here that rejection escapes the
+    // `void`-ed chain as an unhandled rejection, breaking the "this never
+    // throws" contract `src/platform/web/guestSession.ts` documents for the
+    // whole bootstrap. A 2026-09-09 review found exactly that defect.
+    expect(bootstrap).toContain('.catch(');
+    expect(bootstrap.indexOf('.catch(')).toBeLessThan(
+      bootstrap.lastIndexOf('.then('),
+    );
+  });
+
+  it('publishes the diagnostic without the live access token', () => {
+    // The dev-only `data-guest-session` attribute carries status and user id
+    // only: a live credential in the DOM bought no coverage the client's own
+    // storage did not already provide.
+    expect(bootstrap).toContain('toPublicGuestSessionDiagnostic');
+    expect(mainSource).not.toMatch(/dataset\.guestSession\s*=\s*JSON\.stringify\(result\)/);
+  });
+});
+
+describe('verification wiring', () => {
+  const packageJson = JSON.parse(readProjectFile('package.json'));
+
+  it('scans the build output for secrets inside the standard gate', () => {
+    const verify: string = packageJson.scripts.verify;
+    expect(verify).toContain('npm run scan:secrets');
+    expect(verify.indexOf('npm run build')).toBeLessThan(verify.indexOf('npm run scan:secrets'));
+  });
+
+  it('exposes the local stack commands the documentation names', () => {
+    for (const script of [
+      'supabase:start',
+      'supabase:stop',
+      'supabase:reset',
+      'verify:server',
+      'scan:secrets',
+      'test:server-unit',
+      'test:server-integration',
+      'test:server-e2e',
+    ]) {
+      expect(packageJson.scripts[script]).toBeTruthy();
+    }
+  });
+
+  it('pins @supabase/supabase-js as a client dependency', () => {
+    // Step 8 added the first `src/` import (`src/platform/web/supabaseClient.ts`,
+    // for anonymous guest sign-in), promoting the package out of
+    // `devDependencies` in the same change — it now ships in the browser
+    // bundle, not just this repository's own tooling and
+    // `supabase/functions/**` (Deno, via an `npm:` specifier).
+    expect(packageJson.devDependencies['@supabase/supabase-js']).toBeUndefined();
+    expect(packageJson.dependencies['@supabase/supabase-js']).toBeTruthy();
+  });
+
+  it('pins the Deno import of @supabase/supabase-js to the installed dependency version', () => {
+    // Locally, `deno test`/`supabase start` resolve the bare `npm:` specifier
+    // from this repository's own `node_modules` (Deno's byonm mode, since a
+    // `package.json` exists at the workspace root) — but a function deployed
+    // without that `node_modules` context would let Deno fetch whatever
+    // version currently satisfies the specifier from the npm registry
+    // instead. A floating `@2` would let local tests pass against a version
+    // no deployment ever runs. Pinning both to the identical exact version
+    // removes the skew instead of merely documenting it.
+    const whoamiSource = readProjectFile('supabase/functions/whoami-check/index.ts');
+    const installedVersion: string = packageJson.dependencies['@supabase/supabase-js'];
+    expect(installedVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(whoamiSource).toContain(`npm:@supabase/supabase-js@${installedVersion}`);
+  });
+});

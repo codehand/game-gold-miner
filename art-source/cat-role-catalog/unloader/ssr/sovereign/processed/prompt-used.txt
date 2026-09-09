@@ -1,0 +1,33 @@
+Use case: stylized-concept.
+Asset type: production-ready source sheet for a clean HD 2D game NPC idle animation.
+
+Create the same character shown in the user reference, named Sovereign, adapted
+to the established Cat Mine Idle unloader sprite family. Sovereign is an SSR
+unloader. Preserve the long-haired lynx-like cat, tall tufted ears, cream mane
+and muzzle, warm tan body, dark reddish-brown markings, glowing pale-gold eyes,
+open receiving paws, ornate royal costume, broad gold belt, and the large ornate
+treasure chest securely worn close behind the shoulders.
+
+Adapt rarity colors to SSR: rich royal-violet and deep-purple cloth, a faceted
+amethyst-purple belt gem, and gold only as secondary trim and chest material.
+Maintain rounded large-headed cartoon proportions, crisp dark outline, smooth
+clean-HD cel-painted surfaces, three-quarter front view, and a readable full-body
+silhouette at 75x75 game scale.
+
+Create exactly four equal cells in a clean 2x2 grid, read left-to-right then
+top-to-bottom. Show four subtle loopable stationary idle phases: neutral open-paw
+receiving pose; gentle chest rise and soft blink; slight mane, ear, and chest
+settling; return toward neutral with another small blink. Keep identity, anatomy,
+costume, chest, camera distance, standing-equivalent scale, torso center, and
+feet line consistent. Both feet remain planted and the pelvis does not travel.
+
+The entire subject, including ear tufts, tail, robe, paws, and chest, must stay
+inside the central safe area of its cell with magenta margin on every side. No
+element may cross a cell edge. Background is exactly solid flat #FF00FF. No
+gradient, shadow, glow, particles, scenery, borders, dividers, text, labels, UI,
+rarity badge, watermark, signature, detached effects, or duplicate subjects.
+
+Built-in image generation references:
+- User-supplied Sovereign design reference for identity and costume.
+- Current runtime unloader sheet for role silhouette and technical scale.
+- Aegis and Zenith SSR sheets for family style and rarity treatment.

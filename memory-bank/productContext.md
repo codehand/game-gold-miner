@@ -48,3 +48,29 @@ The same review replaces direct Level-badge purchases with an accessible detail 
 The completed establishment phase provides a safe-area-aware 360×640 Phaser game with the approved Step 32A mine composition, original surface scenery, one shared elevator tower, cart-hauler crews, a warehouse depot, independently animated mine crews, and touch-safe level controls. The 2026-09-07 review expands the authoritative mine to fifteen floors with progressive five-floor disclosure and changes the compact HUD centre to the warehouse input queue. Step 33 proves the core journey twice through real controls; Step 34 proves lifecycle and offline intervals are consumed exactly once; Step 35 measures the mobile frame, memory, startup, and input budgets under Pixel 5 emulation, with a physical Android pass still outstanding; and Step 36 proves the optimized bundle, assets, save recovery, and responsive portrait layout. Save-document and IndexedDB schema versions remain 1, with a same-version compatibility expansion for former four-floor saves.
 
 Step 37 closed the milestone, validated by the user on 2026-09-08. It reviewed the delivered game against this plan and the GDD acceptance criteria, recorded every deferred feature rather than building it, added `README.md` so a new developer can install, run, test, and understand the base game from repository documentation alone, and corrected the documentation that still described a four-floor mine. What a player can do is therefore final for this milestone: watch fifteen floors produce automatically, upgrade three stage types independently, buy shaft levels in x1/x5/MAX batches through the floor detail popup, open floors in sequence, cross milestone multipliers, and claim a capped offline reward. Everything else in the GDD is deferred and recorded in `memory-bank/progress.md`.
+
+An asset-only cat-role catalog was authorized on 2026-09-08. Every cat role is
+planned across five rarity tiers: `N` normal/gray, `R` rare/green, `SR` super
+rare/blue, `SSR` super-super rare/purple, and `UR` ultra rare/gold. The current
+`unloader` remains the runtime default and is the normal-tier baseline. New
+role/tier art will be created from a user-supplied role name, tier, and design
+reference. Different tier attributes are future design work: this catalog does
+not yet change the playable product, economy, state, save format, or UI.
+
+Server-milestone Steps 4 through 7 landed between 2026-09-08 and 2026-09-09,
+closing Phase 1, and change nothing a player can see or do. They are
+infrastructure: the whole backend now runs locally in Docker through the
+Supabase CLI, one Edge Function answers the save-sync protocol's health
+check, the local database holds all six designed tables with row-level
+security enforced, a CI workflow gates every push and pull request, the
+repository has an enforced boundary between values that may ship in the
+browser bundle and credentials that may not, the exact simulation and
+save-document code the client runs now also runs, unmodified, inside a Deno
+Edge Function — proven by reproducing a fixed ten-minute run byte-for-byte —
+and every Edge Function now has both a permission-free unit test and a
+real-stack integration test, using a formalized way to mint a test login for
+the seeded local guest. No account exists, no save leaves the device, and the
+game still boots, plays, and saves entirely offline. The player-facing
+promises of this milestone — a save that survives a new device, cleared
+storage, or a lost
+browser — start at Phase 2 and are only kept from Phase 3.

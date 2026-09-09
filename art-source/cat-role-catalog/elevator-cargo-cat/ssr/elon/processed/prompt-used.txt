@@ -1,0 +1,36 @@
+Use case: stylized-concept
+Asset type: production source sheet for a clean-HD 2D game NPC idle animation.
+
+Create Elon, an SSR elevator cargo steward, as exactly four equal cells in a
+clean 2x2 sprite sheet. Preserve the user reference's silver-white tabby fur,
+cool-gray stripes, icy luminous eyes, lavender-gray nose, rounded upright body,
+and long silver striped tail. Preserve the high ceremonial collar, moon-phase
+trim language, oval neck jewel, and compact glowing celestial cargo cube held
+securely with both paws against the torso.
+
+Make the role read as an elevator cargo steward carrying a precious sealed
+cargo cube. The cube uses only abstract sun, moon, orbit, and star glyph shapes,
+with no readable writing, equations, numerals, logos, or brand marks.
+
+Adapt the rarity palette to SSR: royal violet, deep purple, and indigo dominate
+the cloak and collar; pale gold remains restrained moon-phase trim; the oval
+neck jewel is faceted amethyst purple. Preserve the silver-white fur, icy eyes,
+and cool white-blue cube glow as character identity accents. All glow remains
+tightly connected to the cube.
+
+Read frames left-to-right, top-to-bottom: alert neutral pose; tiny breathing
+lift with eyes softly closed; neutral pose with slight ear/tail/cape settle;
+tiny breathing settle with eyes softly closed. Keep one identity, anatomy,
+camera distance, standing scale, torso center, and feet baseline.
+
+The entire cat, tail, ears, collar, cloak, paws, cube, glow, and outline stay
+inside the central 64% of every cell with magenta margin on every side. Use a
+perfectly flat #FF00FF background. No gradients, shadows, scenery, visible
+dividers, labels, text, UI, rarity badge, watermark, signature, extra cats,
+human likeness, rockets, cars, detached stars, sparkles, particles, cropped
+parts, or cross-cell overlap.
+
+Built-in image generation references:
+- User-supplied Elon design for identity, costume, and celestial cargo cube.
+- Current runtime elevator cargo-cat sheet for job silhouette and idle cadence.
+- Win SSR sheet for same-role rarity treatment and sprite simplification.

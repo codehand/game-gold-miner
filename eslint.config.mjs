@@ -11,6 +11,7 @@ export default defineConfig(
       'dist/**',
       'node_modules/**',
       'playwright-report/**',
+      'supabase/functions/_shared/generated/**',
       'test-results/**',
     ],
   },
@@ -19,6 +20,7 @@ export default defineConfig(
     extends: [js.configs.recommended],
     languageOptions: {
       globals: {
+        AbortSignal: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
         process: 'readonly',
@@ -30,6 +32,25 @@ export default defineConfig(
   {
     files: ['**/*.ts'],
     extends: [js.configs.recommended, tseslint.configs.recommended],
+  },
+  {
+    // Supabase Edge Functions run on Deno, not Node or the browser, so their
+    // globals are declared here rather than left undefined. They are outside
+    // `tsconfig.json`'s `include` because `Deno` has no type in the Node/DOM
+    // libraries the client compiles against; server-side type checking and
+    // testing arrive with the Step 7 Edge Function harness.
+    files: ['supabase/functions/**/*.ts'],
+    languageOptions: {
+      globals: {
+        AbortSignal: 'readonly',
+        Deno: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        URL: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+      },
+    },
   },
   {
     files: ['src/core/**/*.ts'],
@@ -60,6 +81,15 @@ export default defineConfig(
           name: 'window',
           message: 'Core modules must not depend on DOM APIs.',
         },
+        {
+          // Server-milestone Step 6 makes `src/core` importable from Deno
+          // Edge Functions. Referencing `Deno` here would only ever be reached
+          // from that runtime, so it is exactly as disqualifying for a module
+          // meant to run in the browser too as `window` is for one meant to
+          // run on the server — the boundary is symmetric.
+          name: 'Deno',
+          message: 'Core modules must not depend on the Deno/server runtime.',
+        },
       ],
       'no-restricted-imports': [
         'error',
@@ -79,6 +109,23 @@ export default defineConfig(
               regex: '(^|/)(persistence|platform)(/|$)',
               message:
                 'Core modules must not import persistence or platform adapters.',
+            },
+            {
+              // Step 6 portability runs the other way: `supabase/` imports
+              // `src/core`, never the reverse. A core module importing
+              // anything under `supabase/` would make the bundle Step 6
+              // produces depend on the Edge Function runtime it is bundled
+              // for, defeating the point of bundling it in the first place.
+              regex: '(^|/)supabase(/|$)',
+              message: 'Core modules must not import server-only Supabase code.',
+            },
+            {
+              // Repository-relative paths are covered above; this covers the
+              // npm package Step 7 adds (`@supabase/supabase-js` and any other
+              // `@supabase/*` package) so the same rule holds once it exists as
+              // a dependency rather than only as a `supabase/` directory.
+              regex: '^@supabase/',
+              message: 'Core modules must not import server-only Supabase code.',
             },
           ],
         },

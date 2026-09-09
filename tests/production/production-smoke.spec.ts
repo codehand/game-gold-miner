@@ -1,3 +1,6 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -364,6 +367,79 @@ test('continues playing with a visible diagnostic when local storage fails', asy
   expect(pageErrors, 'a storage failure raises no uncaught error').toEqual([]);
 });
 
+test('continues playing when the lazily-loaded Supabase chunk fails to fetch', async ({
+  page,
+}) => {
+  // Server-milestone Step 8: `createSupabaseClient` dynamically imports
+  // `@supabase/supabase-js` rather than bundling it into the entry chunk
+  // (`src/platform/web/supabaseClient.ts`), so it ships as its own chunk that
+  // a real deploy can fail to fetch — a stale hash after a redeploy, or a
+  // flaky network. The dev server this suite's sibling `tests/e2e/` runs
+  // against never bundles at all, so nothing there can reproduce this; only
+  // the real production build, exercised here, has a lazy chunk to fail.
+  //
+  // A 2026-09-09 review found that a rejection here reached `src/main.ts`'s
+  // `void`-ed promise chain uncaught, because `ensureGuestSession`'s own
+  // try/catch covers only the collaborator calls made *inside* it, not the
+  // client-construction promise one level above — an unhandled rejection
+  // that would have shown up here as a `pageerror`, breaking
+  // `guestSession.ts`'s own documented "this never throws" contract.
+  const pageErrors: string[] = [];
+  let abortedChunkRequests = 0;
+
+  page.on('pageerror', (error) => {
+    pageErrors.push(error.message);
+  });
+  // This spec is only meaningful against a *configured* build. Vite inlines
+  // `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` at build time, so a build
+  // with neither set makes `createSupabaseClient`'s guard constantly true and
+  // the bundler eliminates the dynamic `import()` altogether — correct
+  // behaviour (an unconfigured build should ship no SDK at all), but it leaves
+  // no lazy chunk to fail. Skipping loudly here is the honest outcome: a
+  // 2026-09-09 review reproduced this spec passing in 4.3 s against such a
+  // build with the `src/main.ts` guard deliberately removed, which is a false
+  // green, not a pass. `tests/unit/server-stack.test.ts` carries the gate that
+  // does run on every CI push.
+  const chunkFileName = findLazySupabaseChunk();
+
+  test.skip(
+    chunkFileName === null,
+    'this build inlined no Supabase configuration, so it emitted no lazy SDK chunk to fail',
+  );
+
+  await forceCanvasReadback(page);
+  // Routed by the chunk's real, content-identified file name rather than a
+  // `dist-*` glob: that name is one rolldown derives from the `dist/`
+  // directory *inside* `@supabase/supabase-js`, so an SDK layout change or a
+  // bundler naming change would silently stop a glob matching. Counted, too —
+  // a route that matches nothing aborts nothing, which would leave every
+  // assertion below trivially true.
+  await page.route(`**/assets/${chunkFileName}`, (route) => {
+    abortedChunkRequests += 1;
+    return route.abort();
+  });
+
+  await page.goto('/');
+  await waitForBootedScene(page);
+
+  // The mine boots and plays with no working guest session, exactly as it
+  // would with no Supabase project configured at all.
+  const [hudPixel] = await readLogicalPixels(page, [HUD_PROBE]);
+  expect(hudPixel, 'the game renders with no Supabase chunk available').toBe(
+    HUD_BACKGROUND,
+  );
+
+  expect(
+    pageErrors,
+    'a failed lazy-chunk fetch must not surface as an unhandled rejection',
+  ).toEqual([]);
+
+  expect(
+    abortedChunkRequests,
+    'the lazy Supabase chunk must actually be requested, or this test proves nothing',
+  ).toBeGreaterThan(0);
+});
+
 for (const viewport of VIEWPORTS) {
   test(`keeps the production layout inside a ${viewport.name} viewport`, async ({
     page,
@@ -639,4 +715,33 @@ function collectBrowserErrors(page: Page): string[] {
   });
 
   return errors;
+}
+
+/**
+ * The emitted chunk holding `@supabase/supabase-js`, identified by its
+ * contents rather than by its file name, or `null` when this build eliminated
+ * the SDK because no Supabase configuration was inlined into it.
+ */
+function findLazySupabaseChunk(): string | null {
+  const assetsDirectory = join(process.cwd(), 'dist', 'assets');
+  const entryMarker = 'createInitialGameState';
+
+  for (const fileName of readdirSync(assetsDirectory)) {
+    if (!fileName.endsWith('.js')) {
+      continue;
+    }
+
+    const contents = readFileSync(join(assetsDirectory, fileName), 'utf8');
+
+    // `GoTrueClient` is the SDK's own auth class name, present in the chunk
+    // that carries it and nowhere else. The entry-chunk exclusion matters for
+    // the day someone reverts the dynamic import: the SDK would then live
+    // inside the entry chunk, and aborting *that* would abort the game itself
+    // rather than prove anything about a lazy fetch.
+    if (contents.includes('GoTrueClient') && !contents.includes(entryMarker)) {
+      return fileName;
+    }
+  }
+
+  return null;
 }

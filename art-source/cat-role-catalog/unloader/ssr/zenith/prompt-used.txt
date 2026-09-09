@@ -1,0 +1,46 @@
+Built-in image generation, 2026-09-08.
+
+Use case: stylized-concept
+Asset type: Phaser 4 game NPC sprite sheet for Cat Mine Idle; character name
+Zenith; role `unloader`; rarity tier `SSR`.
+
+Input images:
+- User reference `Gemini_Generated_Image_xfbw8dxfbw8dxfbw.png` controls Zenith's
+  cream Siamese identity, dark ears/mask/paws/tail, pale-gold eyes, celestial
+  robe/cape, forehead gem, gold balance scales, and open-paw pose.
+- Current Step 32A unloader controls the exact 2x2 sheet layout, camera distance,
+  chibi proportions, restrained idle cadence, centering, and stable feet line.
+- Aegis controls cross-catalog scale and the strength of purple/amethyst as the
+  SSR signal, while remaining a distinct character.
+- Tally controls clean-HD edge treatment, lighting, and detail density only;
+  none of Tally's identity or equipment is copied.
+
+Create exactly four sequential frames of a restrained stationary idle loop for
+Zenith. Preserve the cream body, dark brown facial mask/ears/paws/tail, pink paw
+pads and nose, large pale-gold eyes, ornate gold-trimmed celestial coat and
+cape, star/constellation/moon motifs, welcoming free paw, and a compact gold
+balance scale firmly held in the other paw. Change the forehead ruby to a
+faceted amethyst-purple gem and shift the robe/cape to rich deep violet and
+royal purple with small lavender constellation accents. Purple/amethyst is the
+SSR signal; gold remains a secondary material.
+
+Frame 1 is a neutral attentive weighing stance with level scales; frame 2 adds
+subtle breathing and a blink while the scales stay steady; frame 3 uses a tiny
+wrist adjustment that tips the pans slightly plus gentle tail/cape movement;
+frame 4 returns toward the level-scales neutral pose.
+
+Use a full-body frontal three-quarter view, bold dark edge treatment, soft
+dimensional shading, and a compact project-native clean-HD silhouette. Keep the
+complete balance scale close beside the shoulder and inside the same central
+silhouette envelope in every frame.
+
+Output one exact 2x2 grid read left-to-right then top-to-bottom. Use four equal
+square cells. Center each complete character and both scale pans inside the
+central 68% safe area with one camera distance, anatomical scale, and bottom-
+center feet line. Use a flat, uniform solid #FF00FF background with no grid
+lines.
+
+Exclude text, name, rarity letters, labels, UI, scenery, baked ground shadow,
+watermark, signature, extra characters, duplicate limbs or scale pans,
+detached glowing orbs/sparkles/effects, disconnected props, cropped anatomy or
+equipment, and anything crossing a cell boundary.

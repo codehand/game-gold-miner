@@ -4,7 +4,54 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-"Cat Mine Idle" — a web-first (browser + Telegram Mini App) idle mining game in TypeScript, Phaser 4, and Vite. Portrait 360×640 logical viewport. Client-only; no backend and no database.
+"Cat Mine Idle" — a web-first (browser + Telegram Mini App) idle mining game in TypeScript, Phaser 4, and Vite. Portrait 360×640 logical viewport.
+
+**The playable game stays fully playable offline**: the save lives in IndexedDB,
+and every floor, the elevator, and the warehouse run without any network call.
+The one exception, since server-milestone Step 8, is `src/platform/web`'s single
+non-blocking anonymous-auth call at boot (`ensureGuestSession`) — it is never
+awaited before the first frame, and a failed or absent call leaves the game
+exactly as playable as before this step.
+
+A separate server milestone (`memory-bank/server-milestone-plan.md`) is in
+progress. Its local Supabase stack lives in `supabase/` — committed
+`config.toml`, forward-only migrations, and one `save-sync` Edge Function that
+currently serves only a health check. All six designed database tables exist in
+the local development database, with row-level security matching the matrix
+documented byte-identically in `memory-bank/architecture.md` and
+`memory-bank/techContext.md`; no deployment exists, and nothing in `src/` reads
+or writes any of those tables yet — the one guest-session call above talks only
+to Supabase Auth, not to `saves`/`profiles`/etc. `.github/workflows/ci.yml` gates
+every push and pull request with a `client` job (`npm run verify`) and a `server`
+job (`npm run verify:server`).
+
+`src/core`, `src/config`, and `src/persistence/saveSchema.ts` also run
+unmodified inside a Deno Edge Function, `supabase/functions/core-portability-check`
+— not part of the save-sync protocol, just proof this works. Deno does not
+extension-complete a relative specifier the way the client's bundler does, so
+the function imports a Vite-built bundle (`npm run build:server-core`, from the
+zero-logic `supabase/functions/_shared/coreBundleEntry.ts`) rather than a raw
+relative import; that bundle is git-ignored and rebuilt before every
+`npm run verify:server` run.
+
+Edge Functions have a real test harness: `npm run test:server-unit`
+(`deno test supabase/functions`, via the `deno-bin` devDependency) unit-tests
+pure handlers with zero permission flags — every function's
+`Deno.serve(...)` is guarded by `if (import.meta.main)` so importing it for a
+test never starts a live listener — and `npm run test:server-integration`
+(Vitest, its own `vitest.server-integration.config.ts`) exercises the one
+"trivial authenticated endpoint," `whoami-check`, against the real running
+stack using a JWT minted by `tests/server-integration/authFixture.ts`.
+
+Server-milestone Step 8 added the first `src/` code that talks to the network:
+`src/platform/web/guestSession.ts`'s `ensureGuestSession` signs a first-time
+player in anonymously through `@supabase/supabase-js` (now a `dependencies`
+entry, not a `devDependency`), never awaited before boot and never throwing.
+Proving "two browsers receive different identities" needs a real Supabase Auth
+service, so `npm run test:server-e2e` (`playwright.server-e2e.config.ts`, port
+4176, `tests/server-e2e/`) is a second, Docker-dependent Playwright suite kept
+out of the Docker-free `npm run test:e2e`/`npm run verify`; it runs as part of
+`npm run verify:server` instead.
 
 ## Commands
 
@@ -15,7 +62,15 @@ npm run lint           # eslint .
 npm run test           # vitest run (tests/unit/**/*.test.ts, node environment)
 npm run test:e2e       # playwright (chromium) against a dev server on 127.0.0.1:4173
 npm run test:prod      # build dist/, serve it from / on :4175, run the production smoke suite
-npm run verify         # lint → test → test:e2e → build → test:prod (the full gate)
+npm run verify         # lint → test → test:e2e → build → scan:secrets → test:prod (the full gate)
+npm run scan:secrets   # fail if dist/ carries a service-role key or other non-public secret
+npm run supabase:start # local Supabase stack in Docker (supabase:stop / :reset / :status)
+npm run verify:server  # local stack: unit tests, starts, migrations, health, portability, integration tests (needs Docker)
+npm run verify:all     # verify && verify:server, in sequence
+npm run build:server-core       # bundle src/core+config+saveSchema.ts for the Deno Edge Function
+npm run test:server-unit        # deno test supabase/functions — pure handlers, no Docker needed
+npm run test:server-integration # vitest against the live stack — assumes it is already running
+npm run test:server-e2e         # playwright (chromium) on :4176 against the live stack — assumes it is already running
 npm run test:perf      # optional ten-minute Chrome benchmark (Pixel 5 emulation, 4x CPU throttle)
 npm run dev:sim        # boot iPhone Simulator + Safari + serve-sim stream (macOS/Xcode)
 npm run sim:list       # list active simulator streams

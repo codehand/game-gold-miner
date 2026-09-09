@@ -4,11 +4,194 @@
 
 The base-game milestone is complete and validated. A second milestone is now planned but not started: `memory-bank/server-milestone-plan.md` takes the game from client-only to account-backed — guest play, Google/Apple/Telegram sign-in, cloud save, server-verified progress, leaderboards, and entitlement groundwork, on Supabase.
 
-That plan is written and awaiting authorization to begin. No server code exists. Eight kickoff questions remain unanswered and are listed at the end of the plan; Step 1 is where they get resolved or given recorded defaults.
+Steps 1 through 7 are validated — Step 7 was validated by the user's 2026-09-09 authorization to proceed with Step 8, closing Phase 1 (server foundation). **Step 8 (Phase 2 — Identity: anonymous guest session) is implemented on 2026-09-09 and awaiting user validation**; no step past it has started. See `## Next Steps` below for the Step 4 through Step 8 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
+
+Step 3 designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — with all 42 columns, every type, default, nullability, key, constraint, index, and relationship, plus the RLS matrix in which `saves` denies the client every write. Step 5 landed all six as `supabase/migrations/20260908130000_create_platform_tables.sql`, with RLS enabled and exactly the policies that matrix names; they exist in the local development database, not in any deployment.
+
+Its decisive finding is that **`saves.document_json` must be `text`, not `jsonb`**. Step 20's test requires a pre-milestone save to come back from download byte-for-byte, and `jsonb` reorders keys, drops insignificant whitespace, and normalizes numeric literals. That was verified rather than assumed: the same document stored in both column types came back from `jsonb` with its keys reordered. Choosing `jsonb` would have failed Step 20 long after the schema was live.
+
+Three further decisions carry beyond the schema. `saves` keeps one generation of rollback, because the threat model ranks a player's own progress above everything else and a single history-less row offers no recovery from a wrongly accepted upload. `leaderboard_entries` snapshots its own `display_name` so publishing a public board never widens `profiles` past own-row access. `recovery_codes.code_hash` is an HMAC digest under a pepper held outside the database — a fast keyed digest is right for a high-entropy machine secret rather than a human password, and keeping the pepper out of Postgres means a database leak alone does not permit offline enumeration. Every table carries exactly one cascading foreign key to `auth.users`, which gives Step 33 a single deletion path and becomes an invariant for every future table; the accepted cost is that deleting an account also erases its abuse evidence from `save_audit`.
+
+Step 2 fixed the client/server contract before either side is written. `GET /v1/save` and `PUT /v1/save` on an Edge Function are the only save path, each with an example request and response for every success and every rejection. An eleven-code error vocabulary pairs each failure with what the client does and the exact copy the player sees — most entries show the player nothing, because the game never blocks on cloud sync and `createSaveDiagnosticBanner` deliberately never withdraws a notice, so a retryable network error must stay silent while a retry is pending or a tunnel would pin a permanent banner to the screen. Cloud failures reuse that banner with `cloud-sync-*` codes rather than a new surface.
+
+Five decisions are binding on later steps. **D1**: the session lives in script-writable storage, not a first-party HttpOnly cookie, because no domain exists — and the consequence is sharper than the default looked, since the session token and the local save then fall under iOS Safari's *same* seven-day deletion, so for an unlinked guest the Step 14 recovery code rather than cloud save is what makes Step 21's promise true. **D2**: a server-owned monotonic `revision`, with the stale-write rejection returning the server's document so a conflict resolves in one round trip; this also makes a retried upload whose response was lost resolve silently instead of becoming a false conflict. **D3**: the server's `receivedAt` anchors every elapsed-time calculation, while the document's own timestamps are carried verbatim for the client's local simulation and are never a server input. **D4**: divergent devices resolve by dominance over the monotonic progress vector — one document that is a superset of the other is adopted silently, and only a genuine fork asks the player, with `gold` and every queue and progress value excluded because they legitimately fall. **D5**: cloud upload is at most one per 60 s with forced lifecycle, claim, and boot-reconcile triggers, leaving the 500 ms local debounce untouched; this resolves finding F6.
+
+That deliverable records the threat model over six attacker capabilities — local storage, the client bundle, the device clock, HTTP requests, the session credential itself, and unlimited anonymous identities — with what each is worth and which step defends it. It ranks the protected assets, and that ranking is load-bearing: a player's own progress outranks leaderboard integrity, so the Step 23 re-simulation tolerance must be biased toward accepting a slightly generous save over rejecting an honest one. It also records what the milestone deliberately does not defend, and one ordering consequence — nothing before Step 22 defends the device clock, so Steps 15–21 will faithfully store clock-derived income and must not be described as anti-cheat.
+
+None of the eight kickoff questions was answered by the user; all eight now carry a conservative recorded default, and the plan's Open questions section is now a table of those defaults rather than a list of blockers. Three were resolved partly by inspecting the repository: the git remote is GitHub, there is no CI of any kind, and `index.html` sets no Content Security Policy — so Step 2 may **not** assume a first-party HttpOnly cookie is available, and Step 5 creates CI from nothing.
+
+Auditing all 37 steps also found nine assumptions the plan relied on without recording them (F1–F9). The two with real cost: **Step 12 presumes a Telegram Mini App host that does not exist** — `src/platform/` contains only `web/` and nothing in `src/` mentions Telegram — so Step 12 gains a prerequisite it did not have; and **Step 6's premise that `break_infinity.js` imports cleanly into Deno is unproven**, so Step 6 must verify that first, with a shim rather than a reimplementation as the fallback. A third has a cost the plan never recorded: **Step 11's Apple sign-in needs an Apple Developer Program membership, a Services ID, and a verified domain**, so it depends on the unresolved domain question in a way Step 10's Google sign-in does not, and it adds roughly USD 99/year. The rest: Step 23's upper bound is loose by construction and must say so, Step 22 changes the authoritative clock and must not change the offline-income formula, cloud upload cadence is separate from the 500 ms local debounce and capped at one per 60 s, Step 21's measurement needs a seven-day wall-clock observation rather than a sitting, Step 31 needs one concrete entitlement and it must be cosmetic so it cannot become an unmodelled input to Step 23, and there is no XSS/CSP step. That last one, F5, is the single item left genuinely open, because closing it means adding a step and that is the user's decision at this gate.
 
 Two findings from the planning discussion are recorded in that plan. Canvas/WebGL fingerprinting was proposed as a guest identity mechanism and rejected: it collides across identically-configured devices, which would hand one player another player's save; it is unstable across routine updates; Brave randomizes it per session while Firefox and Tor make every user identical; and it is an observable identifier rather than a secret credential, so it cannot prove ownership. It is permitted only as a weak abuse signal in Step 25. Separately, Safari deletes all script-writable storage after seven days of use without first-party interaction, which means the shipped client-only build already loses a lapsed player's entire save — both the Dexie database and the localStorage lifecycle journal fall under that rule. Step 21 handles it for players with an account; whether to fix the shipped build first is undecided. Other post-milestone work — managers, boosts, gift drops, audio, final art — remains unplanned and unauthorized.
 
 ## Recent Changes
+
+- Generated **Aureon** (`surfaceElevatorTower`, catalog role
+  `surface-elevator-tower`, tier `UR`) on 2026-09-08 from the user-supplied
+  Gemini tower reference. Aureon preserves the front-facing open headhouse,
+  symmetrical navy-steel pillars, dominant polished-gold armor, suspended
+  gold-filled hopper, wooden floor, sun/moon ornament, attached purple
+  crystals, and right-side tray/badge bracket. The generated cleanup removes
+  detached bottom glow/sparkle artifacts. Its 512×512 transparent candidate,
+  128×128 native-scale preview, raw/reference files, prompt, QC metadata, and
+  provenance live under
+  `art-source/cat-role-catalog/surface-elevator-tower/ur/aureon/`. Strict QC
+  passes with zero empty, source/output edge-touch, or paste-clamped frames.
+  Aureon is not copied into `public/assets`; runtime, gameplay, saves, and
+  schemas are unchanged.
+
+- Generated **Elon** (`elevatorCargoCat`, catalog role `elevator-cargo-cat`,
+  tier `SSR`) on 2026-09-08 as the third named SSR elevator cargo steward.
+  Elon preserves the user's silver-white tabby identity, icy luminous eyes,
+  long striped tail, moon-phase collar, and celestial cargo cube; royal-violet
+  cloth and an amethyst neck gem carry SSR. The four-frame idle and complete
+  source/QC/provenance package live under
+  `art-source/cat-role-catalog/elevator-cargo-cat/ssr/elon/`. Strict QC passes
+  with zero empty, source/output edge-touch, or paste-clamped frames, body-scale
+  CV `0.00239`, and anchor-Y deviation `0.01131`. Elon remains an unintegrated
+  candidate; runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Win** (`elevatorCargoCat`, catalog role `elevator-cargo-cat`,
+  tier `SSR`) on 2026-09-08 as the second named SSR elevator cargo steward.
+  Win preserves the user's golden-orange tabby identity, pale luminous eyes,
+  cloud collar, lightning trim, long striped tail, and ornate locked cargo
+  ledger; royal-violet cloth and an amethyst neck gem carry SSR. The four-frame
+  idle and complete source/QC/provenance package live under
+  `art-source/cat-role-catalog/elevator-cargo-cat/ssr/win/`. Strict QC passes
+  with zero empty, source/output edge-touch, or paste-clamped frames, body-scale
+  CV `0.01761`, and anchor-Y deviation `0.01618`. Win remains an unintegrated
+  candidate; runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Mofy** (`elevatorCargoCat`, catalog role
+  `elevator-cargo-cat`, tier `SSR`) on 2026-09-08. Mofy preserves the user's
+  calico face and body markings, mint-green eyes, long tail, leaf-shaped cloak,
+  and carved wooden flower ledger; royal-violet cloth and an amethyst neck gem
+  carry SSR. The four-frame idle and complete source/QC/provenance package live
+  under `art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/`. Strict QC
+  passes with zero empty, source/output edge-touch, or paste-clamped frames,
+  body-scale CV `0.01500`, and anchor-Y deviation `0.00727`. A 50×50 logical
+  pixel shaft preview confirms the compact cabin read. Mofy remains an
+  unintegrated candidate; runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Nautilus** (`warehouseManager`, catalog role `warehouse-manager`,
+  tier `SSR`) on 2026-09-08 as the first SSR warehouse supervisor. Nautilus
+  preserves the user's charcoal-black cat, glowing aqua eyes, long thin tail,
+  wave-pattern ceremonial cloak, and golden shell-shaped inventory ledger;
+  royal-violet/deep-amethyst cloth and an amethyst neck gem carry SSR. The
+  four-frame idle and complete source/QC/provenance package live under
+  `art-source/cat-role-catalog/warehouse-manager/ssr/nautilus/`.
+  Largest-component cleanup removed a detached motion mark. Strict QC passes
+  with zero empty, edge-touch, or paste-clamped frames, body-scale CV `0.01471`,
+  and anchor-Y deviation `0.00081`. Nautilus remains an unintegrated candidate;
+  runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Gauge** (`warehouseManager`, catalog role `warehouse-manager`,
+  tier `SR`) on 2026-09-08 as the third named SR warehouse supervisor. Gauge
+  preserves the user's orange tabby identity, striped tail, utility-pocket
+  field coat, steel shoulder guard, and gear-emblem inventory clipboard;
+  sapphire-blue scarf and cyan highlights carry SR. The four-frame idle and
+  complete source/QC/provenance package live under
+  `art-source/cat-role-catalog/warehouse-manager/sr/gauge/`. Largest-component
+  cleanup removed detached motion marks. Strict QC passes with zero empty,
+  edge-touch, or paste-clamped frames, body-scale CV `0.00492`, and anchor-Y
+  deviation `0.02311`. Gauge remains an unintegrated candidate; runtime,
+  gameplay, saves, and schemas are unchanged.
+
+- Generated **Baron** (`warehouseManager`, catalog role `warehouse-manager`,
+  tier `SR`) on 2026-09-08 as the second named SR warehouse supervisor. Baron
+  preserves the user's fluffy cream fur, pale-gold eyes, large plume tail,
+  ivory-and-gold ceremonial armor, and ornate inventory scroll; sapphire-blue
+  sash and cloth accents carry SR. The four-frame idle and complete source/QC/
+  provenance package live under
+  `art-source/cat-role-catalog/warehouse-manager/sr/baron/`. Strict QC passes
+  with zero empty, edge-touch, or paste-clamped frames, body-scale CV `0.00275`,
+  and anchor-Y deviation `0.01537`. Baron remains an unintegrated candidate;
+  runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Cipher** (`warehouseManager`, catalog role `warehouse-manager`,
+  tier `SR`) on 2026-09-08. Cipher preserves the user's sleek charcoal-black
+  identity, pale-gold eyes, long tail, segmented futuristic armor, and
+  holographic inventory tablet; sapphire/electric blue and cyan carry the SR
+  color identity while gold remains secondary trim. The four-frame idle and
+  full source/QC/provenance package live under
+  `art-source/cat-role-catalog/warehouse-manager/sr/cipher/`. Strict QC passes
+  with zero empty, edge-touch, or paste-clamped frames, body-scale CV `0.00744`,
+  and anchor-Y deviation `0.01456`. The existing cosmetic warehouse manager
+  stays the `N` runtime default; no gameplay, runtime, save, or schema change.
+
+- Generated **Sovereign** (`unloader:SSR`) on 2026-09-08 as the third named SSR
+  unloader. The candidate preserves the user's warm-tan long-haired lynx
+  identity, cream mane, tall tufted ears, dark markings, glowing pale-gold eyes,
+  open receiving paws, and ornate shoulder-mounted treasure chest. Royal-violet
+  cloth and an amethyst belt gem carry SSR, with gold retained as a secondary
+  material. The four-frame idle and full source/QC/provenance package live under
+  `art-source/cat-role-catalog/unloader/ssr/sovereign/`. Strict QC passes with
+  zero empty, edge-touch, or paste-clamped frames, body-scale CV `0.00736`, and
+  anchor-Y deviation `0.00255`. Sovereign remains an unintegrated candidate;
+  runtime, gameplay, saves, and schemas are unchanged.
+
+- Generated **Zenith** (`unloader:SSR`) on 2026-09-08 as a second named
+  character in the same role/rarity as Aegis. Zenith preserves the user's cream
+  Siamese identity, dark ears/mask/paws/tail, pale-gold eyes, celestial
+  clothing, open receiving paw, and compact gold balance scales; deep-violet
+  cloth and an amethyst forehead gem carry SSR. The four-frame idle and full
+  source/QC/provenance package live under
+  `art-source/cat-role-catalog/unloader/ssr/zenith/`. Strict QC passes with zero
+  empty, edge-touch, or paste-clamped frames, body-scale CV `0.00271`, and
+  anchor-Y deviation `0.00070`. The catalog now explicitly permits multiple
+  named characters per role/rarity and uses character-qualified asset IDs.
+  Zenith remains an unintegrated candidate; runtime and game schemas are
+  unchanged.
+
+- Generated **Aegis** (`unloader:SSR`) on 2026-09-08 from the user-supplied
+  silver-gray ceremonial cat reference. The candidate preserves gray tabby
+  markings, white muzzle/belly/paws, pale-gold eyes, ornate gold armor, and an
+  open-paw receiving pose, while deep-violet cloth/inlays and an amethyst chest
+  gem provide the required SSR purple identity. The four-frame stationary idle,
+  transparent sheet, raw/reference files, prompt, GIF, contact/context previews,
+  QC metadata, and provenance are stored under
+  `art-source/cat-role-catalog/unloader/ssr/`. Strict QC passes with zero empty,
+  edge-touch, or paste-clamped frames, body-scale CV `0.00204`, and anchor-Y
+  deviation `0.00288`. Status is `candidate-generated-awaiting-user-review`;
+  runtime, gameplay, balance, state, saves, and schemas remain unchanged.
+
+- Generated the first catalog variant, **Tally** (`unloader:UR`), on 2026-09-08 from the
+  user-supplied dark rune-cat reference. The candidate preserves navy-black fur,
+  amber eyes, ornate gold rune armor/cloak, and a compact teal-crystal pickaxe
+  in a restrained four-frame stationary idle. The normalized 2×2 RGBA sheet,
+  per-frame PNGs, GIF, contact sheet, game-context comparison, raw generation,
+  prompt, reference copy, pipeline metadata, and provenance are stored under
+  `art-source/cat-role-catalog/unloader/ur/`. Strict QC passes with zero empty,
+  edge-touch, or paste-clamped frames, body-scale CV `0.00465`, and anchor-Y
+  deviation `0.00609`. Status is `candidate-generated-awaiting-user-review`;
+  it is not copied into runtime assets or connected to gameplay/state/save.
+
+- Server-milestone Step 3 on 2026-09-08: designed the Postgres schema and wrote
+  it byte-identically into `memory-bank/architecture.md` and
+  `memory-bank/techContext.md`, replacing the "Relational/server database
+  schema: none" statement in each. No migration and no database exist. The
+  documented DDL was extracted from the document itself and executed against
+  PostgreSQL 17 in a throwaway container with a stub `auth.users`; it applies
+  cleanly and 14 constraint-behaviour assertions pass, including that deleting
+  the `auth.users` row cascades every row in all six tables. That is a design
+  check against stock PostgreSQL, not a Supabase project — Step 4 creates that.
+
+- Server-milestone Step 2 on 2026-09-08: wrote the save-sync contract in
+  `memory-bank/server-save-sync-protocol.md`. Documentation only; no code, no
+  balance value, no schema version changed. Decisions D1–D5 above are binding on
+  later steps, and the dominance conflict policy holds only while the progress
+  vector stays monotonic, so a future prestige or reset mechanic must revise it
+  in the same change.
+
+- Recorded the user-approved cat-role asset taxonomy on 2026-09-08: every role
+  has ordered rarity tiers `N` normal/gray, `R` rare/green, `SR` super
+  rare/blue, `SSR` super-super rare/purple, and `UR` ultra rare/gold. The
+  existing Step 32A `unloader` remains the runtime default and is registered as
+  the `unloader:N` baseline. Added an asset-family brief and manifest under
+  `art-source/cat-role-catalog/`. This is documentation and asset preproduction
+  only; tier attributes, acquisition, runtime selection, authoritative state,
+  balance, saves, and database schemas are unchanged. The next asset input is a
+  user-supplied role name, rarity tier, and design reference image.
 
 - Step 37 was validated by the user on 2026-09-08, closing the base-game milestone. All 37 plan steps are complete and the plan's Definition of Done is met.
 - Step 37 implemented on 2026-09-08 as a review-and-documentation step with no runtime, balance, or schema change. It reviewed the delivered base game against `memory-bank/implementation-plan.md` and the GDD acceptance criteria, recorded every deferred feature instead of building it, added `README.md`, and corrected the repository documentation that still described a four-floor mine and a round-robin elevator.
@@ -628,13 +811,488 @@ The follow-up HUD clarification renames the centre field and rendered diagnostic
 
 The 2026-09-07 browser-feedback revision is implemented: `HUD_HEIGHT` is 52, the centre HUD value reads `warehouse.inputQueue`, and balance/state/view construction now supports exactly fifteen floors. Floors 1–5 are visible initially; opening floor 5 expands the mine to floors 1–10, and opening floor 10 expands it to floors 1–15 without restarting the scene. The active scroll range resizes with each reveal while retaining the current scroll position. Save document and IndexedDB versions remain 1; legacy four-floor version-1 documents are expanded to the fifteen-floor shape before strict validation, preserving floors 1–4 and adding locked configured defaults. The game UI/UX skill guided the compact fixed-region and progressive-disclosure implementation without weakening safe-area scaling or touch targets. Automated evidence: 321 unit tests, 37 Chromium E2E tests, all nine production smoke tests, lint, build, and `git diff --check` pass; direct in-app browser inspection confirms the 52 px HUD, five initially visible floors, and no console errors.
 
-The 37-step plan is finished. Nothing is in progress and nothing is authorized.
+Server-milestone Step 4 is implemented and awaiting validation. The whole backend
+now runs offline in Docker: Supabase CLI 2.117.0 is an exact devDependency,
+`supabase/config.toml` is committed with project id `cat-mine-idle` and default
+ports that do not collide with 5173/4173/4174/4175, and `realtime`, `storage`,
+and `analytics` are switched off because no milestone step uses them. One Edge
+Function, `save-sync`, serves protocol §10.1 `GET /v1/health` at
+`/functions/v1/save-sync/v1/health`; it is the router, error envelope, and
+vocabulary Steps 16 and 17 must reuse rather than a second contract.
 
-1. Do not begin any post-milestone work — managers, boosts, gift drops, audio,
-   final art, Telegram integration, deployment — without explicit user
-   authorization. The deferred list in `memory-bank/progress.md` is a record of
-   what was excluded, not a backlog to start from. A new milestone needs its own
-   ordered, test-gated plan before code is written.
+Three Step 4 judgment calls to review at the gate. First, `verify_jwt = false`
+for the whole function, because §10.1 requires the health route to answer an
+unauthenticated caller — the authenticated routes verify their own token in the
+handler from Step 16, and until then no route touches data. Second, **one
+bootstrap migration exists** even though Step 5 owns migrations: it creates
+nothing, asserts the PostgreSQL 13+ premise the Step 3 schema relies on for
+`gen_random_uuid()`, and gives Step 4's "applies migrations" check and Step 5's
+"a broken migration fails CI" check a real file rather than an empty directory.
+The six designed tables are untouched. Third, the health route proves database
+reachability by round-tripping PostgREST with the **anon** key, never the
+service-role key, because it is the one route open to unauthenticated callers
+and that key bypasses row-level security; Step 16 narrows the probe to `saves`
+once that table exists.
+
+The secret boundary is now enforced rather than described. `.env.example` is the
+committed template, `.env.local` holds real values and is ignored, and the
+`VITE_` prefix is the whole line between a public value and a credential.
+`npm run scan:secrets` fails the build if `dist/` carries a service-role JWT, an
+`sb_secret_*` key, an exact non-`VITE_` environment value, or a server-only
+variable name, and it runs inside `npm run verify` between `build` and
+`test:prod`. `tests/unit/server-stack.test.ts` adds sixteen static invariants,
+asserting the ignore rules through `git check-ignore` rather than the text of
+`.gitignore` so a commented-out rule cannot pass.
+
+Evidence: `npm run verify:server -- --with-bundle-scan` passes all nine checks
+from a clean checkout against an empty Docker volume set, including migrations
+applied from empty and an unauthenticated health check answering 200 within 9 ms
+of the local clock. Both halves are mutation-proven: a broken migration fails
+`supabase db reset` with exit 1, the version guard fires when its threshold is
+raised, stopping the PostgREST container turns the health route into a 503
+`service_unavailable`, and a planted service-role JWT, `sb_secret_*` key, or
+server-only variable name each fails the bundle scan. `npm run verify` passes end
+to end: lint, 351 unit tests, 42 Chromium E2E tests, the strict production build,
+the secret scan, and 9 production smoke tests. No client code changed, no gameplay
+changed, and save-document and IndexedDB schema versions remain 1.
+
+A user review of Step 4 found four defects, all fixed with regressions. The
+serious one: `npm run verify:server` reported a healthy stack as a missing
+migration in any ordinary terminal, because `supabase migration list --local`
+defaults to a text table and only emits JSON when the CLI auto-detects an agent —
+which is why it passed during implementation and would have failed for a human.
+It now requests JSON explicitly, guards the payload slice, and reports an
+unreadable response as its own failure rather than as a missing migration. The
+others: the plan document used `npm run verify:server --with-bundle-scan`, which
+npm does not forward, so the documented nine-check command silently ran seven;
+the secret scanner would have failed a build on an anon key present under both
+its prefixed and unprefixed names, now exempted by twin name rather than by value
+so a mirrored secret cannot exempt itself; and the privileged-key probe degraded
+silently to checking nothing, now warned about and distinguished from a stack
+that is simply not running. Unit coverage is 364, up from 351.
+
+Two gaps are recorded rather than closed. `supabase/functions/**` is linted with
+Deno globals declared but is outside `tsconfig.json`, because `Deno` has no type
+in the Node/DOM libraries the client compiles against — Step 7's Edge Function
+harness closes this, and until then the function's only automated proof is the
+live health probe plus static source assertions. And the health probe reports
+PostgREST's reachability, which is a real database round trip but not a query
+against a table the game owns.
+
+The user validated Step 4 and authorized Step 5 on 2026-09-08.
+
+Server-milestone Step 5 is implemented on 2026-09-08: migrations and CI.
+`supabase/migrations/20260908130000_create_platform_tables.sql` lands the six
+Step 3 tables verbatim — the exact `create table`/index SQL documented in
+`memory-bank/architecture.md` and `memory-bank/techContext.md` — plus RLS
+enabled on all six with exactly the policies the Step 3 matrix names:
+`profiles` and `entitlements` select-own, `profiles` update-own, `saves`
+select-own with no insert/update/delete policy anywhere, and
+`leaderboard_entries` select-all. `save_audit` and `recovery_codes` get RLS
+enabled and no policy at all, which denies every access to `anon` and
+`authenticated` outright. `supabase/seed.sql` gained one fixture guest —
+an `auth.users` row plus its `profiles` row, both local-only — so
+`supabase db reset` leaves something to inspect in Studio without the Step 8
+sign-in flow existing yet; `saves`, `save_audit`, `leaderboard_entries`, and
+`entitlements` stay unseeded because a realistic fixture row for them needs
+code that does not exist before Steps 16, 26, and 31.
+
+Step 5 evidence went beyond re-running Step 4's script. Against the real local
+stack, a JWT minted for the seeded fixture user (`role: authenticated`,
+`sub` set to its id) can `select` its own `profiles` row (200, one row) and its
+own — empty — `saves` row-set (200, `[]`); a direct `insert` into `saves` with
+that same token is refused (403, PostgREST `42501`, "new row violates
+row-level security policy"); and `save_audit` returns `[]` under RLS with no
+policy at all rather than an error. `EXPECTED_MIGRATIONS` in
+`scripts/verify-server-stack.mjs` now lists both migration files, so
+`npm run verify:server` actually checks the new one landed rather than only the
+bootstrap file. Step 5's own "a deliberately broken migration fails CI" claim
+was mutation-proven directly: a temporary migration with a typo'd foreign-key
+column made `supabase db reset` exit 1, and removing it restored exit 0 and a
+clean `npm run verify:server` pass — the identical mechanism
+`.github/workflows/ci.yml`'s new `server` job runs, though no GitHub Actions run
+has actually executed, since this checkout was never pushed. That workflow adds
+a `client` job (`npm run verify`) alongside it, and `package.json` gained a
+`verify:all` sibling script that runs both locally in sequence. `npm run lint`
+and `npm run test` (364 unit tests) were re-run and pass unchanged; no client
+source file changed, and no gameplay, save-document, or IndexedDB schema
+version changed.
+
+One scope decision worth reviewing at the gate: Step 5 lands all six tables
+now, rather than one per the step that first names it (Step 9 for `profiles`,
+Step 15 for `saves`, Step 27 for `leaderboard_entries`, Step 31 for
+`entitlements`). This follows what `memory-bank/architecture.md`,
+`memory-bank/techContext.md`, and the Step 4 bootstrap migration's own comment
+already committed to before this step began — "Step 5 lands these six tables
+as forward-only migrations" — rather than a re-reading of Phase 2/3/5/6's
+per-step instructions in isolation. Under this reading, Steps 9, 15, 27, and 31
+add the application logic around an already-existing table (the sign-up
+trigger, the upload function, the ranking query, the grant check), not the
+`create table` statement itself.
+
+A code review of the Step 4/5 working tree on 2026-09-08 found ten issues and
+all ten were fixed in place, before the gate rather than after it. Three changed
+behaviour that a gate would otherwise have certified as working:
+
+1. `parseEnvFile` in `scripts/scan-bundle-secrets.mjs` took everything after the
+   first `=` as the value, so a `.env.local` line carrying a trailing
+   `# comment` produced a forbidden value that could never occur in a bundle.
+   The exact-value check — one of the scan's three legs — silently became a
+   no-op for that variable while still printing as having run. It now reads
+   dotenv's quoting rules and strips an `export ` prefix, and the fix is
+   mutation-proven: the regression test fails against the old parser.
+2. `public.set_updated_at()` was created without `set search_path = ''`
+   (Supabase's `function_search_path_mutable` lint). Migrations are
+   forward-only and this is the trigger every future `updated_at` column
+   attaches to, so it was pinned at creation; the body now calls
+   `pg_catalog.now()`, and the trigger was verified still firing against the
+   local stack.
+3. `leaderboard_entries_select_all` admits every row, and PostgREST lets the
+   caller choose its own column list — so `?select=user_id` enumerated the
+   `auth.users` id of every published player with no authentication. `user_id`
+   is now withheld by column-level grant. Verified live: anon reads
+   `board_key,display_name,metric_exact` (200) and is refused `select=user_id`
+   and `select=*` alike (`42501`). The RLS matrix in `architecture.md` and
+   `techContext.md` moved with it, and both copies remain byte-identical.
+
+The remaining seven were smaller but the same shape — a check that reports
+success without having checked. `EXPECTED_MIGRATIONS` is gone from
+`scripts/verify-server-stack.mjs`, replaced by a read of `supabase/migrations/`
+plus a guard against an empty list, so a future migration cannot be silently
+skipped by an unedited constant; the bundle scan now names the `.env.local`
+values it skipped as too short or placeholder and refuses to print a pass over
+an empty `dist/`; the save-sync health route answers a missing environment
+variable with `server_error` rather than `service_unavailable`, which would
+otherwise have every client retry forever against a healthy database, and
+`errorResponse` can now set the `Retry-After` the protocol's §4 tells clients to
+wait for; `.github/workflows/ci.yml` declares `permissions: contents: read` and
+per-job `timeout-minutes`; and the repository-wide credential scan in
+`tests/unit/server-stack.test.ts` skips binary extensions — it was reading 363
+untracked images, mostly `art-source/`, on every `npm run test` — and now
+reports an unreadable file as an offender rather than skipping it silently.
+That test went from roughly 2 s to 36 ms.
+
+Each fix ships with a regression test. After them: `npm run lint` clean,
+376 unit tests pass, `npm run verify` passes end to end, and
+`npm run verify:server` passes with both migrations applying to an empty
+database.
+
+The user validated Step 5 and authorized Step 6 on 2026-09-08.
+
+Server-milestone Step 6 is implemented on 2026-09-08: `src/core`, `src/config`,
+and the save-document boundary run on Deno without forking them. The blocker
+was not the anticipated one. Finding F2 asked whether `break_infinity.js`
+imports into Deno; the real obstacle, discovered empirically rather than
+assumed, is finding F10 — Deno's edge runtime does not add a `.ts` extension to
+an extension-less relative specifier, so pointing a function straight at
+`src/core/index.ts` failed to boot on that file's own internal
+`from './economy/calculateProductionRates'`-style imports. Reproduced
+identically through `supabase functions serve` and the real `supabase start`
+edge runtime (`supabase-edge-runtime-1.74.3`, Deno v2.1.4); a `deno.json` with
+`"unstable": ["sloppy-imports"]`, tried at the project root and inside the
+function's own directory, was not honoured by either.
+
+The fix is a generated bundle, not an import map. `supabase/functions/_shared/coreBundleEntry.ts`
+contains no logic — `export * from '../../../src/core'` and its `src/config`
+and `src/persistence/saveSchema.ts` siblings, nothing else — so it cannot fork
+the behavior it names. `npm run build:server-core` (`vite.server-core.config.ts`,
+Vite library mode) compiles it into the git-ignored
+`supabase/functions/_shared/generated/core-bundle.js`: one dependency-free ES
+module with every specifier already resolved, `break_infinity.js` included,
+through the same resolution the client bundle already relies on. That resolved
+F2 as a side effect: it imports cleanly once bundled, no shim needed.
+`scripts/verify-server-stack.mjs` rebuilds this bundle before every
+`supabase start`, so it can never be tested stale.
+
+`supabase/functions/core-portability-check` — deliberately not part of the
+save-sync protocol, since it reads and writes no data and exists only to prove
+this step — imports that bundle and runs the fixed document at
+`tests/fixtures/ten-minute-core-fixture.json` through the real
+`migrateSaveDocument` → `validateSaveDocument` → `deserializeSaveDocument` → one
+explicit `advanceSimulation` tick → `catchUpSimulation` for the rest of ten
+minutes → `createSaveDocument`. `tests/unit/server-core-portability.test.ts`
+runs the identical sequence against the unbundled source and pins the result:
+gold `"100"` → `"3080"`. `npm run verify:server` fetches the live function and
+asserts byte-for-byte identity against that pinned document.
+
+Mutation-proven directly, not only asserted: `calculateExtractionYield` in
+`src/core/simulation/advanceSimulation.ts` was temporarily doubled. The client
+test failed immediately; rebuilding the bundle and re-fetching the live
+function showed the identical doubled numbers (gold `"6060"`,
+`totalGoldDelivered` `"5960"`) in the same run, before the edit was reverted and
+both sides matched the original fixture again. `eslint.config.mjs` extends
+`src/core/**/*.ts`'s purity rules with a `Deno` global ban and a
+`(^|/)supabase(/|$)` import ban — the dependency direction is `supabase/` on
+`src/core`, never the reverse — and `tests/unit/architecture.test.ts` gained a
+probe for both. `npm run lint` and `npm run test` (378 unit tests, up from 364)
+pass; no gameplay, save-document, or IndexedDB schema version changed.
+
+A 2026-09-09 review found six defects, all fixed with direct verification
+rather than only reasoned about. The bundle config was missing
+`publicDir: false`, so Vite's default copied ~2.9 MB of game art into
+`supabase/functions/` on every build (measured 3.0 MB before, 80 KB/one file
+after). The `src/core` import ban covered `supabase/` but not the
+`@supabase/*` npm scope Step 7 adds. `scripts/verify-server-stack.mjs`
+compared serialized JSON text while the unit test used `toEqual`, so a
+harmless key-order difference would fail one and not the other; both now
+compare structurally, with a live reorder-the-fixture test proving the script
+still passes with an "identical values, differing key order" detail rather
+than a false failure. A non-200 response from the portability check was
+retried up to twenty times though it can only mean a deterministic failure;
+timed live against an injected throw, it now reports in 30 ms instead of a
+multi-second loop. `vite.server-core.config.ts` was outside `tsconfig.json`'s
+`include`. The CI job name/comment no longer described the job after this
+step extended it. `npm run lint`, 378 unit tests, and `npm run verify:server`
+(including the still-80-KB bundle) all pass after the fixes.
+
+The user validated Step 6 and authorized Step 7 on 2026-09-09.
+
+Server-milestone Step 7 is implemented on 2026-09-09: the Edge Function test
+harness, closing Phase 1. `deno-bin@2.1.4` is a new exact devDependency — a
+real, pinned Deno CLI matching the edge runtime's own reported "compatible
+with Deno v2.1.4" — since the Supabase CLI's own `test` subcommand only wraps
+pgTAP, not Deno. `npm run test:server-unit` (`deno test supabase/functions`)
+runs 19 tests across three files, each importing its handler directly rather
+than making an HTTP request, and every one passes with zero `--allow-*`
+permission flags — proof of purity by construction, since Deno's sandbox
+would refuse real network or env access without an explicit grant.
+
+`whoami-check` is Step 7's "trivial authenticated endpoint," not part of the
+save-sync protocol. `handleWhoAmI` takes caller resolution as an injected
+`ResolveCaller` collaborator rather than calling Supabase Auth itself, so its
+unit tests fake every response the route can give; the one real
+collaborator, `resolveCallerViaSupabaseAuth` (new `@supabase/supabase-js`
+client dependency), verifies the bearer token against GoTrue and reads the
+caller's own `profiles.display_name` under row-level security — the
+authenticate-then-read-under-RLS shape every real route from Step 9 onward
+needs. `tests/server-integration/authFixture.ts` mints an HS256 JWT for the
+seeded fixture guest, signed with the Supabase CLI's fixed local
+`JWT_SECRET` — "the fixture pattern for an authenticated caller" the step
+asks for, replacing the ad hoc inline script Step 5's evidence-gathering used.
+`tests/server-integration/whoami.integration.test.ts` exercises the real
+collaborator against the live stack from its own `vitest.server-integration.config.ts`,
+deliberately excluded from `vitest.config.ts`'s glob so `npm test` never needs
+Docker.
+
+`save-sync/index.ts` and `core-portability-check/index.ts` both gained an
+`import.meta.main` guard around `Deno.serve(...)`, so importing them for unit
+tests does not also start a live listener — proven live: after the change,
+both functions still answered real requests exactly as before. Their
+duplicated response envelope moved to the new
+`supabase/functions/_shared/http.ts`, itself unit-tested.
+`scripts/verify-server-stack.mjs` runs the unit suite before the stack even
+starts and the integration suite once the database is reset, both from a
+clean `supabase db reset` — satisfying the step's "both run in CI from a
+clean database" test. Its final pass/fail line, hardcoded as "Step 4
+validation" since Step 4, now reads "npm run verify:server," since it has
+covered four steps for a while.
+
+A real bug surfaced live while wiring the integration test, not assumed
+away: `auth.getUser` against the seeded fixture guest 500'd with
+`"Scan error on column ... confirmation_token: converting NULL to string is
+unsupported"` — `supabase/seed.sql` had never set `confirmation_token`,
+`recovery_token`, `email_change_token_new`, or `email_change`, columns with no
+default that GoTrue's Go row scanner cannot read as NULL. No step before this
+one ever triggered it, since Steps 4 through 6 only ever handed PostgREST a
+hand-signed JWT directly, never asking GoTrue to load the user row. Fixed by
+seeding those four columns as `''`, matching a real sign-up; verified with a
+direct `curl` to `/auth/v1/user` before (500) and after (200) the fix.
+
+Step 7 evidence: `npm run verify:server` passes 13 checks end to end from a
+completely clean `supabase stop`/`start`/`db reset` cycle, and
+`--with-bundle-scan` additionally passes the build and secret scan. The full
+client gate was re-run given the scope of change: lint clean, 378 unit tests
+(one static-source test needed updating to read the file its assertion moved
+to), all 42 Chromium E2E tests, strict build, secret scan, and all 9
+production smoke tests pass.
+
+The user validated Step 7 and authorized Step 8 on 2026-09-09.
+
+Server-milestone Step 8 is implemented on 2026-09-09: the anonymous guest
+session, opening Phase 2 (Identity). `enable_anonymous_sign_ins` flips to
+`true` in `supabase/config.toml` — the existing `anonymous_users = 30`/hour
+rate limit already covered this path. `@supabase/supabase-js` moves from
+`devDependencies` to `dependencies`, exact-pinned at the same `2.116.0`
+`whoami-check`'s Deno import already used, because `src/platform/web/supabaseClient.ts`
+is the first `src/` code to import it: `createSupabaseClient()` reads
+`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` and returns `null`, attempting no
+network call, when either is unset — a checkout with no `.env.local` stays
+exactly as playable as before this step.
+
+`src/platform/web/guestSession.ts`'s `ensureGuestSession` mirrors the injected-collaborator
+pattern `whoami-check`'s `ResolveCaller` already established: it takes only
+the narrow `GuestAuthClient` slice of `SupabaseClient['auth']` it needs
+(`getSession`/`signInAnonymously`), so `tests/unit/guest-session.test.ts` fakes
+that collaborator instead of mocking the SDK. It never throws — reusing an
+existing session, signing in fresh, a rejected call, and a disabled or
+unreachable auth service all resolve to a typed result
+(`signed-in`/`sign-in-failed`/`unconfigured`) rather than rejecting.
+`src/main.ts` constructs the client once and calls `ensureGuestSession`
+without awaiting it before `loadActiveGame`/`createGame` — identity
+resolution must never delay the first frame, the same "boot from local,
+reconcile after" principle Step 17 will apply to save reconciliation, landing
+one step early for identity itself — and publishes the resolved result as a
+`DEV`-only `app.dataset.guestSession` diagnostic, the same
+`import.meta.env.DEV` convention `BootScene` already uses, stripped from
+production identically.
+
+Proving "two browsers receive different identities" needs a real GoTrue
+issuing real sessions, so Step 8 adds a second, Docker-dependent Playwright
+suite kept out of the Docker-free `npm run test:e2e`: `playwright.server-e2e.config.ts`
+(port 4176) and `tests/server-e2e/guest-session.spec.ts`. Three scenarios: a
+fresh browser boots playable and holds a real anonymous session (a UUID
+`user.id`, `isAnonymous: true`); every `**/auth/v1/**` request aborted still
+boots the game, and forcing the same `visibilitychange` flush
+`tests/e2e/lifecycle-persistence.spec.ts` already drives still reaches
+IndexedDB across a reload; two fresh browser contexts receive distinct
+`user.id`s whose access tokens, sent directly from the Node test process (no
+CORS concern), each answer only for themselves through the live
+`whoami-check` function. `scripts/verify-server-stack.mjs` now runs
+`npm run test:server-e2e` after `test:server-integration`, reading
+`API_URL`/`ANON_KEY` from a live `supabase status --output json` into the
+spawned dev server's environment — no `.env.local` needed in CI, and a
+developer's own file is untouched.
+
+One empirical finding, not assumed: `enable_anonymous_sign_ins` is read by the
+GoTrue container at boot, not by `supabase db reset` — a stack already
+running from before the config edit still answered
+`anonymous_provider_disabled` (verified directly via `curl` against
+`/auth/v1/signup`) until fully stopped and restarted. A genuinely clean
+checkout never hits this, since every CI run and any `supabase start` after a
+`supabase stop` starts the container fresh.
+
+`CLAUDE.md` and `README.md` both asserted "nothing in `src/` makes a network
+call" — now false, corrected in the same change to name the one non-blocking
+call this step adds and confirm the game stays exactly as playable without it.
+
+Step 8 evidence (pre-review): `npm run verify:server` passed end to end from a
+completely clean `supabase stop`/`start`/`db reset` cycle, including all three
+new `test:server-e2e` scenarios. The full client gate was re-run: lint clean,
+396 unit tests, all 42 Chromium E2E tests, strict build, secret scan
+(confirming `VITE_SUPABASE_ANON_KEY` is the only Supabase-related value in
+`dist/`, no service-role key), and all 9 production smoke tests passed.
+
+A 2026-09-09 review of the Step 8 working tree found ten issues. Six fixed
+before the gate: `.github/workflows/ci.yml`'s `server` job had no Chromium
+installed at all for the new browser suite `verify:server` now runs (fixed
+with its own `npx playwright install --with-deps chromium` step, and its
+stale name/comment and 20-minute timeout corrected/bumped to 25); `playwright.server-e2e.config.ts`'s
+default `'html'` reporter would hang `scripts/verify-server-stack.mjs`'s
+`spawnSync` on any local failure and collide with the main suite's report
+folder (switched to `'line'`, matching why the production/performance configs
+already avoid `'html'`); `callWhoAmI`'s retry loop broke on any response
+including a transient cold-start error and its 10-attempt budget could exceed
+the config's implicit 30 s test timeout — the same class of bug a Step 7
+review already fixed once for a comparable warm-up loop (now retries on
+`!response.ok` too, at 6 attempts under an explicit 60 s test timeout); a
+static `@supabase/supabase-js` import cost +58 kB gzip on the single entry
+chunk that every boot parses first, which is exactly what this step's "never
+delay the first frame" rule exists to prevent (`createSupabaseClient` now
+dynamically imports the SDK only once the env vars are confirmed present,
+putting it in its own on-demand chunk); and the "documented commands" test
+was missing `test:server-e2e`. Two more applied as cleanups: the dev-only
+diagnostic dropped its published access token (the server-e2e suite now
+reads it from the Supabase client's own `localStorage` entry instead), and
+the client promise is now cached on `import.meta.hot.data` so HMR reuses one
+GoTrue instance instead of leaking a new one every reload (previously the
+cause of the SDK's own "Multiple GoTrueClient instances detected" console
+warning). Two `ensureGuestSession` unit tests were added ahead of Step 9's
+identity linking (reusing a linked non-anonymous session; defaulting
+`isAnonymous` to `false` when the field is absent). One pasted CI failure —
+`tests/e2e/production-stages.spec.ts`'s animation-speed test closing its page
+mid-`page.clock.runFor` — was checked and confirmed unrelated: nothing in
+this step touches that file, it passed in every local run during this step,
+and the same file already has one earlier, separately-fixed CI-only flake in
+the same cosmetic-animation-clock family. Verified after these fixes: lint
+clean, 398 unit tests, all 42 Chromium E2E tests, strict build, secret scan,
+9 production smoke tests, and `npm run verify:server` (including the fixed
+`test:server-e2e`) all pass.
+
+A follow-up review caught an eleventh finding on top of those ten: fix 4
+above (the dynamic import) made `createSupabaseClient` return a promise that
+can reject — a flaky network fetching the lazy chunk, or a stale chunk hash
+after a redeploy — and `src/main.ts`'s `void`-ed promise chain had no
+`.catch` around it. `ensureGuestSession`'s own try/catch covers only the
+collaborator calls made *inside* it, not the client-construction promise one
+level above it in `main.ts`, so the rejection skipped straight past
+`.then((client) => ensureGuestSession(...))` to an unhandled rejection —
+breaking `guestSession.ts`'s own documented "this never throws" contract from
+one level up, even though the game itself keeps playing (Phaser boots
+independently of this chain). Neither existing suite could catch it: the
+Docker-free `tests/e2e/` dev server never bundles, so there is no lazy chunk
+to fail, and `tests/server-e2e/`'s network-blocking test only targets
+`**/auth/v1/**`. Fixed with one `.catch` folding any rejection into
+`sign-in-failed` (not `unconfigured`, reserved for "no Supabase project
+configured"). A new production-smoke test blocks the SDK's own lazy chunk
+(`**/assets/dist-*.js`, confirmed stable across two separate builds) against
+the real optimized bundle and asserts the HUD still renders with no
+`pageerror` — mutation-proven directly: reverting the `.catch` reproduces the
+exact unhandled-rejection message as a `pageerror`, restoring it passes
+again. Verified: lint clean, 398 unit tests, 42 Chromium E2E tests, strict
+build, secret scan, 10 production smoke tests (up from 9), and
+`npm run verify:server` all pass.
+
+A third review pass caught a twelfth finding, in the eleventh's own fix: the
+new production-smoke test was a false green on CI, the one place it gates.
+`createSupabaseClient` checks `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
+*before* its dynamic `import()`, and Vite inlines both at build time, so a
+build with neither set makes the guard constantly true and the bundler
+eliminates the import entirely — no lazy chunk is emitted at all. CI has no
+`.env.local`, so `page.route('**/assets/dist-*.js', abort)` matched nothing,
+aborted nothing, and left every assertion trivially true. Reproduced
+directly, three ways: a build without the two variables emits only
+`index-*.js` and the CSS (no `dist-*.js`); with the `.catch` deliberately
+removed, the test still passed in 4.3 s against that build; with the same
+mutation against a configured build, it failed as intended. The chunk's
+absence is correct behaviour, not a defect — an unconfigured build *should*
+ship no SDK — so the test simply cannot be meaningful there, and the fix
+splits the concern rather than forcing a chunk into existence. One rejected
+approach is recorded because it looked obvious and was wrong: giving
+`playwright.production.config.ts` placeholder `VITE_` values so the chunk
+always builds broke 8 unrelated specs, because the resulting sign-in attempt
+surfaces as a real failed request (`net::ERR_UNSAFE_PORT` for the first
+placeholder tried; any unreachable host gives `ERR_CONNECTION_REFUSED`
+instead) in the specs that assert no request fails and no browser error
+fires. Any placeholder producing real network traffic has that problem, so
+the config was left untouched. Fixed in two parts instead. (a)
+`tests/production/production-smoke.spec.ts` now identifies the SDK chunk by
+its *contents* (`GoTrueClient` present, entry-chunk marker absent) rather
+than by a `dist-*` glob — that name is one rolldown derives from the `dist/`
+directory inside `@supabase/supabase-js`, so an SDK layout change or bundler
+rename would have silently unhooked the route even on a configured build —
+counts the aborts it performs and asserts the count is non-zero, and
+`test.skip`s with a stated reason when the build emitted no chunk, so an
+unconfigured build reports a visible skip rather than a false pass or a false
+failure. (b) `tests/unit/server-stack.test.ts` gained
+`describe('the guest-session bootstrap in src/main.ts')` — three
+static-source assertions (the chain is `void`-ed and never awaited before
+boot, a `.catch` sits between its two `.then`s, and the published diagnostic
+goes through `toPublicGuestSessionDiagnostic` rather than stringifying the
+raw result with its token) — carrying the gate that actually runs on every
+CI push, with no Docker and no `.env.local`. This is the same
+static-assertion-beside-behavioural-test pattern a Step 7 review already
+established for `resolveCallerViaSupabaseAuth`, and for the same reason:
+`src/main.ts` is a module of top-level side effects no unit test can import.
+Mutation-proven across all four combinations — with the `.catch` removed the
+unit gate fails (CI condition, no Docker or env needed) and the production
+spec fails against a configured build; with it restored the production spec
+passes and reports a real aborted chunk request, and the full production
+suite in the CI condition is 9 passed with 1 visible skip, the 8 specs the
+rejected placeholder approach had broken all healthy again. Verified: lint
+clean, 401 unit tests (up from 398), 42 Chromium E2E tests, strict build,
+secret scan, 10 production smoke tests, `npm run verify` exits 0.
+
+The base-game 37-step plan is finished. The server milestone is at its Step 8 gate, inside Phase 2 (Identity): Steps 1 through 7 are validated, Step 8 is implemented and awaiting validation, and Step 9 — profiles and row-level security — may not begin until the user validates it. F5 — whether to add an XSS/CSP step — is still open and was not answered at the Step 1 gate; Step 2's D1 makes it slightly more pressing now that the session credential actually exists in script-writable storage rather than only being planned there. Every other open item carries a recorded default or resolution that can be reviewed at documented cost.
+
+1. Two workstreams are authorized, and only these two. The **server milestone**
+   is at its Step 8 gate — implemented, awaiting validation, Step 9 blocked
+   (`memory-bank/server-milestone-plan.md`). The **cat-role asset catalog** is
+   authorized as asset preproduction only, under `art-source/`, with no runtime
+   loader entry, gameplay attribute, or schema change. Everything else —
+   managers, boosts, gift drops, audio, Telegram integration, deployment — still
+   needs explicit user authorization and its own ordered, test-gated plan before
+   code is written. The deferred list in `memory-bank/progress.md` is a record of
+   what was excluded, not a backlog to start from.
 2. Two verification items survive the milestone and remain open: a physical
    mid-range Android Chrome pass, and a human playtest of the GDD's
    30-second-comprehension criterion. Neither is automatable; both were recorded
@@ -642,8 +1300,9 @@ The 37-step plan is finished. Nothing is in progress and nothing is authorized.
 3. Playtest the provisional balance curve, especially the generated floor 5–15
    depth curve, which no human has played through. Every balance value in
    `src/config/balance.ts` remains provisional until it does.
-4. Scroll response is the tightest performance margin at fifteen floors — 83.5 ms
-   p95 against a 100 ms budget — and is the first thing to re-measure if the mine
+4. Scroll response is the tightest performance margin at fifteen floors — 81.9 ms
+   p95 against a 100 ms budget, per the current `performance-results/step-35-latest.json`
+   — and is the first thing to re-measure if the mine
    grows or the scene graph gets heavier.
 - Reviewed the Step 31 branch: lint, type-check, 274 unit tests, and 26 browser tests pass; three follow-ups were applied in place rather than deferred.
 - Confirmed as deliberate that a backgrounded tab is credited at full pipeline rate while a closed one is credited through the 50% offline efficiency, so the same two-hour absence is worth about twice as much with the tab left open. Documented the asymmetry on `MAX_CATCH_UP_MS` and pinned the ratio in `tests/unit/simulation-time.test.ts`, verified by mutation to fail if either side changes.

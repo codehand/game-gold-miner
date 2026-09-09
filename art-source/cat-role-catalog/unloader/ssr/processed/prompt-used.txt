@@ -1,0 +1,42 @@
+Built-in image generation, 2026-09-08.
+
+Use case: stylized-concept
+Asset type: Phaser 4 game NPC sprite sheet for Cat Mine Idle; character name
+Aegis; role `unloader`; rarity tier `SSR`.
+
+Input images:
+- User reference `Gemini_Generated_Image_7ycwen7ycwen7ycw.png` controls Aegis's
+  identity, silver-gray tabby markings, face, pale-gold eyes, ornate armor/cape
+  silhouette, open-paw attendant pose, and decorative material language.
+- Current Step 32A unloader controls the 2x2 layout, camera distance, chibi
+  proportions, restrained idle cadence, centering, and stable feet line.
+- Tally's UR sheet controls cross-catalog scale, clean-HD edge treatment,
+  lighting, and detail density only; none of Tally's identity is copied.
+- Current mine-floor background is context only for warm-cave readability and
+  must not appear in the output.
+
+Create exactly four sequential frames of a restrained stationary idle loop for
+Aegis. Preserve the large rounded head, short body, gray tabby forehead and
+cheek stripes, white muzzle/belly/paws, pink nose and ears, large pale-gold
+eyes, ornate gold ceremonial armor and long cape, and welcoming empty open
+paws. Convert the reference ruby into a prominent faceted amethyst-purple gem
+and add controlled deep-violet accents to the inner cape and small armor inlays
+so SSR reads as purple at 75x75 while gold remains a secondary armor material.
+
+Frame 1 is a neutral attentive receiving stance; frame 2 adds subtle breathing
+and a blink; frame 3 uses a small open-paw welcoming gesture with slight
+cape/tail movement; frame 4 settles toward neutral.
+
+Use a full-body frontal three-quarter view with one camera angle and project-
+native clean-HD rounded cartoon rendering, bold dark edges, soft dimensional
+shading, and a compact readable silhouette.
+
+Output one exact 2x2 grid read left-to-right then top-to-bottom. Use four equal
+square cells. Center each full body inside the central 65% safe area with one
+camera distance, anatomical scale, and bottom-center feet line. Use a flat,
+uniform solid #FF00FF background with no grid lines.
+
+Exclude text, name, rarity letters, labels, UI, scenery, cave background, baked
+ground shadow, weapons, tools, held props, watermark, signature, extra
+characters, duplicate limbs, detached glowing orbs/sparkles/effects, cropped
+anatomy or clothing, and anything crossing a cell boundary.

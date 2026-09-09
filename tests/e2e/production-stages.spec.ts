@@ -474,7 +474,29 @@ test('keeps surface carts empty when the tower queue is empty', async ({
     page,
     'data-animation',
   );
-  await page.waitForTimeout(1_500);
+
+  // A fixed `waitForTimeout` here previously sampled `cartX` exactly once
+  // after a flat real-time delay, so a single slow frame anywhere in that
+  // window — routine on a shared CI runner, not reproducible on a quiet dev
+  // machine — could read back the same rendered position and fail. Every
+  // sibling assertion on this cosmetic clock elsewhere in this file polls
+  // instead; this one now does too, with the same generous timeout.
+  await expect
+    .poll(
+      async () => {
+        const animation = await readJsonAttribute<EmptyTowerReadBack>(
+          page,
+          'data-animation',
+        );
+        return animation.surfaceHauler.cartX;
+      },
+      {
+        message: 'an empty cart still completes the delivery loop',
+        timeout: 6_500,
+      },
+    )
+    .not.toBe(first.surfaceHauler.cartX);
+
   const later = await readJsonAttribute<EmptyTowerReadBack>(
     page,
     'data-animation',
@@ -489,10 +511,6 @@ test('keeps surface carts empty when the tower queue is empty', async ({
     );
     expect(animation.surfaceHauler.goldPourVisible).toBe(false);
   }
-  expect(
-    later.surfaceHauler.cartX,
-    'an empty cart still completes the delivery loop',
-  ).not.toBe(first.surfaceHauler.cartX);
   expect(
     later.surfaceHauler.catX,
     'the worker stays with the moving empty cart',

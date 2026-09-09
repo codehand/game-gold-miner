@@ -1,0 +1,63 @@
+name: CI
+
+# Server-milestone Step 5: a CI job that applies every migration to an empty
+# database and passes, alongside the existing client gate. The two jobs are
+# independent and both must pass; either failing fails the workflow.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Neither job writes to the repository, and both execute install lifecycle
+# scripts from pull-request code. Declaring the token explicitly stops it
+# inheriting an org default that may still be read-write.
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: Client gate (lint, unit, e2e, build, secrets, prod smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run verify
+
+  server:
+    name: Server gate (migrations, health, core portability, Edge Function tests, guest-session browser tests)
+    runs-on: ubuntu-latest
+    # Three independent checks each retry for up to ~20 s against a
+    # cold-starting edge runtime (health, core-portability-check, then
+    # whoami-check via the integration suite), plus Step 8's browser suite
+    # driving a real dev server against the live stack; a worker that never
+    # comes up must fail the job rather than hold a runner indefinitely.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+          cache: npm
+      - run: npm ci
+      # Server-milestone Step 8: `npm run verify:server` now also runs
+      # `npm run test:server-e2e`, a real Chromium browser suite. The `client`
+      # job installs its own Chromium on its own runner; this job needs one too.
+      - run: npx playwright install --with-deps chromium
+      # `npm run verify:server` starts the local stack fresh on this runner —
+      # there is no prior database, so `supabase db reset` applies every
+      # committed migration to an empty one — and then checks the health
+      # route. A migration that fails to apply fails this step, and therefore
+      # the workflow, rather than being discovered on deploy.
+      - run: npm run verify:server

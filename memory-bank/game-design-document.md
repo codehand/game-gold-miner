@@ -271,6 +271,32 @@ Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự đ
 - Animation tối thiểu: đào, chạy/mang hàng, xe chạy, vàng rơi, tăng cấp và mở quà.
 - Nhạc nền vui nhẹ; SFX riêng cho cuốc, xe goòng, đồng xu, nâng cấp và quà.
 
+### 8.1 Hệ thống asset role mèo và rarity
+
+Mỗi role mèo có năm rarity tier theo thứ tự cố định. Đây là phân loại nhân vật,
+không phải level số của mine shaft, elevator hoặc warehouse:
+
+| Code | Tên | Màu nhận diện |
+|---|---|---|
+| `N` | Bình thường | Xám |
+| `R` | Hiếm | Xanh lá |
+| `SR` | Siêu hiếm | Xanh dương |
+| `SSR` | Siêu siêu hiếm | Tím |
+| `UR` | Siêu cấp hiếm | Vàng |
+
+Các tier được dự kiến có thuộc tính khác nhau, nhưng tên thuộc tính, giá trị,
+công thức và cách sở hữu chưa được thiết kế. Giai đoạn hiện tại chỉ xây dựng
+asset và metadata. Không tier nào được phép ảnh hưởng simulation, production,
+balance, save hoặc UI gameplay cho tới khi có một milestone tích hợp riêng được
+phê duyệt.
+
+Mèo `unloader` Step 32A hiện tại là baseline/default của role `unloader` và là
+ứng viên tier `N`; runtime tiếp tục dùng nguyên asset này. Mỗi asset tiếp theo
+được bắt đầu từ ba input do người dùng cung cấp: tên role, rarity tier và ảnh
+design tham chiếu. Quy chuẩn đầy đủ nằm tại
+`art-source/cat-role-catalog/art-direction-brief.md` và manifest tại
+`art-source/cat-role-catalog/asset-manifest.json`.
+
 ## 9. MVP khả thi
 
 ### Bắt buộc
