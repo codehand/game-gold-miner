@@ -1,0 +1,17 @@
+OpenAI built-in image edit, 2026-09-08.
+
+Use case: precise-object-edit. Asset type: production candidate for a clean-HD
+2D mobile-game surface elevator tower, Ultra Rare tier, named Aureon. Edit
+target: the supplied square Gemini image. Preserve the tower design and identity
+as faithfully as possible: exact front-facing orthographic camera; symmetrical
+dark navy steel side pillars; dominant polished gold armor and trim; central
+open elevator bay; suspended gold hopper filled with ore; wooden floor; large
+sun medallion and moon-phase trim; two attached faceted purple crystals;
+right-side gold tray/bracket; chunky soft-edged cartoon outlines; current
+proportions and lighting. Primary cleanup only: remove the detached pink glow
+and star sparkle below the structure and ensure the complete tower has clean,
+uncut edges with generous padding. Keep a perfectly flat, uniform, exact solid
+#FF00FF background suitable for chroma-key cleanup. Generate exactly one
+isolated tower, no grid. No cat, character, cart, readable text, number, UI
+badge, scenery, ground, cast shadow, loose particles, detached effects,
+duplicate object, signature, logo, or watermark.

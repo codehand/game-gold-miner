@@ -458,6 +458,52 @@
         },
         { "rarityTier": "UR", "status": "awaiting-user-reference" }
       ]
+    },
+    {
+      "roleId": "surface-elevator-tower",
+      "roleName": "Surface elevator headhouse",
+      "codeAlias": "surfaceElevatorTower",
+      "defaultRarityTier": "N",
+      "currentRuntimeAsset": "public/assets/step-32a/elevator-tower-v2.png",
+      "currentRuntimeTextureKey": "step-32a-elevator-tower",
+      "runtimeBehavior": "Unchanged; the current Step 32A filled and empty tower textures remain the runtime pair.",
+      "variants": [
+        { "rarityTier": "N", "status": "baseline-existing", "reference": "current Step 32A surface elevator tower" },
+        { "rarityTier": "R", "status": "awaiting-user-reference" },
+        { "rarityTier": "SR", "status": "awaiting-user-reference" },
+        { "rarityTier": "SSR", "status": "awaiting-user-reference" },
+        {
+          "rarityTier": "UR",
+          "assetName": "Aureon",
+          "assetId": "surface-elevator-tower:UR:aureon:filled",
+          "status": "candidate-generated-awaiting-user-review",
+          "designReference": "art-source/cat-role-catalog/surface-elevator-tower/ur/aureon/reference/surface-elevator-tower-ur-aureon-design-reference.png",
+          "rawCandidate": "art-source/cat-role-catalog/surface-elevator-tower/ur/aureon/raw/surface-elevator-tower-ur-aureon-raw-v1.png",
+          "transparentAsset": "art-source/cat-role-catalog/surface-elevator-tower/ur/aureon/surface-elevator-tower-ur-aureon-filled.png",
+          "nativeScalePreview": "art-source/cat-role-catalog/surface-elevator-tower/ur/aureon/surface-elevator-tower-ur-aureon-native-preview.png",
+          "sourceSize": "512x512",
+          "runtimeDisplayTarget": "128x128",
+          "state": "filled",
+          "visualLocks": [
+            "front-facing orthographic surface elevator headhouse silhouette",
+            "symmetrical dark navy steel pillars with dominant polished gold armor and trim",
+            "central open elevator bay with suspended gold-filled hopper and wooden floor",
+            "large sun medallion with moon-phase trim and two attached purple crystals",
+            "right-side gold tray and blank level-badge mounting bracket",
+            "chunky clean-HD mobile-game rendering with no detached glow or particles"
+          ],
+          "qc": {
+            "emptyFrames": 0,
+            "sourceEdgeTouchFrames": 0,
+            "outputEdgeTouchFrames": 0,
+            "pasteClampedFrames": 0,
+            "alphaValidated": true,
+            "nativeScaleContextReviewed": true
+          },
+          "runtimeIntegrated": false,
+          "provenance": "art-source/cat-role-catalog/surface-elevator-tower/ur/aureon/provenance.md"
+        }
+      ]
     }
   ],
   "submissionContract": {

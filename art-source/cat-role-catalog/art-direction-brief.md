@@ -81,6 +81,22 @@ ledger held close to the torso. The current Step 32A orange tabby with a blue
 cap, blue shirt, and wooden crate remains the runtime default and the normal
 (`N`) baseline.
 
+The code-facing `surfaceElevatorTower` asset role is catalogued under the
+canonical kebab-case ID `surface-elevator-tower`. Preserve its job read as the
+surface elevator headhouse: a front-facing open cabin bay on the shaft
+centerline, an upper gold holding area, a right-side discharge tray, and a blank
+mounting bracket for the separate code-rendered level badge. The current Step
+32A filled/empty texture pair remains the runtime default and the normal (`N`)
+baseline.
+
+The first `surface-elevator-tower:UR` candidate is named **Aureon**. Aureon
+locks symmetrical dark navy steel pillars, dominant polished gold armor and
+trim, a central suspended gold-filled hopper, a wooden cabin floor, a large sun
+medallion with moon-phase trim, two attached purple crystals, and a right-side
+gold tray with a blank badge bracket. Gold carries the UR identity; purple is a
+restrained crystal accent. Detached glow and sparkle effects are excluded so
+the transparent silhouette stays clean at native game scale.
+
 The first `elevator-cargo-cat:SSR` candidate is named **Mofy**. Mofy locks a
 calico black/orange/cream-white coat with split face markings, mint-green eyes,
 a long calico tail, a leaf-shaped cloak, and a carved wooden cargo ledger with
@@ -183,6 +199,11 @@ The current `unloader` baseline establishes the initial technical target:
 The `elevator-cargo-cat` reuses the same 128×128-frame, 2×2-sheet, 220 ms idle,
 and bottom-center anchor contract, but its current runtime display box is a more
 compact 50×50 logical pixels so it fits inside the elevator cabin.
+
+The `surface-elevator-tower` is a single 512×512 transparent RGBA prop with a
+128×128 logical-pixel display target. Candidate generation and QC remain under
+`art-source/`; a candidate is not copied to `public/assets` or made loadable by
+the runtime until a separate integration milestone is explicitly approved.
 
 A user-supplied reference may motivate a deliberate revision to this technical
 frame, but the change must be recorded before generation and must not silently
