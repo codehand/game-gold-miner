@@ -133,7 +133,10 @@ test('serves the optimized bundle and every runtime asset from the root base pat
   await expect(canvas).toHaveAttribute('data-boot-scene-starts', '1');
   await expect(canvas).toHaveAttribute('data-renderer', /^(canvas|webgl)$/);
   await expect(canvas).toHaveAttribute('data-layout-viewport', '360,640');
-  await expect(canvas).toHaveAttribute('data-layout-bottom-navigation', 'none');
+  await expect(canvas).toHaveAttribute(
+    'data-layout-bottom-navigation',
+    '0,582,360,58',
+  );
   await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
   await expect(page.getByTestId('save-diagnostic')).toHaveCount(0);
 
@@ -466,7 +469,12 @@ for (const viewport of VIEWPORTS) {
     );
     expect(canvasBox.width / canvasBox.height).toBeCloseTo(360 / 640, 2);
 
-    for (const datasetKey of ['layoutHud', 'layoutSurface', 'layoutMine']) {
+    for (const datasetKey of [
+      'layoutHud',
+      'layoutSurface',
+      'layoutMine',
+      'layoutBottomNavigation',
+    ]) {
       const region = toScreen(
         await readLogicalRegion(page, datasetKey),
         canvasBox,
@@ -483,8 +491,14 @@ for (const viewport of VIEWPORTS) {
       );
     }
 
-    await expect(canvas).toHaveAttribute('data-layout-bottom-navigation', 'none');
-    await expect(page.locator('nav')).toHaveCount(0);
+    await expect(canvas).toHaveAttribute(
+      'data-layout-bottom-navigation',
+      '0,582,360,58',
+    );
+    // Scoped to a direct child of the Phaser parent — see the identical
+    // comment in tests/e2e/layout.spec.ts: the marketplace dialog renders its
+    // own unrelated `<nav class="market-tabs">` when open.
+    await expect(page.locator('#game-viewport > nav')).toHaveCount(0);
     expect(browserErrors).toEqual([]);
   });
 }

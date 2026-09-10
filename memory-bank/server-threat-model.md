@@ -183,7 +183,9 @@ Step 25's throttling of redemption attempts.
 **Not defended — recorded as finding F5.** An XSS flaw in our own bundle defeats
 this completely, and the plan contains no step for a Content Security Policy,
 dependency-integrity checking, or output-escaping review. `index.html` sets no
-CSP today. See §8.
+CSP today. See §8. Output escaping is now handled by construction in
+`src/ui/` (no `innerHTML` anywhere in `src/`, 2026-09-10); the CSP and
+dependency-integrity halves of F5 remain unaddressed.
 
 ### 4.6 Multiple identities
 
@@ -471,6 +473,15 @@ Policy. An XSS flaw hands over the highest-ranked asset in §1.
 silently absent (§5.6). A CSP and a dependency-integrity check are the obvious
 remedy and belong in a step; adding one is a scope decision for the user at this
 gate. It is listed in §9 as the one open item this document does not close.
+
+*Partial mitigation, 2026-09-10, not a closure.* `src/ui/MarketplaceModal.ts`
+— the one screen designed to render listings authored by other players — is
+built entirely with `createElement`/`textContent`, and no `innerHTML` or
+`insertAdjacentHTML` remains anywhere in `src/`. That removes the output sink a
+server-fed listing would otherwise have flowed into, but it defends one screen
+by discipline, not the bundle by policy. The gap F5 names is unchanged: no CSP,
+no dependency-integrity check, and nothing preventing the next surface from
+reintroducing a sink.
 
 **F6 — Upload cadence is unspecified, and it is the cost driver.** *(Resolved by Step 2 decision D5 in `memory-bank/server-save-sync-protocol.md` §9.)*
 `SavePersistenceCoordinator` debounces at `DEFAULT_SAVE_DEBOUNCE_MS = 500`. Step 19

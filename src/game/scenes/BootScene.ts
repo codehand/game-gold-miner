@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 
+import { MarketplaceModal } from '../../ui/MarketplaceModal';
 import { MineShaftUpgradeModal } from '../../ui/MineShaftUpgradeModal';
 
 import { createBacklogTextures } from '../assets/backlogTextures';
@@ -13,10 +14,12 @@ import {
   PLACEHOLDER_TEXTURES,
 } from '../assets/placeholderAssets';
 import {
+  BottomNavigationView,
   HudView,
   MineFloorView,
   PurchaseControlView,
   SharedStageView,
+  type BottomNavigationItemKey,
   type RenderedPurchaseControlState,
 } from '../entities';
 import {
@@ -182,6 +185,7 @@ export class BootScene extends Phaser.Scene {
   /** The snapshot currently bound to the views, compared by identity. */
   #viewModel: MineViewModel;
   #hudView: HudView | null = null;
+  #bottomNavigationView: BottomNavigationView | null = null;
   #floorViews: readonly MineFloorView[] = [];
   #elevatorView: SharedStageView | null = null;
   #warehouseView: SharedStageView | null = null;
@@ -209,6 +213,7 @@ export class BootScene extends Phaser.Scene {
   #surfaceHaulerAssistantCarts: readonly Phaser.GameObjects.Image[] = [];
   #surfaceHaulerAssistants: readonly Phaser.GameObjects.Sprite[] = [];
   #surfaceGoldPour: Phaser.GameObjects.Sprite | null = null;
+  #marketplace: MarketplaceModal | null = null;
   #floorUpgradeModal: MineShaftUpgradeModal | null = null;
   #selectedUpgradeTarget: UpgradeTarget | null = null;
   /** Scroll offset and tap-versus-drag state for the mine; null before `create`. */
@@ -255,9 +260,14 @@ export class BootScene extends Phaser.Scene {
     const fixedLayers = [
       this.#createHud(layout.hud),
       this.#createSurface(layout.surface),
+      this.#createBottomNavigation(layout.bottomNavigation),
     ];
     const mineContent = this.#createMineContent(layout.width);
 
+    this.#marketplace = new MarketplaceModal(this.game.canvas.parentElement ?? document.body, () => {
+      this.input.enabled = true;
+      this.#publishMarketplaceClose();
+    });
     this.#floorUpgradeModal = new MineShaftUpgradeModal({
       parent: this.game.canvas.parentElement ?? document.body,
       onUpgrade: (target, quantity) => {
@@ -270,6 +280,8 @@ export class BootScene extends Phaser.Scene {
       },
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.#marketplace?.destroy();
+      this.#marketplace = null;
       this.#floorUpgradeModal?.destroy();
       this.#floorUpgradeModal = null;
     });
@@ -862,6 +874,53 @@ export class BootScene extends Phaser.Scene {
     return this.#hudView.root;
   }
 
+  #createBottomNavigation(region: LayoutRegion): Phaser.GameObjects.Container {
+    this.#bottomNavigationView = new BottomNavigationView(this, region, {
+      onActivate: (key) => {
+        this.#publishBottomNavigationActivation(key);
+        // Scene input is only surrendered once the modal that restores it is
+        // known to exist: disabling it for a marketplace that never opens
+        // would leave the mine unreachable with nothing left to re-enable it.
+        if (key === 'shop' && this.#marketplace !== null) {
+          this.input.enabled = false;
+          this.#marketplace.open();
+        }
+      },
+    });
+
+    return this.#bottomNavigationView.root;
+  }
+
+  /**
+   * Re-enabling input is idempotent, so a close callback that fired twice
+   * would be invisible from the browser. Counting it is what lets a test hold
+   * the modal to exactly one callback per dismissal.
+   */
+  #publishMarketplaceClose(): void {
+    if (!PUBLISHES_VIEW_DIAGNOSTICS) {
+      return;
+    }
+
+    const canvas = this.game.canvas;
+    const closeCount = Number(canvas.dataset.marketplaceCloseCount ?? '0');
+
+    canvas.dataset.marketplaceCloseCount = String(closeCount + 1);
+  }
+
+  #publishBottomNavigationActivation(key: BottomNavigationItemKey): void {
+    if (!PUBLISHES_VIEW_DIAGNOSTICS) {
+      return;
+    }
+
+    const canvas = this.game.canvas;
+    const pressCount = Number(
+      canvas.dataset.bottomNavigationPressCount ?? '0',
+    );
+
+    canvas.dataset.bottomNavigationLastPressed = key;
+    canvas.dataset.bottomNavigationPressCount = String(pressCount + 1);
+  }
+
   #createSurface(region: LayoutRegion): Phaser.GameObjects.Container {
     const layer = this.add.container(region.x, region.y);
     const panelWidth =
@@ -1234,10 +1293,19 @@ export class BootScene extends Phaser.Scene {
     canvas.dataset.layoutHud = serializeRegion(layout.hud);
     canvas.dataset.layoutSurface = serializeRegion(layout.surface);
     canvas.dataset.layoutMine = serializeRegion(layout.mine);
+    canvas.dataset.layoutBottomNavigation = serializeRegion(
+      layout.bottomNavigation,
+    );
     canvas.dataset.layoutMineContentHeight = String(
       calculateMineContentHeight(this.#visibleFloorCount),
     );
-    canvas.dataset.layoutBottomNavigation = 'none';
+    if (PUBLISHES_VIEW_DIAGNOSTICS) {
+      canvas.dataset.bottomNavigationItems = JSON.stringify(
+        this.#bottomNavigationView?.describeRenderedItems() ?? [],
+      );
+      canvas.dataset.bottomNavigationPressCount = '0';
+      canvas.dataset.marketplaceCloseCount = '0';
+    }
     canvas.setAttribute('aria-label', 'Cat Mine Idle game canvas');
     canvas.setAttribute('role', 'img');
 

@@ -4,7 +4,9 @@
 
 The base-game milestone is complete and validated. A second milestone is now planned but not started: `memory-bank/server-milestone-plan.md` takes the game from client-only to account-backed — guest play, Google/Apple/Telegram sign-in, cloud save, server-verified progress, leaderboards, and entitlement groundwork, on Supabase.
 
-Steps 1 through 7 are validated — Step 7 was validated by the user's 2026-09-09 authorization to proceed with Step 8, closing Phase 1 (server foundation). **Step 8 (Phase 2 — Identity: anonymous guest session) is implemented on 2026-09-09 and awaiting user validation**; no step past it has started. See `## Next Steps` below for the Step 4 through Step 8 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
+Steps 1 through 8 are validated — Step 8 was validated by the user's 2026-09-10 authorization to proceed with Step 9. **Step 9 (Phase 2 — Identity: profiles and row-level security) is implemented on 2026-09-10 and awaiting user validation**; no step past it has started. See `## Next Steps` below for the Step 4 through Step 8 narrative; the paragraphs immediately following this one describe Step 1–3's still-current design decisions.
+
+Step 9 closes a gap the Step 5 migration deliberately left open: `profiles` and its own-row select/update policies already existed, but nothing put a row there for a real sign-up except the seed script's manual insert. `supabase/migrations/20260910090000_profiles_signup_trigger.sql` adds `public.handle_new_user()`, a `security definer` function pinning `set search_path = ''` — the same hardening `public.set_updated_at()` already applies — and its `on_auth_user_created` trigger, `after insert on auth.users`. `security definer` is load-bearing rather than decorative: GoTrue writes `auth.users` as `supabase_auth_admin`, a role with no privilege on `public.profiles`, so an invoker-rights trigger would fail the very insert it exists to react to; running as the function's owner, `postgres`, which owns `profiles` and is never subject to `FORCE ROW LEVEL SECURITY`, is what lets it insert at all. `profiles` still carries no insert or delete policy for anyone, so this trigger is the only path that ever creates a row, and the RLS matrix's `profiles` insert cell in both schema documents now names it instead of forward-referencing this step. `tests/server-integration/profiles-rls.integration.test.ts` is the step's required evidence: it signs in two independent real anonymous identities through live Supabase Auth — not hand-signed tokens for ids nothing backs — and proves against the live PostgREST endpoint that the trigger alone created each profile row, that a user can select and update their own row, and that user A cannot select, insert into (using B's real, FK-satisfying id), update, or delete user B's row. Live mutation confirmed the test is real: dropping the trigger from the running database (leaving the migration file untouched) failed five of the seven new tests by name.
 
 Step 3 designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — with all 42 columns, every type, default, nullability, key, constraint, index, and relationship, plus the RLS matrix in which `saves` denies the client every write. Step 5 landed all six as `supabase/migrations/20260908130000_create_platform_tables.sql`, with RLS enabled and exactly the policies that matrix names; they exist in the local development database, not in any deployment.
 
@@ -25,6 +27,42 @@ Auditing all 37 steps also found nine assumptions the plan relied on without rec
 Two findings from the planning discussion are recorded in that plan. Canvas/WebGL fingerprinting was proposed as a guest identity mechanism and rejected: it collides across identically-configured devices, which would hand one player another player's save; it is unstable across routine updates; Brave randomizes it per session while Firefox and Tor make every user identical; and it is an observable identifier rather than a secret credential, so it cannot prove ownership. It is permitted only as a weak abuse signal in Step 25. Separately, Safari deletes all script-writable storage after seven days of use without first-party interaction, which means the shipped client-only build already loses a lapsed player's entire save — both the Dexie database and the localStorage lifecycle journal fall under that rule. Step 21 handles it for players with an account; whether to fix the shipped build first is undecided. Other post-milestone work — managers, boosts, gift drops, audio, final art — remains unplanned and unauthorized.
 
 ## Recent Changes
+
+- Implemented server-milestone Step 9 on 2026-09-10: profiles and row-level
+  security. `supabase/migrations/20260910090000_profiles_signup_trigger.sql`
+  adds `public.handle_new_user()`/`on_auth_user_created` so a `profiles` row
+  is always created by a sign-up trigger, never the client — the one gap the
+  Step 5 migration's table and own-row policies had left open.
+  `supabase/seed.sql`'s fixture guest now gets its profile from the trigger,
+  with `display_name` set by an `update` afterward rather than a colliding
+  manual insert. `memory-bank/architecture.md` and `memory-bank/techContext.md`
+  gained the identical trigger DDL, confirmed byte-identical by direct diff.
+  `tests/server-integration/profiles-rls.integration.test.ts` signs in two
+  real anonymous identities through live Supabase Auth and proves, against the
+  live PostgREST endpoint, that the trigger alone created each profile row and
+  that user A cannot select, insert into, update, or delete user B's row for
+  any of select/insert/update/delete — mutation-verified by dropping the
+  trigger from the live database and watching five of the seven new tests
+  fail by name, then reset to green. `npm run verify:server` passes end to
+  end from a clean `supabase stop`; 401 client unit tests, lint, and the
+  strict build were re-run directly and are unaffected.
+
+- Added the post-milestone bottom-navigation shell on 2026-09-09 from the
+  user-supplied reference. `BottomNavigationView` renders five code-native,
+  icon-only controls — Rewards, Shop, raised Boost, Managers, and Map — in a
+  compact 58 px region below the mine. The five illustrations were refined into
+  a cohesive treasure chest, storefront, bolt, cat-manager badge, and folded
+  map using the existing gold, white, navy, and teal palette. Standard buttons
+  are 48×44 and Boost is 62×50, so every hit box remains at least 44×44 while
+  the complete visible button chrome and icon render at 60% of their authored
+  size while their invisible hit regions stay unchanged. Presses give immediate
+  bounce feedback;
+  activation publishes development diagnostics only and deliberately opens no
+  screen or gameplay function. The mine camera is clipped to `0,216,360,366`,
+  while the fixed region is `0,582,360,58`. The complete client gate passes: lint, 401 unit tests, all 43
+  Chromium E2E tests, strict production build, secret scan, and all 10
+  production-bundle smoke tests. Save/IndexedDB/server schemas and authoritative
+  gameplay state are unchanged.
 
 - Generated **Aureon** (`surfaceElevatorTower`, catalog role
   `surface-elevator-tower`, tier `UR`) on 2026-09-08 from the user-supplied
@@ -406,7 +444,7 @@ Two findings from the planning discussion are recorded in that plan. Canvas/WebG
 - Apply host safe-area insets exactly once, as CSS padding on `#app` around the `#game-viewport` Phaser parent, never inside the canvas.
 - Keep layout geometry pure and Phaser-free so it is unit-testable in Node; the scene only positions objects and publishes canvas dataset diagnostics for browser assertions.
 - Clip the scrollable mine with a dedicated camera viewport rather than a geometry mask, because Phaser 4 removed WebGL geometry masks; Step 31 will drive only that camera's scroll.
-- Render no bottom navigation and reserve no space for it; the mine region runs to the bottom edge.
+- Reserve the bottom 58 logical pixels for the authorized five-icon navigation shell; keep its activation presentation-only until destination screens are separately implemented.
 - Treat canvas dataset diagnostics as geometry reporting only, never as renderer evidence; every rendering guarantee needs a pixel probe sampling the shared palette.
 - Keep colors in the pure layout palette rather than private scene constants, so browser tests assert the same values the scene draws.
 - Derive every on-screen string, ratio, and discrete step in a pure view model, and let Phaser entities only position and paint what that model already decided.
@@ -1289,7 +1327,8 @@ The base-game 37-step plan is finished. The server milestone is at its Step 8 ga
    (`memory-bank/server-milestone-plan.md`). The **cat-role asset catalog** is
    authorized as asset preproduction only, under `art-source/`, with no runtime
    loader entry, gameplay attribute, or schema change. Everything else —
-   managers, boosts, gift drops, audio, Telegram integration, deployment — still
+   manager gameplay, boost gameplay, gift drops, audio, Telegram integration,
+   deployment — still
    needs explicit user authorization and its own ordered, test-gated plan before
    code is written. The deferred list in `memory-bank/progress.md` is a record of
    what was excluded, not a backlog to start from.
@@ -1316,3 +1355,145 @@ The base-game 37-step plan is finished. The server milestone is at its Step 8 ga
 - Whether `calculateMineProductionRates` should model sequential route distance and load-sensitive leg timing, or whether the estimate stays a route-agnostic upper bound used by the HUD and offline snapshot.
 - Final art-production workflow and original visual identity.
 - Target Telegram launch requirements beyond the prototype.
+
+
+## Marketplace popup — 2026-09-09
+
+The user authorized the Shop icon to open a marketplace design for buying and
+hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
+dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
+scene input on close, supports Escape/native focus containment, and is destroyed
+on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
+listings, name search, role/rarity filters, price sorting, empty-state reset, cat
+details, 1–24 hour rental totals, and validated session-only listing drafts with
+removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
+`public/assets/marketplace/` for this presentation only; gameplay assignments
+and rarity bonuses are not integrated.
+
+This is explicitly a Preview with sample prices/listings. Live trading is disabled;
+no ownership inventory, transaction service, gold debit, or public listing is
+implemented. Drafts survive popup close but disappear on reload. No database,
+IndexedDB, localStorage journal, save-document, or server schema changes.
+The existing server milestone remains at Step 8 awaiting validation.
+
+Validation: production build and lint pass. Marketplace browser coverage checks
+390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
+and removal, disabled live trading, and Escape dismissal. Navigation coverage
+closes Marketplace before testing the remaining icons.
+
+
+## Navigation hit-target correction — 2026-09-09
+
+Fixed the user-reported left/up offset on bottom-navigation icons. Phaser's
+InputManager adds a Container's `displayOriginX/Y` (half its configured size)
+before testing the hit shape. BottomNavigationView now uses Rectangle(0, 0,
+width, height), replacing the negative half-size origin that applied the offset
+twice. Artwork remains centered, and all five existing touch targets retain
+their dimensions; the complete visible icon chrome now responds to mouse/touch.
+
+Regression: navigation-hit-targets.spec.ts failed for both mouse and touch before
+the fix, then passed afterward. It checks center and four interior corners of
+each icon at 553×934 and after resizing to 320×568 (100 total activations), with
+Marketplace opened/closed at every Shop activation. The test waits two animation
+frames after resizing so Phaser receives the resize before native touch input.
+Validation: all 9 targeted navigation/marketplace/layout browser tests pass;
+production build and lint pass. No gameplay, save or database schema changes.
+
+## Upgrade CTA press correction — 2026-09-10
+
+Fixed the user-reported case where upgrade CTA text did not respond while the
+button's left padding did. The live simulation refreshes an open upgrade modal;
+the old render path replaced each button's label and cost spans on every changed
+snapshot. A press beginning on that text could lose its DOM target before
+release, so the browser canceled the click. `MineShaftUpgradeModal` now creates
+those spans once and updates their text in place. It captures the primary
+pointer from press through release, clears canceled pointers, handles physical
+pointer activation exactly once, and retains keyboard/assistive click support.
+CTA CSS now declares `touch-action: manipulation` and disables text selection.
+
+Regression coverage holds a pointer on the x1 label across multiple live
+simulation updates before releasing, and separately verifies the initially
+focused CTA activates once with Enter. Playwright's port can be overridden with
+`PLAYWRIGHT_PORT` so the suite does not require stopping an unrelated process on
+its default port. No gameplay formula, balance, save, or database schema changed.
+Validation passes: 11 targeted CTA/navigation/Marketplace browser tests, the
+production build, and lint. The dwell regression also passed 5/5 repeated runs.
+
+## Marketplace hardening and close-race correction — 2026-09-10
+
+A review pass over the Marketplace popup, the bottom navigation, and the Step 9
+row-level-security suite corrected nine items. None changed gameplay, balance,
+the save document, or any database schema.
+
+`src/ui/MarketplaceModal.ts` now builds every node with `createElement` and
+`textContent`; no `innerHTML` or `insertAdjacentHTML` remains anywhere in
+`src/`. The listing fields it renders — name, role, rarity — are still the
+module-level `CATS` constant, so nothing was exploitable before. The point is
+that this is the one screen designed to render *other players'* listings, and
+the template-string form would have become a stored-XSS sink the day that
+constant is replaced by server data. This narrows the surface finding F5 names;
+it does not close it, because `index.html` still ships no Content Security
+Policy.
+
+The modal is exported from the `src/ui/index.ts` barrel like every other UI
+module. Its tab, role, rarity, and sort state carry union types instead of
+`string`, and `#select` is generic over them, so a mistyped literal comparison
+is now a compile error. Formatting returned to the repository norm: the longest
+line fell from 594 characters to 110, and the new `src/style.css` rules are
+multi-line like the ones above them. No lint rule caught any of that — there is
+no `max-len` — which is why it needed a reading rather than a run.
+
+Two dialog behaviours were wrong. Every `#render()` tears down and rebuilds the
+whole body, destroying whatever held keyboard focus — the tab just pressed, or
+the button behind "Clear filters", "Back to cats", "Save draft" or "Remove" —
+and inside `showModal()` that dropped focus to `<body>`, forcing keyboard and
+screen-reader users to tab back down from the header. `#render()` now refocuses
+the active tab, and the detail and create-listing views refocus their back
+button. Separately, `dialog.close()` queues its `close` event as a task, so
+`destroy()`'s synchronous `remove()` ran first and the callback still fired
+afterward, re-enabling input and bumping the close count on a shutting-down
+scene and focusing a detached element; a `#destroyed` flag short-circuits it.
+Suppressing that callback cannot strand input, because Phaser's
+`InputPlugin.start()` sets `enabled = true` on scene restart. `BootScene` also
+replaced `this.#marketplace?.open()` with an explicit null check, so scene input
+is surrendered only once the modal that restores it is known to exist.
+
+A navigation button pressed twice inside 130 ms never looked pressed:
+`pointerdown` set the scale while the previous release's `Back.Out` tween was
+still running and kept overwriting it. `pointerdown` now kills that tween first.
+
+The largest finding was in the tests, not the product.
+`navigation-hit-targets.spec.ts` and `layout.spec.ts` clicked "Close
+marketplace" and then immediately clicked the canvas again. Because
+`dialog.close()` queues its `close` event, `#onClose()` — the callback that
+re-enables `this.input` — had not run yet, so Phaser dropped the next press
+without a trace. The rewrite's many `createElement` calls are slower than the
+single `innerHTML` parse and widened the window until the failure was near
+deterministic: the isolated spec failed 6 of 6 runs where the pre-rewrite modal
+passed 3 of 3. Both specs now wait on `data-marketplace-close-count`, which
+`BootScene` bumps inside that same callback *after* re-enabling input, making
+the wait causal rather than a timing guess; the isolated spec then passed 6 of 6.
+
+What made it worth chasing is that it hid under load. The full 51-test
+Playwright run passed both before and after the fix, and `--repeat-each=6`
+passed 12 of 12, because parallel workers shift the timing. `npm run verify`
+would have stayed green while anyone running that one spec saw red.
+
+`layout.spec.ts` and `production-smoke.spec.ts` also scope their "no DOM
+navigation" assertion to `#game-viewport > nav`, since the marketplace mounts
+its own `<nav class="market-tabs">` in the same parent and must not decide that
+assertion either way.
+
+`tests/server-integration/profiles-rls.integration.test.ts` no longer depends on
+declaration order: a third anonymous identity, `userC`, owns the one test that
+writes a `display_name`, leaving `userA` and `userB` read-only fixtures. Its
+first test now proves the trigger instead of repeating the select policy, by
+asserting `created_at` falls inside the sign-up call itself.
+
+Validation: lint, `tsc --noEmit`, 401 unit tests, 51 Playwright E2E tests, and
+13 server-integration tests against the live local stack all pass, alongside the
+6-of-6 isolated re-run above. One unrelated one-off was observed and recorded:
+`tests/unit/bundle-secret-scan.test.ts` failed once under heavy concurrent load
+and did not reproduce in two further full runs or in isolation. That file is
+untouched by this change; it is noted as a pre-existing latent flake, not a
+finding against it.

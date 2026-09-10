@@ -122,7 +122,8 @@ Persistence and Platform Adapters
 - Absorb host safe-area insets in CSS around the Phaser parent element rather than inside the canvas, so insets are applied exactly once and the logical viewport stays a fixed 360×640.
 - Scale with `FIT` and `CENTER_BOTH`: letterbox rather than crop, so no required control can leave the host viewport.
 - Clip scrollable screen regions with a dedicated camera viewport, not a geometry mask; Phaser 4 removed WebGL geometry masks, and camera scroll is the single value a scroll gesture drives.
-- Keep fixed and scrolling layers in separate containers and cross-ignore them between cameras so the HUD cannot scroll with the mine. Scroll the same camera the engine hit-tests through, so a control's pressable rectangle follows the content it is drawn on rather than needing its own bookkeeping.
+- Keep fixed and scrolling layers in separate containers and cross-ignore them between cameras so the HUD and bottom navigation cannot scroll with the mine. Scroll the same camera the engine hit-tests through, so a control's pressable rectangle follows the content it is drawn on rather than needing its own bookkeeping.
+- Let a navigation shell own only discovery and press feedback until its destination exists. Icon taps may emit a presentation callback for diagnostics, but must not invent gameplay state, persistence fields, or placeholder screens.
 - Decide a scroll gesture in a pure model over pointer coordinates and one region, so telling a tap from a drag is unit-testable in Node instead of only reachable through a browser drag.
 - Separate the two things a gesture decides: whether the surface scrolls, which needs the press to have started over it, and whether the release is still a tap, which is about how far the pointer travelled wherever it began. A swipe that lifts on a button is not a press on that button.
 - Give a drag a threshold and let travel under it change nothing at all: a thumb never lands perfectly still, so a press that wobbles must both leave the screen where the player aimed and still buy what they aimed at.
@@ -240,3 +241,99 @@ that no longer exists. For the same reason, read a frame-rate result against the
 cadence the host actually presented at: a 16.67 ms mean on a 60 Hz host is the
 vsync interval, not a measurement of headroom, and comparing it to an 8.33 ms
 mean from a 120 Hz run is not a like-for-like delta.
+
+
+## Marketplace popup — 2026-09-09
+
+The user authorized the Shop icon to open a marketplace design for buying and
+hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
+dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
+scene input on close, supports Escape/native focus containment, and is destroyed
+on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
+listings, name search, role/rarity filters, price sorting, empty-state reset, cat
+details, 1–24 hour rental totals, and validated session-only listing drafts with
+removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
+`public/assets/marketplace/` for this presentation only; gameplay assignments
+and rarity bonuses are not integrated.
+
+This is explicitly a Preview with sample prices/listings. Live trading is disabled;
+no ownership inventory, transaction service, gold debit, or public listing is
+implemented. Drafts survive popup close but disappear on reload. No database,
+IndexedDB, localStorage journal, save-document, or server schema changes.
+The existing server milestone remains at Step 8 awaiting validation.
+
+Validation: production build and lint pass. Marketplace browser coverage checks
+390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
+and removal, disabled live trading, and Escape dismissal. Navigation coverage
+closes Marketplace before testing the remaining icons.
+
+
+## Navigation hit-target correction — 2026-09-09
+
+Fixed the user-reported left/up offset on bottom-navigation icons. Phaser's
+InputManager adds a Container's `displayOriginX/Y` (half its configured size)
+before testing the hit shape. BottomNavigationView now uses Rectangle(0, 0,
+width, height), replacing the negative half-size origin that applied the offset
+twice. Artwork remains centered, and all five existing touch targets retain
+their dimensions; the complete visible icon chrome now responds to mouse/touch.
+
+Regression: navigation-hit-targets.spec.ts failed for both mouse and touch before
+the fix, then passed afterward. It checks center and four interior corners of
+each icon at 553×934 and after resizing to 320×568 (100 total activations), with
+Marketplace opened/closed at every Shop activation. The test waits two animation
+frames after resizing so Phaser receives the resize before native touch input.
+Validation: all 9 targeted navigation/marketplace/layout browser tests pass;
+production build and lint pass. No gameplay, save or database schema changes.
+
+## Upgrade CTA press correction — 2026-09-10
+
+An interactive DOM element that can be refreshed between `pointerdown` and
+`pointerup` must preserve the descendant node receiving the press. Update text
+nodes in place instead of calling `replaceChildren` during live snapshots.
+Upgrade CTAs capture the primary pointer until release, discard `pointercancel`,
+handle pointer activation through `pointerup`, and reserve zero-detail `click`
+events for keyboard and assistive technology so one input buys exactly once.
+Use `touch-action: manipulation` on direct-action modal controls.
+
+Regression coverage holds a pointer on CTA text for 250 ms while authoritative
+snapshots continue to update, then verifies one purchase. Keyboard activation is
+covered separately. `PLAYWRIGHT_PORT` may override the default E2E server port
+when another local process already owns 4173. No gameplay formula, balance,
+save, or database schema changed.
+Validation passes: 11 targeted CTA/navigation/Marketplace browser tests, the
+production build, and lint. The dwell regression also passed 5/5 repeated runs.
+
+## Marketplace hardening and close-race correction — 2026-09-10
+
+Build modal DOM with `createElement`/`textContent`, never `innerHTML` or
+`insertAdjacentHTML`, on any surface that will eventually render data authored
+by another player. Correctness today rests only on that data being a local
+constant; the discipline is what stops replacing the constant from turning a
+template string into a stored-XSS sink. Finding F5 stays open regardless — no
+Content Security Policy ships.
+
+A view that rebuilds its whole body on re-render must restore keyboard focus
+itself. Inside `showModal()` a destroyed focus owner drops focus to `<body>`,
+which silently restarts tab order at the header.
+
+`dialog.close()` queues its `close` event as a task rather than firing it
+synchronously. Anything that closes and tears down in the same statement must
+guard its handler; more importantly, anything *waiting* on the close must wait
+on a signal that handler itself publishes. Tests wait on
+`data-marketplace-close-count`, bumped inside the callback after Phaser input is
+re-enabled — not on dialog invisibility, and not on nothing. A canvas press
+dispatched before that task runs is dropped without a trace.
+
+Prefer a causal wait over a timing guess wherever a diagnostic already records
+the effect being waited for. A race a parallel suite hides is worse than one it
+exposes: this one failed 6 of 6 isolated runs while the full 51-test run passed
+both before and after the fix, so the gate would have stayed green.
+
+Kill the release tween before applying a new press scale, or a rapid second
+press is overwritten by the tween still running from the first.
+
+Give an integration suite a dedicated fixture for the identity it mutates, so no
+test's outcome depends on declaration order.
+
+Scope a "no DOM element of type X" assertion to the subtree that actually owns
+the invariant; a modal mounted in the same parent must not decide it.

@@ -227,6 +227,74 @@ test('shows floor attributes and buys every affordable level with MAX', async ({
   expect(errors).toEqual([]);
 });
 
+test('keeps a CTA press alive while live snapshots update its text', async ({ page }) => {
+  const fixture = createFixtureState(GameNumber.from(1_000));
+  const before = await bootDriverFixture(page, fixture, { pinClock: false });
+
+  await pressPurchaseControl(page, FLOOR_1_KEY);
+  const label = page.getByTestId('mine-upgrade-x1').locator(
+    '.mine-upgrade-action-label',
+  );
+  const box = await boundingBox(label);
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  // A touch has a real dwell between down and up. The simulation advances in
+  // that interval and re-renders the modal; replacing the pressed label node
+  // cancels the synthesized click, which made only the button padding work.
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.waitForTimeout(250);
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => (await readCoreState(page)).mineShaftLevels[0])
+    .toBe(before.mineShaftLevels[0] + 1);
+  await expect(page.getByTestId('mine-upgrade-modal').getByText('Upgraded x1'))
+    .toBeVisible();
+});
+
+test('cancels a CTA press that slides off the button before release', async ({
+  page,
+}) => {
+  const fixture = createFixtureState(GameNumber.from(1_000));
+  const before = await bootDriverFixture(page, fixture);
+
+  await pressPurchaseControl(page, FLOOR_1_KEY);
+  const button = page.getByTestId('mine-upgrade-x1');
+  const box = await boundingBox(button);
+
+  // Sliding a finger clear of a mis-pressed button is the standard way out of
+  // an accidental purchase, and `click` is what enforces it: pointer capture
+  // would deliver the release back to the button wherever it happened.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 200, { steps: 10 });
+  await page.mouse.up();
+
+  await page.waitForTimeout(250);
+  expect((await readCoreState(page)).mineShaftLevels[0]).toBe(
+    before.mineShaftLevels[0],
+  );
+  await expect(
+    page.getByTestId('mine-upgrade-modal').getByText('Upgraded x1'),
+  ).toHaveCount(0);
+});
+
+test('activates the initially focused CTA once from the keyboard', async ({ page }) => {
+  const fixture = createFixtureState(GameNumber.from(1_000));
+  const before = await bootDriverFixture(page, fixture);
+
+  await pressPurchaseControl(page, FLOOR_1_KEY);
+  await expect(page.getByTestId('mine-upgrade-x1')).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect
+    .poll(async () => (await readCoreState(page)).mineShaftLevels[0])
+    .toBe(before.mineShaftLevels[0] + 1);
+  await expect(page.getByTestId('mine-upgrade-modal').getByText('Upgraded x1'))
+    .toBeVisible();
+});
+
 test('opens shared-stage details and buys x1 elevator plus x5 warehouse', async ({
   page,
 }) => {
@@ -353,12 +421,20 @@ test('re-renders idle controls without repainting any text', async ({ page }) =>
 async function bootDriverFixture(
   page: Page,
   state: GameState,
+  options: { readonly pinClock?: boolean } = {},
 ): Promise<CoreStateReadBack> {
-  await page.clock.install({ time: FIXED_TIME });
-  await page.clock.setFixedTime(FIXED_TIME);
+  if (options.pinClock ?? true) {
+    await page.clock.install({ time: FIXED_TIME });
+    await page.clock.setFixedTime(FIXED_TIME);
+  }
   await routeMainModule(
     page,
     `
+      // The real entry point imports the stylesheet, and the upgrade modal
+      // depends on it: without \`.mine-upgrade-backdrop { position: fixed }\`
+      // the dialog sits in document flow and slides whenever the document
+      // resizes, which no player ever sees.
+      import '/src/style.css';
       import { createGame, MineSimulationDriver } from '/src/game/index.ts';
       import { deserializeSaveDocument } from '/src/persistence/index.ts';
       import { BASE_GAME_BALANCE } from '/src/config/index.ts';

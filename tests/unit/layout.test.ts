@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assertTouchTargetRegion,
+  BOTTOM_NAVIGATION_HEIGHT,
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,
@@ -141,13 +142,25 @@ describe('portrait layout geometry', () => {
       x: 0,
       y: HUD_HEIGHT + SURFACE_HEIGHT,
       width: 360,
-      height: GAME_HEIGHT - HUD_HEIGHT - SURFACE_HEIGHT,
+      height:
+        GAME_HEIGHT - HUD_HEIGHT - SURFACE_HEIGHT - BOTTOM_NAVIGATION_HEIGHT,
+    });
+    expect(layout.bottomNavigation).toEqual({
+      x: 0,
+      y: GAME_HEIGHT - BOTTOM_NAVIGATION_HEIGHT,
+      width: 360,
+      height: BOTTOM_NAVIGATION_HEIGHT,
     });
   });
 
   it('tiles the regions without gaps or overlaps', () => {
     const layout = calculateMineLayout();
-    const regions = [layout.hud, layout.surface, layout.mine];
+    const regions = [
+      layout.hud,
+      layout.surface,
+      layout.mine,
+      layout.bottomNavigation,
+    ];
 
     let expectedY = 0;
 
@@ -162,23 +175,35 @@ describe('portrait layout geometry', () => {
     expect(expectedY).toBe(layout.height);
   });
 
-  it('reserves no bottom navigation strip for deferred features', () => {
+  it('reserves a fixed bottom navigation strip below the mine', () => {
     const layout = calculateMineLayout();
 
-    expect(layout.mine.y + layout.mine.height).toBe(layout.height);
+    expect(layout.mine.y + layout.mine.height).toBe(
+      layout.bottomNavigation.y,
+    );
+    expect(layout.bottomNavigation.y + layout.bottomNavigation.height).toBe(
+      layout.height,
+    );
   });
 
   it('keeps every region inside the viewport at larger logical sizes', () => {
     const layout = calculateMineLayout(GAME_WIDTH, 900);
 
-    for (const region of [layout.hud, layout.surface, layout.mine]) {
+    for (const region of [
+      layout.hud,
+      layout.surface,
+      layout.mine,
+      layout.bottomNavigation,
+    ]) {
       expect(region.x).toBeGreaterThanOrEqual(0);
       expect(region.y).toBeGreaterThanOrEqual(0);
       expect(region.x + region.width).toBeLessThanOrEqual(layout.width);
       expect(region.y + region.height).toBeLessThanOrEqual(layout.height);
     }
 
-    expect(layout.mine.height).toBe(900 - HUD_HEIGHT - SURFACE_HEIGHT);
+    expect(layout.mine.height).toBe(
+      900 - HUD_HEIGHT - SURFACE_HEIGHT - BOTTOM_NAVIGATION_HEIGHT,
+    );
   });
 
   it('rejects non-positive or non-finite dimensions', () => {
@@ -191,7 +216,8 @@ describe('portrait layout geometry', () => {
   });
 
   it('rejects a viewport too short to hold the HUD, surface, and mine', () => {
-    const minimumHeight = HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT;
+    const minimumHeight =
+      HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT;
 
     expect(() => calculateMineLayout(GAME_WIDTH, minimumHeight - 1)).toThrow(
       /at least \d+ logical pixels of height/,
@@ -219,7 +245,7 @@ describe('scrollable mine content', () => {
     expect(calculateMineContentHeight(MINE_FLOOR_COUNT)).toBe(2_000);
     expect(
       calculateMineContentHeight(MINE_FLOOR_COUNT) - calculateMineLayout().mine.height,
-    ).toBe(1_576);
+    ).toBe(1_634);
   });
 
   it('rejects invalid floor counts', () => {
@@ -353,7 +379,10 @@ describe('touch targets', () => {
 
 describe('region serialization', () => {
   it('emits the diagnostic form the browser layout test reads', () => {
-    expect(serializeRegion(calculateMineLayout().mine)).toBe('0,216,360,424');
+    expect(serializeRegion(calculateMineLayout().mine)).toBe('0,216,360,366');
+    expect(serializeRegion(calculateMineLayout().bottomNavigation)).toBe(
+      '0,582,360,58',
+    );
   });
 });
 

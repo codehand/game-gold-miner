@@ -3,6 +3,7 @@ export {
   type MineShaftUpgradeModalOptions,
   type RenderedMineShaftUpgradeModalState,
 } from './MineShaftUpgradeModal';
+export { MarketplaceModal } from './MarketplaceModal';
 export {
   OFFLINE_REWARD_SAVE_FAILURE_MESSAGE,
   formatOfflineRewardAmount,

@@ -12,7 +12,7 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/game/layout/mineLayout.ts`, `src/game/layout/palette.ts`, `src/game/layout/index.ts` | Pure Phaser-free portrait geometry and palette: logical viewport constants, HUD/surface/mine regions, scrollable mine content height, floor-slot regions, diagnostic region serialization, and the `#rrggbb` colors both the scene and the browser pixel probes read. |
 | `src/game/view-model/mineViewModel.ts`, `src/game/view-model/mineShaftUpgradeModal.ts`, `src/game/view-model/hudViewModel.ts`, `src/game/view-model/purchaseControl.ts`, `src/game/view-model/formatAmount.ts`, `src/game/view-model/stageAnimation.ts`, `src/game/view-model/index.ts` | Pure Phaser-free presentation logic. The snapshot view model derives per-floor heading, level, visibility, lock status, progress ratio and label, queued-amount label, discrete pile height and backlog state, plus each shared stage's level, capacity, held amount, queue blocks, running/backed-up status, and cycle progress, and carries both HUD and open-floor detail models. The floor-modal module derives output/cycle, cycle time, waiting material, next output, and x1/x5/MAX batch choices from authoritative state and core quotes. The HUD module derives icon-led spendable gold, the authoritative warehouse input queue from `warehouse.inputQueue`, and income values from authoritative state and the core's effective production rate, with empty duplicate captions. The purchase-control module derives each priced control's action caption, price, enabled state, command target, and stable key, plus the lifetime of a press result; it covers shared-stage upgrades, floor selection badges, and floor unlocks. The format module is the single abbreviated-amount formatter every displayed quantity goes through. The animation module holds the cosmetic clock maths and workforce rules. |
 | `src/game/runtime/MineSimulationDriver.ts`, `src/game/runtime/index.ts` | Phaser-free live bridge between the core and the screen: holds authoritative state and the balance data prices and the HUD estimate are derived from, advances state to an injected wall clock on each pull, memoizes the derived snapshot, routes upgrade presses to the matching core command, and accepts state replaced by a command. |
-| `src/game/entities/HudView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar: its background, divider, three resource icons, and five text objects. `PurchaseControlView` is the one pressable button, shared by the floor panels — where an upgrade and an unlock instance share one slot — and both shared stages. |
+| `src/game/entities/HudView.ts`, `src/game/entities/BottomNavigationView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar. `BottomNavigationView` owns the fixed icon-only five-button shell, thumb-safe hit regions, and press animation; activation is presentation-only and changes no authoritative state. `PurchaseControlView` is the one pressable purchase button shared by floor panels and both shared stages. |
 | `src/game/assets/placeholderAssets.ts` | Semantic Phaser texture keys, public paths, and native shaft-texture dimensions for the original Step 32 family plus the Step 32A floor, filled/empty elevator-tower, warehouse, and supervisor pack loaded by `BootScene.preload`. |
 | `src/game/assets/backlogTextures.ts` | Generates the solid backlog-colour silhouette once at boot from the source sprite, so the cue survives a Canvas fallback that would drop a WebGL-only tint. |
 | `src/game/entities/setTextColor.ts` | The shared guard that compares a Phaser text colour before writing it, because `Text.setColor` re-rasterizes and re-uploads the caption texture on every call. |
@@ -211,19 +211,20 @@ The browser creates a pending-reward view model only for a positive calculated r
 
 The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inset-*)` as padding so the `#game-viewport` Phaser parent is already the safe box when the scale manager measures it; `index.html` opts in with `viewport-fit=cover`. The scale manager uses `FIT` with `CENTER_BOTH`, which preserves aspect ratio and letterboxes rather than cropping, so no required control can leave the host viewport at any size.
 
-`calculateMineLayout(width, height)` is pure and Phaser-free. It tiles three full-width regions top to bottom with no gaps, overlaps, or reserved bottom navigation:
+`calculateMineLayout(width, height)` is pure and Phaser-free. It tiles four full-width regions top to bottom with no gaps or overlaps:
 
 | Region | Logical rect (360×640) | Role |
 |---|---|---|
 | `hud` | `0,0,360,52` | Compact fixed top HUD; icon-plus-value pairs without duplicate captions. |
 | `surface` | `0,52,360,164` | Shared elevator and warehouse panels. |
-| `mine` | `0,216,360,424` | Clipped viewport the mine content scrolls behind; runs to the bottom edge. |
+| `mine` | `0,216,360,366` | Clipped viewport the mine content scrolls behind; ends above fixed navigation. |
+| `bottomNavigation` | `0,582,360,58` | Compact fixed five-icon navigation shell at the bottom safe edge. |
 
-The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT` (416). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 424-pixel mine region scrolls by 256. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
+The complete visible navigation controls — chrome and icon together — render at 60% of their authored size inside unchanged 48×44 standard and 62×50 Boost hit regions. The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT` (474). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 366-pixel mine region scrolls by 314. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
 
 `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects any smaller interactive region. The visible shared-stage cards are replaced by art, so their live level/upgrade controls are compact 30×34 badges inside 44×50 hit regions: the elevator region is `(106,48,44,50)` relative to the surface and sits immediately right of and no lower than the discharge tray; the warehouse region is `(263,0,44,50)` and places its chrome above the roof. The hidden `SharedStageView` controls remain read-back models only. The surface strip remains 164 pixels tall.
 
-Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD and surface never scroll and the scroll gesture drives only the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
+Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD, surface, and bottom navigation never scroll and the scroll gesture drives only the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
 
 ## Mine Scroll and Input Contract
 
@@ -610,7 +611,7 @@ The smoke suite asserts what only the served bundle can show:
 - **Real rendering.** Pixel probes read the HUD background and a floor panel out of the canvas backing store, because layout diagnostics report intended geometry and stay green when nothing was painted.
 - **Save behavior.** With `Date.now` routed through `window.name` by an init script — the hashed entry cannot be rewritten the way the dev-server tests rewrite `/src/main.ts` — a controlled 40-second session is flushed at a `visibilitychange` boundary and must equal the document derived in the test process. A reload at the same instant credits no offline time and must re-settle the identical document, and a further 20 seconds must continue from the deserialized saved state rather than a fresh one.
 - **Error handling.** A corrupt payload and an unsupported schema version are each seeded into IndexedDB during a navigation whose bundle is blocked, so nothing boots to overwrite them. The reload must show the matching recovery notice, stay playable, replace the rejected payload with a valid fresh document, and raise no uncaught error. A browser whose `indexedDB.open` throws must still boot, show the load-failure and then the save-failure notice, and keep rendering.
-- **Responsive layout.** The canvas and all three logical regions stay inside narrow-phone, tall-phone, tablet-portrait, and desktop viewports at the preserved 360:640 ratio, with no bottom navigation.
+- **Responsive layout.** The canvas and all four logical regions stay inside narrow-phone, tall-phone, tablet-portrait, and desktop viewports at the preserved 360:640 ratio. The bottom navigation remains fixed while the mine camera scrolls only in its reduced middle viewport.
 
 ## Save Diagnostic Surface
 
@@ -707,6 +708,26 @@ create table public.profiles (
 create trigger profiles_set_updated_at
   before update on public.profiles
   for each row execute function public.set_updated_at();
+
+-- Server-milestone Step 9: creates the row `profiles` has no insert policy
+-- for. `security definer` lets it run as the function's owner (`postgres`,
+-- which owns `profiles` and so bypasses its RLS) rather than as
+-- `supabase_auth_admin`, the role that actually performs the `auth.users`
+-- insert and holds no privilege on `public.profiles` at all.
+create function public.handle_new_user() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id) values (new.id);
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
 
 -- ------------------------------------------------------------------- saves --
 create table public.saves (
@@ -901,7 +922,7 @@ schema.
 
 | Table | select | insert | update | delete |
 |---|---|---|---|---|
-| `profiles` | own row | none — created by the Step 9 sign-up trigger | own row | none |
+| `profiles` | own row | none — created by the `on_auth_user_created` sign-up trigger (Step 9) | own row | none |
 | `saves` | own row | **none** | **none** | **none** |
 | `save_audit` | none | none | none | none |
 | `recovery_codes` | none | none | none | none |
@@ -995,3 +1016,57 @@ The store has no auto-increment key, secondary indexes, foreign keys, relationsh
 | `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV1` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
 
 The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
+
+
+## Marketplace popup — 2026-09-09
+
+The user authorized the Shop icon to open a marketplace design for buying and
+hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
+dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
+scene input on close, supports Escape/native focus containment, and is destroyed
+on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
+listings, name search, role/rarity filters, price sorting, empty-state reset, cat
+details, 1–24 hour rental totals, and validated session-only listing drafts with
+removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
+`public/assets/marketplace/` for this presentation only; gameplay assignments
+and rarity bonuses are not integrated.
+
+This is explicitly a Preview with sample prices/listings. Live trading is disabled;
+no ownership inventory, transaction service, gold debit, or public listing is
+implemented. Drafts survive popup close but disappear on reload. No database,
+IndexedDB, localStorage journal, save-document, or server schema changes.
+The existing server milestone remains at Step 8 awaiting validation.
+
+Validation: production build and lint pass. Marketplace browser coverage checks
+390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
+and removal, disabled live trading, and Escape dismissal. Navigation coverage
+closes Marketplace before testing the remaining icons.
+
+## Marketplace hardening and close-race correction — 2026-09-10
+
+`MarketplaceModal` is exported from the `src/ui/index.ts` barrel, restoring the
+rule that each layer's public surface is re-exported from its `index.ts`.
+`BootScene` still imports it by deep path, as it does `MineShaftUpgradeModal`.
+
+The modal constructs its entire tree with `createElement`/`textContent`. No
+`innerHTML` or `insertAdjacentHTML` remains anywhere in `src/`. This is a
+structural decision, not a cleanup: the marketplace is the one screen whose
+purpose is to render listings authored by other players, so the day `CATS` stops
+being a module constant, the template-string form would have been a stored-XSS
+sink. It narrows what finding F5 describes without closing it — `index.html`
+still ships no Content Security Policy, and F5 remains the single open item in
+`memory-bank/server-threat-model.md` §9.
+
+The close contract is now explicit. `dialog.close()` queues its `close` event as
+a task, so the native event — not `#close()` — is the sole place `#onClose()`
+runs, and a `#destroyed` flag suppresses it for the teardown path where
+`destroy()`'s synchronous `remove()` has already run. Suppression is safe
+because Phaser's `InputPlugin.start()` sets `enabled = true`, so a scene restart
+re-enables input regardless of whether the callback fired. `BootScene`
+surrenders scene input only after an explicit `this.#marketplace !== null`
+check, so input is never disabled for a modal that cannot restore it.
+
+`data-marketplace-close-count` is part of that contract rather than a bare
+counter: `BootScene` bumps it inside `#onClose()` *after* re-enabling input, so
+it is the one observable that proves input is live again. Browser tests wait on
+it before dispatching the next canvas press.

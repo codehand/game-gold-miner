@@ -106,7 +106,8 @@ describe('drag scrolling', () => {
 
   it('clamps at the top and the bottom of the mine', () => {
     const state = createState();
-    const atBottom = drag(state, 600, 600 - state.maxScrollY * 4);
+    const startY = MINE_REGION.y + MINE_REGION.height - 10;
+    const atBottom = drag(state, startY, startY - state.maxScrollY * 4);
 
     expect(atBottom.scrollY).toBe(state.maxScrollY);
     expect(drag(atBottom, 300, 300 + state.maxScrollY * 4).scrollY).toBe(0);

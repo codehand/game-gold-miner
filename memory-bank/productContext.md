@@ -27,11 +27,11 @@ The player claims offline gold, inspects the mine, upgrades the slowest stage, o
 
 ## UX Principles
 
-Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it.
+Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback and keeps future features discoverable without pretending their screens already exist.
 
 ## Base-Game Delivery Boundary
 
-The current implementation milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English, the logical viewport is 360×640, and no inactive bottom navigation is shown. Managers, boosts, gift drops, shops, tasks, social systems, Telegram integration, backend services, monetization, audio, and final production assets remain deferred until the base-game acceptance checks in `memory-bank/implementation-plan.md` pass.
+The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation shell now reserves the bottom 58 logical pixels for five clickable, individually illustrated controls (Rewards, Shop, Boost, Managers, Map); each complete visible tile is scaled to 60% while the thumb-safe hit region stays unchanged. These controls provide press feedback only. Their screens and all manager, boost, gift, shop, task, social, Telegram, monetization, audio, and final-art systems remain deferred.
 
 The user-review revision completed on 2026-09-08 reduces the fixed HUD to 52 logical pixels and defines its centre number as the authoritative warehouse input queue (`warehouse.inputQueue`), not gold still travelling inside the elevator cabin. A warehouse icon makes that ownership explicit. The tower hopper, gold pour, loaded cats, and filled surface carts now all empty with that queue; elevator cargo remains visually in transit until surface delivery. The elevator preserves top-down priority by returning whenever a visited floor still has gold, and the surface delivery crew shares one straight baseline.
 
@@ -74,3 +74,28 @@ game still boots, plays, and saves entirely offline. The player-facing
 promises of this milestone — a save that survives a new device, cleared
 storage, or a lost
 browser — start at Phase 2 and are only kept from Phase 3.
+
+
+## Marketplace popup — 2026-09-09
+
+The user authorized the Shop icon to open a marketplace design for buying and
+hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
+dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
+scene input on close, supports Escape/native focus containment, and is destroyed
+on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
+listings, name search, role/rarity filters, price sorting, empty-state reset, cat
+details, 1–24 hour rental totals, and validated session-only listing drafts with
+removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
+`public/assets/marketplace/` for this presentation only; gameplay assignments
+and rarity bonuses are not integrated.
+
+This is explicitly a Preview with sample prices/listings. Live trading is disabled;
+no ownership inventory, transaction service, gold debit, or public listing is
+implemented. Drafts survive popup close but disappear on reload. No database,
+IndexedDB, localStorage journal, save-document, or server schema changes.
+The existing server milestone remains at Step 8 awaiting validation.
+
+Validation: production build and lint pass. Marketplace browser coverage checks
+390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
+and removal, disabled live trading, and Escape dismissal. Navigation coverage
+closes Marketplace before testing the remaining icons.

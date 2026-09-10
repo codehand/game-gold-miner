@@ -489,6 +489,14 @@ async function ensureControlIsPressable(
       message: `${key} scrolls into the mine viewport`,
     })
     .toBe(true);
+
+  // The diagnostic and camera clamp can update in the same tick. Wait for the
+  // newly reachable control to be presented before asking Phaser to hit-test
+  // it, especially now that the bottom navigation makes the mine viewport
+  // shorter and the journey scrolls more often.
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
 }
 
 async function pressPurchaseControl(page: Page, key: string): Promise<void> {

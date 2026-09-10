@@ -12,7 +12,7 @@
 
 > **Phạm vi tham chiếu:** Video chỉ dài khoảng 8,56 giây nên không thể xác nhận 100% mọi luật, công thức và màn hình. Tài liệu này tách phần quan sát trực tiếp khỏi phần suy luận cần kiểm chứng. Khi phát triển sản phẩm thật, nên dùng tên, hình ảnh, âm thanh và UI nguyên bản để tránh sao chép tài sản sở hữu trí tuệ.
 
-> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ có tối đa 15 tầng và hiển thị theo cụm 5 tầng: 1–5 lúc bắt đầu, 6–10 sau khi mở tầng 5, 11–15 sau khi mở tầng 10; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chỉ đi sâu hơn sau khi vét hết tầng hiện tại và còn sức chứa, nếu không sẽ quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Manager, boost, gift drop và bottom navigation được triển khai sau base-game milestone.
+> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ có tối đa 15 tầng và hiển thị theo cụm 5 tầng: 1–5 lúc bắt đầu, 6–10 sau khi mở tầng 5, 11–15 sau khi mở tầng 10; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chỉ đi sâu hơn sau khi vét hết tầng hiện tại và còn sức chứa, nếu không sẽ quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Sau base-game milestone, một bottom-navigation shell gồm năm icon Rewards, Shop, Boost, Managers và Map đã được thêm; nút nhận click và phản hồi hình ảnh nhưng chưa mở màn hình hay thay đổi gameplay. Manager, boost gameplay và gift drop vẫn được triển khai ở milestone riêng.
 
 ## 2. Trải nghiệm cốt lõi
 
@@ -203,7 +203,11 @@ Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự đ
 - Chạm Manager: mở bảng Manager của tầng.
 - Vuốt dọc: xem các tầng sâu hơn.
 - Chạm quà: nhận phần thưởng.
-- Chạm thanh điều hướng dưới: mở Shop, Task, Boost hoặc Manager.
+- Chạm thanh điều hướng dưới: hiện tại chỉ nhận click và phản hồi nhấn; các màn
+  Rewards, Shop, Boost, Managers và Map chưa được nối chức năng. Thanh cao 58
+  logical px; bốn nút thường 48×44, nút Boost nhô lên 62×50, và mỗi mục dùng
+  một minh họa riêng theo cùng palette vàng, trắng, navy và teal. Toàn bộ phần
+  hiển thị của mỗi nút được thu còn 60% trong khi vùng chạm không đổi.
 
 ### Bố cục màn hình mỏ
 
@@ -221,7 +225,7 @@ Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự đ
 ├───┼──────────────────────────┤
 │ 4 │ Miner → Gold → Cart [Lv] │
 ├───┴──────────────────────────┤
-│ Daily Shop Task Boost Manager│
+│ Chest Shop  Boost  Cat   Map │
 └──────────────────────────────┘
 ```
 
@@ -340,3 +344,28 @@ design tham chiếu. Quy chuẩn đầy đủ nằm tại
 - [Video Shorts được cung cấp](https://www.youtube.com/shorts/xjOICCm_VVk) — nguồn quan sát trực tiếp về UI và animation.
 - [Tài liệu chính thức Cat Gold Miner](https://docs.catgoldminer.ai/) — mô tả idle mining, Manager, nâng cấp và tiến trình.
 - [Cat Gold Miner trên Google Play](https://play.google.com/store/apps/details?id=com.cgstudio.catgoldminer) — mô tả automation, offline income, tài nguyên và hơn 20 mỏ.
+
+
+## Marketplace popup — 2026-09-09
+
+The user authorized the Shop icon to open a marketplace design for buying and
+hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
+dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
+scene input on close, supports Escape/native focus containment, and is destroyed
+on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
+listings, name search, role/rarity filters, price sorting, empty-state reset, cat
+details, 1–24 hour rental totals, and validated session-only listing drafts with
+removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
+`public/assets/marketplace/` for this presentation only; gameplay assignments
+and rarity bonuses are not integrated.
+
+This is explicitly a Preview with sample prices/listings. Live trading is disabled;
+no ownership inventory, transaction service, gold debit, or public listing is
+implemented. Drafts survive popup close but disappear on reload. No database,
+IndexedDB, localStorage journal, save-document, or server schema changes.
+The existing server milestone remains at Step 8 awaiting validation.
+
+Validation: production build and lint pass. Marketplace browser coverage checks
+390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
+and removal, disabled live trading, and Escape dismissal. Navigation coverage
+closes Marketplace before testing the remaining icons.

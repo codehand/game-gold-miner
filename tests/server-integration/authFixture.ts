@@ -21,6 +21,24 @@ export const FIXTURE_DISPLAY_NAME = 'Dev Guest';
 
 const LOCAL_JWT_SECRET = 'super-secret-jwt-token-with-at-least-32-characters-long';
 
+/**
+ * The Supabase CLI's fixed default local `anon` key — a JWT signed with
+ * `LOCAL_JWT_SECRET` above, printed verbatim by `npx supabase status` for
+ * every local stack anyone runs. Required by Kong's `apikey` check on
+ * `/rest/v1/*` in addition to a caller's own bearer token; like
+ * `LOCAL_JWT_SECRET`, it is not a value the real deployed project will ever
+ * use.
+ */
+export const LOCAL_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+
+// Deliberately no local `service_role` key here, even the CLI's harmless
+// fixed local-dev one: `tests/unit/server-stack.test.ts`'s "no privileged
+// credential in any tracked file" scan flags any JWT whose payload declares
+// `role: service_role`, anywhere in a tracked file, with no exceptions — and
+// it should stay that way, since carving one out here would be exactly the
+// kind of allowance that later hides a real one.
+
 function base64UrlEncode(input: string): string {
   return Buffer.from(input)
     .toString('base64')

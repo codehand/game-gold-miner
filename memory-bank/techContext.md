@@ -342,8 +342,8 @@ version change is authorized in this phase.
 - `BootScene` publishes `data-hud-view`, `data-floor-views`, `data-surface-views`, `data-purchase-controls`, `data-floor-upgrade-modal`, and `data-animation` at most every 100 ms rather than every frame, because displayed progress changes continuously and an unthrottled read-back would serialize the whole screen 60 times a second for diagnostics alone.
 - The surface headhouse has matched filled and empty 512×512 textures. `BootScene` derives the visible hopper state from `warehouse.queueSteps`: positive input shows gold, while zero shows the empty steel bin, with the same 128×128 display bounds after every texture swap.
 - The same `warehouse.queueSteps > 0` predicate exclusively drives surface cargo feedback: filled lead/assistant carts and the chute's gold-pour effect. Material still carried by the elevator cannot appear at the surface before authoritative delivery into `warehouse.inputQueue`; at zero queue every moving cart uses the empty texture and the pour is hidden, while all workers keep looping.
-- `src/game/layout/` is pure Phaser-free geometry and palette data, so `tests/unit/layout.test.ts` and the Playwright layout spec both import the `src/game/layout` barrel without loading Phaser. `eslint.config.mjs` enforces that purity for `src/game/layout/**` (no `document`/`window`/`navigator`, no `phaser` import) and `tests/unit/architecture.test.ts` probes the rule. It exports the 360×640 constants, `calculateMineLayout`, `calculateMineContentHeight`, `calculateFloorSlotRegion`, `regionContainsPoint`, `assertTouchTargetRegion`, and `serializeRegion`, and rejects non-finite/non-positive dimensions, heights below 416 logical pixels, invalid floor counts, negative floor indexes, and interactive regions below 44×44.
-- The portrait layout tiles `hud` (`0,0,360,52`), `surface` (`0,52,360,164`), and `mine` (`0,216,360,424`) with no gaps and no reserved bottom navigation. The initial five edge-to-edge 288×132 floor slots plus vertical content padding produce 680 logical pixels of mine content, so the mine area scrolls by 256; the content height expands at the 10-floor and 15-floor reveal gates. The elevator shaft is 64 px wide with a 62 px cabin, 50 px cargo cat, and no floor plaques; its 192×528 source artwork is a 64×1,980 `TileSprite` with tile scale `(1/3, 1)`, so it repeats at native vertical resolution instead of blurring through full-depth stretching. Adjusted shaft inset/gap/right inset preserve the floor width. `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects anything smaller.
+- `src/game/layout/` is pure Phaser-free geometry and palette data, so `tests/unit/layout.test.ts` and the Playwright layout spec both import the `src/game/layout` barrel without loading Phaser. `eslint.config.mjs` enforces that purity for `src/game/layout/**` (no `document`/`window`/`navigator`, no `phaser` import) and `tests/unit/architecture.test.ts` probes the rule. It exports the 360×640 constants, `calculateMineLayout`, `calculateMineContentHeight`, `calculateFloorSlotRegion`, `regionContainsPoint`, `assertTouchTargetRegion`, and `serializeRegion`, and rejects non-finite/non-positive dimensions, heights below 488 logical pixels, invalid floor counts, negative floor indexes, and interactive regions below 44×44.
+- The portrait layout tiles `hud` (`0,0,360,52`), `surface` (`0,52,360,164`), `mine` (`0,216,360,366`), and fixed `bottomNavigation` (`0,582,360,58`) with no gaps. The five code-native navigation illustrations are a treasure chest, storefront, bolt, cat-manager badge, and folded map. Each complete visible control uses a child container at scale `0.6`, while the interactive parent remains 48×44 for standard controls and 62×50 for the wider, raised Boost. Every hit region is therefore at least 44×44, and presses animate the visual child without shrinking input coverage or issuing a core command. The initial five edge-to-edge 288×132 floor slots plus vertical content padding produce 680 logical pixels of mine content, so the mine area scrolls by 314; the content height expands at the 10-floor and 15-floor reveal gates. The elevator shaft is 64 px wide with a 62 px cabin, 50 px cargo cat, and no floor plaques; its 192×528 source artwork is a 64×1,980 `TileSprite` with tile scale `(1/3, 1)`, so it repeats at native vertical resolution instead of blurring through full-depth stretching. Adjusted shaft inset/gap/right inset preserve the floor width. `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects anything smaller.
 - `index.html` declares `viewport-fit=cover` and hosts the Phaser parent in `#game-viewport`; `#app` applies `env(safe-area-inset-*)` padding so the scale manager measures the safe box. `Phaser.Scale.FIT` with `CENTER_BOTH` preserves aspect ratio and letterboxes instead of cropping.
 - Phaser 4 removed WebGL geometry masks (`setMask` logs a warning and does nothing), so the mine area is clipped by a dedicated camera viewport instead. The main camera ignores the mine content layer, the mine camera ignores the fixed HUD/surface layers, and the scroll gesture drives only that camera's `scrollY`. Phaser hit-tests through the same camera and honours both its scroll and each object's camera filter, so a scrolled control's pressable rectangle follows what is drawn without extra bookkeeping.
 - Elevator route geometry stays in mine-world coordinates. Its surface endpoint is always `SURFACE_ELEVATOR_STOP_Y - SURFACE_HEIGHT`, and the fixed-layer cabin twin maps from that world Y without applying mine-camera `scrollY`; scrolling can clip/reveal the cabin but cannot shorten a deep return leg or move the tower entry point.
@@ -472,6 +472,26 @@ create table public.profiles (
 create trigger profiles_set_updated_at
   before update on public.profiles
   for each row execute function public.set_updated_at();
+
+-- Server-milestone Step 9: creates the row `profiles` has no insert policy
+-- for. `security definer` lets it run as the function's owner (`postgres`,
+-- which owns `profiles` and so bypasses its RLS) rather than as
+-- `supabase_auth_admin`, the role that actually performs the `auth.users`
+-- insert and holds no privilege on `public.profiles` at all.
+create function public.handle_new_user() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id) values (new.id);
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
 
 -- ------------------------------------------------------------------- saves --
 create table public.saves (
@@ -666,7 +686,7 @@ schema.
 
 | Table | select | insert | update | delete |
 |---|---|---|---|---|
-| `profiles` | own row | none — created by the Step 9 sign-up trigger | own row | none |
+| `profiles` | own row | none — created by the `on_auth_user_created` sign-up trigger (Step 9) | own row | none |
 | `saves` | own row | **none** | **none** | **none** |
 | `save_audit` | none | none | none | none |
 | `recovery_codes` | none | none | none | none |
@@ -765,7 +785,7 @@ If a database is introduced, replace this statement with the complete authoritat
 - `npm run test:server-unit` (`deno test supabase/functions`): 19 tests pass across `_shared/http.test.ts`, `save-sync/index.test.ts`, and `whoami-check/index.test.ts` (Step 7), every one with zero `--allow-*` permission flags. Needs no Docker and no database.
 - `npm run test:server-integration` (`vitest run --config vitest.server-integration.config.ts`): 6 tests pass against the live local stack (Step 7) — the seeded fixture guest's real `profiles.display_name` for a valid token, and 401 for no header / a syntactically invalid token / a wrong-secret-signed token / an expired token, plus 400 for a non-GET method. Assumes `supabase start` and `supabase db reset` already ran.
 - `npm run test:server-e2e` (`playwright.server-e2e.config.ts`, port 4176): 3 Chromium tests pass against the live local stack (Step 8) — a fresh browser boots playable and holds a real anonymous session with a UUID `user.id`; every `**/auth/v1/**` request aborted still boots the game and a forced `visibilitychange` flush still reaches IndexedDB across a reload; two fresh browser contexts receive distinct `user.id`s whose access tokens each answer only for themselves through the live `whoami-check` function. Assumes `supabase start` and `supabase db reset` already ran and needs `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` pointed at that stack.
-- `npm run test:e2e`: all 42 Chromium tests pass, including explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios.
+- `npm run test:e2e`: all 43 Chromium tests pass, including the fixed five-icon bottom navigation and every click target, explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios.
 - `npm run test:perf`: the repeated ten-minute benchmark passes with all fifteen floors unlocked — 60.000 FPS, 16.67 ms mean, 17.6 ms p95, 17.8 ms maximum, zero of 36,139 frames beyond the 18.34 ms threshold, +229,928 bytes post-GC live-heap growth at +188 B/s, 665 Phaser objects and 371 DOM nodes constant across twenty samples, and 81.9 ms scroll p95 against a 100 ms budget. It presented at 60 Hz, so mean frame time equals the vsync interval and carries no headroom information. This is Pixel 5 emulation under 4× CPU throttling in desktop Chrome and is not physical Android-device evidence.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 - `npm run test:prod`: builds the optimized bundle, serves it with `vite preview`
@@ -877,3 +897,75 @@ save of roughly 3–4 KB. Cloud failures reuse `createSaveDiagnosticBanner` with
 `cloud-sync-*` codes, and only terminal failures reach it — the banner never
 withdraws a notice, so a retryable network error must show nothing while a retry
 is still pending.
+
+
+## Marketplace popup — 2026-09-09
+
+The user authorized the Shop icon to open a marketplace design for buying and
+hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
+dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
+scene input on close, supports Escape/native focus containment, and is destroyed
+on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
+listings, name search, role/rarity filters, price sorting, empty-state reset, cat
+details, 1–24 hour rental totals, and validated session-only listing drafts with
+removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
+`public/assets/marketplace/` for this presentation only; gameplay assignments
+and rarity bonuses are not integrated.
+
+This is explicitly a Preview with sample prices/listings. Live trading is disabled;
+no ownership inventory, transaction service, gold debit, or public listing is
+implemented. Drafts survive popup close but disappear on reload. No database,
+IndexedDB, localStorage journal, save-document, or server schema changes.
+The existing server milestone remains at Step 8 awaiting validation.
+
+Validation: production build and lint pass. Marketplace browser coverage checks
+390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
+and removal, disabled live trading, and Escape dismissal. Navigation coverage
+closes Marketplace before testing the remaining icons.
+
+## Marketplace hardening and close-race correction — 2026-09-10
+
+`src/ui/MarketplaceModal.ts` carries no `innerHTML` or `insertAdjacentHTML`, and
+neither does anything else in `src/`. Its tab, role, rarity, and sort state use
+union types (`MarketTab`, `RoleFilter`, `RarityFilter`, `SortOption`) with a
+generic `#select<T extends string>`, so a mistyped literal comparison fails type
+checking rather than silently never matching.
+
+Formatting is not lint-enforced: `eslint.config.mjs` sets no `max-len` and the
+repository has no Prettier config, so line length is a convention held by
+reading. The norm is roughly 80–110 characters; `src/` outside this file peaks
+at 134. New `src/style.css` rules are multi-line, matching the file's existing
+rules rather than the one-line form.
+
+Browser tests must wait on `data-marketplace-close-count` after dismissing the
+Marketplace and before dispatching another canvas press. `dialog.close()` queues
+its `close` event as a task, and Phaser input stays disabled until that task
+runs `#onClose()`; a press dispatched earlier is dropped silently. The count is
+bumped inside that callback after input is re-enabled, so it is a causal signal,
+unlike dialog invisibility. `navigation-hit-targets.spec.ts` and
+`layout.spec.ts` both wait on it; `marketplace.spec.ts` already did.
+
+That race is invisible to `npm run verify`. The isolated spec failed 6 of 6 runs
+before the wait and passed 6 of 6 after, while the full 51-test Playwright run
+and `--repeat-each=6` passed in every configuration, because parallel workers
+shift the timing. Reproduce timing findings like this with a single-spec loop,
+not with the full suite.
+
+`layout.spec.ts` and `tests/production/production-smoke.spec.ts` assert
+`#game-viewport > nav` has count 0, not `nav` document-wide: the Marketplace
+dialog mounts in the same parent and renders its own `<nav class="market-tabs">`.
+
+`tests/server-integration/profiles-rls.integration.test.ts` mints three real
+anonymous identities through live Supabase Auth. `userA` and `userB` stay
+read-only; `userC` owns the single test that writes a `display_name`, so the
+suite is order-independent and survives `--sequence.shuffle`. Its first test
+proves the `on_auth_user_created` trigger by asserting `created_at` falls inside
+the sign-up call, which the plain select-policy test does not do. That bound
+compares a host `Date.now()` against Postgres `now()` inside Docker; measured
+skew on the local stack was within request round-trip time, and the lower bound
+carries 1 s of slack while the upper bound carries none.
+
+`tests/unit/bundle-secret-scan.test.ts` was seen to fail once under heavy
+concurrent load and did not reproduce in two further full runs or in isolation
+(16 of 16). Its fixtures are temp directories removed in `afterEach`; treat it
+as a known latent flake unrelated to marketplace or navigation work.
