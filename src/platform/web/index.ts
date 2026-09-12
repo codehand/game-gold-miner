@@ -36,3 +36,10 @@ export {
   WebLifecycleSaveJournal,
   type KeyValueStorage,
 } from './WebLifecycleSaveJournal';
+export {
+  generateRecoveryCode,
+  redeemRecoveryCode,
+  type GenerateRecoveryCodeResult,
+  type RecoveryCodeAuthClient,
+  type RedeemRecoveryCodeResult,
+} from './recoveryCode';

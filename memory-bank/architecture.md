@@ -936,6 +936,66 @@ No production UI exists yet, matching Steps 8/10/12: `main.ts`'s existing
 alongside `beginGoogleSignIn`, and a `data-google-identity-collision`
 diagnostic published from `detectGoogleIdentityCollision`.
 
+### Recovery code (Step 14)
+
+`recovery_codes` (Step 3/5 schema — one policy-free table, an HMAC-SHA-256
+`code_hash` under a pepper never stored in the database, a partial unique
+index permitting only one active code per user) is unchanged by this step;
+`supabase/functions/recovery-code/index.ts` is the first code to touch it,
+under two routes (`/functions/v1/recovery-code/v1/generate`,
+`.../v1/redeem`) reusing `_shared/http.ts`'s envelope/CORS helpers.
+
+- **Code**: 16 random bytes (128-bit entropy), hex-encoded and grouped for
+  display (`xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx`). The canonical form
+  that gets hashed strips every non-hex character and lowercases, so a
+  player can paste the code with or without its dashes.
+- **Rotation** (`rotateRecoveryCodeViaServiceRole`): revokes whatever is
+  currently active (`update ... where user_id = ? and redeemed_at is null
+  and revoked_at is null`) before inserting the new row — the partial
+  unique index would otherwise reject a second active row outright.
+- **Redemption** (`redeemRecoveryCodeViaServiceRole`) is a single atomic
+  `update ... where code_hash = ? and redeemed_at is null and revoked_at is
+  null returning user_id` — proactively applying the compare-and-swap
+  lesson the Step 16 review taught for `save-sync`'s upload endpoint,
+  rather than shipping a read-then-write and waiting for a review to find
+  the same race. Mutation-proven: temporarily reverting to read-then-write
+  let two concurrent redemptions of the same code both succeed in 2 of 3
+  live runs.
+- **Minting a session for the resolved `user_id`** adapts
+  `telegram-sign-in`'s `admin.generateLink`/client-`verifyOtp` pattern for
+  an id-keyed rather than email-keyed lookup: `generateLink` finds-**or
+  creates** by email, so calling it blind for a pure anonymous guest (no
+  email at all) would silently mint a new, wrong account.
+  `mintSessionForUserViaGenerateLink` resolves the caller's existing email
+  first (Google-linked, or a Telegram placeholder) and only assigns a
+  deterministic `recovery-<user_id>@recovery.invalid` (via
+  `admin.updateUserById(..., {email_confirm: true})`, no confirmation email
+  sent) when the account has none — guaranteeing `generateLink` *finds* the
+  correct row. Confirmed live for exactly the pure-anonymous case.
+- **Hashing stays out of the pure handler.** `handleGenerate`/`handleRedeem`
+  never call `Deno.env.get` themselves — `RotateRecoveryCode`/
+  `RedeemRecoveryCode` take the *canonical code*, not a pre-computed hash,
+  and the real service-role implementations hash internally. This is what
+  keeps the handler testable under `deno test`'s zero-`--allow-*` harness:
+  a design that hashed inline in the handler would need `--allow-env` just
+  to run its own unit tests.
+- **Rate limiting is a deliberate interim seam, not Step 25 itself.** Step
+  25 is the plan's own named owner of a persistent, distributed per-user/
+  per-address limiter across every endpoint in this milestone; the Step 3
+  schema deliberately carries no per-code failed-attempt counter. This
+  ships a minimal in-memory, address-keyed fixed-window limiter
+  (`checkRedemptionRateLimitInMemory`) — not safe across multiple worker
+  instances or a restart, documented as such — sufficient for this step's
+  own "wrong codes are... throttled" test.
+- `src/platform/web/recoveryCode.ts` (`generateRecoveryCode`/
+  `redeemRecoveryCode`) mirrors `telegramSignIn.ts`'s shape exactly,
+  completing the session with `auth.verifyOtp({token_hash, type:'email'})`.
+  `main.ts`'s existing DEV-only hook gained both; `redeemRecoveryCode`
+  triggers the same `triggerCloudSaveReconcile()` every other sign-in path
+  already runs once redemption succeeds — "redemption... must reuse the
+  Step 13 collision flow" needed no new merge logic, since the redeeming
+  device's local save is untouched by the session swap.
+
 ## Cat Role Asset Catalog Contract
 
 `art-source/cat-role-catalog/` is the source-of-truth workspace for role-based

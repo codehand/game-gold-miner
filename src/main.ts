@@ -17,13 +17,17 @@ import {
   detectGoogleIdentityCollision,
   downloadCloudSaveViaFetch,
   ensureGuestSession,
+  generateRecoveryCode,
   LifecycleSafeActiveSaveRepository,
   reconcileCloudSaveAtBoot,
+  redeemRecoveryCode,
   signOutOfSession,
   WebLifecycleSaveJournal,
   type CloudSaveReconcileOutcome,
+  type GenerateRecoveryCodeResult,
   type GoogleSignInResult,
   type GuestSessionResult,
+  type RedeemRecoveryCodeResult,
   type SignOutResult,
   type SupabaseClient,
 } from './platform/web';
@@ -42,6 +46,10 @@ declare global {
       /** Server-milestone Step 13: resolves an identity_already_exists collision by signing in as the account that owns it. */
       beginGoogleAccountSwitch: () => Promise<GoogleSignInResult>;
       signOut: () => Promise<SignOutResult>;
+      /** Server-milestone Step 14: issues (or rotates) the current session's recovery code. */
+      generateRecoveryCode: () => Promise<GenerateRecoveryCodeResult>;
+      /** Server-milestone Step 14: redeems a recovery code, then reconciles the redeeming device's local save the same way any other sign-in does. */
+      redeemRecoveryCode: (code: string) => Promise<RedeemRecoveryCodeResult>;
     };
   }
 }
@@ -164,6 +172,29 @@ if (import.meta.env.DEV) {
         beginGoogleAccountSwitch: () =>
           beginGoogleAccountSwitch(client?.auth ?? null, window.location.origin),
         signOut: () => signOutOfSession(client?.auth ?? null),
+        generateRecoveryCode: () =>
+          generateRecoveryCode(
+            client?.auth ?? null,
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/recovery-code/v1/generate`,
+          ),
+        redeemRecoveryCode: async (code: string) => {
+          const result = await redeemRecoveryCode(
+            code,
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/recovery-code/v1/redeem`,
+            client?.auth ?? null,
+          );
+          // Server-milestone Step 14: "redemption... must reuse the Step 13
+          // collision flow when the redeeming device already holds
+          // progress." The redeeming device's local IndexedDB save is
+          // untouched by the session swap `verifyOtp` just completed, so
+          // the same reconcile every other sign-in path already triggers is
+          // exactly what compares it against the recovered account's cloud
+          // save — no separate merge logic needed here.
+          if (result.status === 'redeemed') {
+            triggerCloudSaveReconcile();
+          }
+          return result;
+        },
       };
       // Server-milestone Step 13: whether this page load's return URL
       // carried `error_code=identity_already_exists` — a `linkIdentity`

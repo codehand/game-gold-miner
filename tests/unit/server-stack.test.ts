@@ -212,6 +212,7 @@ describe('secret handling', () => {
     expect(names).toContain('GOOGLE_CLIENT_ID');
     expect(names).toContain('GOOGLE_CLIENT_SECRET');
     expect(names).toContain('TELEGRAM_BOT_TOKEN');
+    expect(names).toContain('RECOVERY_CODE_PEPPER');
   });
 
   it('holds placeholders rather than credentials', () => {
@@ -273,12 +274,15 @@ describe('every Edge Function', () => {
   // needs the service-role key: minting a session for a caller who isn't
   // signed in yet requires `admin.generateLink`, which only the service
   // role can call. `save-sync` (Step 16) is the second: `saves` denies every
-  // client write (Step 15), so accepting an upload needs it too. Both are
+  // client write (Step 15), so accepting an upload needs it too.
+  // `recovery-code` (Step 14) is the third: `recovery_codes` carries no
+  // policy at all, and minting a session for a redeemed code's owner needs
+  // `admin.getUserById`/`updateUserById`/`generateLink`. All three are
   // excluded from the blanket check below and given their own positive
   // assertion instead, exactly as this test's own prior comment
   // anticipated — a future function needing it must add its own exception
   // here too, not find this check silently no longer covering it.
-  const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = ['telegram-sign-in', 'save-sync'];
+  const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = ['telegram-sign-in', 'save-sync', 'recovery-code'];
 
   it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(
     '%s never reads the service-role key',
@@ -310,6 +314,17 @@ describe('every Edge Function', () => {
     expect(source).not.toContain('.upsert(');
     expect(source).toContain("admin.from('saves').insert(");
     expect(source).toMatch(/admin\s*\.from\('saves'\)\s*\.update\(/);
+  });
+
+  it('recovery-code does read the service-role key, and only to rotate/redeem codes and mint a session', () => {
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    // Redemption is an atomic compare-and-swap, the same lesson save-sync's
+    // own review just taught: never a read-then-write.
+    expect(source).toMatch(/admin\s*\.from\('recovery_codes'\)\s*\.update\(/);
+    expect(source).toContain('admin.auth.admin.generateLink');
+    expect(source).toContain('admin.auth.admin.getUserById');
+    expect(source).toContain('admin.auth.admin.updateUserById');
   });
 });
 
@@ -572,6 +587,28 @@ describe('the Step 13 Google identity-collision hook in src/main.ts', () => {
   it('publishes the collision diagnostic from detectGoogleIdentityCollision', () => {
     expect(hookBootstrap).toContain('app.dataset.googleIdentityCollision');
     expect(hookBootstrap).toContain('detectGoogleIdentityCollision(client?.auth ?? null)');
+  });
+});
+
+describe('the Step 14 recovery-code hooks in src/main.ts', () => {
+  const mainSource = readProjectFile('src/main.ts');
+  const hookBootstrap = extractMainBlock(
+    mainSource,
+    'if (import.meta.env.DEV) {',
+    "\n/**\n * Drops the live access token",
+  );
+
+  it('exposes generateRecoveryCode and redeemRecoveryCode alongside the Google hooks', () => {
+    expect(hookBootstrap).toContain('generateRecoveryCode: () =>');
+    expect(hookBootstrap).toContain('redeemRecoveryCode: async (code: string) =>');
+  });
+
+  it('reconciles the redeeming device only when redemption actually succeeded', () => {
+    const redeemHook = hookBootstrap.slice(hookBootstrap.indexOf('redeemRecoveryCode: async (code: string) =>'));
+    const redeemHookBody = redeemHook.slice(0, redeemHook.indexOf('\n      };'));
+
+    expect(redeemHookBody).toContain("result.status === 'redeemed'");
+    expect(redeemHookBody).toContain('triggerCloudSaveReconcile();');
   });
 });
 

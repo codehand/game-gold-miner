@@ -328,6 +328,31 @@ are each rejected with none issued; the token never leaks) is proven with
 hand-signed fixture vectors against the real local stack in
 `npm run test:server-integration`, with no live Telegram account needed.
 
+**Recovery code.** Server-milestone Step 14 is the only mechanism in the
+milestone that survives storage loss for an unlinked guest — the session
+token and the local save both live in script-writable storage and die
+together in the same iOS Safari seven-day sweep, so a cloud save alone
+cannot rescue that guest: they would come back with no save *and* no
+credential proving which account was theirs.
+`supabase/functions/recovery-code/index.ts` issues a 128-bit code
+(`POST /v1/generate`, authenticated) and redeems one
+(`POST /v1/redeem`, unauthenticated — recovering access without a session
+is the entire point), hashing it with HMAC-SHA-256 under
+`RECOVERY_CODE_PEPPER` and storing only the digest; both rotation and
+redemption are atomic compare-and-swap operations rather than a
+read-then-write, so two concurrent redemptions of the same code cannot
+both succeed. Minting a session for the resolved account reuses
+`telegram-sign-in`'s `generateLink`/`verifyOtp` pattern, adapted so a pure
+anonymous guest with no email at all gets a deterministic placeholder
+assigned first — otherwise `generateLink`'s find-or-create-by-email
+behavior would silently mint a second, wrong account instead of finding
+the real one. Redeeming reuses the exact same guest-upgrade reconcile Step
+13 already established (`triggerCloudSaveReconcile()` on the client),
+needing no separate merge logic for "don't overwrite either save when the
+redeeming device already holds progress." `RECOVERY_CODE_PEPPER` lives in
+the same third env file as `TELEGRAM_BOT_TOKEN`,
+`supabase/functions/.env`.
+
 **Secrets.** `.env.local` is git-ignored; `.env.example` is the committed
 template. The `VITE_` prefix is the boundary: Vite inlines exactly those
 variables into the browser bundle, so a service-role key, a recovery-code pepper,

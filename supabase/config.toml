@@ -452,6 +452,15 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# Server-milestone Step 14: generating a code verifies the caller's bearer
+# token by hand (the same pattern `whoami-check`/`save-sync` use); redeeming
+# one has no caller to verify at all — recovering access without an existing
+# session is the entire point. `verify_jwt = false` means "this function
+# does its own auth per route," not "this function is open."
+[functions.recovery-code]
+enabled = true
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
