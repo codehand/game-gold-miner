@@ -779,6 +779,163 @@ and is answered `malformed_request` / 400"), which `server-save-sync-protocol.md
 §1 states identity endpoints reuse; introducing a code that vocabulary
 deliberately omits would itself be the inconsistency.
 
+### Save storage, upload, and download (Steps 15–17)
+
+`saves` (Step 5 migration) already carried `saves_select_own` (select, own
+row) and no insert/update/delete policy of any kind, so RLS's own
+default-deny already satisfied Step 15's "permits no client write at all"
+before any code in this section existed; Step 15 only added the live-stack
+evidence (`tests/server-integration/saves-rls.integration.test.ts`).
+
+`supabase/functions/save-sync/index.ts` implements `PUT`/`GET /v1/save`
+(§10.2–10.3 of `memory-bank/server-save-sync-protocol.md`) alongside the
+existing `GET /v1/health`, sharing `resolveFunctionRoute` and the
+`_shared/http.ts` envelope/CORS helpers. `handleRequest` now takes an
+optional `SaveSyncDeps` (`resolveCaller`, `readCurrentSave`, `writeSaveRow`)
+— real collaborators by default, faked in `index.test.ts` — the same split
+`whoami-check`/`telegram-sign-in` already established.
+
+- **Auth**: `resolveCallerViaSupabaseAuth` — an anon-key client scoped to the
+  caller's own bearer token, `auth.getUser()` — identical in shape to
+  `whoami-check`'s collaborator.
+- **Read** (`readCurrentSaveRow`): the same anon-scoped client selecting
+  `revision, document_json, received_at` from `saves` — no elevated
+  privilege needed, since `saves_select_own` already permits it.
+- **Write** (`writeSaveRowViaServiceRole`): a service-role client is the
+  *only* thing in this function (or, before it, anywhere in `src/`) that
+  writes `saves` at all — `saves`'s RLS permanently denies every client
+  write, by design. `tests/unit/server-stack.test.ts`'s blanket
+  "no function reads the service-role key" check names `save-sync` as its
+  second exception (`telegram-sign-in` is the first), with its own positive
+  assertion pinning the read to `writeSaveRowViaServiceRole`'s
+  `insert`/`update` — not an `upsert`, per the concurrency fix immediately
+  below.
+- **Concurrency** (§5, decision D2): `PUT` accepts when the request's
+  `baseRevision` strictly equals the stored `revision` (`null` on both sides
+  for a first write); otherwise `409 revision_conflict` with the server's
+  own `serverRevision`/`receivedAt`/`document` attached, and the stored row
+  untouched. On accept, the current row's `revision`/`document_json`/
+  `received_at` shift into `previous_revision`/`previous_document_json`/
+  `previous_received_at` (the one-generation-of-rollback shape Step 3
+  designed) before the new values are written. **The write itself is a
+  compare-and-swap, not a blind `upsert`** — a 2026-09-12 review found the
+  original `upsert` let two overlapping uploads both read the same
+  `revision`, both pass the `baseRevision` check, and both write, silently
+  discarding one and breaking §5's "one monotonic revision" guarantee (not
+  player-reachable before Step 19's client upload cadence exists, but the
+  endpoint was already live). `writeSaveRowViaServiceRole` now branches on
+  `row.previousRevision === null` (no row existed at read time): a first
+  write is a plain `insert`, where the `user_id` primary key turns a
+  concurrent racer's insert into a `23505` unique violation rather than a
+  silent second winner; a subsequent write is
+  `update ... where user_id = ? and revision = ?` — atomic in Postgres —
+  with `.select()`'s returned row count telling the caller whether it
+  actually applied. `handleSaveUpload` turns a lost race (`applied === false`)
+  into the same `409 revision_conflict` a stale `baseRevision` gets, after
+  re-reading the row so the conflict carries the actual winner's document
+  rather than the snapshot this request lost against.
+- **Validation**: `migrateSaveDocument`/`validateSaveDocument` are imported
+  from `supabase/functions/_shared/generated/core-bundle.js` — the same Step
+  6 bundle, never reimplemented for Deno. A thrown `SaveDocumentError` maps
+  to `422 save_invalid`; a `schemaVersion` other than
+  `CURRENT_SAVE_SCHEMA_VERSION` maps to `422 schema_unsupported` before
+  validation even runs. The body is capped at 64 KB: a `Content-Length`
+  pre-check refuses an oversized body before it is even buffered (a
+  2026-09-12 review finding — the post-read check alone contradicted its own
+  "refuse cheaply" comment, since `request.text()` had already read the
+  whole body into memory by the time it ran), and the same post-read check
+  still runs afterward as the authoritative one for a chunked body with no
+  `Content-Length` header, or one that understates it.
+- **Download** (`GET`): `200 {revision, receivedAt, document}` when a row
+  exists, `204` with no body otherwise — "the normal first-sign-in path, not
+  an error."
+
+`src/persistence/guestUpgradeReconciliation.ts` adds two pure functions,
+reused by both Step 17's boot reconcile and Step 13's collision resolution:
+
+- `hasAnyProgress(document, config)` — true when any of the same
+  "progress vector" fields §7.1 of the protocol defines (per floor:
+  `isUnlocked`, `mineShaftLevel`, `totalExtracted`, `totalTransported`;
+  `elevator.level`; `warehouse.level`, `warehouse.totalGoldDelivered`) sits
+  above its configured starting value. Deliberately excludes `gold`, every
+  queue, `carriedMaterial`, and progress fractions — idle play alone moves
+  those from the very first tick, which would make "no progress" true for
+  only an instant.
+- `reconcileGuestUpgrade(local, remote, config)` → `'adopt-local'` (no
+  remote save, or remote has no progress), `'adopt-remote'` (local has no
+  progress), or `'ask'` (both have progress — a genuine fork), carrying each
+  candidate's document and last-played time per §7.3's display fields
+  (`local.lastPlayedMs` = `savedAtTimestampMs`; `remote.lastPlayedMs` =
+  the download's `receivedAt`).
+
+`src/platform/web/cloudSaveReconcile.ts`'s `reconcileCloudSaveAtBoot` is the
+boot-order half (§11): downloads via `downloadCloudSaveViaFetch`, reads the
+local document via the injected repository (treating no local record at all
+— a genuinely new device — as the same "no progress" baseline
+`createInitialGameState` produces, not as "nothing to compare"), runs the
+downloaded document through `validateSaveDocument` before using it at all —
+a 2026-09-12 review found the original code cast `body.document` straight to
+`SaveDocumentV1` with no migration, harmless only by luck until a schema 2
+exists to skip past — and applies `reconcileGuestUpgrade`'s decision.
+`'adopt-remote'` writes the cloud document into local storage and reloads
+the page; `'adopt-local'` and `'ask'` are no-ops from this module's own
+point of view — `'ask'` is deliberately left for Step 18 (or, in-session,
+for Step 13's DEV hook) to resolve, never silently written over.
+`src/main.ts` calls `triggerCloudSaveReconcile()` from the tail of both the
+guest and Telegram boot chains, once each resolves `signed-in` — a fourth
+independent consumer of `supabaseClientPromise`, with its own `.catch`,
+never on the boot-blocking path — passing the *lifecycle-safe*
+`repository` (`LifecycleSafeActiveSaveRepository`), not the raw
+`indexedRepository` it wraps: the same 2026-09-12 review found that passing
+the raw Dexie repository let the running `SavePersistenceCoordinator`'s own
+debounced flush land between this reconcile's `storeActiveSave` and
+`reload()` and silently revert the adopt — two writers racing one record,
+now both going through the wrapper the coordinator itself uses.
+
+`_shared/http.ts`'s `ALLOWED_ORIGINS` gained this repository's own Playwright
+preview ports (`4173` E2E, `4175` production smoke, `4176` server-e2e)
+alongside the existing `5173` dev-server pair: the reconcile's `fetch()` is
+the first call from outside `5173` this milestone makes, and
+`production-smoke.spec.ts`'s "no request fails" assertion caught both that
+gap and the test's own need to exclude this one documented, best-effort,
+sometimes-cancelled-by-teardown request from its otherwise-unchanged check.
+
+### Guest linking and the identity collision (Step 13)
+
+Three of the step's required flows fall out of what Steps 10/12/17 already
+do: a fresh identity link keeps the same `auth.users` id (Steps 10/12), and
+"no progress, never asked" plus the silent no-conflict cases are exactly
+`reconcileGuestUpgrade`'s existing behaviour (Step 17). What Step 13 adds is
+the missing piece — detecting and resolving the one collision Google's
+`linkIdentity` can produce that `reconcileGuestUpgrade` alone cannot get the
+caller into:
+
+- `detectGoogleIdentityCollision` (`src/platform/web/googleSignIn.ts`) calls
+  `client.auth.initialize()` — the SDK's own memoized boot-URL parser,
+  already triggered once by `ensureGuestSession`'s `getSession()`, so a
+  second call is free and returns the cached result — and reads
+  `error.details?.code === 'identity_already_exists'`, mirrored from the
+  SDK's own internal check (`GoTrueClient._initialize`) since no
+  higher-level named constant exists for it.
+- `beginGoogleAccountSwitch` always calls `signInWithOAuth`, never
+  `linkIdentity`, regardless of whether a guest session already exists:
+  GoTrue never reveals *which* account a colliding identity belongs to, so
+  there is no way to become that account except a second, full Google
+  consent round trip. The still-present local IndexedDB save is untouched by
+  the session switch — `DexieActiveSaveRepository` keys one fixed record,
+  not per-user — so it remains exactly what the next boot's
+  `reconcileCloudSaveAtBoot` compares against the newly-authenticated
+  account's cloud save.
+- Telegram needs neither addition: it never attempts `linkIdentity` at all
+  (`src/main.ts` calls `signInWithTelegram` *instead of* the guest
+  bootstrap), so every Telegram sign-in already runs through Step 17's
+  reconcile unconditionally.
+
+No production UI exists yet, matching Steps 8/10/12: `main.ts`'s existing
+`DEV`-only `window.catMineIdleAccount` hook gained `beginGoogleAccountSwitch`
+alongside `beginGoogleSignIn`, and a `data-google-identity-collision`
+diagnostic published from `detectGoogleIdentityCollision`.
+
 ## Cat Role Asset Catalog Contract
 
 `art-source/cat-role-catalog/` is the source-of-truth workspace for role-based

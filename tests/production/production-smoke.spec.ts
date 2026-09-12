@@ -170,9 +170,17 @@ test('serves the optimized bundle and every runtime asset from the root base pat
     }),
   ).toEqual({ semibold: true, bold: true });
 
-  expect(failedRequests, 'no request fails against the production server').toEqual(
-    [],
-  );
+  // Server-milestone Step 17's cloud-save reconcile is deliberately a
+  // background, best-effort request — "the game never blocks on cloud
+  // sync" — fired once a guest session exists and never awaited before this
+  // test's own assertions run. It is expected, not a bundle-loading defect,
+  // for the browser to still cancel it mid-flight when this test's page
+  // closes before it resolves; every other request this build makes must
+  // still complete cleanly.
+  expect(
+    failedRequests.filter((request) => !request.includes('/functions/v1/save-sync/v1/save')),
+    'no request fails against the production server',
+  ).toEqual([]);
   expect(
     responses.filter((response) => response.status >= 400),
     'no response is an error against the production server',

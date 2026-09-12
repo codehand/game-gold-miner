@@ -272,11 +272,13 @@ describe('every Edge Function', () => {
   // `telegram-sign-in` (Step 12) is the first function that legitimately
   // needs the service-role key: minting a session for a caller who isn't
   // signed in yet requires `admin.generateLink`, which only the service
-  // role can call. It is excluded from the blanket check below and given
-  // its own positive assertion instead, exactly as this test's own prior
-  // comment anticipated — a future function needing it must add its own
-  // exception here too, not find this check silently no longer covering it.
-  const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = ['telegram-sign-in'];
+  // role can call. `save-sync` (Step 16) is the second: `saves` denies every
+  // client write (Step 15), so accepting an upload needs it too. Both are
+  // excluded from the blanket check below and given their own positive
+  // assertion instead, exactly as this test's own prior comment
+  // anticipated — a future function needing it must add its own exception
+  // here too, not find this check silently no longer covering it.
+  const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = ['telegram-sign-in', 'save-sync'];
 
   it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(
     '%s never reads the service-role key',
@@ -284,10 +286,7 @@ describe('every Edge Function', () => {
       // True of every other function today: the health and portability
       // routes answer unauthenticated callers, and whoami-check verifies
       // identity through the caller's own token. None needs the credential
-      // that bypasses row-level security and is, from Step 15, the only
-      // writer of `saves`. Step 16's save upload will be the next function
-      // that legitimately needs it — that step must add its own exception
-      // here too.
+      // that bypasses row-level security.
       const source = readProjectFile(`supabase/functions/${name}/index.ts`);
       expect(source).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
       expect(source).not.toContain('SECRET_KEY');
@@ -298,6 +297,19 @@ describe('every Edge Function', () => {
     const source = readProjectFile('supabase/functions/telegram-sign-in/index.ts');
     expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
     expect(source).toContain('admin.generateLink');
+  });
+
+  it('save-sync does read the service-role key, and only to write saves through a compare-and-swap', () => {
+    const source = readProjectFile('supabase/functions/save-sync/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    // A 2026-09-12 review found a blind `upsert` here let two concurrent
+    // uploads both win, silently discarding one and breaking §5's monotonic
+    // revision guarantee — fixed with an atomic insert (first write) or a
+    // conditional `update ... where revision = ?` (subsequent write),
+    // neither of which is a plain `upsert` any more.
+    expect(source).not.toContain('.upsert(');
+    expect(source).toContain("admin.from('saves').insert(");
+    expect(source).toMatch(/admin\s*\.from\('saves'\)\s*\.update\(/);
   });
 });
 
@@ -538,6 +550,48 @@ describe('the Step 10 DEV account hook in src/main.ts', () => {
     // to authorize) to `127.0.0.1:5173` mid-flow, stranding their pre-link
     // session in the first origin's storage.
     expect(hookBootstrap).toContain('window.location.origin');
+  });
+});
+
+describe('the Step 13 Google identity-collision hook in src/main.ts', () => {
+  // Same DEV-only-hook block Step 10 established, extended rather than
+  // duplicated: `beginGoogleAccountSwitch` and the collision diagnostic are
+  // both set from the same `client` already in scope there.
+  const mainSource = readProjectFile('src/main.ts');
+  const hookBootstrap = extractMainBlock(
+    mainSource,
+    'if (import.meta.env.DEV) {',
+    "\n/**\n * Drops the live access token",
+  );
+
+  it('exposes beginGoogleAccountSwitch alongside beginGoogleSignIn', () => {
+    expect(hookBootstrap).toContain('beginGoogleAccountSwitch: () =>');
+    expect(hookBootstrap).toContain('beginGoogleAccountSwitch(client?.auth ?? null, window.location.origin)');
+  });
+
+  it('publishes the collision diagnostic from detectGoogleIdentityCollision', () => {
+    expect(hookBootstrap).toContain('app.dataset.googleIdentityCollision');
+    expect(hookBootstrap).toContain('detectGoogleIdentityCollision(client?.auth ?? null)');
+  });
+});
+
+describe('the Step 17 cloud-save reconcile trigger in src/main.ts', () => {
+  const mainSource = readProjectFile('src/main.ts');
+
+  it('is triggered from both sign-in chains, only once each resolves signed-in', () => {
+    const telegramBootstrap = extractMainBlock(mainSource, 'if (telegramInitData !== null) {', '} else {');
+    const guestBootstrap = extractMainBlock(mainSource, '} else {', "\n/**\n * Server-milestone Step 10");
+
+    expect(telegramBootstrap).toMatch(/status === 'signed-in'\)\s*\{\s*triggerCloudSaveReconcile\(\);/);
+    expect(guestBootstrap).toMatch(/status === 'signed-in'\)\s*\{\s*triggerCloudSaveReconcile\(\);/);
+  });
+
+  it('catches a rejected reconcile instead of leaving it unhandled', () => {
+    const trigger = mainSource.slice(mainSource.indexOf('function triggerCloudSaveReconcile'));
+    const body = trigger.slice(0, trigger.indexOf('\n}\n') + 3);
+
+    expect(body).toContain('.catch(');
+    expect(body).toContain('void runCloudSaveReconcile()');
   });
 });
 

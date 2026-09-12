@@ -55,6 +55,16 @@ export interface GoogleAuthClient {
     options?: { redirectTo?: string };
   }): Promise<{ data: unknown; error: unknown }>;
   signOut(): Promise<{ error: unknown }>;
+  /**
+   * Server-milestone Step 13: the SDK's own `initializePromise`, memoized on
+   * the client instance. Calling it again after `getSession()`/boot has
+   * already triggered it costs nothing — it returns the same cached result —
+   * which is exactly how the collision below is read: whatever the *first*
+   * call already resolved, reflecting whether this page load's URL carried
+   * `error_code=identity_already_exists` from a failed `linkIdentity`
+   * redirect.
+   */
+  initialize(): Promise<{ error: unknown }>;
 }
 
 export type GoogleSignInResult =
@@ -134,6 +144,75 @@ export async function signOutOfSession(
     }
 
     return { status: 'signed-out' };
+  } catch (error) {
+    return { status: 'error', reason: describeError(error) };
+  }
+}
+
+/**
+ * Server-milestone Step 13: `identity_already_exists` is the one collision
+ * `beginGoogleSignIn` cannot resolve itself — it can only be discovered
+ * *after* the player has picked an account on Google's own page and the
+ * browser has returned, a fresh page load long after that function's promise
+ * already settled `redirecting`. `client.auth.initialize()` is the SDK's own
+ * mechanism for surfacing exactly this: it parses the return URL's
+ * `error_code`/`error_description` and resolves `{ error }` without ever
+ * throwing or clearing the existing (still-guest) session — mirrored here
+ * from the SDK's own internal check (`error.details?.code`), since there is
+ * no higher-level named export for this constant. Never throws.
+ */
+export async function detectGoogleIdentityCollision(
+  auth: GoogleAuthClient | null,
+): Promise<boolean> {
+  if (auth === null) {
+    return false;
+  }
+
+  try {
+    const { error } = await auth.initialize();
+    const details = (error as { details?: { code?: unknown } } | null)?.details;
+
+    return details?.code === 'identity_already_exists';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Server-milestone Step 13: the other half of resolving a collision — once
+ * the player chooses "sign in as that account instead," this authenticates
+ * as whichever account the Google identity actually belongs to, abandoning
+ * the current guest session. Unlike `beginGoogleSignIn`, this always calls
+ * `signInWithOAuth` (never `linkIdentity`), regardless of whether a session
+ * already exists: attempting to link again would only reproduce the same
+ * collision. A second, full Google consent round trip is unavoidable — GoTrue
+ * never reveals *which* account the identity belongs to, so there is no
+ * shortcut that skips re-authenticating as it. The local IndexedDB save is
+ * untouched by this call (or by the session change it causes): it is keyed
+ * to the device, not the account, which is exactly what lets the reconcile
+ * that runs on the next boot (Step 17) compare it against whatever the
+ * regained session's cloud save turns out to hold.
+ */
+export async function beginGoogleAccountSwitch(
+  auth: GoogleAuthClient | null,
+  redirectTo?: string,
+): Promise<GoogleSignInResult> {
+  if (auth === null) {
+    return { status: 'unconfigured' };
+  }
+
+  try {
+    const credentials: { provider: 'google'; options?: { redirectTo: string } } =
+      redirectTo === undefined
+        ? { provider: 'google' }
+        : { provider: 'google', options: { redirectTo } };
+    const { error } = await auth.signInWithOAuth(credentials);
+
+    if (error) {
+      return { status: 'error', reason: describeError(error) };
+    }
+
+    return { status: 'redirecting' };
   } catch (error) {
     return { status: 'error', reason: describeError(error) };
   }

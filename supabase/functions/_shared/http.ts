@@ -31,10 +31,28 @@ export const JSON_HEADERS: Readonly<Record<string, string>> = {
  * here when it does, rather than widening this to a wildcard, which would
  * let any site call an authentication-minting endpoint on a visitor's
  * behalf.
+ *
+ * Server-milestone Step 17: `4173`/`4175`/`4176` are this repository's own
+ * Playwright preview ports (E2E, production-bundle smoke, server-e2e — see
+ * `playwright*.config.ts`), not a third-party origin — the same dev-server
+ * reasoning that already lists `5173` twice (`127.0.0.1` and `localhost`).
+ * Needed once `main.ts`'s cloud-save reconcile started making the first
+ * `fetch()` this milestone ever makes from outside the `5173` dev server:
+ * without it, `production-smoke.spec.ts`'s bundle (served on `4175`) had its
+ * `GET /v1/save` silently blocked by this same allow-list, the exact
+ * "unrecognized origin gets no `Access-Control-Allow-Origin`" behavior this
+ * function's own doc comment describes below. All three are loopback-only
+ * and carry no real exposure, but they are test-only origins, not production
+ * ones: drop them from this list once a real deployed origin is added above,
+ * rather than letting them linger as harmless-looking cruft in a shipped
+ * allow-list.
  */
 const ALLOWED_ORIGINS: ReadonlySet<string> = new Set([
   'http://127.0.0.1:5173',
   'http://localhost:5173',
+  'http://127.0.0.1:4173',
+  'http://127.0.0.1:4175',
+  'http://127.0.0.1:4176',
 ]);
 
 /**

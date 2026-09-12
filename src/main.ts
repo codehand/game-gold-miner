@@ -10,13 +10,18 @@ import {
   SavePersistenceCoordinator,
 } from './persistence';
 import {
+  beginGoogleAccountSwitch,
   beginGoogleSignIn,
   bindSaveLifecycle,
   createSupabaseClient,
+  detectGoogleIdentityCollision,
+  downloadCloudSaveViaFetch,
   ensureGuestSession,
   LifecycleSafeActiveSaveRepository,
+  reconcileCloudSaveAtBoot,
   signOutOfSession,
   WebLifecycleSaveJournal,
+  type CloudSaveReconcileOutcome,
   type GoogleSignInResult,
   type GuestSessionResult,
   type SignOutResult,
@@ -34,6 +39,8 @@ declare global {
     /** Server-milestone Step 10, DEV-only — see the block below that sets it. */
     catMineIdleAccount?: {
       beginGoogleSignIn: () => Promise<GoogleSignInResult>;
+      /** Server-milestone Step 13: resolves an identity_already_exists collision by signing in as the account that owns it. */
+      beginGoogleAccountSwitch: () => Promise<GoogleSignInResult>;
       signOut: () => Promise<SignOutResult>;
     };
   }
@@ -94,6 +101,13 @@ if (telegramInitData !== null) {
       if (import.meta.env.DEV) {
         app.dataset.telegramSignIn = JSON.stringify(result);
       }
+      // Server-milestone Step 17: Telegram sign-in never links — it always
+      // replaces whatever guest session (and its local progress) preceded
+      // it, so this is exactly the "does the cloud already hold something
+      // different" case the boot-order reconcile exists for.
+      if (result.status === 'signed-in') {
+        triggerCloudSaveReconcile();
+      }
     });
 } else {
   void supabaseClientPromise
@@ -115,6 +129,11 @@ if (telegramInitData !== null) {
     .then((result) => {
       if (import.meta.env.DEV) {
         app.dataset.guestSession = JSON.stringify(toPublicGuestSessionDiagnostic(result));
+      }
+      // Server-milestone Step 17: reconciles once a session exists, same
+      // reasoning as the Telegram branch above.
+      if (result.status === 'signed-in') {
+        triggerCloudSaveReconcile();
       }
     });
 }
@@ -138,12 +157,24 @@ if (telegramInitData !== null) {
  */
 if (import.meta.env.DEV) {
   void supabaseClientPromise
-    .then((client) => {
+    .then(async (client) => {
       window.catMineIdleAccount = {
         beginGoogleSignIn: () =>
           beginGoogleSignIn(client?.auth ?? null, window.location.origin),
+        beginGoogleAccountSwitch: () =>
+          beginGoogleAccountSwitch(client?.auth ?? null, window.location.origin),
         signOut: () => signOutOfSession(client?.auth ?? null),
       };
+      // Server-milestone Step 13: whether this page load's return URL
+      // carried `error_code=identity_already_exists` — a `linkIdentity`
+      // attempt that collided with an existing account. No production UI
+      // reads this yet (same reason the hook above is DEV-only); it exists
+      // so the guided manual verification (and, later, a real E2E suite) can
+      // observe the collision and then call `beginGoogleAccountSwitch()` to
+      // resolve it.
+      app.dataset.googleIdentityCollision = String(
+        await detectGoogleIdentityCollision(client?.auth ?? null),
+      );
     })
     // A second, independent consumer of `supabaseClientPromise` needs its own
     // handler: the `.catch` on the guest-session chain above only settles
@@ -166,6 +197,61 @@ function toPublicGuestSessionDiagnostic(result: GuestSessionResult): unknown {
 }
 
 const indexedRepository = new DexieActiveSaveRepository();
+
+/**
+ * Server-milestone Step 17: §11's boot-order reconcile — "In the background,
+ * once a session exists, `GET /v1/save`. Reconcile through §7." Called from
+ * the tail of whichever sign-in chain above actually ran, only once that
+ * chain resolves `signed-in`, so `client.auth.getSession()` below reliably
+ * reflects the new session rather than racing it. Re-reading the
+ * already-resolved `supabaseClientPromise` costs nothing extra — a fourth
+ * independent consumer, with its own `.catch` for the same reason the three
+ * chains above each need one.
+ *
+ * Deliberately narrower than the full §7 dominance rule (Step 18's job):
+ * `reconcileCloudSaveAtBoot` only ever acts silently when one side has no
+ * progress at all, and leaves local completely untouched — nothing written,
+ * nothing shown — the moment both sides hold real progress. Never awaited
+ * before the first frame; `startApplication()` below does not depend on it.
+ */
+function triggerCloudSaveReconcile(): void {
+  void runCloudSaveReconcile()
+    .catch(
+      (error: unknown): CloudSaveReconcileOutcome => ({
+        kind: 'error',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    .then((outcome) => {
+      if (import.meta.env.DEV) {
+        app.dataset.cloudSaveReconcile = JSON.stringify(outcome);
+      }
+    });
+}
+
+async function runCloudSaveReconcile(): Promise<CloudSaveReconcileOutcome> {
+  const client = await supabaseClientPromise;
+  const accessToken = client === null ? null : (await client.auth.getSession()).data.session?.access_token ?? null;
+
+  // `repository` (the `LifecycleSafeActiveSaveRepository` below), not the
+  // raw `indexedRepository` it wraps: the running `SavePersistenceCoordinator`
+  // writes through `repository`, and a debounced flush landing between this
+  // reconcile's own `storeActiveSave` and `reload()` would otherwise revert
+  // the adopt with no signal — two writers racing one Dexie record. Routing
+  // through the same wrapper the coordinator uses keeps the lifecycle
+  // journal in sync with whichever one writes last, rather than sidestepping
+  // it. `repository` is declared further down this file; safe to reference
+  // here because this function is only ever called after that assignment
+  // has already run, never during module evaluation itself.
+  return reconcileCloudSaveAtBoot(accessToken, Date.now(), {
+    repository,
+    download: (token) =>
+      downloadCloudSaveViaFetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-sync/v1/save`, token),
+    config: BASE_GAME_BALANCE,
+    reload: () => window.location.reload(),
+  });
+}
+
 const lifecycleJournal = new WebLifecycleSaveJournal(
   getAvailableLocalStorage(),
   BASE_GAME_BALANCE,

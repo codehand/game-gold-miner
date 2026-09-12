@@ -39,3 +39,9 @@ export {
   type SerializedMineFloorState,
   type SerializedWarehouseState,
 } from './saveSchema';
+export {
+  hasAnyProgress,
+  reconcileGuestUpgrade,
+  type GuestUpgradeCandidate,
+  type GuestUpgradeDecision,
+} from './guestUpgradeReconciliation';

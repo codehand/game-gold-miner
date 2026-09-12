@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  beginGoogleAccountSwitch,
   beginGoogleSignIn,
+  detectGoogleIdentityCollision,
   signOutOfSession,
   type GoogleAuthClient,
 } from '../../src/platform/web';
@@ -16,6 +18,7 @@ function fakeAuth(overrides: Partial<GoogleAuthClient> = {}): GoogleAuthClient {
     linkIdentity: vi.fn().mockResolvedValue(OAUTH_RESPONSE),
     signInWithOAuth: vi.fn().mockResolvedValue(OAUTH_RESPONSE),
     signOut: vi.fn().mockResolvedValue({ error: null }),
+    initialize: vi.fn().mockResolvedValue({ error: null }),
     ...overrides,
   };
 }
@@ -84,7 +87,7 @@ describe('beginGoogleSignIn', () => {
   // after this function's promise has already resolved `redirecting`. It
   // arrives as `error_code=identity_already_exists` on the *return* URL,
   // parsed by the Supabase client's own session-detection at that next page
-  // load — nothing `src/` reads yet, which is exactly what Step 13 must add.
+  // load — read by `detectGoogleIdentityCollision` below, Step 13's addition.
   it('resolves error, never throws, when linkIdentity\'s pre-redirect request itself fails', async () => {
     const auth = fakeAuth({
       getSession: vi.fn().mockResolvedValue({ data: { session: EXISTING_SESSION }, error: null }),
@@ -140,5 +143,94 @@ describe('signOutOfSession', () => {
     });
 
     await expect(signOutOfSession(auth)).resolves.toEqual({ status: 'error', reason: 'offline' });
+  });
+});
+
+describe('detectGoogleIdentityCollision', () => {
+  it('resolves false and calls nothing when the client is null', async () => {
+    await expect(detectGoogleIdentityCollision(null)).resolves.toBe(false);
+  });
+
+  it('resolves false when initialize reports no error (an ordinary boot, or a successful link)', async () => {
+    const auth = fakeAuth();
+
+    await expect(detectGoogleIdentityCollision(auth)).resolves.toBe(false);
+  });
+
+  it('resolves true when the return URL carried error_code=identity_already_exists', async () => {
+    const auth = fakeAuth({
+      initialize: vi.fn().mockResolvedValue({
+        error: { message: 'Identity is already linked to another user.', details: { code: 'identity_already_exists' } },
+      }),
+    });
+
+    await expect(detectGoogleIdentityCollision(auth)).resolves.toBe(true);
+  });
+
+  it('resolves false for an unrelated initialize error, rather than treating every error as a collision', async () => {
+    const auth = fakeAuth({
+      initialize: vi.fn().mockResolvedValue({
+        error: { message: 'Reused magic link.', details: { code: 'identity_not_found' } },
+      }),
+    });
+
+    await expect(detectGoogleIdentityCollision(auth)).resolves.toBe(false);
+  });
+
+  it('resolves false, never throws, when initialize rejects', async () => {
+    const auth = fakeAuth({
+      initialize: vi.fn().mockRejectedValue(new Error('offline')),
+    });
+
+    await expect(detectGoogleIdentityCollision(auth)).resolves.toBe(false);
+  });
+});
+
+describe('beginGoogleAccountSwitch', () => {
+  it('resolves unconfigured and calls nothing when the client is null', async () => {
+    await expect(beginGoogleAccountSwitch(null)).resolves.toEqual({ status: 'unconfigured' });
+  });
+
+  it('always calls signInWithOAuth, never linkIdentity, even though a guest session exists', async () => {
+    const auth = fakeAuth({
+      getSession: vi.fn().mockResolvedValue({ data: { session: EXISTING_SESSION }, error: null }),
+    });
+
+    await expect(beginGoogleAccountSwitch(auth, REDIRECT_ORIGIN)).resolves.toEqual({ status: 'redirecting' });
+
+    expect(auth.signInWithOAuth).toHaveBeenCalledExactlyOnceWith({
+      provider: 'google',
+      options: { redirectTo: REDIRECT_ORIGIN },
+    });
+    expect(auth.linkIdentity).not.toHaveBeenCalled();
+    // Never even checks for an existing session — attempting to link again
+    // would only reproduce the exact collision this function exists to
+    // resolve.
+    expect(auth.getSession).not.toHaveBeenCalled();
+  });
+
+  it('omits the options key entirely when no redirectTo is given', async () => {
+    const auth = fakeAuth();
+
+    await beginGoogleAccountSwitch(auth);
+
+    const [args] = vi.mocked(auth.signInWithOAuth).mock.calls[0];
+    expect(Object.keys(args)).toEqual(['provider']);
+  });
+
+  it('resolves error, never throws, when signInWithOAuth fails', async () => {
+    const auth = fakeAuth({
+      signInWithOAuth: vi.fn().mockResolvedValue({ data: null, error: { message: 'rate limited' } }),
+    });
+
+    await expect(beginGoogleAccountSwitch(auth)).resolves.toEqual({ status: 'error', reason: 'rate limited' });
+  });
+
+  it('resolves error, never throws, when a collaborator call rejects', async () => {
+    const auth = fakeAuth({
+      signInWithOAuth: vi.fn().mockRejectedValue(new Error('offline')),
+    });
+
+    await expect(beginGoogleAccountSwitch(auth)).resolves.toEqual({ status: 'error', reason: 'offline' });
   });
 });

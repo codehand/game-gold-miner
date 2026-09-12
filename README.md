@@ -12,8 +12,12 @@ required on any path; it boots, plays, and saves entirely in IndexedDB even with
 no network at all. A separate server milestone is under way in
 `memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
 `supabase/`, holds all six designed tables with row-level security, and its
-save-sync Edge Function currently serves nothing but a health check — nothing
-in `src/` reads or writes any of those tables yet. The one exception, since
+`save-sync` Edge Function now accepts a real upload and download
+(`PUT`/`GET /v1/save`), on top of its original health check — but nothing in
+this reaches a real player yet: every identity and cloud-save path (guest,
+Google, Telegram, the account-linking collision, the boot-time reconcile) is
+wired only through `import.meta.env.DEV`-only diagnostics and hooks, with no
+production UI. The one behavior every player already gets, since
 server-milestone Step 8, is a single non-blocking anonymous-auth call at boot
 (`src/platform/web/guestSession.ts`) that gives a first-time player a real
 session with no prompt and no wait; it is never awaited before the first
@@ -183,22 +187,28 @@ npm run supabase:stop
 Ports are the Supabase CLI defaults — API 54321, database 54322, Studio 54323,
 mail 54324 — and do not collide with the client's 5173, 4173, 4174, 4175, or 4176.
 
-`supabase/migrations/` holds two forward-only migrations: a bootstrap file that
-creates nothing (it only asserts the PostgreSQL 13+ premise the schema relies on
-for `gen_random_uuid()`), and one that lands all six designed tables —
+`supabase/migrations/` holds three forward-only migrations: a bootstrap file
+that creates nothing (it only asserts the PostgreSQL 13+ premise the schema
+relies on for `gen_random_uuid()`), one that lands all six designed tables —
 `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`,
 `entitlements` — with row-level security enabled and exactly the policies
-`memory-bank/architecture.md`'s RLS matrix names. `supabase/seed.sql` inserts
+`memory-bank/architecture.md`'s RLS matrix names, and one that adds the
+sign-up trigger that creates every `profiles` row. `supabase/seed.sql` inserts
 one local-only fixture guest (`auth.users` row plus its `profiles` row) after
 every `supabase db reset`, never applied to a deployed database.
 `.github/workflows/ci.yml` runs `npm run verify` and `npm run verify:server` as
 two required jobs on every push and pull request.
 
-The one save-sync endpoint that exists:
+The save-sync endpoints that exist — `/v1/health`, and `/v1/save` accepting a
+bearer token from a real signed-in session:
 
 ```bash
 curl http://127.0.0.1:54321/functions/v1/save-sync/v1/health
 # {"status":"ok","serverTime":"..."}
+
+curl http://127.0.0.1:54321/functions/v1/save-sync/v1/save \
+  -H "Authorization: Bearer <access token>"
+# 200 {"revision":1,"receivedAt":"...","document":{...}} or 204 with no body
 ```
 
 `src/core`, `src/config`, and `src/persistence/saveSchema.ts` run unmodified
