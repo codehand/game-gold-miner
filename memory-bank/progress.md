@@ -2,9 +2,237 @@
 
 ## Status Summary
 
-**Phase:** The base-game milestone is complete. All 37 implementation-plan steps are implemented and validated; the user validated Step 37 on 2026-09-08. No plan step remains open. Two non-blocking verification items are carried past the milestone: a physical mid-range Android Chrome pass and a human playtest of the 30-second-comprehension criterion. A server milestone is planned in `memory-bank/server-milestone-plan.md` (37 steps, Supabase, anonymous guest session plus recovery code, Google/Apple/Telegram identity, validate-on-save anti-cheat). Its Steps 1 through 8 are validated (Step 8 validated on 2026-09-10) and its Step 9 — profiles and row-level security, the second step of Phase 2 (Identity) — is implemented on 2026-09-10 and awaiting user validation; no step past Step 9 has started. The local Supabase stack holds all six designed tables with row-level security matching the documented matrix, landed by one migration and exercised by a seeded local-only fixture guest; no deployment exists, and no client code reads or writes any of those tables yet. Step 9 closed the one gap Step 5's own migration comment had left open: a second migration adds the `on_auth_user_created` trigger that creates every `profiles` row on sign-up, since the table's own RLS carries no insert policy at all — proven, not just asserted, by an integration test that signs in two real anonymous identities through live Supabase Auth and shows user A cannot select, insert into, update, or delete user B's row, mutation-verified by dropping the trigger live and watching five of the seven new tests fail by name. Step 6 proved that `src/core`, `src/config`, and the save-document boundary run unmodified inside a Deno Edge Function — bundled rather than imported raw, because Deno's module resolver does not extension-complete a relative specifier the way the client's bundler does (finding F10) — and reproduces a pinned ten-minute simulation byte-for-byte against the client. Step 7 established the test harness every later Edge Function step reuses: `deno test` runs pure-handler unit tests with zero permission flags, and a real Deno-authenticated integration suite proves the one thing those unit tests fake — Supabase Auth verification — against the live stack, using a formalized JWT-minting fixture for the seeded guest. Step 8 is the first step where `src/` itself talks to the network: a first-time player gets a real anonymous `auth.users` row from the first frame, through a non-blocking call that never delays boot and never throws, proven by a new Docker-dependent Playwright suite (`tests/server-e2e/`) that a real GoTrue is the only thing that can prove — two browsers really do receive two different identities. That plan also records device fingerprinting as a rejected identity mechanism, and records a base-game defect it does not itself fix: iOS Safari deletes all script-writable storage after seven days without interaction, so a lapsed player loses the entire local save today. Other post-milestone work — managers, boosts, gift drops, audio, final art — requires explicit authorization and has no plan yet.
+**Phase:** The base-game milestone is complete. All 37 implementation-plan steps are implemented and validated; the user validated Step 37 on 2026-09-08. No plan step remains open. Two non-blocking verification items are carried past the milestone: a physical mid-range Android Chrome pass and a human playtest of the 30-second-comprehension criterion. A server milestone is planned in `memory-bank/server-milestone-plan.md` (37 steps, Supabase, anonymous guest session plus recovery code, Google/Telegram identity — Apple was cut, see below — validate-on-save anti-cheat). Its Steps 1 through 8 are validated; Step 9 (profiles and row-level security) is implemented on 2026-09-10 and awaiting user validation, and the user directed work to proceed to Step 10 in the same session rather than pausing on that gate. **Step 10 — Google sign-in — is implemented on 2026-09-10, and its guided live-Google verification passed the same day; it awaits user validation. Step 11 — Apple sign-in — is cut, on 2026-09-11: Apple's web Sign in needs a paid Developer Program membership, a verified real domain, and a deployed HTTPS return URL with no `localhost` escape hatch, and the user chose not to acquire them, exercising the contingency `server-threat-model.md` finding F7 already recorded. Step 12 — Telegram sign-in — is implemented and fully verified, including a live integration proof against the real local stack, on 2026-09-11, on the user's explicit instruction; it awaits user validation, with the standing rule that Step 13 must not begin before that. Unlike Steps 10–11, Step 12 needed no real external account: Telegram's `initData` verification is self-contained HMAC-SHA256 that never contacts Telegram's servers, so hand-signed fixture vectors against the real local stack fully proved every one of the step's test assertions automatically. **A 2026-09-12 user review then found a critical pre-account-takeover vulnerability (finding F13) in the Telegram identity mapping, plus three smaller issues; all four are fixed, live-reproduced, and mutation-proven** — see the dedicated entry below.** `src/platform/web/googleSignIn.ts`'s `beginGoogleSignIn` links Google to the guest session Step 8 already establishes (keeping the same `auth.users` id) via `linkIdentity`, or signs in fresh via `signInWithOAuth` only when no session exists yet; both mirror `guestSession.ts`'s injected-collaborator, never-throws shape. `supabase/config.toml` gained `enable_manual_linking = true` and an `[auth.external.google]` block reading `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` from a project-root `.env` file — a Supabase-CLI-specific `env(...)` substitution quirk (it never reads `.env.local`) now documented in `.env.example` and `README.md`. This step's own proof — "keeps the same user id and progress; signing out and back in with Google returns the same account" — needed a real human completing Google's actual consent screen, which no local stack or CI runner can substitute for, so it was done as a guided manual verification using the `chrome-devtools` MCP tools against a real Google Cloud OAuth client the user created, the same kind of unautomatable external prerequisite Steps 11 (Apple Developer membership, a verified domain) and 12 (a Telegram Mini App host) already carry for themselves. It passed: a fresh anonymous session (`user.id = 1550ed44-853a-4859-aedf-4ecbed13f48f`) navigated to real `accounts.google.com`, the user completed Google's own login (never seen by the assistant), and returned holding the identical `user.id`, `isAnonymous` now `false`, one `google` identity, and the same `profiles` row (`created_at === updated_at` — Step 9's trigger never fired twice); signing out and calling `beginGoogleSignIn()` again — the `signInWithOAuth` branch, with no consent screen reappearing — returned the identical account. The local Supabase stack holds all six designed tables with row-level security matching the documented matrix, landed by one migration and exercised by a seeded local-only fixture guest; no deployment exists, and no client code reads or writes any of those tables yet. Step 9 closed the one gap Step 5's own migration comment had left open: a second migration adds the `on_auth_user_created` trigger that creates every `profiles` row on sign-up, since the table's own RLS carries no insert policy at all — proven, not just asserted, by an integration test that signs in two real anonymous identities through live Supabase Auth and shows user A cannot select, insert into, update, or delete user B's row, mutation-verified by dropping the trigger live and watching five of the seven new tests fail by name. Step 6 proved that `src/core`, `src/config`, and the save-document boundary run unmodified inside a Deno Edge Function — bundled rather than imported raw, because Deno's module resolver does not extension-complete a relative specifier the way the client's bundler does (finding F10) — and reproduces a pinned ten-minute simulation byte-for-byte against the client. Step 7 established the test harness every later Edge Function step reuses: `deno test` runs pure-handler unit tests with zero permission flags, and a real Deno-authenticated integration suite proves the one thing those unit tests fake — Supabase Auth verification — against the live stack, using a formalized JWT-minting fixture for the seeded guest. Step 8 is the first step where `src/` itself talks to the network: a first-time player gets a real anonymous `auth.users` row from the first frame, through a non-blocking call that never delays boot and never throws, proven by a new Docker-dependent Playwright suite (`tests/server-e2e/`) that a real GoTrue is the only thing that can prove — two browsers really do receive two different identities. That plan also records device fingerprinting as a rejected identity mechanism, and records a base-game defect it does not itself fix: iOS Safari deletes all script-writable storage after seven days without interaction, so a lapsed player loses the entire local save today. Other post-milestone work — managers, boosts, gift drops, audio, final art — requires explicit authorization and has no plan yet.
 
 ## Completed
+
+- Fixed a **critical** vulnerability in server-milestone Step 12 on
+  2026-09-12, found by user review, finding F13
+  (`memory-bank/server-threat-model.md`): `telegram-sign-in` maps a
+  Telegram user to `auth.users.email = telegram-<id>@telegram.invalid` and
+  relies on `admin.generateLink` to find-or-create that row, but
+  `[auth.email] enable_signup = true` (with `enable_confirmations = false`)
+  meant anyone who knows a Telegram id (public, enumerable) could
+  `POST /auth/v1/signup` with that exact email and a password of their own
+  choosing before the real user ever signed in — `generateLink` would then
+  hand the real user a session into the attacker's own, password-protected
+  account. Reproduced live end to end by the reviewer against the running
+  stack and independently reconfirmed by this agent before touching
+  anything: attacker signup → 200; real Telegram sign-in for that id → the
+  identical `auth.users` id; attacker password login afterward → still that
+  id. Fixed with `[auth.email] enable_signup = false` in
+  `supabase/config.toml` — nothing in this codebase calls
+  `signUp`/`signInWithPassword`, and `admin.generateLink`/`auth.verifyOtp`
+  are admin/OTP paths unaffected by the flag, confirmed live (the full
+  server test suite and the Telegram sign-in flow both still pass with it
+  set). `tests/server-integration/telegram-sign-in.integration.test.ts`
+  gained a test reproducing the exact attack against the live stack
+  (signup refused, legitimate sign-in still succeeds); a companion static
+  assertion in `tests/unit/server-stack.test.ts` needed a fix of its own
+  first — an initial lazy regex crossed past `[auth.email]` into the
+  unrelated, already-`false` `[auth.sms] enable_signup` line further down
+  `config.toml` and so passed vacuously against a mutated flag, caught by
+  mutation-testing the test itself before trusting it (a new
+  `extractTomlSection` helper scopes the match to one section correctly).
+- Fixed three smaller issues in the same review pass. Medium:
+  `scan-bundle-secrets.mjs` still missed `supabase/functions/.env` — the
+  most sensitive of the three env files it covers, holding the HMAC key
+  that signs every Telegram user's `initData` — fixed by merging it into
+  the same exact-value check as `.env`/`.env.local`. Minor:
+  `MintSessionResult`'s `error` variant carried a `reason` string nothing
+  ever read, removed; `verifyTelegramInitData`'s freshness check compared
+  `now - authDate` in one direction only, so a validly-signed but
+  future-dated payload was never flagged stale, fixed with `Math.abs`
+  (low severity — still needs the real bot token to exploit). Deliberately
+  not changed: the reviewer's suggestion that a wrong method should answer
+  `405`/`Allow` rather than `400 malformed_request` — `save-sync/index.ts`'s
+  own header comment already made 400 the deliberate, documented choice for
+  every function reusing the save-sync protocol's error vocabulary (which
+  `server-save-sync-protocol.md` §1 says identity endpoints do too), so
+  introducing `405` here would itself be the inconsistency.
+- All four fixes mutation-proven. `npm run verify:server` (49 Deno unit
+  tests, 21 integration tests, unchanged 3 server-e2e tests) and the full
+  client gate (442 unit tests, 51 E2E, build, secret scan, 10 production
+  smoke) both re-pass from another completely clean
+  `supabase stop`/`start`/`db reset` cycle.
+
+- Implemented server-milestone Step 12 on 2026-09-11: Telegram sign-in.
+  `supabase/functions/telegram-sign-in/index.ts`'s `verifyTelegramInitData`
+  implements Telegram's documented algorithm exactly (data-check-string
+  excludes `hash`/`signature`, sorted `key=value` pairs joined by `\n`;
+  `secret_key = HMAC_SHA256(key="WebAppData", data=botToken)`;
+  `computed = hex(HMAC_SHA256(key=secret_key, data=dataCheckString))` must
+  equal `hash`, constant-time compared; `auth_date` freshness defaults to
+  86400 s, a documented convention rather than a Telegram mandate) entirely
+  on `crypto.subtle`, so it runs unmodified on Deno. Session-minting uses
+  the confirmed community pattern for a provider Supabase Auth has no
+  first-class API for: `admin.generateLink({type:'magiclink', email})`
+  (creates `auth.users` if absent) returns `properties.hashed_token`; the
+  client calls `auth.verifyOtp({token_hash, type:'email'})` to complete a
+  real, GoTrue-tracked session. No schema change — a Telegram user maps to
+  the deterministic, RFC 2606-reserved placeholder email
+  `telegram-<id>@telegram.invalid`, so `generateLink` finds-or-creates
+  without a `profiles` column or migration, matching how Steps 8 and 10
+  also shipped with none. (This mapping is only safe with
+  `[auth.email] enable_signup = false` — see the critical fix recorded
+  above.)
+- `src/platform/telegram/telegramSignIn.ts`'s `readTelegramInitData()`
+  reads `window.Telegram.WebApp.initData` (never `initDataUnsafe`,
+  Telegram's own unverified client-side convenience parse) and resolves
+  `null` for every player today, since no Telegram Web App `<script>` tag
+  was added to `index.html` — the still-unbuilt Mini App host,
+  `server-threat-model.md` finding F1, deliberately separate, later work.
+  `src/main.ts` computes `readTelegramInitData()` once at boot, before
+  either identity chain, and calls `signInWithTelegram` **instead of**
+  `ensureGuestSession` when non-null — "Inside Telegram this replaces the
+  guest path entirely," the step's own words, not a linking flow the way
+  Google's is — so `supabaseClientPromise` now has three independent
+  consumers, each carrying its own `.catch` from the start.
+- This is the first function `src/` calls directly with `fetch()` —
+  finding F11's trigger (`server-threat-model.md`), actually tripped by
+  Step 12 rather than the guessed Step 16/17. `supabase/functions/_shared/http.ts`
+  gained a shared CORS policy (`corsHeaders`/`corsPreflightResponse`,
+  allow-listing the two known dev origins), recorded in
+  `server-save-sync-protocol.md` §14. Proving it against the real stack
+  surfaced finding F12: the local Kong gateway unconditionally overwrites
+  every Edge Function's `Access-Control-Allow-Origin` with `*` when the
+  request carries an `Origin` header, reproduced against `whoami-check`
+  (which sets no CORS header of its own) and against a deliberately
+  unlisted origin — correct and tested at the application layer, not what
+  a real local browser actually observes; a real deployment's behaviour is
+  unverified.
+- Step 12 evidence: unlike Steps 10–11, this step needed no real external
+  account, domain, or paid membership — Telegram's `initData` verification
+  never contacts Telegram's own servers, so every one of the step's test
+  assertions is provable with hand-signed fixture vectors. 48 Deno unit
+  tests (`verifyTelegramInitData` against valid/tampered/stale/wrong-token/
+  malformed vectors, `handleTelegramSignIn` against every response shape
+  with faked collaborators, and a defensive scan proving no response can
+  carry the bot token) plus 7 new integration tests against the real
+  deployed function: a valid, fresh, hand-signed `initData` mints a session
+  whose `verifyOtp()` exchange actually succeeds and whose email matches
+  the deterministic placeholder; a second sign-in for the same Telegram
+  user id resolves to the identical `auth.users` id; tampered, stale, and
+  wrong-bot-token payloads each answer 401 with no `tokenHash` and no bot
+  token anywhere in the response; the CORS preflight answers 204 with a
+  header a real browser accepts. `npm run verify:server` passes end to end
+  from a clean `supabase stop`/`start`/`db reset` (48 Deno tests, 3
+  migrations, 20 integration tests, 3 server-e2e tests); the client gate
+  passes unchanged (438 unit tests, 51 E2E, build, secret scan, 10
+  production smoke). A real, in-Telegram live pass (a free bot via
+  @BotFather plus a tunnel) remains optional, later, user-requested work —
+  the Mini App host finding F1 still names as unbuilt.
+
+- Cut server-milestone Step 11 (Apple sign-in) on 2026-09-11 rather than
+  implementing it. Sign in with Apple on the web has no local-development
+  path the way Google's does: it requires a paid Apple Developer Program
+  membership, a Services ID, a verified real domain (Apple checks ownership
+  by hosting a file on it), and a registered HTTPS return URL — Apple
+  accepts no `localhost`/`127.0.0.1` redirect at all. Offered the choice
+  between acquiring those, building the code/config to spec with live
+  verification deferred indefinitely, or cutting the step outright, the user
+  chose to cut it — exactly the contingency `server-threat-model.md`
+  finding F7 already recorded: "F7 cut Apple sign-in — Removes Step 11
+  whole, and USD 99/year from §7.1." No code, config, or test was written
+  for this step. Updated in the same change: `server-milestone-plan.md`'s
+  Recorded-decisions Identity row, its Step 11 status-table row (split out
+  of the former "11–37 Not started" block), its Definition of Done (which no
+  longer requires all 37 validations to pass, only every non-cut one, and
+  drops Apple from the guest-upgrade claim), and `server-threat-model.md`'s
+  F7 entry, its §7.1 budget line, its step-by-step trace row for Step 11,
+  and its "how to change a default" table — each now marked exercised.
+  Identity in this milestone is anonymous guest, Google, and Telegram; if
+  the membership and domain are acquired later, Step 11 is implemented
+  fresh against the pattern Step 10 already established, not resumed from
+  partial work, since none exists. Work proceeds to Step 12 (Telegram
+  sign-in) in the same session on the user's explicit instruction.
+
+- Implemented server-milestone Step 10 on 2026-09-10: Google sign-in.
+  `supabase/config.toml` flips `enable_manual_linking` to `true` and adds
+  `[auth.external.google]` reading `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`
+  through `env(...)` substitution — the Supabase CLI's own quirk of reading
+  only a project-root `.env` file, never `.env.local`, now documented in
+  `.env.example` and `README.md`. `src/platform/web/googleSignIn.ts`'s
+  `beginGoogleSignIn` calls `linkIdentity({provider: 'google'})` when a
+  session already exists — keeping the same `auth.users` id, the step's core
+  requirement — and `signInWithOAuth({provider: 'google'})` only when none
+  does; `signOutOfSession` wraps `signOut()`. Both mirror
+  `guestSession.ts`'s injected-`GoogleAuthClient`, never-throws contract, and
+  a rejected *pre-redirect* request (a misconfigured provider, rate
+  limiting) resolves to a typed `error` result rather than throwing. Google's
+  real "identity already linked to another user" conflict — Step 13's job —
+  cannot surface this way: GoTrue only discovers it after the player picks an
+  account on Google's own page and the browser returns with
+  `error_code=identity_already_exists` on the return URL, a fresh page load
+  nothing in `src/` reads yet.
+- Step 10 evidence: `tests/unit/google-sign-in.test.ts` proves the
+  link-vs-sign-in branch by which collaborator was and was not called and
+  that every error path resolves rather than throws; two new
+  `tests/unit/server-stack.test.ts` static assertions pin
+  `enable_manual_linking = true` and the `[auth.external.google]` block, and
+  its `.env.example` check gained the two new variable names. No production
+  UI exists yet — `HudView.ts`'s fixed HUD already covers the 360×640 canvas
+  edge-to-edge (gold left, warehouse queue centered, income right), so a
+  `DEV`-only `window.catMineIdleAccount` hook in `src/main.ts` exposes
+  `beginGoogleSignIn()`/`signOut()`, the same diagnostic pattern Step 8
+  established, rather than risking a DOM overlay colliding with existing HUD
+  content or a canvas click target; a real entry point is a later,
+  Phaser-rendered polish step. `npm run verify` passes end to end: lint, 422
+  unit tests, 51 Chromium E2E (one confirmed pre-existing parallel-worker
+  flake in `player-journey.spec.ts`, passes in isolation), strict build,
+  secret scan, 10 production smoke. Unlike Steps 8–9, this step's own test —
+  same user id and progress preserved, sign-out/in returns the same account
+  — needed a real human completing Google's actual consent screen, which no
+  local stack or CI runner can substitute for; that guided manual
+  verification, using a real Google Cloud OAuth client the user created and
+  the `chrome-devtools` MCP tools, passed on 2026-09-10: a fresh anonymous
+  session (`user.id = 1550ed44-853a-4859-aedf-4ecbed13f48f`) navigated to
+  real `accounts.google.com`, the user completed Google's own login (never
+  seen by the assistant), and returned holding the identical `user.id`,
+  `isAnonymous` now `false`, exactly one `google` identity, and the same
+  `profiles` row (`created_at === updated_at`, so the Step 9 trigger never
+  fired a second time). Signing out and calling `beginGoogleSignIn()` again
+  — the `signInWithOAuth` branch, with no consent screen reappearing —
+  returned the identical account. Not part of `npm run verify:server`, since
+  no CI runner can drive a real human through Google's consent screen.
+- A 2026-09-10 review of Step 10 found and fixed four issues, all
+  mutation-proven. The `DEV` account hook was a second, independent consumer
+  of `supabaseClientPromise` with no `.catch` of its own — the guest-session
+  chain's `.catch` settles only that chain's own derived promise — so a
+  rejected client promise reached an unhandled rejection a second time,
+  reintroducing the exact bug class a Step 8 review had already fixed once;
+  fixed with its own `.catch(() => {})`. `scripts/scan-bundle-secrets.mjs`
+  read only `.env.local`, so `GOOGLE_CLIENT_SECRET` — deliberately placed in
+  the separate `.env` file — had no exact-value guard, only the weaker
+  name-level one; fixed by merging `.env` into the same check, confirmed
+  against a real build/scan ("5 exact server-only value(s)" checked, up from
+  3, no leak). The claim that Google's "identity already linked to another
+  user" surfaces as this module's typed `error` result was wrong; corrected,
+  and then reproduced live rather than only reasoned about — reloading the
+  already-linked session and calling `beginGoogleSignIn()` again produced no
+  consent screen at all, only an immediate redirect back carrying
+  `error_code=identity_already_exists`, with the account untouched. Four
+  smaller cleanups: `describeError` deduplicated into
+  `src/platform/web/describeError.ts`; `GoogleAuthClient`'s unread session
+  `user` field narrowed to `unknown`; the `declare global` block moved out
+  from between two import statements in `src/main.ts`; and
+  `redirectTo: window.location.origin` added to both OAuth calls so the
+  return trip lands back on the origin that actually started it. Full client
+  gate (422 unit tests, 51 E2E, build, secret scan, 10 production smoke)
+  passes after the fixes.
+- A follow-up review found a fifth issue, inside the fourth fix's own test.
+  `beginGoogleSignIn` built `{ provider: 'google', options: undefined }` — the
+  `options` key present with an undefined value — while the accompanying
+  test's title claimed the code omitted the key entirely, and its assertion
+  (`toHaveBeenCalledExactlyOnceWith`) is itself undefined-tolerant, so it
+  passed under either shape and proved neither; confirmed with a standalone
+  Vitest probe before changing anything (a call of `{ provider: 'google' }`
+  alone satisfies an expectation of `{ provider: 'google', options: undefined }`).
+  Fixed on both sides: the credentials object now genuinely omits `options`
+  when no `redirectTo` is given, and the test reads `Object.keys()` off the
+  real mock call, which does distinguish "absent" from "present but
+  undefined." Mutation-proven in both directions; the full gate (422 unit
+  tests) is unchanged.
 
 - Implemented server-milestone Step 9 on 2026-09-10: profiles and row-level
   security. `supabase/migrations/20260910090000_profiles_signup_trigger.sql`

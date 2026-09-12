@@ -61,6 +61,26 @@ const parseEnvNames = (contents: string): string[] =>
     .filter((line) => line !== '' && !line.startsWith('#') && line.includes('='))
     .map((line) => line.slice(0, line.indexOf('=')).trim());
 
+/**
+ * Extracts one `[section]`'s own text from a TOML file, stopping at the
+ * next `[section]` header rather than the next occurrence of `endMarker`
+ * anywhere later in the file. A lazy regex like
+ * `/\[auth\.email\][\s\S]*?\nfoo = false\b/` would happily cross into a
+ * *later*, unrelated section (e.g. `[auth.sms]`) if that section also
+ * contains a line matching the tail pattern — which is exactly how an
+ * earlier version of the `enable_signup` test below passed vacuously
+ * against a mutated `[auth.email]` block, because `[auth.sms]` further
+ * down the file happens to default `enable_signup` to `false` too.
+ */
+function extractTomlSection(toml: string, sectionHeader: string): string {
+  const start = toml.indexOf(sectionHeader);
+  if (start === -1) {
+    throw new Error(`extractTomlSection: section not found: ${sectionHeader}`);
+  }
+  const nextSection = toml.indexOf('\n[', start + sectionHeader.length);
+  return nextSection === -1 ? toml.slice(start) : toml.slice(start, nextSection);
+}
+
 describe('local Supabase stack configuration', () => {
   const config = readProjectFile('supabase/config.toml');
 
@@ -102,6 +122,38 @@ describe('local Supabase stack configuration', () => {
       );
     },
   );
+
+  it('enables manual linking, without which Step 10 linkIdentity() is refused', () => {
+    // `linkIdentity()` is how a signed-in guest attaches Google while keeping
+    // the same `auth.users` id (`src/platform/web/googleSignIn.ts`); Supabase
+    // refuses it outright with "Manual linking is disabled" unless this flag
+    // is on.
+    expect(config).toMatch(/\nenable_manual_linking = true\b/);
+  });
+
+  it('configures the Google OAuth provider from environment substitution, never a literal secret', () => {
+    expect(config).toMatch(
+      /\[auth\.external\.google\]\nenabled = true\nclient_id = "env\(GOOGLE_CLIENT_ID\)"\nsecret = "env\(GOOGLE_CLIENT_SECRET\)"/,
+    );
+  });
+
+  it('disables public email signup, closing the Telegram placeholder-email pre-account-takeover', () => {
+    // Critical finding, server-milestone Step 12: `telegram-sign-in` maps a
+    // Telegram user to the deterministic `telegram-<id>@telegram.invalid`
+    // and relies on `admin.generateLink` to find-or-create that
+    // `auth.users` row. With public email signup open, an attacker who
+    // knows a Telegram id could `POST /auth/v1/signup` with that exact
+    // email and a password of their own choosing before the real user ever
+    // signs in — `enable_confirmations = false` lets it complete
+    // immediately, no delivery to the unreachable `.invalid` address
+    // required — and `generateLink` would then hand the real Telegram user
+    // a session into the attacker's own, password-protected account.
+    // Reproduced live against the local stack and fixed by this flag;
+    // nothing in this codebase uses `signUp`/`signInWithPassword`, so
+    // closing it costs nothing, and `admin.generateLink`/`verifyOtp` are
+    // admin/OTP paths this flag does not gate.
+    expect(extractTomlSection(config, '[auth.email]')).toMatch(/\nenable_signup = false\b/);
+  });
 
   it('holds at least one migration, every one named by ordering timestamp', () => {
     // Forward-only migrations apply in filename order, so the name is the
@@ -157,6 +209,9 @@ describe('secret handling', () => {
     expect(names).toContain('VITE_SUPABASE_URL');
     expect(names).toContain('VITE_SUPABASE_ANON_KEY');
     expect(names).toContain('SUPABASE_SERVICE_ROLE_KEY');
+    expect(names).toContain('GOOGLE_CLIENT_ID');
+    expect(names).toContain('GOOGLE_CLIENT_SECRET');
+    expect(names).toContain('TELEGRAM_BOT_TOKEN');
   });
 
   it('holds placeholders rather than credentials', () => {
@@ -214,17 +269,35 @@ describe('every Edge Function', () => {
     expect(functionNames.length).toBeGreaterThan(1);
   });
 
-  it.each(functionNames)('%s never reads the service-role key', (name) => {
-    // True of all three functions today: the health and portability routes
-    // answer unauthenticated callers, and whoami-check verifies identity
-    // through the caller's own token. None needs the credential that bypasses
-    // row-level security and is, from Step 15, the only writer of `saves`.
-    // Step 16's save upload will be the first function that legitimately
-    // needs it — that step must add its own exception here, not find this
-    // check silently no longer covering it.
-    const source = readProjectFile(`supabase/functions/${name}/index.ts`);
-    expect(source).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
-    expect(source).not.toContain('SECRET_KEY');
+  // `telegram-sign-in` (Step 12) is the first function that legitimately
+  // needs the service-role key: minting a session for a caller who isn't
+  // signed in yet requires `admin.generateLink`, which only the service
+  // role can call. It is excluded from the blanket check below and given
+  // its own positive assertion instead, exactly as this test's own prior
+  // comment anticipated — a future function needing it must add its own
+  // exception here too, not find this check silently no longer covering it.
+  const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = ['telegram-sign-in'];
+
+  it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(
+    '%s never reads the service-role key',
+    (name) => {
+      // True of every other function today: the health and portability
+      // routes answer unauthenticated callers, and whoami-check verifies
+      // identity through the caller's own token. None needs the credential
+      // that bypasses row-level security and is, from Step 15, the only
+      // writer of `saves`. Step 16's save upload will be the next function
+      // that legitimately needs it — that step must add its own exception
+      // here too.
+      const source = readProjectFile(`supabase/functions/${name}/index.ts`);
+      expect(source).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
+      expect(source).not.toContain('SECRET_KEY');
+    },
+  );
+
+  it('telegram-sign-in does read the service-role key, and only for admin.generateLink', () => {
+    const source = readProjectFile('supabase/functions/telegram-sign-in/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    expect(source).toContain('admin.generateLink');
   });
 });
 
@@ -345,6 +418,25 @@ describe('the Step 4 verification script', () => {
   });
 });
 
+/**
+ * Extracts one top-level boot block from `src/main.ts` by a pair of unique
+ * anchor strings, rather than by counting `void supabaseClientPromise`
+ * occurrences — Step 12 added a third independent consumer of that promise
+ * before the two existing ones, so an order-based index would silently pick
+ * up the wrong block instead of failing loudly.
+ */
+function extractMainBlock(source: string, startMarker: string, endMarker: string): string {
+  const start = source.indexOf(startMarker);
+  if (start === -1) {
+    throw new Error(`extractMainBlock: start marker not found: ${startMarker}`);
+  }
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  if (end === -1) {
+    throw new Error(`extractMainBlock: end marker not found after start: ${endMarker}`);
+  }
+  return source.slice(start, end);
+}
+
 describe('the guest-session bootstrap in src/main.ts', () => {
   // A static-source assertion, deliberately, and for the reason this file
   // already applies the pattern to `save-sync`/`whoami-check`: the contract
@@ -354,8 +446,11 @@ describe('the guest-session bootstrap in src/main.ts', () => {
   // solely against a *configured* build. CI has no `.env.local`, so that build
   // eliminates the SDK entirely and the spec skips. This runs on every push.
   const mainSource = readProjectFile('src/main.ts');
-  const chain = mainSource.slice(mainSource.indexOf('void supabaseClientPromise'));
-  const bootstrap = chain.slice(0, chain.indexOf('\n\nconst indexedRepository'));
+  // Step 12: this is now the `else` branch of "Telegram replaces the guest
+  // path entirely" — it still runs unconditionally in every test/build today,
+  // since `readTelegramInitData()` always resolves `null` with no Mini App
+  // host in existence.
+  const bootstrap = extractMainBlock(mainSource, '} else {', "\n/**\n * Server-milestone Step 10");
 
   it('is never awaited before the game boots', () => {
     // `void`, not `await`: identity resolution must not delay the first frame.
@@ -383,6 +478,66 @@ describe('the guest-session bootstrap in src/main.ts', () => {
     // storage did not already provide.
     expect(bootstrap).toContain('toPublicGuestSessionDiagnostic');
     expect(mainSource).not.toMatch(/dataset\.guestSession\s*=\s*JSON\.stringify\(result\)/);
+  });
+});
+
+describe('the Telegram sign-in bootstrap in src/main.ts (Step 12)', () => {
+  const mainSource = readProjectFile('src/main.ts');
+  const bootstrap = extractMainBlock(mainSource, 'if (telegramInitData !== null) {', '} else {');
+
+  it('is never awaited before the game boots', () => {
+    expect(bootstrap).toContain('void supabaseClientPromise');
+    expect(bootstrap).not.toContain('await supabaseClientPromise');
+  });
+
+  it('is a third, independent consumer of supabaseClientPromise, and catches its own rejection', () => {
+    // Same class of bug Step 10's own DEV hook review already found once:
+    // a `.catch` on one chain does not settle another chain derived from
+    // the same promise.
+    expect(bootstrap).toContain('.catch(');
+    expect(bootstrap.indexOf('.catch(')).toBeLessThan(bootstrap.lastIndexOf('.then('));
+  });
+
+  it('runs signInWithTelegram, not ensureGuestSession — Telegram replaces the guest path entirely', () => {
+    expect(bootstrap).toContain('signInWithTelegram(');
+    expect(bootstrap).not.toContain('ensureGuestSession(');
+  });
+
+  it('is gated on readTelegramInitData computed before either boot chain', () => {
+    const telegramCheck = mainSource.indexOf('if (telegramInitData !== null) {');
+    const computed = mainSource.indexOf('const telegramInitData = readTelegramInitData();');
+    expect(computed).toBeGreaterThan(-1);
+    expect(computed).toBeLessThan(telegramCheck);
+  });
+});
+
+describe('the Step 10 DEV account hook in src/main.ts', () => {
+  // `supabaseClientPromise` now has three independent consumers — the guest
+  // and Telegram boot chains above, and this one — and a `.catch` on one
+  // chain does not settle another's derived promise. A review of the first
+  // implementation found exactly that: this chain rejected with no handler
+  // of its own, reintroducing the same class of unhandled rejection Step 8
+  // had already fixed once, DEV-only.
+  const mainSource = readProjectFile('src/main.ts');
+  const hookBootstrap = extractMainBlock(
+    mainSource,
+    'if (import.meta.env.DEV) {',
+    "\n/**\n * Drops the live access token",
+  );
+
+  it('catches a rejected client promise instead of leaving it unhandled', () => {
+    expect(hookBootstrap).toContain('.catch(');
+    expect(hookBootstrap.indexOf('.catch(')).toBeGreaterThan(
+      hookBootstrap.indexOf('.then('),
+    );
+  });
+
+  it('passes the calling origin as redirectTo, so the OAuth return trip lands back where it started', () => {
+    // Without this, GoTrue falls back to `site_url`, silently bouncing a
+    // player who opened `localhost:5173` (an origin `.env.example` tells them
+    // to authorize) to `127.0.0.1:5173` mid-flow, stranding their pre-link
+    // session in the first origin's storage.
+    expect(hookBootstrap).toContain('window.location.origin');
   });
 });
 

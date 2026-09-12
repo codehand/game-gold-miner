@@ -249,10 +249,11 @@ Step 1 gate, and §10 says what that costs.
 **Status:** open — default recorded.
 **Default:** Prototype scale. Up to 10,000 registered accounts, 1,000 daily
 active players, and 20 save uploads per second at peak. Supabase Free for
-development and Pro (~USD 25/month) at launch, plus the Apple Developer Program
-at ~USD 99/year if Step 11 ships (finding F7), plus a domain registration if the
-§7.5 default is overturned. No dedicated infrastructure, no read replicas, no
-Redis.
+development and Pro (~USD 25/month) at launch. The Apple Developer Program
+line this budget once carried (~USD 99/year, finding F7) **no longer applies**:
+Step 11 was cut on 2026-09-11, exercising F7's own contingency. A domain
+registration would still apply if the §7.5 default is overturned. No dedicated
+infrastructure, no read replicas, no Redis.
 **Consequence:** Step 3 sizes indexes for ~10⁴ rows, not 10⁷. Step 36's load
 target is 50 concurrent uploads at p95 < 500 ms, including re-simulation of a
 two-hour absence.
@@ -290,6 +291,10 @@ prerequisite:** a minimal Telegram Mini App host that loads the existing bundle
 and exposes `initData`. That prerequisite is part of Step 12's cost and must be
 in its instructions before it starts.
 **If wrong:** Cutting Telegram removes Step 12 whole and changes nothing else.
+**Implemented 2026-09-11 without that prerequisite ever being built** — see
+F1's resolution note above: `initData` verification needs no real Telegram
+infrastructure to prove, only the Mini App host (still unbuilt) needs it,
+and the host is not required for Step 12's own test.
 
 ### 7.4 Whether real money is ever taken — Phases 4 and 6
 
@@ -382,6 +387,20 @@ separate list.
 
 **F1 — Step 12 presumes a Telegram Mini App host that does not exist.**
 Recorded in §7.3. Step 12 gains an explicit prerequisite.
+**Scope boundary held, 2026-09-11 — the host is still separate, later work,
+and Step 12 does not need it to satisfy its own test.** Unlike the other
+finding this same audit missed, `initData` verification is self-contained
+HMAC-SHA256 — the server never contacts Telegram to check it — so the
+"highest-risk" part of Step 12 (verify, reject tampered/stale/wrong-bot-token,
+mint a session) is provable end-to-end against the real local stack using
+hand-signed test vectors under a fixture bot token, with no real bot, no
+Mini App host, and no tunnel. `readTelegramInitData()`
+(`src/platform/telegram/telegramSignIn.ts`) always resolves `null` until a
+real host exists (no `<script src="https://telegram.org/js/telegram-web-app.js">`
+was added to `index.html` — that is the host itself, deliberately not built
+here), so this finding's prerequisite remains open and un-built, exactly as
+recorded; what changed is only that Step 12 no longer needs it resolved
+first, the way Step 11 needed §7.5 resolved before it could start at all.
 
 **F2 — Step 6 presumes `break_infinity.js` is consumable from Deno.**
 Every anti-cheat guarantee rests on the server running the identical `src/core`,
@@ -445,6 +464,84 @@ policy — allowed origins, headers, and an `OPTIONS` handler answering before
 the §4 envelope's method check runs — as part of its own instructions, and
 record the decision in the protocol document rather than each function
 inventing its own.
+**Triggered by Step 12, 2026-09-11, not Step 16/17 as guessed.** Telegram
+sign-in is the first function `src/` calls directly with `fetch()` — save
+upload/download still don't exist. `supabase/functions/_shared/http.ts`
+gained `corsHeaders`/`corsPreflightResponse`, allow-listing the two known
+dev origins; `memory-bank/server-save-sync-protocol.md` records the policy,
+per this finding's own instruction. See **F12** immediately below for what
+was discovered while proving it against the real local stack.
+
+**F12 — the local Kong gateway overrides every Edge Function's
+`Access-Control-Allow-Origin` with a wildcard, discovered empirically while
+integration-testing Step 12's CORS handling.** `corsHeaders()` reflects only
+the two allow-listed dev origins and omits the header entirely for anything
+else — proven correct in isolation by
+`supabase/functions/_shared/http.test.ts` and
+`telegram-sign-in/index.test.ts`, neither of which goes through the real
+network stack. Against the live local stack, though,
+`curl -X OPTIONS .../telegram-sign-in -H 'origin: https://totally-unlisted-origin.example'`
+still returns `Access-Control-Allow-Origin: *` — and so does the same
+request against `whoami-check`, a function that sets no CORS header of its
+own at all. The local Kong gateway (`Via: kong/2.8.1` on every response)
+unconditionally injects the wildcard onto any Edge Function response whose
+request carries an `Origin` header, running *after* the function and
+overwriting whatever specific-origin value it computed. This is Supabase
+CLI 2.117.0's own platform behavior, not a bug in this repository's code,
+and not something `supabase/config.toml` exposes a setting for.
+**Consequence:** the origin restriction `corsHeaders()` implements is
+real and tested at the application layer, but is not what a real browser
+calling the live local stack today actually observes — `*` is, regardless
+of which origin asks. `tests/server-integration/telegram-sign-in.integration.test.ts`
+asserts the header a browser would actually accept (`*` or the specific
+origin, either satisfies a real preflight check) rather than a claim this
+platform does not keep locally. **Open:** whether a real hosted Supabase
+deployment's Edge Function gateway has the same unconditional wildcard, or
+whether that is unique to `supabase start`'s bundled local Kong config, is
+unverified — no deployment exists yet (§7.5). Re-verify once one does,
+before relying on `corsHeaders()`'s own restriction as the sole defense for
+any future function where the calling origin actually matters.
+
+**F13 — CRITICAL, found in review 2026-09-12: the Telegram placeholder
+email is pre-account-stealable through public email signup.**
+`telegram-sign-in` maps a Telegram user to the deterministic
+`auth.users.email = telegram-<id>@telegram.invalid` and relies on
+`admin.generateLink` to find-or-create that row — but `supabase/config.toml`
+had `[auth.email] enable_signup = true` with `enable_confirmations = false`,
+and Telegram user ids are public/enumerable. An attacker who knows a
+Telegram id could `POST /auth/v1/signup` with that exact email and a
+password of their own choosing *before* the real user ever signs in;
+`enable_confirmations = false` lets that signup complete immediately, since
+nothing needs to be delivered to the unreachable `.invalid` address.
+`generateLink` would then find the attacker's row already sitting at that
+email and hand the real Telegram user a session into the attacker's own
+account — who keeps password access to it indefinitely. Reproduced live
+end to end against the running stack (attacker signup → 200; a real
+`telegram-sign-in` for that same Telegram id → the identical `auth.users`
+id; attacker password login afterward → still the same id) and again
+independently by this agent before touching anything. Once Step 15 lands
+`saves`, this is a persistent read/write compromise of that player's
+progress, not merely an account-naming collision.
+**Verification code was not the defect** — `verifyTelegramInitData` and the
+HMAC check are correct. The hole is that the `auth.users` namespace the
+verification code addresses (by deterministic email) is writable by a
+second, unauthenticated, unrelated path this milestone never intended as an
+identity mechanism.
+**Fixed:** `[auth.email] enable_signup = false`. Nothing in this codebase
+calls `signUp`/`signInWithPassword`, so this costs nothing; `admin.generateLink`
+and `auth.verifyOtp` are admin/OTP paths this flag does not gate — confirmed
+live (`test:server-unit`, `test:server-integration`, and `test:server-e2e`
+all still pass with it set, and the Telegram sign-in flow works unchanged).
+**Consequence for any future email-based feature:** re-derive this analysis
+before ever re-enabling `enable_signup` — the risk is specific to a
+provider that addresses `auth.users` by a *derivable* email another path can
+also reach, which email/password signup always can once it is open.
+**Not yet fully closed for every future case:** this fix protects the
+*current* deterministic mapping. A future feature minting deterministic
+placeholder identities under any other reachable namespace (a second
+provider, a different placeholder domain) must re-verify that no other
+signup path can write to that same namespace first, rather than assuming
+this one fix generalizes.
 
 **F3 — Step 23's upper bound has an unstated modelling rule.**
 Bounding cumulative counters requires knowing what the mine *could* have
@@ -506,6 +603,13 @@ roughly USD 99/year. Because it also needs the domain, **Step 11 cannot start
 before the §7.5 domain question is resolved**, while Step 10 (Google) can, since
 Google permits localhost redirect URIs in development. If the membership is not
 wanted, Step 11 is cut the same way Step 12 is (§7.3) and nothing else changes.
+**Exercised, 2026-09-11 — Step 11 is cut.** The user chose not to acquire the
+membership, Services ID, verified domain, or return URL this finding lists,
+so Step 11 has no code, config, or test and identity in this milestone is
+anonymous guest, Google, and Telegram. §7.1's budget line for this is removed
+in the same change. See `server-milestone-plan.md`'s Step 11 status row for
+the full record; un-cutting this step later is implementing it fresh against
+the pattern Step 10 already established, not resuming partial work.
 
 **F8 — Step 21's measurement needs a seven-day observation window.**
 Step 21 requires measuring the real iOS Safari behaviour rather than assuming
@@ -567,8 +671,8 @@ depends on nothing outside them.
 | 8 Anonymous guest session | Session lives in script-writable storage; game stays playable offline | §7.5, §4.5; Step 19's test |
 | 9 Profiles and RLS | Minimal profile, no email column | §7.8 |
 | 10 Google sign-in | Works without a domain via localhost redirect | §7.5 |
-| 11 Apple sign-in | Developer Program membership, Services ID, verified domain, cost | **F7** |
-| 12 Telegram sign-in | A Mini App host exists; whether it ships at all | **F1**; §7.3 |
+| 11 Apple sign-in | **Cut 2026-09-11** — Developer Program membership, Services ID, verified domain, cost | **F7**, exercised |
+| 12 Telegram sign-in | **Implemented 2026-09-11, critical fix 2026-09-12** — a Mini App host is not required for the step's own test, only for a live in-Telegram pass, still unbuilt | **F1** (resolved, host still open), **F12** (new), **F13** (critical, new — public email signup let the placeholder-email row be pre-stolen, fixed by `enable_signup = false`); §7.3 |
 | 13 Guest linking and collision | Neither save silently destroyed | §1, §6 |
 | 14 Recovery code | Sole survivor of storage loss; redemption throttling | Plan; Step 25 |
 | 15 Saves table | Client writes denied; Edge Function is the only writer | §6 |
@@ -608,7 +712,7 @@ Any default here may be overturned by the user at any time. The cost differs:
 | §7.4 real money is taken | **Scope change.** Raises the value of all of Phase 4, makes the §4.3 ordering gap unacceptable, and adds obligations absent from this plan. |
 | §7.5 a domain becomes available | Revisit the Step 2 cookie decision **before Step 8 ships**. After guests hold sessions it is a migration, not an edit. |
 | F5 add an XSS/CSP step | **Adds a step** to the plan. |
-| F7 cut Apple sign-in | Removes Step 11 whole, and USD 99/year from §7.1. |
+| F7 cut Apple sign-in | Removes Step 11 whole, and USD 99/year from §7.1. **Exercised 2026-09-11.** |
 
 When a default is overturned, update this document and the plan in the same
 change, exactly as `AGENTS.md` requires for a schema change.

@@ -17,6 +17,8 @@
  * mode resolves to `sign-in-failed` or `unconfigured` instead of rejecting.
  */
 
+import { describeError } from '../describeError';
+
 export interface GuestSessionUser {
   readonly id: string;
   readonly isAnonymous: boolean;
@@ -91,14 +93,4 @@ export async function ensureGuestSession(
   } catch (error) {
     return { status: 'sign-in-failed', reason: describeError(error) };
   }
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    return String((error as { message: unknown }).message);
-  }
-  return String(error);
 }

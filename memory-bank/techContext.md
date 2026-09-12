@@ -285,6 +285,47 @@ version change is authorized in this phase.
   `VITE_` variable set inlines both as `undefined` and lets the bundler
   eliminate the dynamic import. `tests/unit/server-stack.test.ts`'s
   static-source assertions on `src/main.ts` carry the CI gate instead.
+- Server-milestone Step 10 flips `enable_manual_linking` from `false` to
+  `true` in `supabase/config.toml` and adds `[auth.external.google]`
+  (`client_id = "env(GOOGLE_CLIENT_ID)"`, `secret = "env(GOOGLE_CLIENT_SECRET)"`).
+  Manual linking is required: Supabase refuses `linkIdentity()` with "Manual
+  linking is disabled" while it is `false`, and `linkIdentity()` — not
+  `signInWithOAuth()` — is what keeps the same `auth.users` id when a guest
+  session already exists, which is the step's core requirement.
+  `src/platform/web/googleSignIn.ts`'s `beginGoogleSignIn` picks between the
+  two based on whether `getSession()` already returns a session, mirroring
+  `guestSession.ts`'s injected-collaborator, never-throws shape, faked by
+  `tests/unit/google-sign-in.test.ts` rather than mocking the SDK;
+  `signOutOfSession` wraps `signOut()` the same way. Linking an identity
+  already claimed by a different account fails with "Identity is already
+  linked to another user" — surfaced as a typed `error` result and
+  deliberately left unresolved; that collision belongs to Step 13.
+- `config.toml`'s `env(...)` substitution is read by the Supabase CLI itself
+  and only auto-loads a file literally named `.env` at the project root, not
+  `.env.local` — `supabase start`/`stop`/`reset` have no flag to point it
+  elsewhere. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` therefore live in a
+  second, separate git-ignored `.env` file (already covered by `.gitignore`'s
+  existing `.env`/`.env.*` rules), documented in `.env.example` alongside the
+  exact Google Cloud Console setup — a Web application OAuth client with
+  `http://127.0.0.1:54321/auth/v1/callback` (the fixed local GoTrue callback)
+  as its redirect URI, needing no domain.
+- No production UI exists for Google sign-in yet: `HudView.ts`'s fixed HUD
+  already covers the 360×640 canvas edge-to-edge (gold left, warehouse queue
+  centered, income right), leaving no free region for a DOM overlay that
+  would not risk covering existing HUD content or an existing canvas click
+  target. `import.meta.env.DEV` gates a `window.catMineIdleAccount` hook in
+  `src/main.ts` exposing `beginGoogleSignIn()`/`signOut()`, the same
+  `app.dataset.guestSession`-style diagnostic pattern Step 8 established. A
+  real human completing Google's own consent screen is the one thing nothing
+  local can substitute for, so the step's "same user id, same account after
+  sign-out/in" proof is a guided manual verification rather than part of
+  `npm run verify:server` — the same kind of unautomatable external
+  prerequisite Steps 11 (Apple membership/domain) and 12 (Telegram bot host)
+  already record for themselves.
+- `tests/unit/server-stack.test.ts` gained two static-source assertions
+  pinning `enable_manual_linking = true` and the `[auth.external.google]`
+  block, plus `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in the "declares the
+  server-only names" `.env.example` check — no Docker needed for any of them.
 - `scripts/scan-bundle-secrets.mjs` (`npm run scan:secrets`) fails the build when
   `dist/` contains a JWT declaring `role=service_role`, an `sb_secret_*` key, an
   exact non-`VITE_` value from `.env.local` or the running stack, or any
@@ -781,9 +822,128 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: 401 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture (Step 6), and — Step 7 — `tests/unit/server-stack.test.ts`'s Retry-After assertion updated to read the response envelope from its new home in `_shared/http.ts`, its "never reads the service-role key" and `config.toml` `verify_jwt` checks generalized to `it.each` loops over every directory under `supabase/functions/` rather than hardcoding `save-sync` (a 2026-09-09 review finding). Step 8 added `tests/unit/guest-session.test.ts` (`createSupabaseClient`'s null-when-unconfigured behavior; `ensureGuestSession` reusing a session including a linked non-anonymous one, defaulting `isAnonymous` to `false` when absent, signing in fresh, and never throwing on a fake `GuestAuthClient`'s rejection) and flipped `tests/unit/server-stack.test.ts`'s two `@supabase/supabase-js` pin assertions from `devDependencies` to `dependencies`, plus added `test:server-e2e` to its documented-commands list (a 2026-09-09 Step 8 review finding). A third Step 8 review pass added `describe('the guest-session bootstrap in src/main.ts')` — three static-source assertions (the chain is never awaited before boot, a `.catch` sits between its two `.then`s, and the DEV diagnostic is published through `toPublicGuestSessionDiagnostic` rather than stringifying the raw result with its access token). They are static because `src/main.ts` is a module of top-level side effects no unit test can import, and because the only behavioural test of that contract — the production-smoke lazy-chunk spec — can run solely against a build with Supabase configuration inlined, which CI has not; the same static-beside-behavioural pattern a Step 7 review established for `resolveCallerViaSupabaseAuth`.
-- `npm run test:server-unit` (`deno test supabase/functions`): 19 tests pass across `_shared/http.test.ts`, `save-sync/index.test.ts`, and `whoami-check/index.test.ts` (Step 7), every one with zero `--allow-*` permission flags. Needs no Docker and no database.
-- `npm run test:server-integration` (`vitest run --config vitest.server-integration.config.ts`): 6 tests pass against the live local stack (Step 7) — the seeded fixture guest's real `profiles.display_name` for a valid token, and 401 for no header / a syntactically invalid token / a wrong-secret-signed token / an expired token, plus 400 for a non-GET method. Assumes `supabase start` and `supabase db reset` already ran.
+- `npm run test`: 442 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture (Step 6), and — Step 7 — `tests/unit/server-stack.test.ts`'s Retry-After assertion updated to read the response envelope from its new home in `_shared/http.ts`, its "never reads the service-role key" and `config.toml` `verify_jwt` checks generalized to `it.each` loops over every directory under `supabase/functions/` rather than hardcoding `save-sync` (a 2026-09-09 review finding). Step 8 added `tests/unit/guest-session.test.ts` (`createSupabaseClient`'s null-when-unconfigured behavior; `ensureGuestSession` reusing a session including a linked non-anonymous one, defaulting `isAnonymous` to `false` when absent, signing in fresh, and never throwing on a fake `GuestAuthClient`'s rejection) and flipped `tests/unit/server-stack.test.ts`'s two `@supabase/supabase-js` pin assertions from `devDependencies` to `dependencies`, plus added `test:server-e2e` to its documented-commands list (a 2026-09-09 Step 8 review finding). A third Step 8 review pass added `describe('the guest-session bootstrap in src/main.ts')` — three static-source assertions (the chain is never awaited before boot, a `.catch` sits between its two `.then`s, and the DEV diagnostic is published through `toPublicGuestSessionDiagnostic` rather than stringifying the raw result with its access token). They are static because `src/main.ts` is a module of top-level side effects no unit test can import, and because the only behavioural test of that contract — the production-smoke lazy-chunk spec — can run solely against a build with Supabase configuration inlined, which CI has not; the same static-beside-behavioural pattern a Step 7 review established for `resolveCallerViaSupabaseAuth`. Step 10 added `tests/unit/google-sign-in.test.ts` (`beginGoogleSignIn` links to an existing session and starts a fresh OAuth sign-in when there is none, both branches confirmed by which collaborator was and was not called and by the `redirectTo` option passed through; a failure of the pre-redirect "issue an authorize URL" request — e.g. rate limiting, not Google's real identity-collision, which cannot surface through this promise at all — resolves typed rather than throwing; `signOutOfSession` mirrors the same never-throws contract) and `tests/unit/server-stack.test.ts` static assertions pinning `enable_manual_linking = true`, the `[auth.external.google]` block, and (added in the 2026-09-10 review below) that the `DEV` account hook carries its own `.catch` and passes `window.location.origin` as `redirectTo`. A 2026-09-10 review of Step 10 found and fixed four issues: the account hook's `.catch` was missing (a second independent consumer of `supabaseClientPromise` reintroducing Step 8's own already-fixed unhandled-rejection class, DEV-only); `scan-bundle-secrets.mjs` never read the new `.env` file, so `GOOGLE_CLIENT_SECRET` had no exact-value guard, only the weaker name-level one — fixed by merging `.env` into the same check as `.env.local`, with `tests/unit/bundle-secret-scan.test.ts` gaining a dedicated `.env` describe block; the claim that Google's "identity already linked to another user" surfaces as this module's typed `error` result was wrong and is corrected throughout the Memory Bank — that conflict is discoverable only after the OAuth redirect returns, as `error_code=identity_already_exists` on the return URL, empirically confirmed during the review's own second live pass; and `describeError` was deduplicated into `src/platform/web/describeError.ts`, `GoogleAuthClient`'s unread session-user field was narrowed to `unknown`, the `declare global` block moved out from between two import statements, and `redirectTo: window.location.origin` was added so the OAuth return trip lands back on whichever origin actually started it rather than always `site_url` (`describeError` at the time lived at `src/platform/web/describeError.ts`; Step 12 moved it to `src/platform/describeError.ts`, see below). All four mutation-proven; the full client gate (422 unit tests, 51 E2E, build, secret scan, 10 production smoke) passes after the fixes. A follow-up review found a fifth issue inside the fourth fix's own test: the code built `{ provider: 'google', options: undefined }` while the test's title claimed the key was omitted entirely, and `toHaveBeenCalledExactlyOnceWith` is itself undefined-tolerant, so it passed under either shape — confirmed with a standalone Vitest probe first. Fixed both sides: the credentials object now genuinely omits `options` when no `redirectTo` is given, and the test reads `Object.keys()` off the real mock call to distinguish "absent" from "present but undefined"; mutation-proven in both directions.
+- Server-milestone Step 11 (Apple sign-in) was cut on 2026-09-11 rather than
+  implemented: it needs a paid Apple Developer Program membership, a
+  verified real domain, and a deployed HTTPS return URL, none of which
+  exist, and Apple accepts no `localhost` redirect at all — no local-dev
+  escape hatch the way Google has. Offered the choice between acquiring
+  those, building to spec with live verification deferred, or cutting the
+  step outright, the user chose to cut it, exercising the contingency
+  `server-threat-model.md` finding F7 already recorded. No code, config, or
+  test exists for it.
+- Server-milestone Step 12 (Telegram sign-in), implemented 2026-09-11.
+  Unlike Steps 10–11, `initData` verification is self-contained
+  HMAC-SHA256 that never contacts Telegram, so the step's full test —
+  valid `initData` mints a session; tampered/stale/wrong-bot-token payloads
+  are each rejected with none issued; the bot token never leaks — is
+  provable against the real local stack with hand-signed fixture vectors,
+  no real bot or Mini App host needed. `supabase/functions/telegram-sign-in/index.ts`'s
+  `verifyTelegramInitData` matches Telegram's documented algorithm exactly
+  (data-check-string excludes `hash`/`signature`, sorted `key=value` pairs
+  joined by `\n`; `secret_key = HMAC_SHA256(key="WebAppData", data=botToken)`;
+  `computed = hex(HMAC_SHA256(key=secret_key, data=dataCheckString))` must
+  equal `hash`, constant-time compared; `auth_date` freshness defaults to
+  86400 s, a documented convention, not a Telegram mandate), entirely on
+  `crypto.subtle` so it runs unmodified on Deno. Session-minting uses the
+  confirmed community pattern for a provider Supabase Auth has no
+  first-class API for: `admin.generateLink({ type: 'magiclink', email })`
+  (creates `auth.users` if absent) returns `properties.hashed_token`; the
+  client calls `auth.verifyOtp({ token_hash, type: 'email' })` to complete a
+  real, GoTrue-tracked session. No schema change: a Telegram user maps to
+  the deterministic, RFC 2606-reserved placeholder email
+  `telegram-<id>@telegram.invalid`, so `generateLink` finds-or-creates
+  without a `profiles` column or migration — identity linking stays in
+  `auth.users`, matching Steps 8 and 10. **This is only safe with
+  `[auth.email] enable_signup = false`** (`supabase/config.toml`) — see
+  finding F13 (`server-threat-model.md`) below: with public signup open, an
+  attacker who knows a Telegram id can claim that placeholder email by
+  password before the real user ever signs in, and `generateLink` would
+  then hand the real user a session into the attacker's account.
+- This is the first function `src/` calls directly with `fetch()` — finding
+  F11's trigger (`server-threat-model.md`), actually tripped by Step 12, not
+  Step 16/17 as F11 had guessed. `supabase/functions/_shared/http.ts` grew
+  `corsHeaders`/`corsPreflightResponse` (allow-listing
+  `http://127.0.0.1:5173`/`http://localhost:5173`, matching
+  `additional_redirect_urls`) and `jsonResponse`/`errorResponse` grew an
+  optional `origin` parameter; `memory-bank/server-save-sync-protocol.md`
+  §14 records the policy per F11's own instruction. Proving it against the
+  real stack surfaced finding F12: the local Kong gateway unconditionally
+  overwrites every Edge Function's `Access-Control-Allow-Origin` with `*`
+  when the request carries an `Origin` header — reproduced against
+  `whoami-check`, which sets no CORS header of its own, and against a
+  deliberately unlisted origin — so the origin restriction is correct and
+  tested at the application layer but is not what a real browser calling
+  the live *local* stack observes today; whether a real deployment's
+  gateway behaves the same way is unverified.
+- `src/platform/telegram/telegramSignIn.ts`: `readTelegramInitData()` reads
+  `window.Telegram.WebApp.initData` (never `initDataUnsafe`), resolving
+  `null` for every player today since no Telegram Web App `<script>` tag
+  was added to `index.html` — that is the still-unbuilt Mini App host
+  (finding F1), deliberately separate, later work. `signInWithTelegram`
+  POSTs the raw `initData` and completes `verifyOtp` on success; same
+  never-throws, typed-result shape as the other identity modules.
+  `src/main.ts` computes `readTelegramInitData()` once at boot, before
+  either identity chain: non-null calls `signInWithTelegram` **instead of**
+  `ensureGuestSession` — "replaces the guest path entirely," not a linking
+  flow — so `supabaseClientPromise` now has three independent consumers
+  (Telegram, guest, the Step 10 DEV hook), and the Telegram chain carries
+  its own `.catch` from the start, the lesson Step 10's own review already
+  taught. `describeError` moved from `src/platform/web/` to
+  `src/platform/describeError.ts`, shared by `web/` and the new
+  `telegram/` sibling.
+- `tests/unit/server-stack.test.ts`'s `extractMainBlock` helper replaced
+  order-dependent `void supabaseClientPromise` occurrence-counting (broken
+  by inserting a third consumer before the existing two) with anchor-string
+  extraction, and gained a dedicated Telegram-bootstrap describe block plus
+  a positive assertion that `telegram-sign-in` — and only it — reads
+  `SUPABASE_SERVICE_ROLE_KEY`, the first function that legitimately needs
+  it (`admin.generateLink`), exempted from the "never reads the
+  service-role key" blanket check that file's own prior comment already
+  anticipated a future function would need. `tests/server-integration/telegramInitDataFixture.ts`
+  independently re-implements the signing algorithm with `node:crypto`
+  (not Web Crypto) — a real, deployed function accepting a vector signed
+  this way proves two independent implementations of the same published
+  algorithm agree, not that one merely matches itself, the same principle
+  `authFixture.ts` already established.
+- A 2026-09-12 review found and fixed one critical issue and three smaller
+  ones. **Critical, finding F13:** the placeholder-email mechanism above
+  was pre-account-stealable — `[auth.email]` had `enable_signup = true`
+  with `enable_confirmations = false`, so an attacker who knows a Telegram
+  id could `POST /auth/v1/signup` with that exact `telegram-<id>@telegram.invalid`
+  and a password of their own choosing before the real user ever signed in,
+  and `generateLink` would then hand the real user a session into the
+  attacker's account. Reproduced live end to end (attacker signup → 200;
+  Telegram sign-in for the same id → the identical `auth.users` id;
+  attacker password login afterward → still that id), independently
+  confirmed, then fixed with `enable_signup = false` — nothing in this
+  codebase calls `signUp`/`signInWithPassword`, and `admin.generateLink`/
+  `verifyOtp` are admin/OTP paths this flag does not gate (confirmed live:
+  the full server suite and the Telegram flow both still pass with it set).
+  `tests/server-integration/telegram-sign-in.integration.test.ts` gained a
+  test reproducing the exact attack attempt against the live stack; a
+  static assertion in `tests/unit/server-stack.test.ts` needed its own
+  fix first — an initial version's lazy regex crossed past `[auth.email]`
+  into the unrelated, already-`false` `[auth.sms] enable_signup` further
+  down the same file and so passed vacuously against a mutated flag, caught
+  by mutation-testing the test itself before trusting it. **Medium:**
+  `scan-bundle-secrets.mjs` still missed `supabase/functions/.env` — the
+  most sensitive of the three env files it now covers, since
+  `TELEGRAM_BOT_TOKEN` is the HMAC key signing every Telegram user's
+  `initData` — fixed by merging it into the same exact-value check as
+  `.env`/`.env.local`. **Minor:** `MintSessionResult`'s unread `reason`
+  field was removed (nothing ever read it), and `verifyTelegramInitData`'s
+  freshness check gained `Math.abs` so a future-dated (not just past-dated)
+  payload is also caught. **Deliberately not changed:** the reviewer's note
+  that a wrong method should answer `405`/`Allow` rather than `400
+  malformed_request` — `save-sync/index.ts`'s own header comment already
+  made 400 the deliberate, documented choice for exactly this case across
+  every function reusing the save-sync protocol's vocabulary, which
+  `server-save-sync-protocol.md` §1 says identity endpoints do too;
+  introducing `405` here would be the actual inconsistency. All fixes
+  mutation-proven.
+- `npm run test:server-unit` (`deno test supabase/functions`): 49 tests pass across `_shared/http.test.ts` (including the new CORS helpers), `save-sync/index.test.ts`, `telegram-sign-in/index.test.ts` (Step 12 — `verifyTelegramInitData` against hand-signed valid/tampered/stale/future-dated/wrong-bot-token/malformed vectors, `handleTelegramSignIn` against every response shape with faked collaborators, and a defensive scan proving no response can carry the bot token), and `whoami-check/index.test.ts` (Step 7), every one with zero `--allow-*` permission flags. Needs no Docker and no database.
+- `npm run test:server-integration` (`vitest run --config vitest.server-integration.config.ts`): 21 tests pass against the live local stack — 6 for `whoami-check` (Step 7: the seeded fixture guest's real `profiles.display_name` for a valid token, and 401 for no header / a syntactically invalid token / a wrong-secret-signed token / an expired token, plus 400 for a non-GET method), 7 for `profiles-rls` (Step 9), and 8 for `telegram-sign-in` (Step 12, 7 original + the F13 regression test): valid, fresh, hand-signed `initData` mints a real session whose `verifyOtp()` exchange actually succeeds and whose email matches the deterministic placeholder; a second sign-in for the same Telegram user id resolves to the identical `auth.users` id; tampered/stale/wrong-bot-token payloads each answer 401 with no `tokenHash`; the bot token appears in none of those response bodies; a direct email-signup attempt at the placeholder address is refused and the legitimate Telegram sign-in for that same id still succeeds; the CORS preflight answers 204 with a header a real browser accepts — asserting `*` or the specific origin, since finding F12 (`server-threat-model.md`) found the local Kong gateway overwrites the function's own specific-origin value with a wildcard regardless. Assumes `supabase start` and `supabase db reset` already ran, with `supabase/functions/.env` setting `TELEGRAM_BOT_TOKEN` to the same fixture value `tests/server-integration/telegramInitDataFixture.ts` signs with.
 - `npm run test:server-e2e` (`playwright.server-e2e.config.ts`, port 4176): 3 Chromium tests pass against the live local stack (Step 8) — a fresh browser boots playable and holds a real anonymous session with a UUID `user.id`; every `**/auth/v1/**` request aborted still boots the game and a forced `visibilitychange` flush still reaches IndexedDB across a reload; two fresh browser contexts receive distinct `user.id`s whose access tokens each answer only for themselves through the live `whoami-check` function. Assumes `supabase start` and `supabase db reset` already ran and needs `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` pointed at that stack.
 - `npm run test:e2e`: all 43 Chromium tests pass, including the fixed five-icon bottom navigation and every click target, explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios.
 - `npm run test:perf`: the repeated ten-minute benchmark passes with all fifteen floors unlocked — 60.000 FPS, 16.67 ms mean, 17.6 ms p95, 17.8 ms maximum, zero of 36,139 frames beyond the 18.34 ms threshold, +229,928 bytes post-GC live-heap growth at +188 B/s, 665 Phaser objects and 371 DOM nodes constant across twenty samples, and 81.9 ms scroll p95 against a 100 ms budget. It presented at 60 Hz, so mean frame time equals the vsync interval and carries no headroom information. This is Pixel 5 emulation under 4× CPU throttling in desktop Chrome and is not physical Android-device evidence.
@@ -808,7 +968,19 @@ If a database is introduced, replace this statement with the complete authoritat
   `supabase status --output json`. `--with-bundle-scan` additionally passes
   the production build and secret scan. Requires Docker. Its final pass/fail
   line reads "npm run verify:server" rather than the Step-4-era "Step 4
-  validation."
+  validation." Re-verified 2026-09-11 after Step 12 (Telegram sign-in) with
+  the same clean-cycle discipline — 48 Deno unit tests, three committed
+  migrations, 20 integration tests (7 of them new, against the real deployed
+  `telegram-sign-in` function), and the unchanged 3-test `test:server-e2e`
+  suite all pass; the client gate (438 unit tests, 51 E2E, build, secret
+  scan, 10 production smoke) re-run alongside it. Re-verified again
+  2026-09-12 after the critical F13 fix (`[auth.email] enable_signup = false`)
+  and its three smaller companions, from another completely clean
+  `supabase stop`/`start`/`db reset` cycle: 49 Deno unit tests, 21
+  integration tests (the new F13 attack-reproduction test included), and
+  the unchanged `test:server-e2e` suite all pass; the client gate (442 unit
+  tests, 51 E2E, build, secret scan, 10 production smoke) re-run alongside
+  it.
 - `npm run verify:all`: `verify` then `verify:server` in sequence, added at Step
   5 as the sibling command its own test named; `.github/workflows/ci.yml` runs
   the same two checks as separate CI jobs rather than one sequential command, so

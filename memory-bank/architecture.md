@@ -527,6 +527,258 @@ Step 16 or 17's save download/upload, not Step 8's sign-in, which goes
 through the Auth client SDK rather than a function here — must add an
 explicit CORS policy as part of its own instructions.
 
+### Google sign-in (Step 10)
+
+`supabase/config.toml` gains `[auth] enable_manual_linking = true` (was
+`false`) and a new `[auth.external.google]` block —
+`client_id = "env(GOOGLE_CLIENT_ID)"`, `secret = "env(GOOGLE_CLIENT_SECRET)"`.
+Manual linking is load-bearing, not cosmetic: Supabase refuses
+`linkIdentity()` outright with "Manual linking is disabled" while it is
+`false`, and `linkIdentity()` is the one call that satisfies the step's
+requirement — attach Google to the guest session Step 8 already established
+while keeping the same `auth.users` id, rather than `signInWithOAuth()`
+minting a second one. `src/platform/web/googleSignIn.ts`'s
+`beginGoogleSignIn` chooses between the two by whether a session already
+exists (`getSession()`), the same collaborator-injection, never-throws shape
+`guestSession.ts` established, faked by `tests/unit/google-sign-in.test.ts`
+rather than mocking the SDK. `signOutOfSession` is the matching thin
+`signOut()` wrapper. `beginGoogleSignIn`'s own return value only ever
+describes the *pre-redirect* outcome — whether GoTrue's initial
+"issue me an authorize URL" request succeeded — never whether the Google
+identity the player goes on to pick already belongs to a different
+`auth.users` row. That conflict cannot be known yet at that point: GoTrue
+only discovers it after the player has chosen an account on Google's own
+page and the browser returns with `error_code=identity_already_exists` on
+the *return* URL, a fresh page load the client's own session-detection
+parses — long after `beginGoogleSignIn`'s promise already resolved
+`redirecting`. Nothing in `src/` reads those return-URL parameters yet; that
+read (or an `onAuthStateChange` subscription) is what Step 13's collision
+handling requires, not this function. Confirmed live during this step's own
+verification below: attempting to re-link an already-linked identity
+produced no consent screen at all, only an immediate redirect back carrying
+`error_code=identity_already_exists`, with the existing session and account
+untouched.
+
+`config.toml`'s `env(...)` substitution is read by the Supabase CLI itself
+and only auto-loads a file literally named `.env` at the project root — not
+`.env.local`, which is what the rest of this repository's tooling
+(Vite, Node scripts) uses, and `supabase start`/`stop`/`reset` have no flag to
+point it elsewhere. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` therefore live in
+a second, separate git-ignored `.env` file (`.gitignore` already covers both
+`.env` and `.env.*`, excepting only `.env.example`), documented in
+`.env.example` alongside the exact Google Cloud Console setup: a Web
+application OAuth client with `http://127.0.0.1:54321/auth/v1/callback` (the
+fixed local GoTrue callback) as its authorized redirect URI — no domain
+needed, since Google permits `localhost`/`127.0.0.1` redirects in
+development, unlike Step 11's Apple.
+
+No production UI exists for this yet. `HudView.ts`'s fixed HUD already draws
+gold at the left edge, the warehouse queue centered, and income anchored to
+the right edge across the full 360×640 canvas, and the surface strip, mine,
+and bottom navigation account for the rest — there is no free region to place
+a DOM overlay without either visually colliding with existing HUD content or
+sitting on top of an existing canvas click target. A real entry point is a
+Phaser-rendered control akin to the bottom-nav tiles, left for a later polish
+step. Until then, `import.meta.env.DEV` gates a `window.catMineIdleAccount`
+hook in `src/main.ts` exposing `beginGoogleSignIn()`/`signOut()` bound to the
+resolved Supabase client — the same `app.dataset.guestSession`-style
+diagnostic pattern Step 8 established, not new production surface.
+
+**What nothing local can prove.** A real human completing Google's own
+consent screen is the one thing no test double, local mock, or CI runner can
+substitute for — unlike Steps 8–9's live-GoTrue proofs, which only needed
+*this* stack. The step's own test ("keeps the same user id and progress;
+signing out and back in with Google returns the same account") was therefore
+validated once, by hand, with a real Google Cloud OAuth client and a real
+Google account, using the `chrome-devtools` MCP tools — not part of
+`npm run verify:server`. It passed: linking preserved the same `user.id`
+and `profiles` row while flipping `isAnonymous` to `false` and adding one
+`google` identity, and a sign-out followed by a fresh sign-in-with-Google
+(no consent screen reappearing, since Google had already authorized the app)
+returned the identical account. Everything short of that live redirect (the
+link-vs-sign-in decision, error surfacing, the config invariants) is unit-
+and static-source-tested with no Docker, the same split Step 11 (Apple,
+membership/domain) and Step 12 (Telegram, bot host) already record for their
+own unautomatable prerequisites.
+
+A 2026-09-10 review found four issues, all fixed: (1) the `DEV`-only
+`window.catMineIdleAccount` bootstrap in `src/main.ts` was a second,
+independent consumer of `supabaseClientPromise`, and the guest-session
+chain's own `.catch` settles only *that* chain's derived promise — a
+rejected client promise (the same flaky dynamic-`import()` case Step 8's own
+review already fixed once) reached an unhandled rejection a second time;
+fixed with its own `.catch(() => {})`, mutation-proven by removing it and
+watching the new static-source test fail by name. (2) `scan-bundle-secrets.mjs`
+only ever read `.env.local` for its exact-value check, so `GOOGLE_CLIENT_SECRET`
+— deliberately placed in the separate `.env` file above — had no value-level
+guard, only the (weaker) name-level one; fixed by reading `.env` alongside
+`.env.local` and merging both into the same forbidden-value set,
+mutation-proven the same way. (3) the claim that "identity already linked to
+another user" surfaces as a typed `error` result here was wrong, corrected
+above and empirically disproven live rather than merely reasoned about — the
+prior wording is what this document, `techContext.md`,
+`server-milestone-plan.md`, and `README.md` all said before this pass; all
+four are corrected. (4) four smaller cleanups: `describeError` was
+duplicated verbatim between `guestSession.ts` and `googleSignIn.ts`, now
+shared as `src/platform/web/describeError.ts`; `GoogleAuthClient`'s session
+type carried an unread `user` field, narrowed to `unknown` since only its
+nullness is ever read; the `declare global` block in `main.ts` sat between
+two import statements, moved after all of them; and neither OAuth call
+passed `redirectTo`, so GoTrue's default (`site_url`) could silently bounce
+a player who opened the game at `localhost:5173` — a redirect URI
+`.env.example` itself tells them to authorize — back to `127.0.0.1:5173`
+mid-flow, stranding their pre-link session in the origin they actually
+started from; fixed by passing `window.location.origin` in from `main.ts`
+(not read inside `googleSignIn.ts` itself, which stays importable under
+Node). All fixes re-verified against the full client gate (422 unit tests,
+51 E2E, build, secret scan, 10 production smoke) and against the live stack
+a second time: the same account from the first live pass, reloaded, still
+held its session, and a repeated `beginGoogleSignIn()` on an
+already-Google-linked account produced exactly finding (3)'s corrected
+behaviour rather than a typed error.
+
+A follow-up review found a fifth issue, inside finding (4)'s own test:
+`beginGoogleSignIn` built `{ provider: 'google', options: undefined }` — the
+`options` key present with an undefined value — while the accompanying
+test's title claimed the code omitted the key entirely, and
+`toHaveBeenCalledExactlyOnceWith` is itself undefined-tolerant, so the
+assertion passed under either shape and proved neither claim. Confirmed
+with a standalone Vitest probe before changing anything: a call of
+`{ provider: 'google' }` alone satisfies an expectation of
+`{ provider: 'google', options: undefined }`. Fixed on both sides — the
+credentials object now genuinely omits `options` when no `redirectTo` is
+given, and the test reads `Object.keys()` off the real mock call, which
+does distinguish "absent" from "present but undefined" — and mutation-proven
+in both directions. The full gate (422 unit tests, unchanged) passes.
+
+### Telegram sign-in (Step 12)
+
+Step 11 (Apple) was cut on 2026-09-11 rather than implemented — see the
+`server-milestone-plan.md` status table and `server-threat-model.md`
+finding F7's exercised contingency. Step 12 is Telegram sign-in, and unlike
+Steps 10–11 it needs no real external account, domain, or paid membership
+to satisfy its own test: `initData` verification is self-contained
+HMAC-SHA256 signature checking that never contacts Telegram at all, so
+every one of the step's test assertions — valid `initData` produces a
+session; tampered, stale, and wrong-bot-token payloads are each rejected
+with none issued; the bot token never leaks — is proven against the real
+local Supabase stack using hand-signed test vectors under a fixture bot
+token, no real bot or Mini App host required.
+
+**Verification algorithm**, implemented in
+`supabase/functions/telegram-sign-in/index.ts`'s `verifyTelegramInitData`,
+matching Telegram's own documentation exactly: every field except `hash`
+(and `signature`, a separate Ed25519 third-party scheme this function does
+not use), as `key=value` pairs sorted alphabetically and joined by `\n`, is
+the data-check-string; `secret_key = HMAC_SHA256(key="WebAppData",
+data=botToken)`; `computed = hex(HMAC_SHA256(key=secret_key,
+data=dataCheckString))` must equal `hash`, compared in constant time.
+`auth_date` freshness has no Telegram-mandated window —
+`MAX_INIT_DATA_AGE_SECONDS = 86400` (24 h) is a deliberate, documented
+default (the `@telegram-apps/init-data-node` ecosystem convention), not an
+unstated one. Everything runs on `crypto.subtle` (Web Crypto), not
+`node:crypto`, so it executes unmodified on Deno's edge runtime.
+
+**Minting a session.** Supabase Auth has no first-class "trust this
+server-verified identity" admin API. The confirmed community/official
+pattern this function uses: `admin.generateLink({ type: 'magiclink', email })`
+— which creates the `auth.users` row if it doesn't already exist — returns
+`properties.hashed_token`; the client then calls
+`auth.verifyOtp({ token_hash: hashedToken, type: 'email' })` (not
+`type: 'magiclink'`, deprecated for `verifyOtp`) to establish a real,
+GoTrue-tracked session with working refresh. No email is ever sent — the
+token is generated server-side and handed to the client directly in the
+function's own JSON response.
+
+**No schema change.** A Telegram user maps to
+`auth.users.email = telegram-<telegramUserId>@telegram.invalid` —
+`.invalid` is the RFC 2606-reserved TLD for exactly this, a never-delivered,
+never-resolvable placeholder (`telegramPlaceholderEmail`). `generateLink`
+finds-or-creates by that deterministic email, so no `profiles` column or
+migration was needed, matching how Steps 8 and 10 also shipped with zero
+schema changes — identity linking lives entirely in `auth.users`.
+**This mechanism is only safe because `[auth.email] enable_signup = false`
+(`supabase/config.toml`).** A 2026-09-12 review found and this repository
+confirmed live: with public email signup open, an attacker who knows a
+Telegram id can `POST /auth/v1/signup` with that exact placeholder email
+and a password of their own choosing *before* the real user ever signs in
+— `enable_confirmations = false` lets it complete immediately, since
+nothing needs to be delivered to the unreachable address — and
+`generateLink` then hands the real Telegram user a session into the
+attacker's own, password-protected account. See finding **F13** in
+`server-threat-model.md` for the full reproduction and fix.
+
+**CORS**, the first function `src/` ever calls directly with `fetch()` —
+finding F11's trigger — and what proving it live found — finding F12, both
+in `server-threat-model.md` — plus the resulting shared
+`_shared/http.ts` policy and its `server-save-sync-protocol.md §14` record,
+are documented there rather than duplicated here.
+
+**Client side**, `src/platform/telegram/telegramSignIn.ts`: `readTelegramInitData()`
+reads `window.Telegram.WebApp.initData` — the raw, still-signed string,
+never `initDataUnsafe`, the SDK's own unverified convenience parse — and
+resolves `null` for every player today, since no Telegram Web App
+`<script>` tag was added to `index.html` (that is the still-unbuilt Mini App
+host, finding F1, deliberately separate work). `signInWithTelegram` POSTs
+the raw `initData` to the function and completes `verifyOtp` on success;
+same never-throws, typed-result shape as `guestSession.ts`/`googleSignIn.ts`.
+`src/main.ts` computes `readTelegramInitData()` once at boot, before either
+identity chain runs: a non-null result calls `signInWithTelegram` **instead
+of** `ensureGuestSession` — "Inside Telegram this replaces the guest path
+entirely," the step's own words, not a linking flow the way Google's is —
+so today, with the detector always `null`, the guest bootstrap is the only
+chain that ever runs; `supabaseClientPromise` now has three independent
+consumers (Telegram, guest, and the Step 10 DEV hook), and the Telegram
+chain carries its own `.catch`, the same lesson Step 10's own review
+already applied to the DEV hook.
+
+`describeError` moved out of `src/platform/web/` to
+`src/platform/describeError.ts`, shared by `web/` and the new `telegram/`
+sibling rather than reached across directories.
+
+`tests/server-integration/telegramInitDataFixture.ts` independently
+re-implements the signing algorithm with `node:crypto` (not Web Crypto),
+deliberately — a real, deployed `telegram-sign-in` function accepting a
+vector signed this way is proof two independent implementations of the same
+published algorithm agree, not proof one merely matches itself, the same
+principle `authFixture.ts` already established for bearer tokens.
+
+**A 2026-09-12 review found and fixed one critical and three smaller
+issues**, all mutation-proven and reproduced live rather than only reasoned
+about. **Critical (finding F13):** the placeholder-email mechanism above
+was pre-account-stealable through public email signup — fixed with
+`[auth.email] enable_signup = false`, and
+`tests/server-integration/telegram-sign-in.integration.test.ts` gained a
+test that attempts the exact attack directly against the live stack
+(signup refused, legitimate Telegram sign-in for that same id still
+succeeds) rather than only asserting the config line; a static assertion
+in `tests/unit/server-stack.test.ts` pins the flag too, scoped to the
+`[auth.email]` section specifically after an initial version of that
+assertion was found to pass vacuously against a mutated flag — its lazy
+regex crossed into the unrelated, already-`false` `[auth.sms]` section
+further down the same file. **Medium:** `scan-bundle-secrets.mjs` had been
+widened for `.env` (Step 10) but not for `supabase/functions/.env` — the
+most sensitive of the three env files, since `TELEGRAM_BOT_TOKEN` is the
+HMAC key that signs `initData` for every Telegram user — so a hardcoded
+literal token would have passed the exact-value check; fixed by merging
+that third file into the same check. **Minor:** `MintSessionResult`'s
+`error` variant carried a `reason` string nothing ever read
+(`handleTelegramSignIn` only branches on `status`, and the real
+implementation already logs separately) — removed, strengthening the
+existing no-leak test structurally rather than just by convention; and
+`verifyTelegramInitData`'s freshness check compared `now - authDate` in one
+direction only, so a validly-signed but *future*-dated payload was never
+flagged stale — fixed with `Math.abs`, low-severity since exploiting it
+still needs the real bot token. **Deliberately not changed:** a wrong
+method answers `400 malformed_request`, not `405` with an `Allow` header —
+`save-sync/index.ts`'s own header comment already made this the
+deliberate, documented choice for every function reusing the save-sync
+protocol's error vocabulary ("that vocabulary has no ... `method_not_allowed`,
+so a request for ... a method the contract does not define is a client bug
+and is answered `malformed_request` / 400"), which `server-save-sync-protocol.md`
+§1 states identity endpoints reuse; introducing a code that vocabulary
+deliberately omits would itself be the inconsistency.
+
 ## Cat Role Asset Catalog Contract
 
 `art-source/cat-role-catalog/` is the source-of-truth workspace for role-based

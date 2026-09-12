@@ -253,6 +253,71 @@ npm run supabase:start && npm run supabase:reset
 npm run test:server-e2e   # needs the live stack; a fresh anonymous session per browser
 ```
 
+**Google sign-in.** Server-milestone Step 10 lets a signed-in guest attach a
+Google identity to the account they already have — `linkIdentity` when a
+session exists, `signInWithOAuth` when none does — rather than minting a
+second `auth.users` row; `src/platform/web/googleSignIn.ts` mirrors
+`guestSession.ts`'s injected-collaborator, never-throws shape. It requires a
+real Google Cloud OAuth Client ID/Secret; no domain is needed, since Google
+permits `http://127.0.0.1:54321/auth/v1/callback` as a redirect URI in
+development. Unlike `enable_anonymous_sign_ins`, `supabase/config.toml`'s
+`[auth.external.google]` block reads `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`
+through `env(...)` substitution, which the Supabase CLI only auto-loads from a
+project-root **`.env`** file — a second, separate git-ignored file from
+`.env.local` — see `.env.example` for the exact Cloud Console setup. There is
+no production UI for this yet (`HudView.ts`'s fixed HUD already covers the
+canvas edge-to-edge, and a real entry point belongs with a later
+Phaser-rendered control); in development, `window.catMineIdleAccount`
+exposes `beginGoogleSignIn()`/`signOut()` for manual and scripted use. A real
+human completing Google's own consent screen is the one thing nothing local
+can substitute for, so this step's "same user id, same account after
+sign-out/in" proof is a guided manual verification, not part of
+`npm run verify:server`.
+
+**Apple sign-in (Step 11) is cut.** Unlike Google, Sign in with Apple on the
+web needs a paid Apple Developer Program membership, a verified real domain,
+and a deployed HTTPS return URL, with no `localhost` redirect option at all.
+None of that exists, and the user chose not to acquire it — no code, config,
+or test exists for this step. Identity in this milestone is anonymous guest,
+Google, and Telegram.
+
+**Telegram sign-in.** Server-milestone Step 12, and unlike Steps 10–11, it
+needs no real external account, domain, or paid membership to satisfy its own
+test: a Telegram Mini App's `initData` is HMAC-SHA256-signed, and verifying
+it never contacts Telegram's servers at all. `supabase/functions/telegram-sign-in/index.ts`'s
+`verifyTelegramInitData` implements Telegram's documented algorithm exactly,
+entirely on `crypto.subtle`; on success it mints a real session via the
+confirmed community pattern for a provider Supabase Auth has no first-class
+API for — `admin.generateLink({type: 'magiclink', email})` returns a
+`hashed_token`, and the client completes `auth.verifyOtp({token_hash,
+type: 'email'})`. No schema change: a Telegram user maps to the deterministic
+placeholder email `telegram-<id>@telegram.invalid` (RFC 2606's reserved
+`.invalid` TLD), so `generateLink` finds-or-creates the same `auth.users` row
+every time. **This mapping is only safe with `[auth.email] enable_signup =
+false`** (`supabase/config.toml`) — with public signup open, an attacker who
+knows a Telegram id could otherwise claim that placeholder email by
+password before the real user ever signs in; see finding F13 in
+`memory-bank/server-threat-model.md` for the full reproduction. `src/platform/telegram/telegramSignIn.ts`'s
+`readTelegramInitData()` reads `window.Telegram.WebApp.initData` (never
+`initDataUnsafe`) and resolves `null` for every player today — no Telegram
+Web App `<script>` tag was added to `index.html`, since that is the still-
+unbuilt Mini App host, a separate and later piece of work; when it does exist,
+`src/main.ts` calls `signInWithTelegram` **instead of** the guest bootstrap,
+"replacing the guest path entirely" rather than linking to it. This is the
+first function called directly from the browser with `fetch()`, so
+`supabase/functions/_shared/http.ts` gained a shared CORS policy — and
+proving it against the real stack found that the local Kong gateway
+unconditionally overwrites every function's `Access-Control-Allow-Origin`
+with `*` regardless, documented in `memory-bank/server-threat-model.md`
+finding F12. `TELEGRAM_BOT_TOKEN` lives in a **third**, separate git-ignored
+env file, `supabase/functions/.env` — auto-loaded by `supabase start`,
+distinct from both the project-root `.env` and `.env.local` — see
+`.env.example`. Because verification is self-contained, this step's full test
+(valid `initData` mints a session; tampered/stale/wrong-bot-token payloads
+are each rejected with none issued; the token never leaks) is proven with
+hand-signed fixture vectors against the real local stack in
+`npm run test:server-integration`, with no live Telegram account needed.
+
 **Secrets.** `.env.local` is git-ignored; `.env.example` is the committed
 template. The `VITE_` prefix is the boundary: Vite inlines exactly those
 variables into the browser bundle, so a service-role key, a recovery-code pepper,

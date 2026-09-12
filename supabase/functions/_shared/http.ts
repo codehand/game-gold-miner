@@ -7,6 +7,17 @@
  * `memory-bank/server-save-sync-protocol.md`, generalized to functions
  * outside that protocol too — so a client (or a test) never has to branch on
  * which function it called.
+ *
+ * Server-milestone Step 12 adds the CORS helpers below. Finding F11
+ * (`memory-bank/server-threat-model.md`) named the trigger for this
+ * explicitly: no function before `telegram-sign-in` was ever called
+ * directly from a browser (Steps 8–10 go through the Supabase Auth client
+ * SDK or server-side tests only), so no preflight `OPTIONS` request has
+ * existed until now. The policy — allowed origins, headers, an `OPTIONS`
+ * handler answering before any route/method check — is defined once here,
+ * per F11's own instruction to record it "in the protocol document rather
+ * than each function inventing its own"; see
+ * `memory-bank/server-save-sync-protocol.md`'s CORS section.
  */
 
 export const JSON_HEADERS: Readonly<Record<string, string>> = {
@@ -14,8 +25,55 @@ export const JSON_HEADERS: Readonly<Record<string, string>> = {
   'cache-control': 'no-store',
 };
 
-export function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+/**
+ * Origins the game itself is ever served from today. No deployed origin
+ * exists yet (`memory-bank/server-threat-model.md` §7.5) — add the real one
+ * here when it does, rather than widening this to a wildcard, which would
+ * let any site call an authentication-minting endpoint on a visitor's
+ * behalf.
+ */
+const ALLOWED_ORIGINS: ReadonlySet<string> = new Set([
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+]);
+
+/**
+ * CORS response headers for `origin`, or none at all when it is missing or
+ * not allow-listed — an unrecognized origin gets a same response body but
+ * no `Access-Control-Allow-Origin`, so the browser (not this server) blocks
+ * the calling page from reading it.
+ */
+export function corsHeaders(origin: string | null): Readonly<Record<string, string>> {
+  if (origin === null || !ALLOWED_ORIGINS.has(origin)) {
+    return {};
+  }
+  return { 'access-control-allow-origin': origin, vary: 'Origin' };
+}
+
+/**
+ * Answers a CORS preflight `OPTIONS` request. Callers check
+ * `request.method === 'OPTIONS'` and return this **before** any route or
+ * body parsing, per F11 — a preflight carries no body and no
+ * `Authorization` header, so treating it like an ordinary request would
+ * fail it as malformed instead of letting the real request through.
+ */
+export function corsPreflightResponse(request: Request, allowedMethods: string): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      ...corsHeaders(request.headers.get('origin')),
+      'access-control-allow-methods': allowedMethods,
+      'access-control-allow-headers': 'content-type',
+      'access-control-max-age': '86400',
+    },
+  });
+}
+
+export function jsonResponse(status: number, body: unknown, origin: string | null = null): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...JSON_HEADERS, ...corsHeaders(origin) },
+  });
 }
 
 interface ErrorBody {
@@ -30,6 +88,8 @@ export interface ErrorOptions {
   readonly detail?: Readonly<Record<string, unknown>>;
   /** Seconds to wait before retrying. Set it on every code §4 marks retryable. */
   readonly retryAfterSeconds?: number;
+  /** Set from `request.headers.get('origin')` on a route CORS applies to. */
+  readonly origin?: string | null;
 }
 
 export function errorResponse(
@@ -38,11 +98,12 @@ export function errorResponse(
   message: string,
   options: ErrorOptions = {},
 ): Response {
-  const { detail, retryAfterSeconds } = options;
+  const { detail, retryAfterSeconds, origin = null } = options;
   const body: ErrorBody = { error: detail ? { code, message, detail } : { code, message } };
-  const headers =
-    retryAfterSeconds === undefined
-      ? JSON_HEADERS
-      : { ...JSON_HEADERS, 'retry-after': String(retryAfterSeconds) };
+  const headers = {
+    ...JSON_HEADERS,
+    ...corsHeaders(origin),
+    ...(retryAfterSeconds === undefined ? {} : { 'retry-after': String(retryAfterSeconds) }),
+  };
   return new Response(JSON.stringify(body), { status, headers });
 }

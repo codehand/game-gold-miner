@@ -10,6 +10,13 @@ export {
   type GuestSessionUser,
 } from './guestSession';
 export {
+  beginGoogleSignIn,
+  signOutOfSession,
+  type GoogleAuthClient,
+  type GoogleSignInResult,
+  type SignOutResult,
+} from './googleSignIn';
+export {
   createSupabaseClient,
   type SupabaseClient,
 } from './supabaseClient';

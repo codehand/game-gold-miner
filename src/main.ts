@@ -10,19 +10,34 @@ import {
   SavePersistenceCoordinator,
 } from './persistence';
 import {
+  beginGoogleSignIn,
   bindSaveLifecycle,
   createSupabaseClient,
   ensureGuestSession,
   LifecycleSafeActiveSaveRepository,
+  signOutOfSession,
   WebLifecycleSaveJournal,
+  type GoogleSignInResult,
   type GuestSessionResult,
+  type SignOutResult,
   type SupabaseClient,
 } from './platform/web';
+import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
 import {
   createSaveDiagnosticBanner,
   showOfflineRewardModal,
   type OfflineRewardModal,
 } from './ui';
+
+declare global {
+  interface Window {
+    /** Server-milestone Step 10, DEV-only — see the block below that sets it. */
+    catMineIdleAccount?: {
+      beginGoogleSignIn: () => Promise<GoogleSignInResult>;
+      signOut: () => Promise<SignOutResult>;
+    };
+  }
+}
 
 const app = getRequiredElement('#app', 'Application root');
 const gameViewport = getRequiredElement('#game-viewport', 'Game viewport');
@@ -47,27 +62,97 @@ if (import.meta.hot) {
   import.meta.hot.data.supabaseClientPromise = supabaseClientPromise;
 }
 
-void supabaseClientPromise
-  .then((client) => ensureGuestSession(client?.auth ?? null))
-  // `ensureGuestSession` itself never rejects — its own try/catch covers only
-  // the collaborator calls made *inside* it — but `supabaseClientPromise` can:
-  // `createSupabaseClient`'s dynamic `import()` can reject on a flaky network
-  // or, in production, a stale chunk hash after a redeploy. Without this the
-  // rejection skips straight past the `.then` above to an unhandled
-  // rejection, breaking `guestSession.ts`'s own "never throws" contract from
-  // one level up. Folded into `sign-in-failed` rather than `unconfigured`,
-  // which is reserved for "no Supabase project configured at all."
-  .catch(
-    (error: unknown): GuestSessionResult => ({
-      status: 'sign-in-failed',
-      reason: error instanceof Error ? error.message : String(error),
-    }),
-  )
-  .then((result) => {
-    if (import.meta.env.DEV) {
-      app.dataset.guestSession = JSON.stringify(toPublicGuestSessionDiagnostic(result));
-    }
-  });
+// Server-milestone Step 12: inside a Telegram Mini App, Telegram sign-in
+// "replaces the guest path entirely" — the plan's own words — rather than
+// linking to a guest session the way Google does. Computed once, synchronously,
+// before either boot chain below decides which one to run: `readTelegramInitData`
+// only ever reads `window.Telegram.WebApp.initData`, so this never blocks or
+// makes a network call, and resolves `null` for every player today (no Mini
+// App host exists yet — `memory-bank/server-threat-model.md` finding F1), so
+// the guest chain below is the only one that ever runs in production right now.
+const telegramInitData = readTelegramInitData();
+
+if (telegramInitData !== null) {
+  void supabaseClientPromise
+    .then((client) =>
+      signInWithTelegram(
+        telegramInitData,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-sign-in`,
+        client?.auth ?? null,
+      ),
+    )
+    // Same reasoning as the guest-session `.catch` below: a second,
+    // independent consumer of `supabaseClientPromise` needs its own handler,
+    // or a rejected client promise reaches an unhandled rejection here too.
+    .catch(
+      (error: unknown): TelegramSignInResult => ({
+        status: 'error',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    .then((result) => {
+      if (import.meta.env.DEV) {
+        app.dataset.telegramSignIn = JSON.stringify(result);
+      }
+    });
+} else {
+  void supabaseClientPromise
+    .then((client) => ensureGuestSession(client?.auth ?? null))
+    // `ensureGuestSession` itself never rejects — its own try/catch covers only
+    // the collaborator calls made *inside* it — but `supabaseClientPromise` can:
+    // `createSupabaseClient`'s dynamic `import()` can reject on a flaky network
+    // or, in production, a stale chunk hash after a redeploy. Without this the
+    // rejection skips straight past the `.then` above to an unhandled
+    // rejection, breaking `guestSession.ts`'s own "never throws" contract from
+    // one level up. Folded into `sign-in-failed` rather than `unconfigured`,
+    // which is reserved for "no Supabase project configured at all."
+    .catch(
+      (error: unknown): GuestSessionResult => ({
+        status: 'sign-in-failed',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    .then((result) => {
+      if (import.meta.env.DEV) {
+        app.dataset.guestSession = JSON.stringify(toPublicGuestSessionDiagnostic(result));
+      }
+    });
+}
+
+/**
+ * Server-milestone Step 10: DEV-only trigger for the Google sign-in flow.
+ *
+ * No production UI exists for this yet — deliberately: the fixed HUD
+ * (`HudView.ts`) already draws gold, the warehouse queue, and income
+ * edge-to-edge across the full 360×640 canvas, and the bottom navigation,
+ * surface strip, and scrollable mine account for the rest, so there is no
+ * free region to place a DOM overlay without either visually colliding with
+ * existing HUD content or sitting on top of an existing canvas click target
+ * (an upgrade control, a bottom-nav tile). A real player-facing entry point
+ * is a Phaser-rendered control akin to the bottom-nav tiles, which is a
+ * distinct scope of work belonging to a later polish step. Until then this
+ * mirrors `app.dataset.guestSession` above: a DEV-only hook the guided
+ * manual verification (and, later, a real E2E suite once real Google test
+ * credentials exist) can call directly, the same way existing E2E specs
+ * already call test-injected `window.catMineIdle*` hooks.
+ */
+if (import.meta.env.DEV) {
+  void supabaseClientPromise
+    .then((client) => {
+      window.catMineIdleAccount = {
+        beginGoogleSignIn: () =>
+          beginGoogleSignIn(client?.auth ?? null, window.location.origin),
+        signOut: () => signOutOfSession(client?.auth ?? null),
+      };
+    })
+    // A second, independent consumer of `supabaseClientPromise` needs its own
+    // handler: the `.catch` on the guest-session chain above only settles
+    // *that* chain's derived promise, and without this one a rejected client
+    // promise (the same flaky-`import()` case documented above) would reach
+    // an unhandled rejection a second time. DEV-only convenience hook, so
+    // simply leaving `window.catMineIdleAccount` unset is the right outcome.
+    .catch(() => {});
+}
 
 /**
  * Drops the live access token before this reaches the DOM. It is never

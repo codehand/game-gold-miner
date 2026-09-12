@@ -180,8 +180,12 @@ enable_signup = true
 # from the first frame, with no prompt, form, or blocking network wait.
 # `anonymous_users` below (30/hour per IP) already covers this path.
 enable_anonymous_sign_ins = true
-# Allow/disallow testing manual linking of accounts
-enable_manual_linking = false
+# Allow/disallow testing manual linking of accounts.
+# Server-milestone Step 10: `linkIdentity()` — attaching Google to the guest
+# session a player already holds, keeping the same `auth.users` id instead of
+# minting a second one — is refused with "Manual linking is disabled" unless
+# this is true.
+enable_manual_linking = true
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
 minimum_password_length = 6
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
@@ -222,7 +226,25 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-enable_signup = true
+#
+# Server-milestone Step 12 found this must be `false`: `telegram-sign-in`
+# maps a Telegram user to the deterministic `auth.users.email =
+# telegram-<id>@telegram.invalid` and relies on `admin.generateLink` to
+# find-or-create that row. With public email signup open, an attacker who
+# knows (or enumerates) a Telegram user id could `POST /auth/v1/signup`
+# with that exact email and a password of their own choosing *before* the
+# real Telegram user ever signs in — `enable_confirmations = false` below
+# lets that signup complete immediately, no delivery to the unreachable
+# `.invalid` address required. `generateLink` would then find the
+# attacker's row already sitting at that email and hand the real Telegram
+# user a session into the attacker's account, who keeps password access to
+# it indefinitely. Nothing in this codebase uses `signUp`/
+# `signInWithPassword` — email/password was never an identity mechanism
+# this milestone offers (`memory-bank/server-milestone-plan.md`'s Identity
+# decision is anonymous guest, Google, Telegram) — so closing this costs
+# nothing; `admin.generateLink`/`auth.verifyOtp` are admin/OTP paths, not
+# the public signup one, and are unaffected.
+enable_signup = false
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -338,6 +360,22 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
+# Server-milestone Step 10: Google sign-in. `client_id`/`secret` come from a
+# Google Cloud OAuth 2.0 Client ID (type: Web application) — see
+# `.env.example` for the exact Cloud Console setup. `env(...)` here is read
+# from a project-root `.env` file (not `.env.local`, which is what the rest
+# of this repo's tooling uses) — that split is documented in `.env.example`.
+# No domain is required: Google permits `http://127.0.0.1:54321/auth/v1/callback`
+# (the fixed local GoTrue callback) as a redirect URI in development.
+[auth.external.google]
+enabled = true
+client_id = "env(GOOGLE_CLIENT_ID)"
+secret = "env(GOOGLE_CLIENT_SECRET)"
+redirect_uri = ""
+url = ""
+skip_nonce_check = false
+email_optional = false
+
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
 [auth.web3.solana]
@@ -402,6 +440,15 @@ verify_jwt = false
 # own authenticated routes need from Step 16 onward. `verify_jwt = false` here
 # means "this function does its own auth," not "this function is open."
 [functions.whoami-check]
+enabled = true
+verify_jwt = false
+
+# Server-milestone Step 12: verifies Telegram Mini App `initData` by hand
+# (HMAC-SHA256 against `TELEGRAM_BOT_TOKEN`) and mints a session for the
+# caller — there is no bearer token to verify yet, since no caller is signed
+# in until this succeeds. `verify_jwt = false` means "no caller identity is
+# expected on this route," the same as the two functions above it.
+[functions.telegram-sign-in]
 enabled = true
 verify_jwt = false
 

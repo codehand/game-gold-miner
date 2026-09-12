@@ -537,3 +537,49 @@ running; §4 decides what, if anything, is shown.
 | Banner reuse and the mostly-blank "player sees" column | `src/ui/SaveDiagnosticBanner.ts`'s recorded no-retraction contract |
 | 64 KB cap | Threat model §4.4; enforced in Step 25 |
 | `save_rejected` reserved | Step 23, biased toward acceptance per threat model §1 |
+
+## 14. CORS policy — added by Step 12, resolving finding F11
+
+Not part of the original Step 2 design — §1 lists save-sync as the only
+in-scope contract, and no step before Step 12 ever called a function
+directly from a browser (Steps 8–10 go through the Supabase Auth client SDK
+or server-side tests only). Finding F11
+(`memory-bank/server-threat-model.md`) named the trigger condition exactly:
+"the first step whose own client code calls a function... directly from
+`src/`... must add an explicit CORS policy... and record the decision in
+the protocol document rather than each function inventing its own." Step 12
+(Telegram sign-in) was that step, not Step 16/17 (save upload/download) as
+F11 had guessed.
+
+**The policy**, implemented once in
+`supabase/functions/_shared/http.ts` for every function to reuse rather
+than invented per function:
+
+- Allowed origins are the two known dev origins,
+  `http://127.0.0.1:5173` and `http://localhost:5173` — the same pair
+  `additional_redirect_urls` in `supabase/config.toml` already allow-lists.
+  No deployed origin exists yet (threat model §7.5); add the real one to
+  `ALLOWED_ORIGINS` in `_shared/http.ts` when one does, rather than widening
+  it to a wildcard.
+- `corsPreflightResponse(request, allowedMethods)` answers `OPTIONS` with
+  204, the matched origin (or none), `Access-Control-Allow-Methods`, and
+  `Access-Control-Allow-Headers: content-type` — checked **before** any
+  route or body parsing, since a preflight carries no body and no
+  `Authorization` header and would otherwise fail as malformed.
+- `jsonResponse`/`errorResponse` both grew an optional `origin` parameter
+  that adds the matched-origin header to an ordinary response too, so a
+  rejection is exactly as CORS-visible to the calling page as a success.
+
+**What was found proving it against the real stack (finding F12, threat
+model §8):** the local Kong gateway in front of every Edge Function
+unconditionally injects `Access-Control-Allow-Origin: *` onto any response
+whose request carries an `Origin` header — reproduced against
+`whoami-check`, which sets no CORS header of its own at all, and against a
+deliberately unlisted origin. This runs after the function and overwrites
+whatever specific-origin value `corsHeaders()` computed, so the origin
+restriction above is correct and tested at the application layer but is not
+what a real browser calling the live **local** stack actually observes —
+`*` is, regardless of origin. Whether a real deployment's gateway behaves
+the same way is unverified (no deployment exists); re-verify before relying
+on this policy as the sole defense for a future function where the calling
+origin genuinely matters.

@@ -31,6 +31,8 @@ const roots: string[] = [];
 const makeFixture = (options: {
   envExample?: string;
   envLocal?: string;
+  env?: string;
+  functionsEnv?: string;
   bundle: string;
 }): { buildDirectory: string; projectRoot: string } => {
   const projectRoot = mkdtempSync(join(tmpdir(), 'secret-scan-'));
@@ -42,10 +44,19 @@ const makeFixture = (options: {
       'VITE_SUPABASE_URL=https://example.supabase.co\n' +
         'VITE_SUPABASE_ANON_KEY=your-anon-key\n' +
         'SUPABASE_SERVICE_ROLE_KEY=your-service-role-key\n' +
-        'RECOVERY_CODE_PEPPER=generate-a-random-32-byte-value\n',
+        'RECOVERY_CODE_PEPPER=generate-a-random-32-byte-value\n' +
+        'GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret\n' +
+        'TELEGRAM_BOT_TOKEN=your-telegram-bot-token\n',
   );
   if (options.envLocal !== undefined) {
     writeFileSync(join(projectRoot, '.env.local'), options.envLocal);
+  }
+  if (options.env !== undefined) {
+    writeFileSync(join(projectRoot, '.env'), options.env);
+  }
+  if (options.functionsEnv !== undefined) {
+    mkdirSync(join(projectRoot, 'supabase', 'functions'), { recursive: true });
+    writeFileSync(join(projectRoot, 'supabase', 'functions', '.env'), options.functionsEnv);
   }
 
   const buildDirectory = join(projectRoot, 'dist', 'assets');
@@ -137,6 +148,83 @@ describe('exact environment values', () => {
   });
 });
 
+describe('the .env file (Supabase CLI env(...) substitution, server-milestone Step 10)', () => {
+  // `GOOGLE_CLIENT_SECRET` lives in `.env`, not `.env.local` — the Supabase
+  // CLI's `env(...)` substitution only auto-loads a file literally named
+  // `.env`. A real credential leaking from there must be caught exactly like
+  // one leaking from `.env.local`.
+  it('flags a value from .env that reached the bundle', () => {
+    const result = scan({
+      env: 'GOOGLE_CLIENT_SECRET=GOCSPX-a-real-secret-value\n',
+      bundle: 'const s="GOCSPX-a-real-secret-value";',
+    });
+    expect(result.findings.map((finding) => finding.reason)).toContain(
+      'contains a server-only value from the environment',
+    );
+  });
+
+  it('checks .env and .env.local independently — a leak from either is caught', () => {
+    const result = scan({
+      envLocal: 'RECOVERY_CODE_PEPPER=a-real-pepper-value-abcdef\n',
+      env: 'GOOGLE_CLIENT_SECRET=GOCSPX-a-real-secret-value\n',
+      bundle: 'const a="a-real-pepper-value-abcdef";const b="GOCSPX-a-real-secret-value";',
+    });
+    expect(result.findings).toHaveLength(2);
+  });
+
+  it('does not flag an .env value once it has been edited to a real one, only while still a placeholder', () => {
+    const result = scan({
+      env: 'GOOGLE_CLIENT_ID=your-google-oauth-client-id\n',
+      bundle: 'const x=1;',
+    });
+    expect(result.findings).toEqual([]);
+    expect(result.warnings.join(' ')).toContain('GOOGLE_CLIENT_ID');
+  });
+});
+
+describe('the supabase/functions/.env file (Edge Function runtime, server-milestone Step 12)', () => {
+  // `TELEGRAM_BOT_TOKEN` lives here, not `.env` or `.env.local` — the file
+  // Edge Functions actually read at runtime locally. A 2026-09-12 review
+  // found this file was still missing from the exact-value check even
+  // after `.env` was added for Step 10: the name check (below) still
+  // caught `import.meta.env.TELEGRAM_BOT_TOKEN`, but a hardcoded literal
+  // token — the HMAC key that signs Telegram `initData` for every user —
+  // would have passed both structural checks and reached the bundle
+  // unnoticed.
+  it('flags a value from supabase/functions/.env that reached the bundle', () => {
+    const result = scan({
+      functionsEnv: 'TELEGRAM_BOT_TOKEN=123456789:AAA-a-real-bot-token-value\n',
+      bundle: 'const t="123456789:AAA-a-real-bot-token-value";',
+    });
+    expect(result.findings.map((finding) => finding.reason)).toContain(
+      'contains a server-only value from the environment',
+    );
+  });
+
+  it('checks all three env files independently — a leak from any one is caught', () => {
+    const result = scan({
+      envLocal: 'RECOVERY_CODE_PEPPER=a-real-pepper-value-abcdef\n',
+      env: 'GOOGLE_CLIENT_SECRET=GOCSPX-a-real-secret-value\n',
+      functionsEnv: 'TELEGRAM_BOT_TOKEN=123456789:AAA-a-real-bot-token-value\n',
+      bundle:
+        'const a="a-real-pepper-value-abcdef";' +
+        'const b="GOCSPX-a-real-secret-value";' +
+        'const c="123456789:AAA-a-real-bot-token-value";',
+    });
+    expect(result.findings).toHaveLength(3);
+  });
+
+  it('still only names the server-only variable when the literal token reaches the bundle by name, not value', () => {
+    const result = scan({
+      functionsEnv: 'TELEGRAM_BOT_TOKEN=your-telegram-bot-token\n',
+      bundle: 'const p=import.meta.env.TELEGRAM_BOT_TOKEN;',
+    });
+    expect(result.findings.map((finding) => finding.reason)).toContain(
+      'references the server-only variable TELEGRAM_BOT_TOKEN',
+    );
+  });
+});
+
 describe('environment parsing', () => {
   // Each case below defeated the exact-value check by leaving the parsed value
   // different from the value that actually reaches a bundle — a pass that
@@ -178,11 +266,12 @@ describe('environment parsing', () => {
 
 describe('coverage reporting', () => {
   it('reports reduced coverage rather than passing silently', () => {
-    // Without `.env.local` no exact value can be checked. A clean pass that
-    // checked nothing must say so; the structural checks still ran.
+    // Without `.env.local` no exact value from it can be checked. A clean
+    // pass that checked nothing from it must say so; the structural checks
+    // still ran.
     const result = scan({ bundle: 'const x=1;' });
     expect(result.findings).toEqual([]);
-    expect(result.warnings).toContain('no .env.local, so no exact environment value was checked');
+    expect(result.warnings).toContain('no .env.local, so no exact value from it was checked');
   });
 
   it('does not warn when the environment was fully readable', () => {
@@ -191,6 +280,14 @@ describe('coverage reporting', () => {
       bundle: 'const x=1;',
     });
     expect(result.warnings).toEqual([]);
+  });
+
+  it('does not warn about a missing .env — unlike .env.local, most steps need nothing in it', () => {
+    const result = scan({
+      envLocal: 'RECOVERY_CODE_PEPPER=a-real-pepper-value-abcdef\n',
+      bundle: 'const x=1;',
+    });
+    expect(result.warnings.join(' ')).not.toContain('.env,');
   });
 
   it('names the values it skipped as too short or still placeholder', () => {
