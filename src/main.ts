@@ -279,7 +279,28 @@ async function runCloudSaveReconcile(): Promise<CloudSaveReconcileOutcome> {
     download: (token) =>
       downloadCloudSaveViaFetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-sync/v1/save`, token),
     config: BASE_GAME_BALANCE,
-    reload: () => window.location.reload(),
+    // A 2026-09-13 review finding: `location.reload()` fires `pagehide`
+    // synchronously on the page being torn down, and `bindSaveLifecycle`'s
+    // `forceSave` would journal the *stale*, pre-adoption in-memory
+    // document — never told about the remote document `storeActiveSave`
+    // above just wrote — under a fresher `savedAtTimestampMs`.
+    // `LifecycleSafeActiveSaveRepository.loadActiveSave` prefers whichever
+    // of {IndexedDB, journal} is chronologically newer, so that stale
+    // journal entry would win on the very next boot, silently reverting
+    // the adopt and re-triggering it forever. Unbinding first removes the
+    // listener entirely — verified live only by unregistering it, not by
+    // racing a debounce window — so no `pagehide`/`visibilitychange`
+    // handler runs at all during this reload; nothing else needs saving,
+    // since the remote document this function just adopted is already the
+    // newest authoritative state. `unbindSaveLifecycle` is declared further
+    // down this file and optional-chained because a reconcile that
+    // resolves before `startApplication()` reaches that assignment has
+    // nothing bound yet to unbind, so there is no race to guard against in
+    // that ordering either.
+    reload: () => {
+      unbindSaveLifecycle?.();
+      window.location.reload();
+    },
   });
 }
 

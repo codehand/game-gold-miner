@@ -213,6 +213,7 @@ describe('secret handling', () => {
     expect(names).toContain('GOOGLE_CLIENT_SECRET');
     expect(names).toContain('TELEGRAM_BOT_TOKEN');
     expect(names).toContain('RECOVERY_CODE_PEPPER');
+    expect(names).toContain('RECOVERY_CODE_TEST_RESET_TOKEN');
   });
 
   it('holds placeholders rather than credentials', () => {
@@ -319,9 +320,8 @@ describe('every Edge Function', () => {
   it('recovery-code does read the service-role key, and only to rotate/redeem codes and mint a session', () => {
     const source = readProjectFile('supabase/functions/recovery-code/index.ts');
     expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
-    // Redemption (and its revert-on-failed-mint counterpart) is an atomic
-    // compare-and-swap, the same lesson save-sync's own review just taught:
-    // never a read-then-write.
+    // Redemption is an atomic compare-and-swap, the same lesson save-sync's
+    // own review just taught: never a read-then-write.
     expect(source).toMatch(/admin\s*\.from\('recovery_codes'\)\s*\.update\(/);
     expect(source).toContain('admin.auth.admin.generateLink');
     expect(source).toContain('admin.auth.admin.getUserById');
@@ -349,10 +349,17 @@ describe('every Edge Function', () => {
     // A 2026-09-12 review found a failed mint after a successful redemption
     // permanently destroyed the account: the code was already spent and no
     // session was ever delivered. `revertRecoveryCodeRedemption` clears
-    // `redeemed_at` so the same code stays usable.
+    // `redeemed_at` so the same code stays usable. A follow-up 2026-09-13
+    // finding (1c) moved that clear into its own RPC, since a `generate`
+    // landing in the narrow window before this runs could otherwise collide
+    // with the one-active-code-per-user index.
     const source = readProjectFile('supabase/functions/recovery-code/index.ts');
     expect(source).toContain('revertRecoveryCodeRedemption');
-    expect(source).toContain('redeemed_at: null');
+    expect(source).toContain("admin.rpc('revert_recovery_code_redemption'");
+
+    const migration = readProjectFile('supabase/migrations/20260913090100_recovery_code_revert_rpc.sql');
+    expect(migration).toContain('create function public.revert_recovery_code_redemption(p_code_hash text)');
+    expect(migration).toContain('set redeemed_at = null');
   });
 
   it("recovery-code's rate limiter never buckets a caller with no X-Forwarded-For into a shared address", () => {
@@ -363,6 +370,30 @@ describe('every Edge Function', () => {
     const source = readProjectFile('supabase/functions/recovery-code/index.ts');
     expect(source).not.toContain("'unknown'");
     expect(source).toContain('address: string | null');
+  });
+
+  it("recovery-code's rate-limit sweep is gated by map size, not run on every request", () => {
+    // A 2026-09-13 review finding: sweeping the whole map on every request
+    // is O(n) per request under the exact rotated-address attack it exists
+    // to bound, trading unbounded memory for unbounded (quadratic) CPU.
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain('RATE_LIMIT_PRUNE_SIZE_THRESHOLD');
+    expect(source).toMatch(/redemptionAttemptsByAddress\.size > RATE_LIMIT_PRUNE_SIZE_THRESHOLD/);
+  });
+
+  it('recovery-code gates its test-only rate-limit reset route behind a token unset in any real deployment', () => {
+    // A 2026-09-13 review finding: the integration suite shares one
+    // real, gateway-observed rate-limit bucket across its whole run once
+    // the limiter reads the trusted last hop, so a re-run inside the
+    // 60-second window fails unrelated tests with 429 unless something can
+    // reset that shared state between runs.
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain('test-only-reset-rate-limit');
+    expect(source).toContain("Deno.env.get('RECOVERY_CODE_TEST_RESET_TOKEN')");
+    expect(source).toContain('redemptionAttemptsByAddress.clear()');
+
+    const envExample = readProjectFile('.env.example');
+    expect(envExample).toContain('RECOVERY_CODE_TEST_RESET_TOKEN');
   });
 });
 
@@ -667,6 +698,15 @@ describe('the Step 17 cloud-save reconcile trigger in src/main.ts', () => {
 
     expect(body).toContain('.catch(');
     expect(body).toContain('void runCloudSaveReconcile()');
+  });
+
+  it('unbinds the save lifecycle before reloading, so pagehide cannot journal the stale pre-adoption document (2026-09-13 review)', () => {
+    const runFn = mainSource.slice(mainSource.indexOf('async function runCloudSaveReconcile'));
+    const body = runFn.slice(0, runFn.indexOf('\n}\n') + 3);
+    const reloadCallback = body.slice(body.indexOf('reload: () => {'), body.indexOf('},', body.indexOf('reload: () => {')));
+
+    expect(reloadCallback).toMatch(/unbindSaveLifecycle\?\.\(\)/);
+    expect(reloadCallback.indexOf('unbindSaveLifecycle?.()')).toBeLessThan(reloadCallback.indexOf('window.location.reload()'));
   });
 });
 

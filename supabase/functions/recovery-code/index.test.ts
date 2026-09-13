@@ -41,6 +41,12 @@ function noopDeps(overrides: Partial<RecoveryCodeDeps> = {}): RecoveryCodeDeps {
       throw new Error('mintSessionForUser should not have been called');
     },
     checkRedemptionRateLimit: async () => true,
+    checkTestResetAuthorization: async () => {
+      throw new Error('checkTestResetAuthorization should not have been called');
+    },
+    resetRateLimitState: async () => {
+      throw new Error('resetRateLimitState should not have been called');
+    },
     ...overrides,
   };
 }
@@ -377,6 +383,81 @@ Deno.test('handleRedeem answers recovery_code_invalid when redeemRecoveryCode re
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error.code, 'recovery_code_invalid');
   assert.equal(mintCalled, false);
+});
+
+function testResetRequest(token: string | undefined): Request {
+  const headers: Record<string, string> = {};
+  if (token !== undefined) {
+    headers['x-test-reset-token'] = token;
+  }
+  return new Request('http://localhost/v1/test-only-reset-rate-limit', { method: 'POST', headers });
+}
+
+Deno.test('handleRequest answers a CORS preflight on the test-reset route before any other check', async () => {
+  const response = await handleRequest(
+    new Request('http://localhost/v1/test-only-reset-rate-limit', { method: 'OPTIONS' }),
+    noopDeps(),
+  );
+
+  assert.equal(response.status, 204);
+});
+
+Deno.test('the test-reset route answers the same malformed_request/"Unknown route" shape an actually-unknown route gets when unauthorized', async () => {
+  const noToken = await handleRequest(testResetRequest(undefined), noopDeps({ checkTestResetAuthorization: async () => false }));
+  const wrongToken = await handleRequest(
+    testResetRequest('wrong-token'),
+    noopDeps({ checkTestResetAuthorization: async () => false }),
+  );
+  const unknownRoute = await handleRequest(new Request('http://localhost/v1/does-not-exist'), noopDeps());
+
+  for (const response of [noToken, wrongToken, unknownRoute]) {
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(body.error.code, 'malformed_request');
+    assert.equal(body.error.message, 'Unknown route.');
+  }
+});
+
+Deno.test('the test-reset route passes the provided token through to checkTestResetAuthorization, including null when absent', async () => {
+  let seenToken: string | null | undefined;
+  await handleRequest(
+    testResetRequest(undefined),
+    noopDeps({
+      checkTestResetAuthorization: async (token) => {
+        seenToken = token;
+        return false;
+      },
+    }),
+  );
+  assert.equal(seenToken, null);
+
+  await handleRequest(
+    testResetRequest('the-configured-token'),
+    noopDeps({
+      checkTestResetAuthorization: async (token) => {
+        seenToken = token;
+        return false;
+      },
+    }),
+  );
+  assert.equal(seenToken, 'the-configured-token');
+});
+
+Deno.test('the test-reset route clears rate-limit state and answers 200 once authorized', async () => {
+  let resetCalled = false;
+  const response = await handleRequest(
+    testResetRequest('the-configured-token'),
+    noopDeps({
+      checkTestResetAuthorization: async () => true,
+      resetRateLimitState: async () => {
+        resetCalled = true;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { reset: true });
+  assert.equal(resetCalled, true);
 });
 
 Deno.test('no response this handler can give contains anything but its documented fields', async () => {

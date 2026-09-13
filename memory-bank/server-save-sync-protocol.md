@@ -563,9 +563,19 @@ than invented per function:
   it to a wildcard.
 - `corsPreflightResponse(request, allowedMethods)` answers `OPTIONS` with
   204, the matched origin (or none), `Access-Control-Allow-Methods`, and
-  `Access-Control-Allow-Headers: content-type` — checked **before** any
-  route or body parsing, since a preflight carries no body and no
-  `Authorization` header and would otherwise fail as malformed.
+  `Access-Control-Allow-Headers: content-type, authorization` — checked
+  **before** any route or body parsing, since a preflight itself carries no
+  body and no `Authorization` header and would otherwise fail as malformed.
+  A 2026-09-12 review of Step 14 found this listed `content-type` alone: the
+  reasoning above ("a preflight carries no... `Authorization` header") is
+  what produced the bug — it describes the preflight request itself, not
+  the *real* cross-origin request behind it, which does carry
+  `Authorization` for both `recoveryCode.ts` (generating a code) and
+  `cloudSaveReconcile.ts` (downloading a save), and a real browser refuses
+  to send that real request at all once its preflight's own
+  `Access-Control-Allow-Headers` omits it. Invisible locally only because
+  Kong's own CORS override (finding F12, immediately below) replaces every
+  function's CORS headers regardless of what this code returns.
 - `jsonResponse`/`errorResponse` both grew an optional `origin` parameter
   that adds the matched-origin header to an ordinary response too, so a
   rejection is exactly as CORS-visible to the calling page as a success.

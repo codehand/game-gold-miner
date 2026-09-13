@@ -1054,6 +1054,88 @@ against the live stack:
    sequence by hand against the same collision left the user with zero
    active codes (revoked, insert failed, nothing rolled back).
 
+**2026-09-13 review of Step 14.** Five more findings, all fixed and
+re-verified against the live stack:
+
+1. **The migration's own comment overstated what atomicity guarantees.**
+   `20260913090000_recovery_code_rotation_rpc.sql` originally credited
+   Postgres with "serializing concurrent callers on the same `user_id`" —
+   it doesn't: two concurrent rotations can both clear the same revoke
+   predicate before either commits, and both then race their own `insert`.
+   What actually makes that race safe is
+   `recovery_codes_one_active_per_user_idx` — whichever insert commits first
+   wins outright, the loser's insert raises `23505` against that same
+   index, and because the revoke and insert now share one transaction, that
+   failure rolls the loser's revoke back too, rather than leaving a
+   committed revoke with no matching insert. The migration's comment and
+   this document's own §5 entry above are corrected to say so.
+2. **Fix #5 had no committed behavioral test.** `server-stack.test.ts`'s
+   assertions were string greps against the source and the migration —
+   both would pass against an RPC that did the wrong thing. Added two live
+   integration tests: a forced global `code_hash` collision on the insert
+   half, proving the rollback directly (the RPC leaves the pre-existing
+   code untouched; a hand-reproduced version of the old two-statement
+   sequence against the identical collision leaves zero active codes); and
+   a genuine concurrent `generate`/`generate` race (`Promise.all`), proving
+   the account ends up with exactly one active, redeemable code regardless
+   of which of the two legitimate outcomes the real network timing
+   produces (both succeed, the second silently superseding the first; or
+   one succeeds and the other's insert genuinely collides).
+3. **`revertRecoveryCodeRedemptionViaServiceRole` could itself collide with
+   the one-active-code index.** If a `POST /v1/generate` landed in the
+   narrow window between a failed mint and this revert, the plain `update
+   ... where revoked_at is null` it used would try to revive the
+   just-spent code as a *second* active row, alongside the fresh one the
+   concurrent `generate` had just rotated in — rejected by
+   `recovery_codes_one_active_per_user_idx`, caught and logged by
+   `handleRedeem`'s own try/catch, but a real avoidable error rather than a
+   deliberate decision. Not account-corrupting (the fresh code from that
+   concurrent `generate` remains the sole way back in either way), but a
+   narrow path where the fix silently degraded to pre-fix behavior for the
+   specific code being reverted. Fixed with a second Postgres function,
+   `revert_recovery_code_redemption` (migration
+   `20260913090100_recovery_code_revert_rpc.sql`, DDL below), which only
+   clears `redeemed_at` when the account holds no other active code —
+   otherwise a silent no-op, not a constraint violation. Two live
+   integration tests prove both branches directly against the RPC.
+4. **The rate-limit sweep ran on every request, not just when needed.**
+   `pruneExpiredRateLimitEntries` swept the *entire* map on every single
+   `checkRedemptionRateLimitInMemory` call — under the exact rotated-address
+   attack it exists to bound, nothing has expired yet at the moment each new
+   address is added, so this was O(n) per request, i.e. O(n²) total: memory
+   exhaustion traded for quadratic CPU. Fixed by gating the sweep on map
+   size (`RATE_LIMIT_PRUNE_SIZE_THRESHOLD`, 1,000) rather than running it
+   unconditionally — amortized O(1) per request once the map is below
+   threshold, with one real sweep once it isn't.
+5. **The integration suite shared one real rate-limit bucket with no way to
+   reset it, undocumented.** Once `extractCallerAddress` reads the platform
+   gateway's own trusted hop (finding 3 from the prior round), every request
+   the whole integration file makes shares one real, gateway-observed
+   bucket — confirmed live that the local Kong gateway supplies this hop
+   unconditionally, whether or not the client sets `X-Forwarded-For` at
+   all, so there is no client-side way to get a fresh one. Left as-is, a
+   re-run of the suite inside the 60-second window failed unrelated tests
+   (the basic round-trip, the concurrent-redemption race) with `429`
+   instead of their real expectations — an undocumented cooldown nobody
+   would expect to hit. Fixed with a new route,
+   `POST /v1/test-only-reset-rate-limit`, gated behind
+   `RECOVERY_CODE_TEST_RESET_TOKEN` — unset (and therefore inert) in any
+   real deployment, and answering an unauthorized caller the identical
+   response an unknown route gets, so its existence is not discoverable
+   without already knowing the token. The integration suite calls it in a
+   `beforeAll`/`afterAll` around the whole file. Proven live: the suite now
+   passes cleanly five consecutive runs back to back with no stack restart
+   between them, where it previously failed on the second run.
+
+A same-review pass also recorded F13's mandated re-derivation for the
+`recovery.invalid` placeholder-email namespace in `server-threat-model.md`
+(passes — see that document) and corrected `server-save-sync-protocol.md`'s
+CORS-header documentation, which had drifted out of sync with finding 2's
+fix above. All five re-verified: `npm run verify:server` (98 Deno unit
+tests, 69 integration tests, 3 server-e2e) and the full client gate (502
+unit tests, 51 E2E, build, secret scan, 10 production smoke) both re-pass
+end to end from a clean cycle.
+
 ## Cat Role Asset Catalog Contract
 
 `art-source/cat-role-catalog/` is the source-of-truth workspace for role-based

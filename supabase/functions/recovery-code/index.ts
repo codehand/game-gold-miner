@@ -108,6 +108,24 @@ const FUNCTION_ROUTE_PREFIX = '/recovery-code';
 const PLATFORM_ROUTE_PREFIX = '/functions/v1';
 const GENERATE_ROUTE = '/v1/generate';
 const REDEEM_ROUTE = '/v1/redeem';
+/**
+ * A 2026-09-13 review finding: once `extractCallerAddress` reads the
+ * platform gateway's own trusted hop, every request the integration suite
+ * makes from one local machine shares one real rate-limit bucket — there is
+ * no client-side way to opt out, by design, the same as a real deployment's
+ * gateway would behave for many distinct users behind one shared address.
+ * That leaves the suite's own throttle test with a bucket it fills but
+ * never empties, so a re-run inside the 60-second window fails unrelated
+ * tests with `429` instead of their real expectations. This route lets the
+ * integration suite clear that shared bucket between runs rather than
+ * requiring an undocumented cooldown. It only ever answers when
+ * `RECOVERY_CODE_TEST_RESET_TOKEN` is configured — absent from every
+ * environment but a local dev stack's own `supabase/functions/.env` — and a
+ * caller without the matching token gets the exact same response as an
+ * unknown route, so the route's own existence is not discoverable without
+ * already knowing the token.
+ */
+const TEST_RESET_RATE_LIMIT_ROUTE = '/v1/test-only-reset-rate-limit';
 
 /** 128-bit entropy — a machine-generated secret, not a human password; no slow hash is needed (see the hashing doc comment above). */
 const CODE_BYTE_LENGTH = 16;
@@ -267,6 +285,16 @@ export type RevertRecoveryCodeRedemption = (canonicalCode: string) => Promise<vo
  */
 export type CheckRedemptionRateLimit = (address: string | null) => Promise<boolean>;
 
+/**
+ * Resolves `true` only when `providedToken` matches a configured reset
+ * token. `providedToken` is `null` when the caller sent no token header at
+ * all — that must never authorize, the same as a wrong token.
+ */
+export type CheckTestResetAuthorization = (providedToken: string | null) => Promise<boolean>;
+
+/** Clears the in-memory rate-limit state — see `TEST_RESET_RATE_LIMIT_ROUTE`'s doc comment for why this route exists at all. */
+export type ResetRateLimitState = () => Promise<void>;
+
 export interface RecoveryCodeDeps {
   readonly resolveCaller: ResolveCaller;
   readonly rotateRecoveryCode: RotateRecoveryCode;
@@ -274,6 +302,8 @@ export interface RecoveryCodeDeps {
   readonly revertRecoveryCodeRedemption: RevertRecoveryCodeRedemption;
   readonly mintSessionForUser: MintSessionForUser;
   readonly checkRedemptionRateLimit: CheckRedemptionRateLimit;
+  readonly checkTestResetAuthorization: CheckTestResetAuthorization;
+  readonly resetRateLimitState: ResetRateLimitState;
 }
 
 async function handleGenerate(
@@ -360,6 +390,31 @@ async function handleRedeem(
   }
 
   return jsonResponse(200, { tokenHash: minted.tokenHash }, origin);
+}
+
+/**
+ * See `TEST_RESET_RATE_LIMIT_ROUTE`'s doc comment. A missing or wrong token
+ * gets the identical `malformed_request`/"Unknown route" response an
+ * actually-unknown route gets — never a distinct "wrong token" shape — so
+ * this route's existence is not an oracle for anyone without the token.
+ */
+async function handleTestOnlyResetRateLimit(
+  request: Request,
+  deps: RecoveryCodeDeps,
+  origin: string | null,
+): Promise<Response> {
+  const providedToken = request.headers.get('x-test-reset-token');
+  const authorized = await deps.checkTestResetAuthorization(providedToken);
+
+  if (!authorized) {
+    return errorResponse(400, 'malformed_request', 'Unknown route.', {
+      detail: { route: TEST_RESET_RATE_LIMIT_ROUTE },
+      origin,
+    });
+  }
+
+  await deps.resetRateLimitState();
+  return jsonResponse(200, { reset: true }, origin);
 }
 
 /**
@@ -465,10 +520,18 @@ async function redeemRecoveryCodeViaServiceRole(canonicalCode: string): Promise<
 
 /**
  * Clears `redeemed_at` on a code whose redemption succeeded but whose
- * follow-on mint failed, so the same code remains usable. Guarded by
- * `revoked_at is null` for the same reason every other write here is
- * conditional: a code can only ever be un-redeemed back into "active," never
- * resurrected out of "revoked."
+ * follow-on mint failed, so the same code remains usable. Delegates to
+ * `revert_recovery_code_redemption`
+ * (`20260913090100_recovery_code_revert_rpc.sql`) rather than a plain
+ * `update` — a 2026-09-13 review finding: a `POST /v1/generate` landing in
+ * the narrow window between the failed mint and this revert rotates a fresh
+ * active code, and a plain `update ... where revoked_at is null` would then
+ * try to revive this code as *also* active, colliding with
+ * `recovery_codes_one_active_per_user_idx`. The RPC checks for that fresher
+ * code first and no-ops instead of raising an avoidable constraint
+ * violation — the account is never left with two active codes, and it is
+ * never left with the caller's own request throwing over a race it cannot
+ * see.
  */
 async function revertRecoveryCodeRedemptionViaServiceRole(canonicalCode: string): Promise<void> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -483,11 +546,7 @@ async function revertRecoveryCodeRedemptionViaServiceRole(canonicalCode: string)
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { error } = await admin
-    .from('recovery_codes')
-    .update({ redeemed_at: null })
-    .eq('code_hash', codeHash)
-    .is('revoked_at', null);
+  const { error } = await admin.rpc('revert_recovery_code_redemption', { p_code_hash: codeHash });
 
   if (error) {
     throw new Error(`recovery-code: reverting the redemption failed: ${error.message}`);
@@ -560,6 +619,18 @@ const redemptionAttemptsByAddress = new Map<string, number[]>();
  * bounds the map to addresses with a *live* attempt in the last window,
  * which is a small, self-limiting set regardless of how many distinct
  * addresses have ever been seen.
+ *
+ * Only called once the map has grown past `RATE_LIMIT_PRUNE_SIZE_THRESHOLD`
+ * (below), not on every request — a 2026-09-13 review finding: under the
+ * exact rotated-address attack this exists to bound, nothing in the map is
+ * ever expired *yet* at the moment each new address is added, so sweeping
+ * on every request was O(n) per request, i.e. O(n²) total, trading the
+ * unbounded-memory problem for an unbounded-CPU one. Gating on size instead
+ * makes this amortized: a sweep only runs once there is real memory
+ * pressure, and because entries this old are exactly the ones a real
+ * fixed-window limiter expects to have expired by then, one sweep at that
+ * point reliably brings the map back under the threshold rather than
+ * running every request in between for nothing.
  */
 function pruneExpiredRateLimitEntries(now: number): void {
   for (const [address, attempts] of redemptionAttemptsByAddress) {
@@ -572,6 +643,9 @@ function pruneExpiredRateLimitEntries(now: number): void {
   }
 }
 
+/** See `pruneExpiredRateLimitEntries`'s doc comment for why this is a size gate, not an every-request sweep. */
+const RATE_LIMIT_PRUNE_SIZE_THRESHOLD = 1_000;
+
 function checkRedemptionRateLimitInMemory(address: string | null): Promise<boolean> {
   // No address to bucket by — see `extractCallerAddress`'s doc comment for
   // why letting this through beats sharing one bucket across every such
@@ -581,7 +655,9 @@ function checkRedemptionRateLimitInMemory(address: string | null): Promise<boole
   }
 
   const now = Date.now();
-  pruneExpiredRateLimitEntries(now);
+  if (redemptionAttemptsByAddress.size > RATE_LIMIT_PRUNE_SIZE_THRESHOLD) {
+    pruneExpiredRateLimitEntries(now);
+  }
 
   const attempts = (redemptionAttemptsByAddress.get(address) ?? []).filter(
     (attemptedAt) => now - attemptedAt < RATE_LIMIT_WINDOW_MS,
@@ -597,6 +673,24 @@ function checkRedemptionRateLimitInMemory(address: string | null): Promise<boole
   return Promise.resolve(true);
 }
 
+/**
+ * Unset in every environment but a local dev stack's own
+ * `supabase/functions/.env` — a real deployment (none exists yet) must never
+ * define `RECOVERY_CODE_TEST_RESET_TOKEN`, or this route would answer for
+ * anyone who guesses it. `providedToken === null` (no header at all) always
+ * fails alongside a configured-but-wrong one; there is no way to distinguish
+ * "not configured" from "wrong token" from the response either.
+ */
+function checkTestResetAuthorizationViaEnv(providedToken: string | null): Promise<boolean> {
+  const expectedToken = Deno.env.get('RECOVERY_CODE_TEST_RESET_TOKEN');
+  return Promise.resolve(Boolean(expectedToken) && providedToken === expectedToken);
+}
+
+function resetRateLimitStateInMemory(): Promise<void> {
+  redemptionAttemptsByAddress.clear();
+  return Promise.resolve();
+}
+
 const defaultDeps: RecoveryCodeDeps = {
   resolveCaller: resolveCallerViaSupabaseAuth,
   rotateRecoveryCode: rotateRecoveryCodeViaServiceRole,
@@ -604,6 +698,8 @@ const defaultDeps: RecoveryCodeDeps = {
   revertRecoveryCodeRedemption: revertRecoveryCodeRedemptionViaServiceRole,
   mintSessionForUser: mintSessionForUserViaGenerateLink,
   checkRedemptionRateLimit: checkRedemptionRateLimitInMemory,
+  checkTestResetAuthorization: checkTestResetAuthorizationViaEnv,
+  resetRateLimitState: resetRateLimitStateInMemory,
 };
 
 export async function handleRequest(
@@ -637,6 +733,19 @@ export async function handleRequest(
       });
     }
     return await handleRedeem(request, deps, origin);
+  }
+
+  if (route === TEST_RESET_RATE_LIMIT_ROUTE) {
+    if (request.method === 'OPTIONS') {
+      return corsPreflightResponse(request, 'POST, OPTIONS');
+    }
+    if (request.method !== 'POST') {
+      return errorResponse(400, 'malformed_request', 'Unsupported method for this route.', {
+        detail: { method: request.method, route },
+        origin,
+      });
+    }
+    return await handleTestOnlyResetRateLimit(request, deps, origin);
   }
 
   return errorResponse(400, 'malformed_request', 'Unknown route.', { detail: { route }, origin });

@@ -543,6 +543,38 @@ provider, a different placeholder domain) must re-verify that no other
 signup path can write to that same namespace first, rather than assuming
 this one fix generalizes.
 
+**F13 re-derivation for Step 14's `recovery.invalid` placeholder (recorded
+2026-09-13, analysis performed 2026-09-12 alongside Step 14's own
+implementation):** `mintSessionForUserViaGenerateLink` assigns
+`recovery-<user_id>@recovery.invalid` under the identical
+`admin.updateUserById(..., {email_confirm: true})` pattern F13 already
+flagged for Telegram, so this is exactly the "future feature... under any
+other reachable namespace" case the paragraph above requires re-verifying
+rather than assuming closed. The re-derivation passes:
+- `[auth.email] enable_signup = false` is a single, domain-agnostic
+  configuration flag — it disables `POST /auth/v1/signup` for *every* email,
+  not only `*@telegram.invalid` — so the exact "second, unauthenticated,
+  unrelated path" F13 identified is already closed for `*@recovery.invalid`
+  too, with no additional change needed.
+- The namespace itself is a materially harder target than Telegram's:
+  `<user_id>` is the account's own `auth.users.id`, a random v4 UUID
+  (122 bits of randomness), not a small, public, sequential-ish Telegram id.
+  Even if public signup were ever re-enabled for an unrelated reason, an
+  attacker would first need to already know the specific victim's UUID —
+  not published anywhere this milestone exposes — to target the correct
+  address at all.
+- The placeholder is only ever *assigned* after
+  `redeemRecoveryCodeViaServiceRole` already succeeded — i.e. after the
+  caller already produced the correct 128-bit recovery-code plaintext. A
+  caller who can reach that assignment at all already holds a credential
+  stronger than anything Telegram's own placeholder ever required to be
+  compromised in the first place.
+
+No code or config change resulted from this pass — `enable_signup = false`
+already covers Step 14 as a byproduct of the Step 12 fix. Recorded because
+F13 explicitly asked for the re-verification in writing, not because the
+verification found something new to fix.
+
 **F3 — Step 23's upper bound has an unstated modelling rule.**
 Bounding cumulative counters requires knowing what the mine *could* have
 produced, which depends on which upgrades were bought and when — information the
