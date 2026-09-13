@@ -319,12 +319,50 @@ describe('every Edge Function', () => {
   it('recovery-code does read the service-role key, and only to rotate/redeem codes and mint a session', () => {
     const source = readProjectFile('supabase/functions/recovery-code/index.ts');
     expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
-    // Redemption is an atomic compare-and-swap, the same lesson save-sync's
-    // own review just taught: never a read-then-write.
+    // Redemption (and its revert-on-failed-mint counterpart) is an atomic
+    // compare-and-swap, the same lesson save-sync's own review just taught:
+    // never a read-then-write.
     expect(source).toMatch(/admin\s*\.from\('recovery_codes'\)\s*\.update\(/);
     expect(source).toContain('admin.auth.admin.generateLink');
     expect(source).toContain('admin.auth.admin.getUserById');
     expect(source).toContain('admin.auth.admin.updateUserById');
+  });
+
+  it('recovery-code rotates a code through a single RPC, not two separate non-transactional statements', () => {
+    // A 2026-09-12 review found rotation was a separate `.update()` (revoke)
+    // then `.insert()` (new code) — two independent PostgREST requests, so
+    // an insert failure after a successful revoke could strand a user with
+    // no active code, and two concurrent rotations for the same user could
+    // both pass the revoke before racing the insert. `rotate_recovery_code`
+    // (`supabase/migrations/20260913090000_recovery_code_rotation_rpc.sql`)
+    // wraps both statements in one Postgres function/transaction.
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain("admin.rpc('rotate_recovery_code'");
+    expect(source).not.toContain("admin.from('recovery_codes').insert(");
+
+    const migration = readProjectFile('supabase/migrations/20260913090000_recovery_code_rotation_rpc.sql');
+    expect(migration).toContain('create function public.rotate_recovery_code(p_user_id uuid, p_code_hash text)');
+    expect(migration).toContain('insert into public.recovery_codes (user_id, code_hash)');
+  });
+
+  it('recovery-code reverts a redemption rather than burning the code when session minting fails', () => {
+    // A 2026-09-12 review found a failed mint after a successful redemption
+    // permanently destroyed the account: the code was already spent and no
+    // session was ever delivered. `revertRecoveryCodeRedemption` clears
+    // `redeemed_at` so the same code stays usable.
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain('revertRecoveryCodeRedemption');
+    expect(source).toContain('redeemed_at: null');
+  });
+
+  it("recovery-code's rate limiter never buckets a caller with no X-Forwarded-For into a shared address", () => {
+    // A 2026-09-12 review found the prior fallback ('unknown' for every
+    // header-less caller) was a global-denial footgun, not a safety margin —
+    // one such caller could throttle every other one. `null` now means "let
+    // this request through," not "share a bucket."
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).not.toContain("'unknown'");
+    expect(source).toContain('address: string | null');
   });
 });
 

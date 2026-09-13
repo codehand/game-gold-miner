@@ -50,22 +50,24 @@ function generateCode(accessToken: string): Promise<Response> {
 }
 
 /**
- * Defaults to a fresh random address per call — `checkRedemptionRateLimitInMemory`
- * is a single address-keyed bucket shared across every request this
- * function's warm instance sees, so without this every test in this file
- * would accumulate against the same `'unknown'` bucket (no
- * `X-Forwarded-For` header) and could trip each other's rate limit. Only
- * the dedicated throttle test below passes the same `address` across
- * repeated calls on purpose.
+ * Never sets `X-Forwarded-For` itself. A 2026-09-12 review finding changed
+ * `extractCallerAddress` to read the *last* hop of that header — the one
+ * this platform's own gateway appends and a client cannot forge — rather
+ * than the first (client-suppliable) one. Confirmed against the live local
+ * stack (Kong): it always appends its own observed address whether or not
+ * the client sent the header at all, so every request this suite makes
+ * shares one real, unspoofable bucket regardless of what this function
+ * does or doesn't set — there is no client-side way to opt out locally, the
+ * same as a real deployment's gateway would behave for every caller behind
+ * one shared address (e.g. an office NAT). `RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS`
+ * (30) is sized to comfortably absorb this whole file's own normal call
+ * volume; only the dedicated throttle test below deliberately drives the
+ * shared bucket past it.
  */
-function redeemCode(code: string, address: string = crypto.randomUUID()): Promise<Response> {
+function redeemCode(code: string): Promise<Response> {
   return fetch(REDEEM_URL, {
     method: 'POST',
-    headers: {
-      apikey: LOCAL_ANON_KEY,
-      'content-type': 'application/json',
-      'x-forwarded-for': address,
-    },
+    headers: { apikey: LOCAL_ANON_KEY, 'content-type': 'application/json' },
     body: JSON.stringify({ code }),
     signal: AbortSignal.timeout(20_000),
   });
@@ -216,15 +218,25 @@ describe('recovery-code (server-milestone Step 14)', () => {
   });
 
   it('throttles repeated redemption attempts from the same address', async () => {
-    const address = `test-throttle-${crypto.randomUUID()}`;
-    const responses: Response[] = [];
+    // Every request in this file — this test included — shares one real,
+    // gateway-observed address bucket (see `redeemCode`'s doc comment), so
+    // this test's own attempts stack on top of whatever headroom the rest
+    // of the file's normal traffic left in the 60-second window. A generous
+    // upper bound, rather than an exact attempt count, tolerates that
+    // ambient consumption instead of assuming this test starts from zero.
+    const statuses: number[] = [];
+    let sawRateLimited = false;
 
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      responses.push(await redeemCode('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff', address));
+    for (let attempt = 0; attempt < 45 && !sawRateLimited; attempt += 1) {
+      const response = await redeemCode('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      statuses.push(response.status);
+      if (response.status === 429) {
+        sawRateLimited = true;
+      } else {
+        expect(response.status).toBe(401);
+      }
     }
 
-    const statuses = responses.map((response) => response.status);
-    expect(statuses.filter((status) => status === 429).length).toBeGreaterThan(0);
-    expect(statuses.slice(0, 10).every((status) => status === 401)).toBe(true);
+    expect(sawRateLimited).toBe(true);
   });
 });

@@ -55,15 +55,42 @@
  * email is ever sent) when the account has none — guaranteeing
  * `generateLink` *finds* the correct row rather than creating a second one.
  *
- * **Rate limiting is a deliberate interim seam.** Step 25 is the plan's own
- * named owner of "rate-limit uploads, authentication, and recovery-code
- * redemption per user and per address" as a cross-cutting concern, and the
- * Step 3 schema design deliberately carries no per-code failed-attempt
- * counter ("counting per code would miss the attack"). This ships a
- * minimal in-memory, module-scoped fixed-window limiter keyed by caller
- * address, injected the same way every other collaborator here is, so
- * Step 25 can swap in a persistent, distributed implementation without
- * touching `handleRedeem` itself.
+ * **Rate limiting is a deliberate interim seam, honestly labeled as
+ * best-effort.** Step 25 is the plan's own named owner of "rate-limit
+ * uploads, authentication, and recovery-code redemption per user and per
+ * address" as a cross-cutting concern, and the Step 3 schema design
+ * deliberately carries no per-code failed-attempt counter ("counting per
+ * code would miss the attack"). This ships a minimal in-memory,
+ * module-scoped fixed-window limiter keyed by caller address, injected the
+ * same way every other collaborator here is, so Step 25 can swap in a
+ * persistent, distributed implementation without touching `handleRedeem`
+ * itself. A 2026-09-12 review finding: `extractCallerAddress` reads the
+ * *last* `X-Forwarded-For` hop — the one this platform's gateway appends and
+ * a client cannot forge — rather than the first, client-suppliable one, so
+ * rotating a fake header no longer buys a fresh bucket. Confirmed against
+ * the local stack: the gateway (Kong locally, Supabase's own edge network in
+ * production) always supplies this trusted hop, whether or not the client
+ * sent the header at all, so in practice every real caller does get bucketed
+ * — the `null`/"no address" case below only guards a caller that somehow
+ * reaches this handler without passing through that gateway at all, which no
+ * deployment path in this project allows today; it is a defensive default,
+ * not a case this project's own traffic exercises. This limiter remains a
+ * speed bump for casual abuse, not a security boundary — the real backstop
+ * against brute force is the code's own 128-bit entropy — which is also why
+ * the threshold is generous (30 per minute) rather than tight: it costs
+ * nothing extra against a real attacker while comfortably absorbing a real
+ * user's own retry bursts, or many distinct real users who happen to share
+ * one observed address (an office NAT, for instance).
+ *
+ * **A failed mint reverts the redemption rather than burning the code.**
+ * `redeemRecoveryCodeViaServiceRole` marks the row redeemed *before*
+ * `mintSessionForUserViaGenerateLink` runs; if minting then fails (a
+ * transient `generateLink`/`updateUserById` error), the code must not be
+ * left permanently spent with no session ever delivered — the account would
+ * become unrecoverable. `handleRedeem` calls
+ * `revertRecoveryCodeRedemption` (best-effort, its own failure only logged)
+ * to clear `redeemed_at` before answering `500`, so the same code can be
+ * retried.
  *
  * **The guest-upgrade collision flow needs no new code.** Once the client
  * completes `verifyOtp`, `src/main.ts` runs the exact same
@@ -89,7 +116,19 @@ const CODE_GROUP_SIZE = 4;
 const RECOVERY_EMAIL_DOMAIN = 'recovery.invalid';
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS = 10;
+/**
+ * A 2026-09-12 review finding, confirmed against the live local stack: the
+ * platform gateway in front of this function (Kong locally, Supabase's own
+ * edge network in production) always supplies its own trusted
+ * `X-Forwarded-For` hop, appended after whatever the client sent — a caller
+ * genuinely cannot reach this handler with no observable address at all.
+ * Every distinct real caller still gets a distinct real address in a real
+ * deployment; only a single-machine local/CI run legitimately shares one.
+ * 30 gives comfortable headroom for a real user's own retry bursts (mistyped
+ * codes, copy/paste errors) without weakening the actual security backstop,
+ * which is the code's 128-bit entropy, not this counter.
+ */
+const RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS = 30;
 const RATE_LIMIT_RETRY_AFTER_SECONDS = 60;
 
 export function resolveFunctionRoute(requestUrl: string): string {
@@ -116,13 +155,22 @@ function extractBearerToken(authorizationHeader: string | null): string | null {
   return match === null ? null : match[1];
 }
 
-/** The first hop in `X-Forwarded-For`, or a constant when absent — every caller with no header shares one bucket, which is conservative, not permissive. */
-function extractCallerAddress(request: Request): string {
+/**
+ * The *last* hop in `X-Forwarded-For` — the one this platform's own gateway
+ * appended, and therefore the one entry in the list a client cannot forge by
+ * prepending fake addresses of its own — or `null` when the header is
+ * absent entirely. `null` means "no address to bucket by," not "one shared
+ * address for every such caller": see the rate-limiter doc comment above for
+ * why bucketing it instead would be a global-denial footgun, not a safety
+ * margin.
+ */
+function extractCallerAddress(request: Request): string | null {
   const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) {
-    return forwardedFor.split(',')[0].trim();
+  if (!forwardedFor) {
+    return null;
   }
-  return 'unknown';
+  const hops = forwardedFor.split(',');
+  return hops[hops.length - 1].trim();
 }
 
 async function hmacSha256(keyBytes: BufferSource, message: string): Promise<Uint8Array> {
@@ -204,13 +252,26 @@ export type MintSessionResult =
 
 export type MintSessionForUser = (userId: string) => Promise<MintSessionResult>;
 
-/** Resolves `true` when the caller may proceed, `false` when throttled. */
-export type CheckRedemptionRateLimit = (address: string) => Promise<boolean>;
+/**
+ * Best-effort reversal of a redemption whose subsequent mint failed — clears
+ * `redeemed_at` so the same code can be retried instead of being permanently
+ * spent for nothing. Takes the *canonical* code, for the same
+ * permission-boundary reason `RotateRecoveryCode`/`RedeemRecoveryCode` do.
+ */
+export type RevertRecoveryCodeRedemption = (canonicalCode: string) => Promise<void>;
+
+/**
+ * Resolves `true` when the caller may proceed, `false` when throttled.
+ * `address` is `null` when the caller sent no `X-Forwarded-For` at all —
+ * see `extractCallerAddress`'s doc comment for why that must never throttle.
+ */
+export type CheckRedemptionRateLimit = (address: string | null) => Promise<boolean>;
 
 export interface RecoveryCodeDeps {
   readonly resolveCaller: ResolveCaller;
   readonly rotateRecoveryCode: RotateRecoveryCode;
   readonly redeemRecoveryCode: RedeemRecoveryCode;
+  readonly revertRecoveryCodeRedemption: RevertRecoveryCodeRedemption;
   readonly mintSessionForUser: MintSessionForUser;
   readonly checkRedemptionRateLimit: CheckRedemptionRateLimit;
 }
@@ -285,6 +346,16 @@ async function handleRedeem(
 
   const minted = await deps.mintSessionForUser(attempt.userId);
   if (minted.status === 'error') {
+    // The code is already marked redeemed but no session was ever
+    // delivered — reverting it is what keeps this a retryable failure
+    // instead of a permanently destroyed account. Best-effort: a failure
+    // here is logged, not thrown, so the caller still sees the 500 that
+    // reflects what actually happened.
+    try {
+      await deps.revertRecoveryCodeRedemption(canonical);
+    } catch (revertError) {
+      console.error('recovery-code: reverting a failed redemption failed.', revertError);
+    }
     return errorResponse(500, 'server_error', 'Could not mint a session.', { origin });
   }
 
@@ -318,10 +389,18 @@ async function resolveCallerViaSupabaseAuth(bearerToken: string): Promise<Authen
 
 /**
  * `recovery_codes` denies every client write (Step 15's own "no policy at
- * all" rule for this table), so the service role is required for both the
- * revoke and the insert. Revoking first is load-bearing, not cosmetic: the
- * partial unique index `recovery_codes_one_active_per_user_idx` rejects a
- * second active row for the same user outright.
+ * all" rule for this table), so the service role is required. The revoke
+ * and the insert run inside `rotate_recovery_code`, a single Postgres
+ * function (`20260913090000_recovery_code_rotation_rpc.sql`) — a 2026-09-12
+ * review finding: two separate PostgREST statements are two separate
+ * non-transactional requests, so an insert failure after a successful
+ * revoke could leave a user with no active code, and two concurrent
+ * rotations for the same user could both pass the revoke before racing the
+ * insert against `recovery_codes_one_active_per_user_idx`. The RPC makes
+ * both statements one transaction, with Postgres serializing concurrent
+ * callers on the same `user_id` the same way it already serializes
+ * concurrent redeemers of the same `code_hash` in
+ * `redeemRecoveryCodeViaServiceRole`.
  */
 async function rotateRecoveryCodeViaServiceRole(userId: string, canonicalCode: string): Promise<void> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -336,23 +415,13 @@ async function rotateRecoveryCodeViaServiceRole(userId: string, canonicalCode: s
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { error: revokeError } = await admin
-    .from('recovery_codes')
-    .update({ revoked_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .is('redeemed_at', null)
-    .is('revoked_at', null);
+  const { error } = await admin.rpc('rotate_recovery_code', {
+    p_user_id: userId,
+    p_code_hash: codeHash,
+  });
 
-  if (revokeError) {
-    throw new Error(`recovery-code: revoking the prior code failed: ${revokeError.message}`);
-  }
-
-  const { error: insertError } = await admin
-    .from('recovery_codes')
-    .insert({ user_id: userId, code_hash: codeHash });
-
-  if (insertError) {
-    throw new Error(`recovery-code: storing the new code failed: ${insertError.message}`);
+  if (error) {
+    throw new Error(`recovery-code: rotating the code failed: ${error.message}`);
   }
 }
 
@@ -392,6 +461,37 @@ async function redeemRecoveryCodeViaServiceRole(canonicalCode: string): Promise<
   }
 
   return { status: 'redeemed', userId: data[0].user_id as string };
+}
+
+/**
+ * Clears `redeemed_at` on a code whose redemption succeeded but whose
+ * follow-on mint failed, so the same code remains usable. Guarded by
+ * `revoked_at is null` for the same reason every other write here is
+ * conditional: a code can only ever be un-redeemed back into "active," never
+ * resurrected out of "revoked."
+ */
+async function revertRecoveryCodeRedemptionViaServiceRole(canonicalCode: string): Promise<void> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('recovery-code: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured.');
+  }
+
+  const codeHash = await hashRecoveryCode(canonicalCode);
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { error } = await admin
+    .from('recovery_codes')
+    .update({ redeemed_at: null })
+    .eq('code_hash', codeHash)
+    .is('revoked_at', null);
+
+  if (error) {
+    throw new Error(`recovery-code: reverting the redemption failed: ${error.message}`);
+  }
 }
 
 /**
@@ -452,8 +552,37 @@ async function mintSessionForUserViaGenerateLink(userId: string): Promise<MintSe
  */
 const redemptionAttemptsByAddress = new Map<string, number[]>();
 
-function checkRedemptionRateLimitInMemory(address: string): Promise<boolean> {
+/**
+ * Sweeps every key, not just the one about to be checked — a determined
+ * caller who never reuses an address (this function's own integration test
+ * does exactly that on purpose) would otherwise grow this map by one entry
+ * per request forever. Dropping a key once its filtered window is empty
+ * bounds the map to addresses with a *live* attempt in the last window,
+ * which is a small, self-limiting set regardless of how many distinct
+ * addresses have ever been seen.
+ */
+function pruneExpiredRateLimitEntries(now: number): void {
+  for (const [address, attempts] of redemptionAttemptsByAddress) {
+    const live = attempts.filter((attemptedAt) => now - attemptedAt < RATE_LIMIT_WINDOW_MS);
+    if (live.length === 0) {
+      redemptionAttemptsByAddress.delete(address);
+    } else if (live.length !== attempts.length) {
+      redemptionAttemptsByAddress.set(address, live);
+    }
+  }
+}
+
+function checkRedemptionRateLimitInMemory(address: string | null): Promise<boolean> {
+  // No address to bucket by — see `extractCallerAddress`'s doc comment for
+  // why letting this through beats sharing one bucket across every such
+  // caller.
+  if (address === null) {
+    return Promise.resolve(true);
+  }
+
   const now = Date.now();
+  pruneExpiredRateLimitEntries(now);
+
   const attempts = (redemptionAttemptsByAddress.get(address) ?? []).filter(
     (attemptedAt) => now - attemptedAt < RATE_LIMIT_WINDOW_MS,
   );
@@ -472,6 +601,7 @@ const defaultDeps: RecoveryCodeDeps = {
   resolveCaller: resolveCallerViaSupabaseAuth,
   rotateRecoveryCode: rotateRecoveryCodeViaServiceRole,
   redeemRecoveryCode: redeemRecoveryCodeViaServiceRole,
+  revertRecoveryCodeRedemption: revertRecoveryCodeRedemptionViaServiceRole,
   mintSessionForUser: mintSessionForUserViaGenerateLink,
   checkRedemptionRateLimit: checkRedemptionRateLimitInMemory,
 };

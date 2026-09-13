@@ -996,6 +996,64 @@ under two routes (`/functions/v1/recovery-code/v1/generate`,
   Step 13 collision flow" needed no new merge logic, since the redeeming
   device's local save is untouched by the session swap.
 
+**2026-09-12 review of Step 14.** Five findings, all fixed and re-verified
+against the live stack:
+
+1. **HIGH — a failed mint permanently destroyed the account.**
+   `redeemRecoveryCodeViaServiceRole` marks the row redeemed *before*
+   `mintSessionForUserViaGenerateLink` runs; if minting then failed, the code
+   was already spent with no session ever delivered — unrecoverable.
+   `handleRedeem` now calls a new `revertRecoveryCodeRedemption` collaborator
+   (best-effort, its own failure only logged) to clear `redeemed_at` before
+   answering `500`, so the same code stays usable. Mutation-proven live: with
+   the revert removed and minting forced to fail, the row stayed
+   `redeemed_at`-set forever; with the revert restored, the same forced
+   failure left `redeemed_at` null.
+2. **MEDIUM — the CORS preflight blocked every real browser call.**
+   `corsPreflightResponse` (`_shared/http.ts`) answered
+   `access-control-allow-headers: content-type` only, so a real browser's
+   preflight for `recoveryCode.ts`'s or `cloudSaveReconcile.ts`'s
+   `Authorization`-bearing cross-origin request would have been refused
+   before it left — invisible locally only because Kong's own CORS handling
+   (finding F12) overrides every function's response regardless. Fixed to
+   `content-type, authorization`.
+3. **MEDIUM — the rate limiter's own doc comment misdescribed its failure
+   mode, and (once fixed) the address it read was proven to always be
+   populated locally by the platform gateway.** `extractCallerAddress` now
+   reads the *last* `X-Forwarded-For` hop — the one the gateway (Kong
+   locally, Supabase's edge network in production) appends and a client
+   cannot forge — instead of the first, client-suppliable one, closing the
+   "attacker rotates the header every request" exploit the review named
+   (which the integration suite's own old per-call random address
+   inadvertently demonstrated). Confirmed live that the gateway supplies this
+   trusted hop unconditionally, whether or not the client sends the header
+   at all — the `null`/"no address" branch in
+   `checkRedemptionRateLimitInMemory` is a defensive default for a caller
+   that bypasses the gateway entirely, a path no deployment here allows
+   today, not a case this project's own traffic exercises. Given that every
+   real caller is now bucketed by an address it cannot spoof, the threshold
+   was raised from 10 to 30 attempts/minute — free against a real attacker
+   (128-bit code entropy is the actual backstop, not this counter) while
+   comfortably absorbing a real user's own retry bursts or many distinct
+   users behind one shared address (an office NAT).
+4. **MEDIUM — unbounded map growth.** `redemptionAttemptsByAddress` never
+   dropped a key once its window emptied, so a caller who never reused an
+   address grew the map forever. `pruneExpiredRateLimitEntries` now sweeps
+   every key each check, deleting any whose live-attempt window is empty.
+5. **MEDIUM — rotation revoked before it knew the insert succeeded.**
+   `rotateRecoveryCodeViaServiceRole` was a separate `.update()` (revoke)
+   then `.insert()` — two independent, non-transactional PostgREST
+   statements. An insert failure after a successful revoke stranded the
+   user with no active code at all. Fixed with a single Postgres function,
+   `rotate_recovery_code` (migration
+   `20260913090000_recovery_code_rotation_rpc.sql`, DDL in the schema
+   section below), called through `admin.rpc(...)` — both statements now run
+   in one transaction. Mutation-proven live: forcing the insert to fail via
+   a global `code_hash` collision left the RPC-based rotation's original
+   code still active (rolled back), while reproducing the old two-statement
+   sequence by hand against the same collision left the user with zero
+   active codes (revoked, insert failed, nothing rolled back).
+
 ## Cat Role Asset Catalog Contract
 
 `art-source/cat-role-catalog/` is the source-of-truth workspace for role-based
@@ -1274,6 +1332,27 @@ create unique index recovery_codes_hash_key
 create unique index recovery_codes_one_active_per_user_idx
   on public.recovery_codes (user_id)
   where redeemed_at is null and revoked_at is null;
+
+-- Server-milestone Step 14 review finding (2026-09-12): rotating a code was
+-- a revoke `update` followed by a separate `insert` — two independent,
+-- non-transactional PostgREST requests. An insert failure after a
+-- successful revoke stranded a user with no active code. Wrapping both
+-- statements in one `plpgsql` function makes them one transaction.
+create function public.rotate_recovery_code(p_user_id uuid, p_code_hash text) returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  update public.recovery_codes
+  set revoked_at = now()
+  where user_id = p_user_id
+    and redeemed_at is null
+    and revoked_at is null;
+
+  insert into public.recovery_codes (user_id, code_hash) values (p_user_id, p_code_hash);
+end;
+$$;
 
 -- ------------------------------------------------------ leaderboard_entries --
 create table public.leaderboard_entries (

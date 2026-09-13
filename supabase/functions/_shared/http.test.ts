@@ -88,7 +88,10 @@ Deno.test('corsPreflightResponse answers 204 with the allowed methods and header
   assert.equal(response.status, 204);
   assert.equal(response.headers.get('access-control-allow-origin'), 'http://127.0.0.1:5173');
   assert.equal(response.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
-  assert.equal(response.headers.get('access-control-allow-headers'), 'content-type');
+  // A 2026-09-12 review finding: `authorization` must be allowed too, or a
+  // real browser's preflight refuses the cross-origin requests
+  // `recoveryCode.ts`/`cloudSaveReconcile.ts` actually send.
+  assert.equal(response.headers.get('access-control-allow-headers'), 'content-type, authorization');
   assert.equal(await response.text(), '');
 });
 

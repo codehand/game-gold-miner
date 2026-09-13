@@ -34,6 +34,9 @@ function noopDeps(overrides: Partial<RecoveryCodeDeps> = {}): RecoveryCodeDeps {
     redeemRecoveryCode: async () => {
       throw new Error('redeemRecoveryCode should not have been called');
     },
+    revertRecoveryCodeRedemption: async () => {
+      throw new Error('revertRecoveryCodeRedemption should not have been called');
+    },
     mintSessionForUser: async () => {
       throw new Error('mintSessionForUser should not have been called');
     },
@@ -157,6 +160,43 @@ Deno.test('handleGenerate answers 200 with a plaintext code and rotates it for t
   assert.deepEqual(rotated, { userId: FIXTURE_USER_ID, canonicalCode: canonicalizeRecoveryCode(body.code) });
 });
 
+Deno.test('handleRedeem passes null to checkRedemptionRateLimit when no X-Forwarded-For header is sent', async () => {
+  // A 2026-09-12 review finding: bucketing every header-less caller into one
+  // shared address would let any single such caller throttle every other
+  // one globally. Passing `null` through lets the rate limiter itself decide
+  // to let these requests through instead.
+  let seenAddress: string | null | undefined;
+  await handleRequest(
+    redeemRequest({ code: 'not-hex' }),
+    noopDeps({
+      checkRedemptionRateLimit: async (address) => {
+        seenAddress = address;
+        return true;
+      },
+    }),
+  );
+
+  assert.equal(seenAddress, null);
+});
+
+Deno.test('handleRedeem passes the last X-Forwarded-For hop to checkRedemptionRateLimit', async () => {
+  let seenAddress: string | null | undefined;
+  await handleRequest(
+    redeemRequest(
+      { code: 'not-hex' },
+      { address: '203.0.113.7, 198.51.100.20' },
+    ),
+    noopDeps({
+      checkRedemptionRateLimit: async (address) => {
+        seenAddress = address;
+        return true;
+      },
+    }),
+  );
+
+  assert.equal(seenAddress, '198.51.100.20');
+});
+
 Deno.test('handleRedeem answers 429 rate_limited before reading the body at all', async () => {
   let bodyWasRead = false;
   const request = redeemRequest({ code: 'whatever' });
@@ -245,11 +285,63 @@ Deno.test('handleRedeem answers 500, not 401, when session minting fails after a
     noopDeps({
       redeemRecoveryCode: async () => ({ status: 'redeemed', userId: FIXTURE_USER_ID }),
       mintSessionForUser: async () => ({ status: 'error' }),
+      revertRecoveryCodeRedemption: async () => {},
     }),
   );
 
   assert.equal(response.status, 500);
   assert.equal((await response.json()).error.code, 'server_error');
+});
+
+Deno.test('handleRedeem reverts the redemption when minting fails, so the code is not permanently burned', async () => {
+  const canonical = 'a'.repeat(32);
+  let reverted: string | null = null;
+  const response = await handleRequest(
+    redeemRequest({ code: canonical }),
+    noopDeps({
+      redeemRecoveryCode: async () => ({ status: 'redeemed', userId: FIXTURE_USER_ID }),
+      mintSessionForUser: async () => ({ status: 'error' }),
+      revertRecoveryCodeRedemption: async (candidate) => {
+        reverted = candidate;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 500);
+  assert.equal(reverted, canonical);
+});
+
+Deno.test('handleRedeem still answers 500 even when the revert itself fails', async () => {
+  const response = await handleRequest(
+    redeemRequest({ code: 'a'.repeat(32) }),
+    noopDeps({
+      redeemRecoveryCode: async () => ({ status: 'redeemed', userId: FIXTURE_USER_ID }),
+      mintSessionForUser: async () => ({ status: 'error' }),
+      revertRecoveryCodeRedemption: async () => {
+        throw new Error('simulated revert failure');
+      },
+    }),
+  );
+
+  assert.equal(response.status, 500);
+  assert.equal((await response.json()).error.code, 'server_error');
+});
+
+Deno.test('handleRedeem does not revert the redemption on a successful mint', async () => {
+  let revertCalled = false;
+  const response = await handleRequest(
+    redeemRequest({ code: 'a'.repeat(32) }),
+    noopDeps({
+      redeemRecoveryCode: async () => ({ status: 'redeemed', userId: FIXTURE_USER_ID }),
+      mintSessionForUser: async () => ({ status: 'minted', tokenHash: 'a-real-token-hash' }),
+      revertRecoveryCodeRedemption: async () => {
+        revertCalled = true;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(revertCalled, false);
 });
 
 Deno.test('handleRedeem answers 200 with only a tokenHash on a successful redemption', async () => {

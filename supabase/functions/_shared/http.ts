@@ -74,6 +74,17 @@ export function corsHeaders(origin: string | null): Readonly<Record<string, stri
  * body parsing, per F11 — a preflight carries no body and no
  * `Authorization` header, so treating it like an ordinary request would
  * fail it as malformed instead of letting the real request through.
+ *
+ * `access-control-allow-headers` must list every header a real cross-origin
+ * request from this milestone's own client code sends, or a real browser's
+ * preflight refuses the request before it ever leaves — a 2026-09-12 review
+ * finding: `content-type` alone was missing `authorization`, which both
+ * `src/platform/web/recoveryCode.ts` (generating a code) and
+ * `cloudSaveReconcile.ts` (downloading a save) send cross-origin
+ * (`:5173` → `127.0.0.1:54321`). Invisible locally only because finding F12
+ * already recorded the local Kong gateway overwriting every function's CORS
+ * headers regardless of what this code returns — a real deployment would not
+ * be so forgiving.
  */
 export function corsPreflightResponse(request: Request, allowedMethods: string): Response {
   return new Response(null, {
@@ -81,7 +92,7 @@ export function corsPreflightResponse(request: Request, allowedMethods: string):
     headers: {
       ...corsHeaders(request.headers.get('origin')),
       'access-control-allow-methods': allowedMethods,
-      'access-control-allow-headers': 'content-type',
+      'access-control-allow-headers': 'content-type, authorization',
       'access-control-max-age': '86400',
     },
   });
