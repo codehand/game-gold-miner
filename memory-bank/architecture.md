@@ -1136,6 +1136,87 @@ tests, 69 integration tests, 3 server-e2e) and the full client gate (502
 unit tests, 51 E2E, build, secret scan, 10 production smoke) both re-pass
 end to end from a clean cycle.
 
+**Follow-up pass on the same 2026-09-13 review (one LOW residual on the
+Step 17 fix, three consistency notes, one optional hardening).**
+
+- **LOW, verified live — the unbind fix removes the `pagehide` write but not
+  a journal entry already there.** `storeActiveSave(remoteDocument)` calls
+  `journal.clearThrough(remoteDocument.savedAtTimestampMs)`, which only
+  discards an entry *at or below* that timestamp. The adopted document
+  carries the other device's clock, so a journal entry written earlier in
+  this session — a `visibilitychange`→hidden while the player backgrounds
+  the tab during boot, before the reconcile ever runs — reads as newer and
+  survives, then wins on the next boot, reverting the adopt (though not
+  looping: the next boot's own debounced save clears the journal and the
+  second adopt sticks). Confirmed with a scratch test against the real
+  `WebLifecycleSaveJournal`/`LifecycleSafeActiveSaveRepository` classes.
+  Restamping the adopted document to `Date.now()` before storing it was
+  considered and rejected: `savedAtTimestampMs` is not cosmetic — `loadActiveGame`
+  anchors offline-income settlement to it directly
+  (`calculateOfflineIncome(state, loadedSave.savedAtTimestampMs, ...)`), so
+  restamping would silently zero the offline income a cloud-adopt is
+  supposed to credit for time elapsed since the *other* device's last save.
+  Fixed instead with a new `WebLifecycleSaveJournal.clear()` — unconditional,
+  unlike `clearThrough`, and deliberately *not* used by the routine
+  debounced-flush path (`storeActiveSave` keeps its existing conditional
+  clear there, since a routine flush must not clobber a genuinely newer
+  entry a concurrent `pagehide` wrote while that flush was still in
+  flight) — called through a new `CloudSaveReconcileDeps.clearLifecycleJournal`
+  right before `reload()`, safe specifically because the reload's own
+  unbind means no further local write can race it. Mutation-proven:
+  removing the call fails a new unit test by name.
+- **The `main.ts` comment asserted a safety it didn't establish.** It
+  claimed a reconcile resolving before `startApplication()` reaches the
+  `unbindSaveLifecycle` assignment means "there is no race to guard against
+  in that ordering either." The real risk in that ordering isn't a failed
+  unbind — it's `bindSaveLifecycle` registering *after* the unbind ran and
+  before the document actually unloads, since `reload()` doesn't stop
+  script execution. That needs the network round trip this reconcile makes
+  to outrace `startApplication()`'s own font loading and `loadActiveGame`,
+  which is improbable, not impossible. Comment corrected to say so rather
+  than claim otherwise.
+- **`checkTestResetAuthorizationViaEnv` compared the token with `===`.**
+  This codebase constant-time-compares the Telegram HMAC
+  (`timingSafeEqualHex`); the reset route is local-only so the practical
+  risk was nil, but for consistency `recovery-code/index.ts` gained its own
+  `timingSafeEqual` (the identical XOR-diff algorithm, generalized past hex
+  since a token is an opaque string) and now uses it here.
+- **`revert_recovery_code_redemption`'s "silent no-op, not an error" isn't
+  unconditional.** Its own `not exists` check and its `update` are not
+  atomic with each other, so a `generate` whose transaction commits in that
+  gap can still make the `update` raise the identical `23505` a plain
+  `update` would have — which is exactly why `handleRedeem`'s try/catch
+  around this call has to stay; the outcome is safe either way (the fresh
+  code wins, the reverted one just stays spent). Documented with a clause
+  in the migration's own comment and in the calling function's doc comment,
+  rather than left implicit.
+- **Optional hardening, applied: RPC execute grants, belt-and-braces over
+  RLS.** Both RPCs were `security invoker` with Postgres's default execute
+  grant to `public`; `recovery_codes`' own RLS (no policy at all, confirmed
+  via `pg_policies`) already makes them inert for `anon`/`authenticated`,
+  but a new migration
+  (`20260913090200_recovery_code_rpc_grants.sql`) closes it at the grant
+  layer too. Non-trivial in practice: Supabase's own bootstrap grants
+  `execute` to `anon`/`authenticated`/`service_role` *individually* when a
+  function is created (not merely through `public`), confirmed live by
+  inspecting `pg_proc.proacl` right after `rotate_recovery_code` was first
+  created — `revoke ... from public` alone left `anon`/`authenticated`
+  untouched, and each had to be named explicitly. `service_role` is not a
+  Postgres superuser locally (`rolbypassrls` only, confirmed via
+  `pg_roles`), so it needed its own explicit re-grant — verified live that
+  omitting it breaks the Edge Function's own `admin.rpc(...)` calls with a
+  permission-denied error, not merely a no-op. A new live integration test
+  calls both RPCs directly through PostgREST's `/rest/v1/rpc/...` endpoint
+  as an authenticated (non-service-role) caller and asserts `403`;
+  mutation-proven by manually re-granting `execute` to `anon`/`authenticated`
+  and watching that same test fail, then restoring via a clean
+  `supabase db reset`.
+
+All re-verified: `npm run verify:server` (98 Deno unit tests, 70 integration
+tests, 3 server-e2e) and the full client gate (506 unit tests, 51 E2E,
+build, secret scan, 10 production smoke) both re-pass end to end from a
+clean cycle.
+
 ## Cat Role Asset Catalog Contract
 
 `art-source/cat-role-catalog/` is the source-of-truth workspace for role-based
@@ -1420,6 +1501,15 @@ create unique index recovery_codes_one_active_per_user_idx
 -- non-transactional PostgREST requests. An insert failure after a
 -- successful revoke stranded a user with no active code. Wrapping both
 -- statements in one `plpgsql` function makes them one transaction.
+--
+-- This does not mean Postgres serializes two concurrent `generate` calls
+-- for the same user into a well-ordered queue (a 2026-09-13 correction —
+-- the migration's own comment originally overstated this): both
+-- transactions' revokes can still clear the same predicate before either
+-- commits, and both then race their own insert. `recovery_codes_one_active_per_user_idx`
+-- is what makes that race safe — the loser's insert raises `23505`, and
+-- because the revoke and insert share one transaction, that failure rolls
+-- the loser's revoke back too.
 create function public.rotate_recovery_code(p_user_id uuid, p_code_hash text) returns void
 language plpgsql
 security invoker
@@ -1435,6 +1525,61 @@ begin
   insert into public.recovery_codes (user_id, code_hash) values (p_user_id, p_code_hash);
 end;
 $$;
+
+-- Server-milestone Step 14 review finding (2026-09-13): a `generate` landing
+-- in the narrow window between a failed session mint and
+-- `revertRecoveryCodeRedemption` running could leave the account holding a
+-- fresh active code by the time the revert executes — a plain `update`
+-- would then try to revive the just-spent code as a *second* active row,
+-- colliding with `recovery_codes_one_active_per_user_idx`. This function
+-- checks for that fresher code first and no-ops instead of raising an
+-- avoidable constraint violation in the common case — though the check and
+-- the write are not atomic with each other, so a `generate` committing in
+-- the narrow gap between them can still make the `update` itself raise the
+-- identical `23505`; `handleRedeem`'s own try/catch around this call stays
+-- for exactly that reason, and the outcome is safe either way.
+create function public.revert_recovery_code_redemption(p_code_hash text) returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_user_id uuid;
+begin
+  select user_id into v_user_id from public.recovery_codes where code_hash = p_code_hash;
+
+  if v_user_id is null then
+    return;
+  end if;
+
+  update public.recovery_codes
+  set redeemed_at = null
+  where code_hash = p_code_hash
+    and revoked_at is null
+    and not exists (
+      select 1
+      from public.recovery_codes existing
+      where existing.user_id = v_user_id
+        and existing.redeemed_at is null
+        and existing.revoked_at is null
+    );
+end;
+$$;
+
+-- Server-milestone Step 14 review finding (2026-09-13, optional hardening):
+-- both RPCs above are `security invoker` with Postgres's default execute
+-- grant to `public`. `recovery_codes` RLS (no policy at all) already makes
+-- them inert for `anon`/`authenticated`; this closes it at the grant layer
+-- too. `revoke ... from public` alone is not enough — Supabase's own
+-- bootstrap grants execute to `anon`/`authenticated`/`service_role`
+-- individually when a function is created, not merely through `public` —
+-- and `service_role` is not a superuser locally, so it needs its own
+-- explicit re-grant.
+revoke execute on function public.rotate_recovery_code(uuid, text) from public, anon, authenticated;
+grant execute on function public.rotate_recovery_code(uuid, text) to service_role;
+
+revoke execute on function public.revert_recovery_code_redemption(text) from public, anon, authenticated;
+grant execute on function public.revert_recovery_code_redemption(text) to service_role;
 
 -- ------------------------------------------------------ leaderboard_entries --
 create table public.leaderboard_entries (

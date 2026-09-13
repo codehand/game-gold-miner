@@ -69,6 +69,34 @@ describe('web lifecycle save journal', () => {
     expect(journal.read()).toBeNull();
   });
 
+  it('clear() discards the journal unconditionally, unlike clearThrough against an older timestamp', () => {
+    // A 2026-09-13 review finding: a cloud-save adopt cannot use
+    // `clearThrough` safely, because the adopted document carries another
+    // device's clock — a journal entry written earlier in this session
+    // (e.g. a `visibilitychange`→hidden while the player backgrounds the
+    // tab during boot) can read as chronologically newer than the adopted
+    // document and survive `clearThrough`, then win on the next boot.
+    const storage = new MemoryKeyValueStorage();
+    const journal = new WebLifecycleSaveJournal(storage, BASE_GAME_BALANCE);
+    const journalDocument = createDocument(20_000);
+    journal.write(journalDocument);
+
+    // Simulates a remote adopt: the remote document's own `savedAtTimestampMs`
+    // (another device's clock, here the session's own start time) is older
+    // than the local journal entry written moments ago in this session, so
+    // `clearThrough` correctly — but unhelpfully, for this case — leaves it.
+    journal.clearThrough(START_TIMESTAMP_MS);
+    expect(journal.read()).toEqual(journalDocument);
+
+    journal.clear();
+    expect(journal.read()).toBeNull();
+  });
+
+  it('clear() is a no-op, not a throw, when storage is unavailable', () => {
+    const journal = new WebLifecycleSaveJournal(null, BASE_GAME_BALANCE);
+    expect(() => journal.clear()).not.toThrow();
+  });
+
   it('keeps a newer valid IndexedDB document over a stale journal', async () => {
     const storage = new MemoryKeyValueStorage();
     const journal = new WebLifecycleSaveJournal(

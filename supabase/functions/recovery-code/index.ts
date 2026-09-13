@@ -205,6 +205,23 @@ function toHex(bytes: Uint8Array): string {
     .join('');
 }
 
+/**
+ * Constant-time comparison — mirrors `telegram-sign-in/index.ts`'s
+ * `timingSafeEqualHex` (no shared extraction between Edge Functions in this
+ * codebase, per that file's own precedent), generalized past hex since a
+ * reset token is an opaque string, not a hex digest.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+  return diff === 0;
+}
+
 /** Strips everything but hex digits and lowercases — a player may paste a code with or without its display dashes. */
 export function canonicalizeRecoveryCode(input: string): string {
   return input.replace(/[^0-9a-fA-F]/g, '').toLowerCase();
@@ -529,9 +546,13 @@ async function redeemRecoveryCodeViaServiceRole(canonicalCode: string): Promise<
  * try to revive this code as *also* active, colliding with
  * `recovery_codes_one_active_per_user_idx`. The RPC checks for that fresher
  * code first and no-ops instead of raising an avoidable constraint
- * violation — the account is never left with two active codes, and it is
- * never left with the caller's own request throwing over a race it cannot
- * see.
+ * violation in the common case — the account is never left with two active
+ * codes. That check and the write are not atomic with each other, though: a
+ * `generate` committing in the narrow gap between them can still make this
+ * throw the identical `23505` the plain-`update` version did — which is
+ * exactly why `handleRedeem`'s own try/catch around this call must stay.
+ * Either way the account ends up safe (the fresh code wins; this one just
+ * stays spent), only not always silently.
  */
 async function revertRecoveryCodeRedemptionViaServiceRole(canonicalCode: string): Promise<void> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -683,7 +704,10 @@ function checkRedemptionRateLimitInMemory(address: string | null): Promise<boole
  */
 function checkTestResetAuthorizationViaEnv(providedToken: string | null): Promise<boolean> {
   const expectedToken = Deno.env.get('RECOVERY_CODE_TEST_RESET_TOKEN');
-  return Promise.resolve(Boolean(expectedToken) && providedToken === expectedToken);
+  if (!expectedToken || providedToken === null) {
+    return Promise.resolve(false);
+  }
+  return Promise.resolve(timingSafeEqual(providedToken, expectedToken));
 }
 
 function resetRateLimitStateInMemory(): Promise<void> {

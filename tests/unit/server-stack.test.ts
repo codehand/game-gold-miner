@@ -362,6 +362,25 @@ describe('every Edge Function', () => {
     expect(migration).toContain('set redeemed_at = null');
   });
 
+  it('recovery-code RPCs are execute-restricted to service_role at the grant layer, belt-and-braces over RLS', () => {
+    // A 2026-09-13 review finding (optional hardening): `recovery_codes`
+    // RLS already makes both RPCs inert for anon/authenticated, but
+    // Supabase's own bootstrap grants `execute` to anon/authenticated
+    // individually (not merely through `public`) when a function is
+    // created, so both need revoking by name, not just `from public`.
+    const migration = readProjectFile('supabase/migrations/20260913090200_recovery_code_rpc_grants.sql');
+    expect(migration).toMatch(
+      /revoke execute on function public\.rotate_recovery_code\(uuid, text\) from public, anon, authenticated;/,
+    );
+    expect(migration).toContain('grant execute on function public.rotate_recovery_code(uuid, text) to service_role;');
+    expect(migration).toMatch(
+      /revoke execute on function public\.revert_recovery_code_redemption\(text\) from public, anon, authenticated;/,
+    );
+    expect(migration).toContain(
+      'grant execute on function public.revert_recovery_code_redemption(text) to service_role;',
+    );
+  });
+
   it("recovery-code's rate limiter never buckets a caller with no X-Forwarded-For into a shared address", () => {
     // A 2026-09-12 review found the prior fallback ('unknown' for every
     // header-less caller) was a global-denial footgun, not a safety margin —

@@ -295,12 +295,28 @@ async function runCloudSaveReconcile(): Promise<CloudSaveReconcileOutcome> {
     // newest authoritative state. `unbindSaveLifecycle` is declared further
     // down this file and optional-chained because a reconcile that
     // resolves before `startApplication()` reaches that assignment has
-    // nothing bound yet to unbind, so there is no race to guard against in
-    // that ordering either.
+    // nothing bound yet to unbind. That ordering isn't risk-free, though:
+    // `reload()` does not stop script execution, so `bindSaveLifecycle`
+    // could in principle still run *after* this callback and register a
+    // fresh listener before the document actually unloads. That needs the
+    // network round trip this reconcile makes to resolve before
+    // `startApplication()`'s own font loading and `loadActiveGame` do,
+    // which is improbable, not impossible — this comment does not claim
+    // otherwise.
     reload: () => {
       unbindSaveLifecycle?.();
       window.location.reload();
     },
+    // A residual the same review found: `storeActiveSave`'s own
+    // `clearThrough` only discards a journal entry at or before the
+    // document it just wrote, which is the wrong comparison for an adopted
+    // remote document — it carries another device's clock, so a journal
+    // entry written earlier this session (backgrounding the tab during
+    // boot, before this reconcile ran) can read as newer and survive,
+    // then win on the next boot. `lifecycleJournal` is declared further
+    // down this file, safe to reference here for the same reason
+    // `repository` is.
+    clearLifecycleJournal: () => lifecycleJournal.clear(),
   });
 }
 

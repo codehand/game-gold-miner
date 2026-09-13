@@ -278,6 +278,39 @@ describe('recovery-code (server-milestone Step 14)', () => {
     expect(await direct.json()).toEqual([]);
   });
 
+  it('a 2026-09-13 review finding (optional hardening): neither RPC is callable through PostgREST by an authenticated caller', async () => {
+    // RLS already makes both RPCs inert for anon/authenticated — `recovery_codes`
+    // carries no policy at all — but 20260913090200_recovery_code_rpc_grants.sql
+    // closes it at the grant layer too. This proves that layer directly,
+    // independent of RLS: a permission-denied error, not merely an
+    // RLS-empty result.
+    const guest = await createGuestIdentity();
+
+    const rotateAttempt = await fetch(`${API_URL}/rest/v1/rpc/rotate_recovery_code`, {
+      method: 'POST',
+      headers: {
+        apikey: LOCAL_ANON_KEY,
+        authorization: `Bearer ${guest.accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ p_user_id: guest.userId, p_code_hash: 'c'.repeat(64) }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    expect(rotateAttempt.status).toBe(403);
+
+    const revertAttempt = await fetch(`${API_URL}/rest/v1/rpc/revert_recovery_code_redemption`, {
+      method: 'POST',
+      headers: {
+        apikey: LOCAL_ANON_KEY,
+        authorization: `Bearer ${guest.accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ p_code_hash: 'c'.repeat(64) }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    expect(revertAttempt.status).toBe(403);
+  });
+
   it('a 2026-09-12-style concurrency check: two concurrent redemptions of the same code do not both win', async () => {
     const guest = await createGuestIdentity();
     const { code } = await (await generateCode(guest.accessToken)).json();

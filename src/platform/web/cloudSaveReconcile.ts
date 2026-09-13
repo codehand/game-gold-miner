@@ -83,6 +83,22 @@ export interface CloudSaveReconcileDeps {
   readonly config: BaseGameBalanceConfig;
   /** `() => window.location.reload()` in production; injected so tests never actually reload. */
   readonly reload: () => void;
+  /**
+   * A 2026-09-13 review finding: `storeActiveSave`'s own journal handling
+   * (`clearThrough`) only discards a journal entry at or *before* the
+   * document it just wrote — correct for a routine flush, where an entry a
+   * concurrent `pagehide` wrote more recently must survive an older
+   * in-flight write finishing late, but wrong for this adopt: the remote
+   * document carries *another device's* clock, so a journal entry written
+   * earlier in this very session (a `visibilitychange`→hidden while the
+   * player backgrounds the tab during boot, before this reconcile ever
+   * ran) can read as chronologically newer and survive `clearThrough`,
+   * then win on the very next boot and silently revert the adopt.
+   * `WebLifecycleSaveJournal.clear()` discards it unconditionally, safe
+   * here specifically because `reload`'s own unbind (see `main.ts`) means
+   * no further local write can race it.
+   */
+  readonly clearLifecycleJournal: () => void;
 }
 
 export async function reconcileCloudSaveAtBoot(
@@ -124,6 +140,7 @@ export async function reconcileCloudSaveAtBoot(
     }
 
     await deps.repository.storeActiveSave(remoteDocument);
+    deps.clearLifecycleJournal();
     deps.reload();
     return { kind: 'adopted-remote' };
   } catch (error) {

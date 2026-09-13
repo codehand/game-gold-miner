@@ -46,6 +46,7 @@ function fakeDeps(overrides: Partial<CloudSaveReconcileDeps> = {}): CloudSaveRec
     download: async () => null,
     config: BASE_GAME_BALANCE,
     reload: () => {},
+    clearLifecycleJournal: () => {},
     ...overrides,
   };
 }
@@ -65,6 +66,7 @@ describe('reconcileCloudSaveAtBoot', () => {
     const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS };
     let written: SaveDocumentV1 | null = null;
     const reload = vi.fn();
+    const clearLifecycleJournal = vi.fn();
 
     const outcome = await reconcileCloudSaveAtBoot(
       'token',
@@ -78,12 +80,43 @@ describe('reconcileCloudSaveAtBoot', () => {
         },
         download: async () => stored,
         reload,
+        clearLifecycleJournal,
       }),
     );
 
     expect(outcome).toEqual({ kind: 'adopted-remote' });
     expect(written).toEqual(stored.document);
     expect(reload).toHaveBeenCalledOnce();
+    // A 2026-09-13 review finding: `storeActiveSave`'s own `clearThrough`
+    // compares the adopted document's timestamp — another device's clock —
+    // against whatever the journal holds, which can leave a stale local
+    // entry behind to win on the next boot. Clearing unconditionally,
+    // right before reload, is what actually removes that class of bug.
+    expect(clearLifecycleJournal).toHaveBeenCalledOnce();
+  });
+
+  it('never clears the lifecycle journal on an outcome that does not adopt', async () => {
+    const clearLifecycleJournal = vi.fn();
+    const noSession = await reconcileCloudSaveAtBoot(null, NOW_MS, fakeDeps({ clearLifecycleJournal }));
+    const noCloudSave = await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({ download: async () => null, clearLifecycleJournal }),
+    );
+    const keptLocal = await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: { loadActiveSave: async () => progressingDocument(), storeActiveSave: async () => {} },
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS }),
+        clearLifecycleJournal,
+      }),
+    );
+
+    expect(noSession).toEqual({ kind: 'no-session' });
+    expect(noCloudSave).toEqual({ kind: 'no-cloud-save' });
+    expect(keptLocal).toEqual({ kind: 'kept-local' });
+    expect(clearLifecycleJournal).not.toHaveBeenCalled();
   });
 
   it('adopts the cloud save when the local device has a fresh record but no progress', async () => {

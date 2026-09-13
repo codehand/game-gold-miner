@@ -79,6 +79,24 @@ export class WebLifecycleSaveJournal {
     }
   }
 
+  /**
+   * Unconditionally discards the journal, regardless of what timestamp it
+   * carries. `clearThrough` deliberately compares timestamps instead — a
+   * routine flush must never clobber a *newer* entry a concurrent
+   * `pagehide` wrote while that flush was still in flight — but that
+   * comparison is exactly what a cloud-save adopt cannot rely on: the
+   * adopted document carries another device's clock, so a journal entry
+   * written earlier in *this* session (a `visibilitychange`→hidden while
+   * the player backgrounds the tab during boot, before the adopt ever
+   * runs) can still read as chronologically newer and survive
+   * `clearThrough`, then win on the very next boot and silently revert the
+   * adopt. Call this only when the caller is about to reload with no
+   * further local writes expected — never from the routine flush path.
+   */
+  public clear(): void {
+    this.#discard();
+  }
+
   #discard(): void {
     if (this.#storage === null) {
       return;

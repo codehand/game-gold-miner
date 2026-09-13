@@ -18,6 +18,16 @@
 -- When a fresher code already exists, the update matches zero rows — a
 -- silent no-op, not an error — leaving the fresher code as the sole active
 -- one and the reverted code's own row exactly as it was.
+--
+-- That "no-op, not an error" is the common case, not a guarantee: the
+-- `not exists` check and the `update` are not atomic with each other, so a
+-- `generate` call whose own transaction commits in the gap between this
+-- function's read and its write can still make the `update` itself violate
+-- `recovery_codes_one_active_per_user_idx`, surfacing the identical `23505`
+-- the plain-`update` version above did. `handleRedeem`'s try/catch around
+-- this call exists for exactly that reason and must stay — the outcome is
+-- safe either way (the fresh code from that `generate` wins; the reverted
+-- code simply stays spent), just not silent in this specific interleave.
 create function public.revert_recovery_code_redemption(p_code_hash text) returns void
 language plpgsql
 security invoker
