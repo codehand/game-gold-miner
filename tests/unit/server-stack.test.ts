@@ -707,8 +707,10 @@ describe('the Step 17 cloud-save reconcile trigger in src/main.ts', () => {
     const telegramBootstrap = extractMainBlock(mainSource, 'if (telegramInitData !== null) {', '} else {');
     const guestBootstrap = extractMainBlock(mainSource, '} else {', "\n/**\n * Server-milestone Step 10");
 
-    expect(telegramBootstrap).toMatch(/status === 'signed-in'\)\s*\{\s*triggerCloudSaveReconcile\(\);/);
-    expect(guestBootstrap).toMatch(/status === 'signed-in'\)\s*\{\s*triggerCloudSaveReconcile\(\);/);
+    // Step 21 records `sessionIsNew` between the `signed-in` check and the
+    // trigger, so the two are no longer adjacent.
+    expect(telegramBootstrap).toMatch(/status === 'signed-in'\)\s*\{[\s\S]*triggerCloudSaveReconcile\(\);/);
+    expect(guestBootstrap).toMatch(/status === 'signed-in'\)\s*\{[\s\S]*triggerCloudSaveReconcile\(\);/);
   });
 
   it('catches a rejected reconcile instead of leaving it unhandled', () => {

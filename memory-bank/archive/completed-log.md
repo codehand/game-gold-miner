@@ -13,6 +13,61 @@ to live phase status.
 
 ## Completed
 
+- Fixed the 2026-09-14 review of Step 21 (one MEDIUM, four LOW). **M1:** the
+  missing-local-save decision keyed on `loadActiveGame`'s `source === 'fresh'`,
+  which is also what a corrupt or incompatible local save returns — so a
+  returning player whose save was found-but-unreadable was told it "could not
+  be found", and because a differing banner code replaces the shown one, that
+  false notice overwrote the accurate `corrupt-save`/`incompatible-save`
+  warning. The decision now uses a three-way `LocalSaveState`
+  (`saved`/`missing`/`unreadable`, from `source` plus `warning === null`) and
+  only `missing` fires the notice; a new unit case pins the corrupt input, and a
+  new server-e2e test injects an unreadable save under a reused session and
+  asserts `corrupt-save` survives with no `local-save-missing`. **L2:** the
+  Telegram `sessionIsNew = true` assignment was an inert no-op resting on a
+  false premise (a returning Telegram player also presents signed `initData`);
+  removed, with the notice documented as guest-path-only. **L3:**
+  `architecture.md`'s Save Diagnostic Surface described only two of the four
+  notice sources and not the replace-on-different-code behaviour; both fixed.
+  **L4:** the shared-promise join could never settle if the font `await`
+  rejected; replaced with a three-way mutable join that reports from whichever
+  of the local load and the reconcile finishes last, with no permanently-pending
+  await. **L5:** the no-cloud-copy e2e now stubs the whole save-sync surface
+  (204 download, 200 upload), removing the client/server disagreement that
+  could 409 into an adopt reload and clear the banner. `npm run lint`, 604 unit
+  tests, 99 Deno server unit tests, 80 integration tests, 7 server-e2e tests,
+  52 Chromium E2E, build, secret scan, 10 production smoke, and
+  `npm run verify:server` all pass.
+
+- Implemented server-milestone **Step 21, survive local storage eviction**, on
+  2026-09-14, on the user's explicit instruction. `ensureGuestSession` now
+  reports `isNewSession`, so a reused session with no local save is
+  distinguishable from a genuinely new player; new pure
+  `shouldExplainMissingLocalSave` (`src/platform/web/localSaveRestore.ts`) fires
+  only for that state when the reconcile also finds no cloud save, and
+  `src/main.ts` reports the honest `local-save-missing` notice through the save
+  banner instead of letting the reset be silent. A cloud save is still restored
+  by the existing Step 17/18 reconcile, unchanged. New
+  `src/platform/web/persistentStorage.ts` requests `navigator.storage.persist()`
+  once, early, feature-detected and non-blocking, and records the browser's real
+  answer as a DEV `data-persistent-storage` diagnostic. The same change moved
+  `reconcileCloudSaveAtBoot`'s `onServerRevision` to fire only on
+  `kept-local`/`same-progress`, and `src/main.ts` now stops the replica on
+  `adopted-remote` too, so a dominating remote is never preceded by arming the
+  replica — which could pump a pending fresh document against the server
+  revision and overwrite the cloud save the adopt restores. Evidence: unit tests
+  for `isNewSession`, the restore predicate, and the persistence helper; two
+  server-e2e specs (`tests/server-e2e/local-save-eviction.spec.ts`) proving
+  restore-after-eviction and the honest notice; and a client-e2e measurement
+  (`tests/e2e/persistent-storage.spec.ts`). **The iOS Safari seven-day deletion
+  measurement is outstanding** — it needs a real device and a seven-day
+  wall-clock observation (finding F8) — and is recorded as such in
+  `techContext.md`; the `navigator.storage` half measured
+  `{supported: true, persisted: false, quotaBytes: 9663676416, usageBytes: 0}`
+  in headless Chromium on 2026-09-14. `npm run lint`, 603 unit tests, 99 Deno
+  server unit tests, 80 integration tests, 6 server-e2e tests, 52 Chromium E2E,
+  build, secret scan, and 10 production smoke all pass.
+
 - Fixed the 2026-09-14 review of Step 20 (one MEDIUM, four LOW). **M1
   (MEDIUM):** the server-e2e spec's final byte-for-byte poll compared a moving
   local document against a cloud copy that §9's 60 s interval had pinned, so a

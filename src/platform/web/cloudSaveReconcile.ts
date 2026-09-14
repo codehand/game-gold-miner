@@ -119,12 +119,24 @@ export interface CloudSaveReconcileDeps {
    */
   readonly clearLifecycleJournal: () => void;
   /**
-   * Server-milestone Step 19: reports the downloaded revision as soon as the
-   * cloud document is in hand, so the replica can arm itself with the
-   * revision the server actually holds before its first upload. Without this,
-   * a returning player's very first routine save would carry a null
-   * `baseRevision` — "this client has never synced" — against an existing row
-   * and earn a real, avoidable `409`.
+   * Server-milestone Step 19: reports the downloaded revision so the replica
+   * can arm itself with the revision the server actually holds before its first
+   * upload — without it, a returning player's first routine save would carry a
+   * null `baseRevision` and earn a real, avoidable `409`.
+   *
+   * Called only for the outcomes that keep this session's local save
+   * (`kept-local`, `same-progress`), deliberately **not** for `adopted-remote`
+   * or `deferred-conflict` (Step 21): arming the replica before a remote adopt
+   * would pump a pending local document — including the fresh one a returning
+   * player's evicted device just started — against the server revision, and an
+   * accepted upload would overwrite the cloud save the adopt is about to
+   * restore. The caller stops the replica on those two outcomes instead.
+   *
+   * One side effect is accepted: a download whose document then fails
+   * validation resolves `error`, so the replica is armed with `null` rather
+   * than the server revision, and the next upload takes an avoidable `409`.
+   * That resolves through §7 with no loss and is the safer of the two
+   * behaviours — the alternative is arming off a document that never validated.
    */
   readonly onServerRevision?: (revision: number) => void;
 }
@@ -145,8 +157,6 @@ export async function reconcileCloudSaveAtBoot(
     if (remote === null) {
       return { kind: 'no-cloud-save' };
     }
-
-    deps.onServerRevision?.(remote.revision);
 
     // The server already validates on upload, so this is defense-in-depth
     // today rather than a document that could otherwise be malformed — but
@@ -170,9 +180,11 @@ export async function reconcileCloudSaveAtBoot(
     // repository owns it on the next upload — so `same-progress` names the
     // case, not an action this module performs.
     if (resolution.kind === 'same-progress') {
+      deps.onServerRevision?.(remote.revision);
       return { kind: 'same-progress' };
     }
     if (resolution.kind === 'local-dominates') {
+      deps.onServerRevision?.(remote.revision);
       return { kind: 'kept-local' };
     }
     if (resolution.kind === 'fork') {
@@ -183,6 +195,12 @@ export async function reconcileCloudSaveAtBoot(
       return { kind: 'deferred-conflict', local: resolution.local, remote: resolution.remote };
     }
 
+    // Step 21: no `onServerRevision` here. Arming the replica before this
+    // branch would pump any pending local document — including the fresh one
+    // a returning player's evicted device just started — against the server's
+    // revision, and the accepted upload would overwrite the very cloud save
+    // this adopt exists to restore. The replica is stopped by the caller
+    // instead, and the fresh page load rebuilds it.
     await deps.repository.storeActiveSave(remoteDocument);
     deps.clearLifecycleJournal();
     deps.reload();

@@ -1085,6 +1085,65 @@ counter the only difference; and a server-e2e spec that seeds a real version-1
 IndexedDB save, boots the browser, and requires the cloud copy to be
 byte-for-byte the adopted local document.
 
+### Surviving local storage eviction (Step 21)
+
+Script-writable storage can vanish — the seven-day iOS Safari sweep, a
+user clear, or a storage-pressure quota eviction. The milestone's promise is
+that a player does not silently lose everything to it.
+
+**Detecting a returning player.** `src/platform/web/guestSession.ts`'s
+`ensureGuestSession` now reports `isNewSession`: `false` when it reused a
+session already in storage, `true` when it minted one this boot. A reused
+session with no local save is a state a first-time player can never be in, so
+it is the one detectable "this device's save was evicted" signal. It is exposed
+in the DEV `data-guest-session` diagnostic (a boolean, never the token).
+
+**Restore, or tell the truth.** `reconcileCloudSaveAtBoot` already restores a
+cloud save over a fresh local baseline (`remote-dominates`, Steps 17/18); Step
+21 adds no new restore path. What it adds is the honest case: the pure
+`shouldExplainMissingLocalSave` (`src/platform/web/localSaveRestore.ts`) is
+`true` only for a reused session + **no local record at all** (`'missing'`) + a
+`no-cloud-save` outcome, and `src/main.ts` reports the `local-save-missing`
+notice through the save banner. A corrupt-but-present save is `'unreadable'`,
+not `'missing'`: it already produced the accurate `corrupt-save` /
+`incompatible-save` warning, and the notice must never overwrite it. The
+decision is a three-way join (local-save state, `isNewSession`, reconcile
+outcome) whose last-arriving member reports, so `loadActiveGame` finishing after
+the reconcile's round trip cannot strand it.
+
+**Guest path only.** The reused-session signal exists only for the anonymous
+guest path (`ensureGuestSession`); Telegram sign-in mints a session from signed
+`initData` with no reused-session signal, so `sessionIsNew` stays unset there and
+the notice cannot fire. A returning Telegram player is restored from the cloud
+by the reconcile like any other sign-in. This is deliberate, not an omission:
+there is no honest way to tell a new Telegram player from a returning one whose
+device lost its save, so the game does not pretend there is.
+
+**Restore integrity.** The same change moved `reconcileCloudSaveAtBoot`'s
+`onServerRevision` call to fire only on `kept-local`/`same-progress`. Arming the
+replica before an `adopted-remote` outcome would pump a pending local document
+— including the fresh one an evicted device just started — against the server
+revision, and the accepted upload would overwrite the cloud save the adopt is
+restoring. `src/main.ts` now stops the replica on `adopted-remote` as well as
+`deferred-conflict`.
+
+**Reducing the chance of eviction.** `src/platform/web/persistentStorage.ts`'s
+`requestPersistentStorage` calls `navigator.storage.persist()` once, early,
+feature-detected and non-blocking, then re-reads `persisted()` and
+`estimate()`. It never throws and never treats a grant as a guarantee. The
+browser's real answer is published as the DEV `data-persistent-storage`
+diagnostic.
+
+**The measurement.** The seven-day deletion behaviour is measured, not assumed;
+the `persist()` half is recorded in `techContext.md` with its date and
+environment. The deletion half needs a real iOS device and a seven-day
+wall-clock observation (finding F8), and is recorded there as outstanding rather
+than asserted.
+
+**Early first sync.** Step 19's forced upload after boot reconcile
+(`no-cloud-save`/`kept-local`) already ensures a player who never returns has a
+cloud copy to restore; Step 21 relies on it rather than adding a second cadence.
+
 ### Guest linking and the identity collision (Step 13)
 
 Three of the step's required flows fall out of what Steps 10/12/17 already
@@ -1490,11 +1549,14 @@ The smoke suite asserts what only the served bundle can show:
 
 ## Save Diagnostic Surface
 
-`createSaveDiagnosticBanner(parent)` renders one non-blocking DOM notice for both recoverable persistence problems: the loader's `SaveRecoveryWarning` and the coordinator's `PersistenceDiagnostic`, whose shapes both satisfy `SaveDiagnosticNotice`. `src/main.ts` passes it as `loadActiveGame`'s `onWarning` and the coordinator's `onDiagnostic`.
+`createSaveDiagnosticBanner(parent)` renders one non-blocking DOM notice for every recoverable problem this milestone can surface. Four sources feed it, all shaped as `SaveDiagnosticNotice` (`{code, message}`):
 
-Steps 21 and 22 specified a visible diagnostic, and the core produced one, but the application never passed either callback — a player whose save was rejected simply found themselves at the start of a fresh game with no explanation. Step 36 found that only against the served bundle, where the recovery path is what a real corrupt record actually reaches.
+- `loadActiveGame`'s `SaveRecoveryWarning` (`corrupt-save`, `incompatible-save`), passed as `onWarning`.
+- `SavePersistenceCoordinator`'s `PersistenceDiagnostic` (`load-failed`, `save-failed`), passed as `onDiagnostic`.
+- Server-milestone Step 19: terminal cloud-sync failures, `describeCloudSaveNotice`'s namespaced `cloud-sync-*` codes, from the replica's `onEvent` on `sync-stopped`/`document-dropped`. Retryable failures show nothing until retries are exhausted.
+- Server-milestone Step 21: the `local-save-missing` notice, when a reused session has no local record at all and the account has no cloud save to restore.
 
-The notice never takes focus and overlays only the non-interactive HUD strip, because the session always continues: a corrupt save has already been replaced and a failed write is still retried. A code that is already showing is ignored rather than re-rendered, since a broken storage backend reports a failed write on every debounce, and a dismissed code stays dismissed until a different problem occurs. It is not withdrawn when a later write succeeds — the coordinator reports failures, not recoveries, and leaving a stale notice the player can dismiss is safer than silently retracting the news that progress may not be stored.
+The notice never takes focus and overlays only the non-interactive HUD strip, because the session always continues: a corrupt save has already been replaced and a failed write is still retried. A code that is already showing is ignored rather than re-rendered, since a broken storage backend reports a failed write on every debounce, and a dismissed code stays dismissed until a different problem occurs. A *different* code **replaces** the shown one — so the sources are ordered by what the player most needs to know, and Step 21's notice fires only when there is no local record at all, never when a corrupt-but-present save already produced the accurate `corrupt-save` warning. The notice is not withdrawn when a later write succeeds — the coordinator reports failures, not recoveries, and leaving a stale notice the player can dismiss is safer than silently retracting the news that progress may not be stored.
 
 ## Complete Database Schema
 

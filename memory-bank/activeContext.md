@@ -2,13 +2,14 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 20 validation gate.** Step 20 (adopt existing
-local saves) was implemented on 2026-09-14, on the user's explicit instruction,
-so a player holding a pre-milestone version-1 IndexedDB save has it adopted as
-their cloud save on first sign-in rather than replaced by a fresh one. Step 21
-must not begin until the user validates it.
+**Server milestone, at the Step 21 validation gate.** Step 21 (survive local
+storage eviction) was implemented on 2026-09-14, on the user's explicit
+instruction: the client now detects a returning player whose local save was
+evicted, restores from the cloud when it can, tells the truth when it cannot,
+asks for persistent storage, and syncs early enough that a lapsed player has a
+cloud copy to restore. Step 22 must not begin until the user validates it.
 
-Steps 9, 10, and 12–20 are implemented but unvalidated as one batch, because the
+Steps 9, 10, and 12–21 are implemented but unvalidated as one batch, because the
 user directed work past several gates rather than pausing at each. Step 11
 (Apple sign-in) is cut.
 
@@ -75,6 +76,32 @@ adopted local document.
 The narrative account of every earlier phase is in
 `archive/phase-narrative.md`; finished work is in `archive/completed-log.md`.
 
+**Step 21 (survive local storage eviction).** `ensureGuestSession` now reports
+`isNewSession`, so a reused guest session with no local record is
+distinguishable from a genuinely new player. New pure
+`shouldExplainMissingLocalSave` (`src/platform/web/localSaveRestore.ts`) fires
+only for that exact state — reused session, `'missing'` local state (no record
+at all), and a `no-cloud-save` reconcile outcome — and `src/main.ts` reports the
+honest `local-save-missing` notice through the save banner rather than letting
+the reset happen silently; a cloud save is restored by the existing Step 17/18
+reconcile, untouched. A corrupt-but-present save is `'unreadable'`, not
+`'missing'`, so its accurate `corrupt-save` warning is never overwritten by a
+false "not found". The decision is a three-way join (local state, `isNewSession`,
+reconcile outcome) with no permanent pending await, and it is **guest-path
+only**: Telegram has no reused-session signal, so `sessionIsNew` stays unset
+there. New `persistentStorage.ts` requests `navigator.storage.persist()` once,
+early, and records the browser's real answer as a DEV `persistentStorage`
+diagnostic. Step 21 also moved `reconcileCloudSaveAtBoot`'s `onServerRevision`
+to fire only for `kept-local`/`same-progress`, so a dominating remote is never
+preceded by arming the replica — otherwise a pending fresh document could upload
+against the server revision and overwrite the very cloud save the adopt
+restores. Evidence: unit tests for `isNewSession`, the restore predicate, and
+the persistence helper; three server-e2e specs proving restore-after-eviction,
+the honest notice, and corrupt-save preservation; and a client-e2e measurement
+of `navigator.storage`. The iOS Safari seven-day deletion measurement is
+**outstanding** — it needs a real device and a seven-day observation (finding
+F8) — and is recorded as such in `techContext.md`.
+
 ## Active Decisions
 
 Decisions that still constrain code not yet written. Settled base-game decisions
@@ -106,11 +133,11 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 20.** This is the gate; nothing below
-   starts before it.
-2. Step 21 onward — surviving local storage eviction, then Phase 4,
-   server-verified progress (validate-on-save anti-cheat). Closes the open
-   server-side-validation risk in `progress.md`.
+1. **Wait for the user to validate Step 21.** This is the gate; nothing below
+   starts before it. The step's iOS Safari seven-day measurement is outstanding
+   and needs a real device plus a seven-day observation (finding F8).
+2. Step 22 onward — Phase 4, server-verified progress (validate-on-save
+   anti-cheat). Closes the open server-side-validation risk in `progress.md`.
 3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
    shipped only a DEV hook; it remains the one protocol requirement with no
    player-facing implementation.

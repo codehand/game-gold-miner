@@ -145,6 +145,19 @@ fresh, empty cloud save take its place. The player sees nothing; their
 progress is simply the same progress they already had, now also recoverable
 from their account.
 
+Server-milestone Step 21 (2026-09-14) handles the case where the device's copy
+disappears — a browser clearing site data, storage pressure, or iOS Safari's
+seven-day sweep. When the account's session is still there but the local save is
+gone, the game restores the account's cloud save if it has one; if the account
+has no cloud save, the player is told plainly that their saved game could not be
+found rather than silently handed a fresh mine. The game also asks the browser
+to keep its storage persistent, and it saves to the cloud early in a session, so
+a player who plays once and never returns still has something to restore. This
+reduces the loss the seven-day cap causes but does not remove it: an unlinked
+guest whose session and save are swept in the same event still needs the
+recovery code to get back in, and the real seven-day iOS behaviour is being
+measured rather than assumed.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

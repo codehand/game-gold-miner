@@ -58,7 +58,28 @@ describe('reconcileCloudSaveAtBoot', () => {
     expect(outcome).toEqual({ kind: 'no-session' });
   });
 
-  it('reports the server revision to the Step 19 replica as soon as the cloud document arrives', async () => {
+  it('reports the server revision to the Step 19 replica when local keeps its save', async () => {
+    const onServerRevision = vi.fn();
+
+    await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: {
+          loadActiveSave: async () => progressingDocument(),
+          storeActiveSave: async () => {},
+        },
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 11 }),
+        onServerRevision,
+      }),
+    );
+
+    expect(onServerRevision).toHaveBeenCalledWith(11);
+  });
+
+  it('does not arm the replica before a dominating remote is adopted (Step 21)', async () => {
+    // Arming first would pump a pending local document against the server's
+    // revision and overwrite the very cloud save the adopt restores.
     const onServerRevision = vi.fn();
 
     await reconcileCloudSaveAtBoot(
@@ -71,7 +92,7 @@ describe('reconcileCloudSaveAtBoot', () => {
       }),
     );
 
-    expect(onServerRevision).toHaveBeenCalledWith(11);
+    expect(onServerRevision).not.toHaveBeenCalled();
   });
 
   it('reports no revision when the account has no cloud save', async () => {

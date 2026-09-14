@@ -12,6 +12,7 @@ import {
   ReplicatingActiveSaveRepository,
   SavePersistenceCoordinator,
   type CloudSaveReplicaEvent,
+  type ActiveGameLoadResult,
   type SaveConflictCandidate,
   type SaveDocumentV2,
 } from './persistence';
@@ -26,8 +27,12 @@ import {
   ensureGuestSession,
   generateRecoveryCode,
   LifecycleSafeActiveSaveRepository,
+  MISSING_LOCAL_SAVE_CODE,
+  MISSING_LOCAL_SAVE_MESSAGE,
   reconcileCloudSaveAtBoot,
   redeemRecoveryCode,
+  requestPersistentStorage,
+  shouldExplainMissingLocalSave,
   signOutOfSession,
   uploadCloudSaveViaFetch,
   WebLifecycleSaveJournal,
@@ -35,8 +40,10 @@ import {
   type GenerateRecoveryCodeResult,
   type GoogleSignInResult,
   type GuestSessionResult,
+  type LocalSaveState,
   type RedeemRecoveryCodeResult,
   type SignOutResult,
+  type StorageManagerLike,
   type SupabaseClient,
 } from './platform/web';
 import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
@@ -72,6 +79,19 @@ const app = getRequiredElement('#app', 'Application root');
 const gameViewport = getRequiredElement('#game-viewport', 'Game viewport');
 
 validateBaseGameBalance(BASE_GAME_BALANCE);
+
+/**
+ * Server-milestone Step 21: ask the browser to make this origin's storage
+ * persistent, once, as early as possible, and publish the real answer as a
+ * DEV-only diagnostic. `persist()` is best-effort and never awaited before
+ * boot — the game must not wait on it — and a grant is recorded as evidence,
+ * never treated as a guarantee that iOS Safari's seven-day sweep is exempted.
+ */
+void requestPersistentStorage(getStorageManager()).then((state) => {
+  if (import.meta.env.DEV) {
+    app.dataset.persistentStorage = JSON.stringify(state);
+  }
+});
 
 // Server-milestone Step 8: a first-time player gets a real anonymous session
 // from the first frame, with no prompt and no blocking network wait. `null`
@@ -126,7 +146,12 @@ if (telegramInitData !== null) {
       // Server-milestone Step 17: Telegram sign-in never links — it always
       // replaces whatever guest session (and its local progress) preceded
       // it, so this is exactly the "does the cloud already hold something
-      // different" case the boot-order reconcile exists for.
+      // different" case the boot-order reconcile exists for. Step 21's
+      // missing-local-save notice is deliberately guest-path-only: Telegram
+      // mints a session from signed `initData` with no reused-session signal to
+      // distinguish a returning player from a new one, so `sessionIsNew` stays
+      // unset here and no notice can fire. A returning Telegram player is
+      // restored from the cloud by the reconcile below.
       if (result.status === 'signed-in') {
         triggerCloudSaveReconcile();
       }
@@ -153,8 +178,12 @@ if (telegramInitData !== null) {
         app.dataset.guestSession = JSON.stringify(toPublicGuestSessionDiagnostic(result));
       }
       // Server-milestone Step 17: reconciles once a session exists, same
-      // reasoning as the Telegram branch above.
+      // reasoning as the Telegram branch above. Step 21 records whether this
+      // boot reused an existing guest session or minted a new one, so a
+      // reused session with no local save can be recognised as a returning
+      // player whose device lost its copy.
       if (result.status === 'signed-in') {
+        sessionIsNew = result.isNewSession;
         triggerCloudSaveReconcile();
       }
     });
@@ -239,7 +268,9 @@ if (import.meta.env.DEV) {
  * second place a page script could read it from.
  */
 function toPublicGuestSessionDiagnostic(result: GuestSessionResult): unknown {
-  return result.status === 'signed-in' ? { status: result.status, user: result.user } : result;
+  return result.status === 'signed-in'
+    ? { status: result.status, user: result.user, isNewSession: result.isNewSession }
+    : result;
 }
 
 const indexedRepository = new DexieActiveSaveRepository();
@@ -252,6 +283,19 @@ const indexedRepository = new DexieActiveSaveRepository();
  * verbatim. `null` whenever the last reconcile was not a fork.
  */
 let pendingSaveConflict: CloudSaveReconcileOutcome | null = null;
+
+/**
+ * Server-milestone Step 21: the facts `shouldExplainMissingLocalSave` needs,
+ * joined from three independent sources. `sessionIsNew` comes from
+ * `ensureGuestSession`; the local-save state comes from `loadActiveGame`, which
+ * runs on its own boot path; the reconcile outcome comes from the network
+ * round trip. Whichever finishes last calls `reportMissingLocalSaveIfNeeded`,
+ * so nothing awaits anything else and a boot failure simply never reports.
+ */
+let sessionIsNew: boolean | null = null;
+let localSaveState: LocalSaveState | null = null;
+let reconcileOutcome: CloudSaveReconcileOutcome | null = null;
+let missingLocalSaveNoticeReported = false;
 
 /**
  * Server-milestone Step 17/18: §11's boot-order reconcile — "In the background,
@@ -280,12 +324,16 @@ function triggerCloudSaveReconcile(): void {
 
       // Step 19 §11: no upload runs before the reconcile settles. A download
       // that reported a revision armed the replica through
-      // `onServerRevision`; every other outcome means the client still has no
-      // revision to send, so arm with null — the protocol's "this client has
-      // never synced." A fork stops sync outright: the replica has no way to
-      // apply the player's unchosen save, and re-uploading the local candidate
-      // would only earn the identical `409` again.
-      if (outcome.kind === 'deferred-conflict') {
+      // `onServerRevision` (only for `kept-local`/`same-progress`); every other
+      // outcome means the client still has no revision to send, so arm with
+      // null — the protocol's "this client has never synced." A fork stops
+      // sync outright: the replica has no way to apply the player's unchosen
+      // save, and re-uploading the local candidate would only earn the
+      // identical `409` again. Step 21 adds `adopted-remote` to the stop set:
+      // the page is reloading with the downloaded save, and a pending local
+      // document must not be pumped against the server revision before the
+      // reload lands.
+      if (outcome.kind === 'deferred-conflict' || outcome.kind === 'adopted-remote') {
         cloudReplica.stop();
       } else {
         cloudReplica.arm(null);
@@ -300,12 +348,67 @@ function triggerCloudSaveReconcile(): void {
         void forceCloudUploadLatestLocalDocument();
       }
 
+      // Server-milestone Step 21: tell a returning player the truth when there
+      // is nothing to restore. The decision joins this outcome with
+      // `loadActiveGame`'s local-save state, which may still be in flight.
+      reconcileOutcome = outcome;
+      reportMissingLocalSaveIfNeeded();
+
       if (import.meta.env.DEV) {
         app.dataset.cloudSaveReconcile = JSON.stringify(
           toPublicReconcileDiagnostic(outcome),
         );
       }
     });
+}
+
+/**
+ * Server-milestone Step 21: a reused guest session with no local record at all
+ * and no cloud save cannot be a new player, so the fresh mine they are about to
+ * see is a reset — and they are told so instead of it happening silently. A
+ * corrupt-but-present local save is *not* this case: it is reported by
+ * `loadActiveGame`'s own warning, which this must never overwrite. Any other
+ * outcome leaves the player restored or genuinely new, and reports nothing.
+ *
+ * Called from both sides of the join; whichever arrives last reports once.
+ */
+function reportMissingLocalSaveIfNeeded(): void {
+  if (
+    missingLocalSaveNoticeReported ||
+    sessionIsNew === null ||
+    localSaveState === null ||
+    reconcileOutcome === null
+  ) {
+    return;
+  }
+
+  if (
+    !shouldExplainMissingLocalSave({
+      localSaveState,
+      isNewSession: sessionIsNew,
+      reconcileOutcome,
+    })
+  ) {
+    return;
+  }
+
+  missingLocalSaveNoticeReported = true;
+  saveDiagnostics.report({
+    code: MISSING_LOCAL_SAVE_CODE,
+    message: MISSING_LOCAL_SAVE_MESSAGE,
+  });
+
+  if (import.meta.env.DEV) {
+    app.dataset.localSaveNotice = MISSING_LOCAL_SAVE_CODE;
+  }
+}
+
+/** Turns `loadActiveGame`'s result into the three-way local-save state Step 21 needs. */
+function localSaveStateFromLoadResult(loadResult: ActiveGameLoadResult): LocalSaveState {
+  if (loadResult.source === 'saved') {
+    return 'saved';
+  }
+  return loadResult.warning === null ? 'missing' : 'unreadable';
 }
 
 /**
@@ -624,6 +727,12 @@ async function startApplication(): Promise<void> {
     { onWarning: (warning) => saveDiagnostics.report(warning) },
   );
 
+  // Step 21: record the local-save state (`saved` / `missing` / `unreadable`)
+  // for the missing-local-save notice, then re-run the decision — the reconcile
+  // may already have finished while this was loading.
+  localSaveState = localSaveStateFromLoadResult(loadResult);
+  reportMissingLocalSaveIfNeeded();
+
   if (disposed) {
     return;
   }
@@ -780,4 +889,13 @@ function getAvailableLocalStorage(): Storage | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Step 21: the browser's storage manager, or `null` where the API is absent.
+ * Feature-detected rather than assumed, because `navigator.storage` is not
+ * universal and its absence must leave the game untouched.
+ */
+function getStorageManager(): StorageManagerLike | null {
+  return typeof navigator === 'undefined' ? null : navigator.storage ?? null;
 }

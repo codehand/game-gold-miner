@@ -6,10 +6,10 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 20 gate.** Steps 1–8 are validated.
-Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–20 are implemented and await
-user validation together. **Step 21 must not begin until the user validates
-Step 20.**
+**Server milestone: in progress, at the Step 21 gate.** Steps 1–8 are validated.
+Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–21 are implemented and await
+user validation together. **Step 22 must not begin until the user validates
+Step 21.**
 
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
@@ -26,14 +26,14 @@ Full history is archived, not deleted:
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 20 — adopt existing local saves.** Implemented 2026-09-14, awaiting user validation. |
-| Blocked on the gate | Steps 21–37 |
+| Current gate | **Step 21 — survive local storage eviction.** Implemented 2026-09-14, awaiting user validation. |
+| Blocked on the gate | Steps 22–37 |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
 
 Work proceeded past several gates on the user's explicit instruction rather than
-pausing at each one; Steps 9, 10, and 12–20 therefore sit
+pausing at each one; Steps 9, 10, and 12–21 therefore sit
 implemented-but-unvalidated as one batch.
 
 ## Server Milestone Step Status
@@ -62,8 +62,9 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 17 — `GET /v1/save` and boot-time reconcile | Implemented 2026-09-12; HIGH reload race fixed 2026-09-13; awaiting validation |
 | 18 — Conflict resolution | Implemented 2026-09-13, awaiting validation |
 | 19 — Client remote repository | Implemented 2026-09-13, awaiting validation |
-| 20 — Adopt existing local saves | Implemented 2026-09-14, awaiting validation — **current gate** |
-| 21–37 | Not started, blocked by the Step 20 gate |
+| 20 — Adopt existing local saves | Implemented 2026-09-14, awaiting validation |
+| 21 — Survive local storage eviction | Implemented 2026-09-14, awaiting validation — **current gate**; the iOS Safari seven-day measurement is outstanding |
+| 22–37 | Not started, blocked by the Step 21 gate |
 
 ## Known Risks
 
@@ -78,10 +79,18 @@ with the reason each one closed.
   a manipulated client clock server-side. That is Phase 4 of the server milestone
   (validate-on-save anti-cheat, Steps 20+).
 - **iOS Safari deletes all script-writable storage after seven days without
-  interaction.** A lapsed player loses the entire local save today. Recorded in
-  `server-milestone-plan.md` as a base-game defect that the server milestone does
-  not itself fix; cloud save reduces but does not remove it, because the guest
-  session token lives in the same evictable storage.
+  interaction.** A lapsed player loses the entire local save today. Step 21 now
+  detects the partial case (save gone, session still present), restores from the
+  cloud when a cloud copy exists, shows an honest notice when it does not, asks
+  for persistent storage, and syncs early enough that a lapsed player has a
+  cloud copy to restore. What remains open is the **measurement**: the real
+  seven-day iOS Safari behaviour (and whether a granted `persist()` exempts the
+  data) needs a real device and a seven-day wall-clock observation — finding F8.
+  The `persist()` half is measured (see `techContext.md`); the deletion half is
+  outstanding. An unlinked guest whose session and save are swept in the same
+  event still needs the Step 14 recovery code.
+  Recorded in `server-milestone-plan.md` as a base-game defect that the server
+  milestone reduces but does not eliminate.
 - **The fork chooser has no production surface.** Protocol §7.3 assigns the
   conflict-resolution chooser UI to Step 13, which shipped only a DEV hook;
   Step 18 and Step 19 likewise park a genuine fork in `src/main.ts`'s

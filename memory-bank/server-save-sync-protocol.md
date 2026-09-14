@@ -354,6 +354,18 @@ Three consequences, and the first is the one that matters most:
    ships the credential in the Supabase client's default storage as decided
    here.
 
+**Step 21 implementation note (2026-09-14).** Consequence 1's dependency is now
+enforced rather than implied. When the sweep takes the local save but leaves the
+session, the client can tell a returning player from a new one: a *reused*
+session (`ensureGuestSession`'s `isNewSession === false`, added by Step 21) with
+no local save is a state a first-time player can never be in. In that state a
+cloud save is restored by the Step 17/18 boot reconcile; with no cloud save, the
+player gets the honest `local-save-missing` notice instead of a silent reset.
+When the sweep takes **both** — the common iOS Safari case — the client cannot
+know the player ever existed, so cloud save is not sufficient and the Step 14
+recovery code remains the only path back for an unlinked guest. That is
+unchanged by Step 21 and is the reason the recovery code ships before it.
+
 ## 9. Cadence and retry — decision D5, resolving F6
 
 **Local persistence is unchanged.** `SavePersistenceCoordinator` keeps its

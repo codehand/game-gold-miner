@@ -50,3 +50,16 @@ export {
   uploadCloudSaveViaFetch,
   type CloudSaveUploadAuthClient,
 } from './cloudSaveUpload';
+export {
+  MISSING_LOCAL_SAVE_CODE,
+  MISSING_LOCAL_SAVE_MESSAGE,
+  shouldExplainMissingLocalSave,
+  type LocalSaveState,
+  type MissingLocalSaveContext,
+} from './localSaveRestore';
+export {
+  requestPersistentStorage,
+  UNSUPPORTED_PERSISTENT_STORAGE_STATE,
+  type PersistentStorageState,
+  type StorageManagerLike,
+} from './persistentStorage';
