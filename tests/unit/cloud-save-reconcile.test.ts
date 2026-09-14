@@ -69,7 +69,7 @@ describe('reconcileCloudSaveAtBoot', () => {
           loadActiveSave: async () => progressingDocument(),
           storeActiveSave: async () => {},
         },
-        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 11 }),
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 11 }),
         onServerRevision,
       }),
     );
@@ -87,7 +87,7 @@ describe('reconcileCloudSaveAtBoot', () => {
       NOW_MS,
       fakeDeps({
         repository: { loadActiveSave: async () => null, storeActiveSave: async () => {} },
-        download: async () => ({ document: progressingDocument(), receivedAtMs: NOW_MS, revision: 11 }),
+        download: async () => ({ document: progressingDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 11 }),
         onServerRevision,
       }),
     );
@@ -107,8 +107,75 @@ describe('reconcileCloudSaveAtBoot', () => {
     expect(onServerRevision).not.toHaveBeenCalled();
   });
 
+  it('hands the server offlineGrant to the caller when local keeps its save (Step 22)', async () => {
+    const onOfflineGrant = vi.fn();
+    const grant = { elapsedDurationMs: 3_600_000, creditedDurationMs: 3_600_000, reward: '12.5' };
+
+    await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: { loadActiveSave: async () => progressingDocument(), storeActiveSave: async () => {} },
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 4, offlineGrant: grant }),
+        onOfflineGrant,
+      }),
+    );
+
+    expect(onOfflineGrant).toHaveBeenCalledWith(grant, NOW_MS);
+  });
+
+  it('hands the grant on same-progress too', async () => {
+    const onOfflineGrant = vi.fn();
+    const grant = { elapsedDurationMs: 1_000, creditedDurationMs: 1_000, reward: '0.5' };
+
+    await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: { loadActiveSave: async () => freshDocument(), storeActiveSave: async () => {} },
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 4, offlineGrant: grant }),
+        onOfflineGrant,
+      }),
+    );
+
+    expect(onOfflineGrant).toHaveBeenCalledWith(grant, NOW_MS);
+  });
+
+  it('does not hand the grant before a dominating remote reload, which would discard it', async () => {
+    const onOfflineGrant = vi.fn();
+    const grant = { elapsedDurationMs: 1_000, creditedDurationMs: 1_000, reward: '0.5' };
+
+    await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: { loadActiveSave: async () => null, storeActiveSave: async () => {} },
+        download: async () => ({ document: progressingDocument(), receivedAtMs: NOW_MS, revision: 4, offlineGrant: grant }),
+        onOfflineGrant,
+      }),
+    );
+
+    expect(onOfflineGrant).not.toHaveBeenCalled();
+  });
+
+  it('does not hand a null grant', async () => {
+    const onOfflineGrant = vi.fn();
+
+    await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: { loadActiveSave: async () => progressingDocument(), storeActiveSave: async () => {} },
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 4, offlineGrant: null }),
+        onOfflineGrant,
+      }),
+    );
+
+    expect(onOfflineGrant).not.toHaveBeenCalled();
+  });
+
   it('treats a device with no local record at all as having no progress, and adopts the cloud save', async () => {
-    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, revision: 1 };
+    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 1 };
     let written: SaveDocumentV2 | null = null;
     const reload = vi.fn();
     const clearLifecycleJournal = vi.fn();
@@ -153,7 +220,7 @@ describe('reconcileCloudSaveAtBoot', () => {
       NOW_MS,
       fakeDeps({
         repository: { loadActiveSave: async () => progressingDocument(), storeActiveSave: async () => {} },
-        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 1 }),
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 1 }),
         clearLifecycleJournal,
       }),
     );
@@ -165,7 +232,7 @@ describe('reconcileCloudSaveAtBoot', () => {
   });
 
   it('adopts the cloud save when the local device has a fresh record but no progress', async () => {
-    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, revision: 1 };
+    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 1 };
     const reload = vi.fn();
 
     const outcome = await reconcileCloudSaveAtBoot(
@@ -186,7 +253,7 @@ describe('reconcileCloudSaveAtBoot', () => {
   });
 
   it('keeps local untouched when local has progress and the cloud save has none', async () => {
-    const stored: CloudSaveDownload = { document: freshDocument(), receivedAtMs: NOW_MS, revision: 1 };
+    const stored: CloudSaveDownload = { document: freshDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 1 };
     const storeActiveSave = vi.fn(async () => {});
     const reload = vi.fn();
 
@@ -223,7 +290,7 @@ describe('reconcileCloudSaveAtBoot', () => {
       NOW_MS,
       fakeDeps({
         repository: { loadActiveSave: async () => localDocument, storeActiveSave },
-        download: async () => ({ document: remoteDocument, receivedAtMs: NOW_MS, revision: 1 }),
+        download: async () => ({ document: remoteDocument, receivedAtMs: NOW_MS, offlineGrant: null, revision: 1 }),
         reload,
       }),
     );
@@ -252,7 +319,7 @@ describe('reconcileCloudSaveAtBoot', () => {
       NOW_MS,
       fakeDeps({
         repository: { loadActiveSave: async () => localDocument, storeActiveSave },
-        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 1 }),
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 1 }),
         reload,
       }),
     );
@@ -272,7 +339,7 @@ describe('reconcileCloudSaveAtBoot', () => {
       NOW_MS,
       fakeDeps({
         repository: { loadActiveSave: async () => localDocument, storeActiveSave },
-        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 1 }),
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 1 }),
         reload,
       }),
     );
@@ -283,7 +350,7 @@ describe('reconcileCloudSaveAtBoot', () => {
   });
 
   it('falls back to a fresh baseline, rather than failing, when the local document is corrupt', async () => {
-    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, revision: 1 };
+    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, offlineGrant: null, revision: 1 };
 
     const outcome = await reconcileCloudSaveAtBoot(
       'token',
@@ -445,9 +512,10 @@ describe('downloadCloudSaveViaFetch', () => {
     const result = await downloadCloudSaveViaFetch('https://example.test/v1/save', 'token');
 
     expect(result).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith('https://example.test/v1/save', {
-      headers: { authorization: 'Bearer token' },
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/v1/save',
+      expect.objectContaining({ headers: { authorization: 'Bearer token' } }),
+    );
     vi.unstubAllGlobals();
   });
 
@@ -467,7 +535,62 @@ describe('downloadCloudSaveViaFetch', () => {
       document,
       receivedAtMs: Date.parse('2026-01-01T00:00:00.000Z'),
       revision: 3,
+      offlineGrant: null,
     });
+    vi.unstubAllGlobals();
+  });
+
+  it('parses a server-computed offlineGrant from the 200 response (Step 22)', async () => {
+    const document = freshDocument();
+    const grant = {
+      elapsedDurationMs: 3_600_000,
+      creditedDurationMs: 3_600_000,
+      reward: '12.5',
+    };
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            revision: 3,
+            receivedAt: '2026-01-01T00:00:00.000Z',
+            document,
+            offlineGrant: grant,
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await downloadCloudSaveViaFetch('https://example.test/v1/save', 'token');
+
+    expect(result).toEqual({
+      document,
+      receivedAtMs: Date.parse('2026-01-01T00:00:00.000Z'),
+      revision: 3,
+      offlineGrant: grant,
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('ignores a malformed offlineGrant rather than throwing (Step 22)', async () => {
+    const document = freshDocument();
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            revision: 3,
+            receivedAt: '2026-01-01T00:00:00.000Z',
+            document,
+            offlineGrant: { reward: 42 },
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await downloadCloudSaveViaFetch('https://example.test/v1/save', 'token');
+
+    expect(result?.offlineGrant).toBeNull();
     vi.unstubAllGlobals();
   });
 

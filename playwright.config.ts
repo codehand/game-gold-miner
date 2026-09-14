@@ -22,5 +22,19 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: false,
     timeout: 30_000,
+    // Server-milestone Step 22: this suite is the *client-only* gate and must
+    // be deterministic and backend-free, exactly as Step 19's test requires
+    // ("the full existing client E2E suite passes offline, unchanged"). With
+    // `VITE_SUPABASE_URL` unset, `createSupabaseClient` resolves `null`, no
+    // session is minted, and offline rewards stay the client's own
+    // clock-derived projection — the behaviour these specs were written to
+    // pin. The server-verified path is exercised by `test:server-integration`
+    // and `test:server-e2e` against the live stack instead. Vite gives
+    // `process.env` priority over `.env.local`, so these blank values win even
+    // on a developer machine that has one.
+    env: {
+      VITE_SUPABASE_URL: '',
+      VITE_SUPABASE_ANON_KEY: '',
+    },
   },
 });

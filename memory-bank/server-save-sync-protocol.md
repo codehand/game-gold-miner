@@ -203,13 +203,15 @@ The server stores `received_at` from its own clock on every accepted upload.
 - `savedAtTimestampMs` and `state.lastUpdateTimestampMs` inside the document are
   **stored verbatim and returned verbatim**, because the client's own local
   simulation needs them. They are data being carried, never a server input.
-- Nothing in this step credits income. Step 22 moves settlement server-side, and
-  when it does, the grant travels in the download response as `offlineGrant` —
-  named here so Step 22 does not invent a second contract. The field is **absent
-  until Step 22**.
-- Finding F4 stands: Step 22 changes *which clock is authoritative* and nothing
+- **Nothing in this step credited income.** Step 22 has since moved settlement
+  server-side: `GET /v1/save` returns the grant in the download response as
+  `offlineGrant` (see §10.2), computed on download — the decision §12 left to
+  it. The field was absent before Step 22.
+- Finding F4 stands: Step 22 changed *which clock is authoritative* and nothing
   else. The formula, the 7,200,000 ms cap, the 0.5 efficiency, the zero award for
-  a future timestamp, and the open-tab/closed-tab asymmetry are all preserved.
+  a future timestamp, and the open-tab/closed-tab asymmetry are all preserved,
+  because the client projection and the server grant call the one
+  `calculateOfflineGrant`.
 
 ## 7. Conflict policy
 
@@ -432,9 +434,23 @@ Authorization: Bearer <access token>
 {
   "revision": 8,
   "receivedAt": "2026-09-08T12:34:56.789Z",
-  "document": { "schemaVersion": 2, "savedAtTimestampMs": 1757332496789, "…": "…" }
+  "document": { "schemaVersion": 2, "savedAtTimestampMs": 1757332496789, "…": "…" },
+  "offlineGrant": {
+    "elapsedDurationMs": 3600000,
+    "creditedDurationMs": 3600000,
+    "reward": "12.5"
+  }
 }
 ```
+
+`offlineGrant` (added by Step 22) is the server's authoritative offline reward
+for the absence since `receivedAt`, computed from the server's own clock to its
+own `now()` with the shared `calculateOfflineGrant` (7,200,000 ms cap, 0.5
+efficiency). `reward` is a serialized `GameNumber`. A `204` carries no grant.
+A `200` may still carry `offlineGrant: null` when the stored row cannot be
+parsed well enough to compute one (defense-in-depth — the upload path validates
+every stored document); the client treats a null grant as "no server figure",
+not as a zero reward.
 
 **204 — the account has no cloud save yet.** No body. The client keeps playing
 from local and uploads at the next trigger. This is the normal first-sign-in
@@ -584,7 +600,9 @@ running; §4 decides what, if anything, is shown.
   design — Step 13.
 - Rate-limit thresholds and the size cap's enforcement point — Step 25.
 - The re-simulation bound that makes `save_rejected` reachable — Step 23.
-- Whether `offlineGrant` is computed on download, upload, or both — Step 22.
+- ~~Whether `offlineGrant` is computed on download, upload, or both — Step 22.~~
+  **Resolved by Step 22: computed on download**, from the stored `received_at` to
+  the server's `now()`, returned in the `GET /v1/save` response (§10.2).
 
 ## 13. Traceability
 

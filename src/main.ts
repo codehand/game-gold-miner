@@ -1,7 +1,7 @@
 import './style.css';
 
 import { BASE_GAME_BALANCE, validateBaseGameBalance } from './config';
-import { claimOfflineReward, createPendingOfflineReward } from './core';
+import { claimOfflineReward, createPendingOfflineReward, GameNumber, type PendingOfflineReward } from './core';
 import { createGame, MineSimulationDriver } from './game';
 import {
   createSaveDocument,
@@ -21,14 +21,17 @@ import {
   beginGoogleAccountSwitch,
   beginGoogleSignIn,
   bindSaveLifecycle,
+  chooseOfflineReward,
   createSupabaseClient,
   detectGoogleIdentityCollision,
   downloadCloudSaveViaFetch,
   ensureGuestSession,
   generateRecoveryCode,
   LifecycleSafeActiveSaveRepository,
+  markOfflineGrantApplied,
   MISSING_LOCAL_SAVE_CODE,
   MISSING_LOCAL_SAVE_MESSAGE,
+  readAppliedOfflineGrantReceivedAtMs,
   reconcileCloudSaveAtBoot,
   redeemRecoveryCode,
   requestPersistentStorage,
@@ -36,6 +39,7 @@ import {
   signOutOfSession,
   uploadCloudSaveViaFetch,
   WebLifecycleSaveJournal,
+  type CloudSaveOfflineGrant,
   type CloudSaveReconcileOutcome,
   type GenerateRecoveryCodeResult,
   type GoogleSignInResult,
@@ -154,6 +158,9 @@ if (telegramInitData !== null) {
       // restored from the cloud by the reconcile below.
       if (result.status === 'signed-in') {
         triggerCloudSaveReconcile();
+      } else {
+        // Step 22: no session means no server grant; fall back to the local projection.
+        finishOfflineRewardDecision(result.status === 'unconfigured');
       }
     });
 } else {
@@ -185,6 +192,10 @@ if (telegramInitData !== null) {
       if (result.status === 'signed-in') {
         sessionIsNew = result.isNewSession;
         triggerCloudSaveReconcile();
+      } else {
+        // Step 22: no session means no server grant; fall back to the local
+        // projection rather than showing no offline reward at all.
+        finishOfflineRewardDecision(result.status === 'unconfigured');
       }
     });
 }
@@ -298,6 +309,42 @@ let reconcileOutcome: CloudSaveReconcileOutcome | null = null;
 let missingLocalSaveNoticeReported = false;
 
 /**
+ * Server-milestone Step 22: whether a backend is configured, known
+ * synchronously from Vite's injected env (the Supabase client itself is created
+ * asynchronously). When true, the credited offline reward is the server's
+ * `offlineGrant`; the local clock-derived calculation is only a projection and
+ * is suppressed at load. When false, the client-only behaviour is unchanged.
+ */
+const backendConfigured = Boolean(
+  import.meta.env.VITE_SUPABASE_URL?.trim() &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY?.trim(),
+);
+
+/** The running driver, owned by `startApplication` and shared with the Step 22 grant application. */
+let activeDriver: MineSimulationDriver | null = null;
+let pendingReward: PendingOfflineReward | null = null;
+let rewardClaimed = false;
+
+/**
+ * Step 22 offline-reward state. The credited amount is chosen from the server's
+ * grant and the client's projection by the pure `chooseOfflineReward` (see its
+ * own module): the server figure is the ceiling, the local projection bounds it
+ * to a closed interval, and the local projection is a fallback only where no
+ * server figure can exist. Exactly one reward is presented, once the driver
+ * exists — the download can finish before `startApplication`'s IndexedDB load,
+ * or long after.
+ */
+let localProjectionReward: PendingOfflineReward | null = null;
+let serverGrantReward: PendingOfflineReward | null = null;
+/** The server receipt the pending grant was computed against; marked applied only once the reward is claimed and persisted. */
+let offeredGrantReceivedAtMs: number | null = null;
+/** Whether the reconcile has finished deciding, so an absent grant can fall back. */
+let offlineDecisionMade = false;
+/** Whether the local projection may be credited at all (unconfigured, no session, or `no-cloud-save`). */
+let offlineFallbackAllowed = false;
+let offlineRewardPresented = false;
+
+/**
  * Server-milestone Step 17/18: §11's boot-order reconcile — "In the background,
  * once a session exists, `GET /v1/save`. Reconcile through §7." Called from
  * the tail of whichever sign-in chain above actually ran, only once that
@@ -354,6 +401,11 @@ function triggerCloudSaveReconcile(): void {
       reconcileOutcome = outcome;
       reportMissingLocalSaveIfNeeded();
 
+      // Server-milestone Step 22: the reconcile produced its grant (if any) via
+      // `onOfflineGrant`; deciding now means a missing grant falls back to the
+      // local projection instead of showing nothing.
+      finishOfflineRewardDecision(outcome.kind === 'no-cloud-save');
+
       if (import.meta.env.DEV) {
         app.dataset.cloudSaveReconcile = JSON.stringify(
           toPublicReconcileDiagnostic(outcome),
@@ -409,6 +461,172 @@ function localSaveStateFromLoadResult(loadResult: ActiveGameLoadResult): LocalSa
     return 'saved';
   }
   return loadResult.warning === null ? 'missing' : 'unreadable';
+}
+
+/**
+ * Server-milestone Step 22: records the server's authoritative offline grant.
+ * Called from the reconcile, which can finish before or after the driver load.
+ * The grant is accepted once per stored receipt, and only when positive, but it
+ * is **not** marked applied here — that happens only when the reward is claimed
+ * and persisted (see the modal's claim handler), so a boot that ends before the
+ * player claims does not burn an unclaimed reward.
+ */
+function applyServerOfflineGrant(
+  grant: CloudSaveOfflineGrant,
+  receivedAtMs: number,
+): void {
+  if (serverGrantReward !== null) {
+    return;
+  }
+
+  const storage = getAvailableLocalStorage();
+
+  // A reload between *claiming* this grant and its upload is already covered by
+  // the on-claim mark; this guard catches a grant the guard has already paid.
+  if (readAppliedOfflineGrantReceivedAtMs(storage) === receivedAtMs) {
+    return;
+  }
+
+  let reward: GameNumber;
+  try {
+    reward = GameNumber.deserialize(grant.reward);
+  } catch {
+    return;
+  }
+
+  if (!reward.greaterThan(0)) {
+    return;
+  }
+
+  serverGrantReward = { creditedDurationMs: grant.creditedDurationMs, reward };
+  offeredGrantReceivedAtMs = receivedAtMs;
+  maybePresentOfflineReward();
+
+  if (import.meta.env.DEV) {
+    app.dataset.offlineGrant = JSON.stringify({
+      elapsedDurationMs: grant.elapsedDurationMs,
+      creditedDurationMs: grant.creditedDurationMs,
+      reward: grant.reward,
+    });
+  }
+}
+
+/**
+ * Marks the offline-reward source decided. `allowsLocalFallback` is true only
+ * when no server figure can exist for this boot: an unconfigured build or an
+ * account with no cloud save (`204`). A **failed download** and a **failed
+ * sign-in against a configured backend** are deliberately *not* fallbacks — the
+ * server figure exists and was merely not reached, so nothing is credited and
+ * the interval settles on the next boot that reaches the server. Otherwise
+ * dropping one request, or clearing the auth entry, would hand the player the
+ * device-clock cheat back.
+ *
+ * The recorded consequence: a configured build whose sign-in keeps failing (an
+ * offline-only player with no session yet) gets no offline reward until a
+ * sign-in lands. That is the safe direction, and a returning player with a
+ * stored session reaches `signed-in` without the network and takes the strict
+ * path anyway.
+ */
+function finishOfflineRewardDecision(allowsLocalFallback: boolean): void {
+  offlineDecisionMade = true;
+  offlineFallbackAllowed = !backendConfigured || allowsLocalFallback;
+  maybePresentOfflineReward();
+}
+
+/**
+ * Presents exactly one offline reward, once the driver exists and the decision
+ * is possible. A positive server grant always decides it (bounded by the local
+ * projection, so only a closed interval is credited); otherwise the decision
+ * waits for the reconcile to declare that no server figure exists.
+ */
+function maybePresentOfflineReward(): void {
+  if (offlineRewardPresented || activeDriver === null) {
+    return;
+  }
+
+  if (serverGrantReward === null && !offlineDecisionMade) {
+    return;
+  }
+
+  const choice = chooseOfflineReward({
+    serverGrant: serverGrantReward,
+    localProjection: localProjectionReward,
+    fallbackAllowed: offlineFallbackAllowed,
+  });
+
+  offlineRewardPresented = true;
+
+  if (choice === null) {
+    return;
+  }
+
+  presentOfflineReward(choice);
+}
+
+/** Shows the offline-reward modal for a reward already decided to be authoritative. */
+function presentOfflineReward(reward: PendingOfflineReward): void {
+  pendingReward = reward;
+  rewardClaimed = false;
+
+  offlineRewardModal = showOfflineRewardModal({
+    parent: app,
+    pendingReward: reward,
+    onClaim: async () => {
+      const driver = activeDriver;
+
+      if (driver === null) {
+        return false;
+      }
+
+      // Guarded by `rewardClaimed`, not by a cached state candidate: the mine
+      // keeps producing while the modal is open, so a retry after a failed write
+      // must persist the state as it is now, having still added the reward
+      // exactly once.
+      if (!rewardClaimed) {
+        const claimResult = claimOfflineReward(driver.state, pendingReward);
+
+        if (claimResult.status !== 'claimed') {
+          return false;
+        }
+
+        driver.replaceState(claimResult.state);
+        pendingReward = claimResult.pendingReward;
+        rewardClaimed = true;
+      }
+
+      const claimedDocument = createSaveDocument(
+        driver.state,
+        BASE_GAME_BALANCE,
+        Date.now(),
+      );
+
+      if (localSavesSuspended) {
+        return false;
+      }
+
+      persistence.queueSave(claimedDocument);
+      // Server-milestone Step 19 §9: a claimed offline reward is one of the
+      // three named forced triggers. Forced so the freshly credited gold
+      // reaches the cloud promptly rather than waiting out the 60 s cadence.
+      repository.forceCloudUpload(claimedDocument);
+      const persisted = await persistence.flush();
+
+      if (persisted) {
+        // Step 22 review fix: burn the server receipt only now, once the
+        // credited state is actually persisted. Marking it earlier (when the
+        // grant arrived) could lose an unclaimed reward if the boot ended
+        // before the player claimed.
+        if (offeredGrantReceivedAtMs !== null) {
+          markOfflineGrantApplied(getAvailableLocalStorage(), offeredGrantReceivedAtMs);
+          offeredGrantReceivedAtMs = null;
+        }
+
+        offlineRewardModal = null;
+      }
+
+      return persisted;
+    },
+  });
 }
 
 /**
@@ -502,6 +720,10 @@ async function runCloudSaveReconcile(): Promise<CloudSaveReconcileOutcome> {
     // first routine save updates revision N rather than false-conflicting
     // against it.
     onServerRevision: (revision) => cloudReplica.arm(revision),
+    // Step 22: the credited offline reward is the server's grant, credited once
+    // per stored `received_at`. It can arrive before `startApplication` has
+    // built the driver; `applyServerOfflineGrant` holds it until then.
+    onOfflineGrant: (grant, receivedAtMs) => applyServerOfflineGrant(grant, receivedAtMs),
   });
 }
 
@@ -758,8 +980,13 @@ async function startApplication(): Promise<void> {
       );
     },
   });
-  let pendingReward = createPendingOfflineReward(loadResult.offlineIncome);
-  let rewardClaimed = false;
+
+  // Step 22: the driver now exists, so the offline reward can be presented —
+  // the server grant if one arrived, the local projection otherwise, exactly
+  // once, once the source is decided.
+  activeDriver = driver;
+  localProjectionReward = createPendingOfflineReward(loadResult.offlineIncome);
+  maybePresentOfflineReward();
 
   game = createGame(gameViewport, driver);
   unbindSaveLifecycle = bindSaveLifecycle(
@@ -799,53 +1026,6 @@ async function startApplication(): Promise<void> {
       createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now()),
     );
   }, SAVE_HEARTBEAT_MS);
-
-  if (pendingReward !== null) {
-    offlineRewardModal = showOfflineRewardModal({
-      parent: app,
-      pendingReward,
-      onClaim: async () => {
-        // Guarded by `rewardClaimed`, not by a cached state candidate: the mine
-        // keeps producing while the modal is open, so a retry after a failed
-        // write must persist the state as it is now, having still added the
-        // reward exactly once.
-        if (!rewardClaimed) {
-          const claimResult = claimOfflineReward(driver.state, pendingReward);
-
-          if (claimResult.status !== 'claimed') {
-            return false;
-          }
-
-          driver.replaceState(claimResult.state);
-          pendingReward = claimResult.pendingReward;
-          rewardClaimed = true;
-        }
-
-        const claimedDocument = createSaveDocument(
-          driver.state,
-          BASE_GAME_BALANCE,
-          Date.now(),
-        );
-
-        if (localSavesSuspended) {
-          return false;
-        }
-
-        persistence.queueSave(claimedDocument);
-        // Server-milestone Step 19 §9: a claimed offline reward is one of the
-        // three named forced triggers. Forced so the freshly credited gold
-        // reaches the cloud promptly rather than waiting out the 60 s cadence.
-        repository.forceCloudUpload(claimedDocument);
-        const persisted = await persistence.flush();
-
-        if (persisted) {
-          offlineRewardModal = null;
-        }
-
-        return persisted;
-      },
-    });
-  }
 }
 
 if (import.meta.hot) {

@@ -460,7 +460,7 @@ Deno.test('handleSaveDownload answers 204 with no body when the account has no c
   assert.equal(await response.text(), '');
 });
 
-Deno.test('handleSaveDownload answers 200 with the stored revision, receivedAt, and parsed document', async () => {
+Deno.test('handleSaveDownload answers 200 with the stored revision, receivedAt, parsed document, and offlineGrant', async () => {
   const document = validSaveDocument();
   const stored: StoredSaveRow = {
     revision: 4,
@@ -476,9 +476,54 @@ Deno.test('handleSaveDownload answers 200 with the stored revision, receivedAt, 
   );
 
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    revision: 4,
-    receivedAt: stored.receivedAt,
-    document,
-  });
+  const body = await response.json();
+  assert.equal(body.revision, 4);
+  assert.equal(body.receivedAt, stored.receivedAt);
+  assert.deepEqual(body.document, document);
+
+  // Step 22: a months-old receipt is credited at the two-hour cap, never more.
+  assert.equal(body.offlineGrant.creditedDurationMs, 7_200_000);
+  assert.equal(typeof body.offlineGrant.reward, 'string');
+  assert.equal(
+    body.offlineGrant.elapsedDurationMs >= body.offlineGrant.creditedDurationMs,
+    true,
+  );
+});
+
+Deno.test('handleSaveDownload derives the offlineGrant from the server receipt, not the document timestamps', async () => {
+  // Step 22's whole point: the document's own `savedAtTimestampMs` /
+  // `lastUpdateTimestampMs` are the player's clock and must not move the grant.
+  const base = validSaveDocument() as Record<string, unknown> & {
+    state: Record<string, unknown>;
+  };
+  const movedClock = {
+    ...base,
+    savedAtTimestampMs: (base.savedAtTimestampMs as number) + 10 * 24 * 60 * 60 * 1_000,
+    state: {
+      ...base.state,
+      lastUpdateTimestampMs:
+        (base.state.lastUpdateTimestampMs as number) + 10 * 24 * 60 * 60 * 1_000,
+    },
+  };
+  const receivedAt = new Date(Date.now() - 60_000).toISOString();
+
+  const grants: unknown[] = [];
+  for (const document of [base, movedClock]) {
+    const response = await handleRequest(
+      getSaveRequest(),
+      noopDeps({
+        resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+        readCurrentSave: async () => ({
+          revision: 4,
+          documentJson: JSON.stringify(document),
+          receivedAt,
+        }),
+      }),
+    );
+    grants.push((await response.json()).offlineGrant);
+  }
+
+  assert.deepEqual(grants[0], grants[1]);
+  const grant = grants[0] as { creditedDurationMs: number };
+  assert.equal(grant.creditedDurationMs >= 59_000 && grant.creditedDurationMs <= 61_000, true);
 });

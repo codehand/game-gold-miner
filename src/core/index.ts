@@ -21,6 +21,10 @@ export {
   type SerializedGameNumber,
 } from './numbers/GameNumber';
 export {
+  calculateOfflineGrant,
+  type OfflineGrant,
+} from './offline-income/calculateOfflineGrant';
+export {
   calculateOfflineIncome,
   type OfflineIncomeCalculation,
 } from './offline-income/calculateOfflineIncome';

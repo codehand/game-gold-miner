@@ -45,6 +45,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2.116.0';
 import {
   BASE_GAME_BALANCE,
   CURRENT_SAVE_SCHEMA_VERSION,
+  GameNumber,
+  calculateOfflineGrant,
   SaveDocumentError,
   validateSaveDocument,
 } from '../_shared/generated/core-bundle.js';
@@ -323,6 +325,16 @@ function revisionConflictResponse(current: StoredSaveRow | null, origin: string 
  * `204` with no body when it does not — "the normal first-sign-in path, not
  * an error," per the protocol. The read goes through the caller's own token
  * (`saves_select_own`), so it needs no elevated privilege.
+ *
+ * Server-milestone Step 22: the response also carries the account's
+ * `offlineGrant`, computed from the stored `received_at` to this function's own
+ * `now()` (§6 — "every elapsed-time calculation anchors on stored received_at →
+ * server now()," decision D3). The device clock is never an input, so a client
+ * reporting hours ahead, hours behind, or a backwards clock receives exactly
+ * the same grant an honest client would for the same real absence. The formula,
+ * cap, and efficiency come from the same `calculateOfflineGrant` the client's
+ * local projection uses (`BASE_GAME_BALANCE.offlineIncome`), preserving finding
+ * F4.
  */
 async function handleSaveDownload(request: Request, deps: SaveSyncDeps, origin: string | null): Promise<Response> {
   const token = extractBearerToken(request.headers.get('authorization'));
@@ -346,9 +358,53 @@ async function handleSaveDownload(request: Request, deps: SaveSyncDeps, origin: 
       revision: current.revision,
       receivedAt: current.receivedAt,
       document: JSON.parse(current.documentJson),
+      offlineGrant: computeOfflineGrant(current),
     },
     origin,
   );
+}
+
+interface OfflineGrantBody {
+  readonly elapsedDurationMs: number;
+  readonly creditedDurationMs: number;
+  readonly reward: string;
+}
+
+/**
+ * The server's authoritative offline grant for one stored row, or `null` when
+ * the row cannot be read well enough to compute one (defense-in-depth — the
+ * upload path validates every document it stores). `Date.now()` is the
+ * server's own clock; the row's `received_at` is the server's own receipt time.
+ */
+function computeOfflineGrant(row: StoredSaveRow): OfflineGrantBody | null {
+  try {
+    const document = JSON.parse(row.documentJson) as {
+      readonly effectiveProductionRatePerSecond?: unknown;
+    };
+    const rate = GameNumber.deserialize(
+      document.effectiveProductionRatePerSecond as never,
+    );
+    const receivedAtMs = Date.parse(row.receivedAt);
+
+    if (!Number.isFinite(receivedAtMs)) {
+      return null;
+    }
+
+    const grant = calculateOfflineGrant(
+      receivedAtMs,
+      Date.now(),
+      rate,
+      BASE_GAME_BALANCE.offlineIncome,
+    );
+
+    return {
+      elapsedDurationMs: grant.elapsedDurationMs,
+      creditedDurationMs: grant.creditedDurationMs,
+      reward: grant.reward.serialize(),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

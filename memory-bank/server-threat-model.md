@@ -138,7 +138,9 @@ efficiency bound the size of each theft, not the number of them.
 
 **Defended by.** Step 22 — elapsed time is computed from the stored server
 received-at to the server's own now, and the credited amount is the server's.
-Step 26 tests clocks ahead, behind, and moving backwards.
+**Implemented 2026-09-14:** `GET /v1/save` returns the server-computed
+`offlineGrant`; the device clock is never an input. Step 26 tests clocks ahead,
+behind, and moving backwards.
 
 **Not defended, and deliberately.** The client's *displayed* projection may
 still be derived locally so the screen is not blocked on the network. It is
@@ -592,7 +594,16 @@ tab is credited at full rate while a closed one is credited at 50%.
 **Default:** Step 22 changes *which clock is authoritative* and nothing else.
 The formula, the cap, the efficiency, and the open-tab/closed-tab distinction
 are preserved exactly, and Step 22's test must pin the ratio the existing unit
-tests pin.
+tests pin. **Implemented 2026-09-14:** the client projection and the server
+grant both call the one `calculateOfflineGrant`, so the formula cannot drift;
+the client's F4-pinning ratio tests pass unchanged. **Tightened 2026-09-15:** the
+credited reward is `min(serverGrant, localProjection)` (so a receipt that lags
+play cannot credit open-tab time), a null or zero projection is treated as a
+zero bound rather than an absent one, and the local projection is credited alone
+only where no server figure can exist (unconfigured or `no-cloud-save`) — a
+failed download *and* a failed sign-in against a configured backend credit
+nothing, so neither dropping a request nor clearing the auth entry can hand the
+clock cheat back.
 
 **F5 — No step defends the session credential against XSS.**
 The guest session token is the sole proof of save ownership (Step 8), it lives
@@ -718,7 +729,7 @@ depends on nothing outside them.
 | 19 Client remote repository | **Implemented 2026-09-13** — local and cloud cadences are distinct (`cloudSaveReplica.ts`), `src/core` stays pure (lint + architecture probe) | **F6** (exercised); §6 |
 | 20 Adopt existing local saves | Existing saves must survive | §7.7 |
 | 21 Survive storage eviction | No first-party cookie; measurement needs seven days | §7.5; **F8** |
-| 22 Server clock | Must change the clock without changing the economy | **F4** |
+| 22 Server clock | **Implemented 2026-09-14** — must change the clock without changing the economy; the one `calculateOfflineGrant` is shared by client and server | **F4** (exercised) |
 | 23 Upper-bound re-simulation | Bound's modelling rule; tolerance direction | **F3**; §1 with §7.4 |
 | 24 Rejection handling | A rejected player stays playable | §1 |
 | 25 Abuse limits | No fingerprint collection; limits sit above the upload cadence | §7.2; **F6** |

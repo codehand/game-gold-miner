@@ -36,11 +36,25 @@ import {
 } from '../../persistence';
 import { describeError } from '../describeError';
 
+/**
+ * Server-milestone Step 22: the server's authoritative offline grant, exactly
+ * as `save-sync`'s download response carries it. `reward` is a serialized
+ * `GameNumber` string, deserialized only where it is credited.
+ */
+export interface CloudSaveOfflineGrant {
+  readonly elapsedDurationMs: number;
+  readonly creditedDurationMs: number;
+  /** Serialized `GameNumber`. */
+  readonly reward: string;
+}
+
 export interface CloudSaveDownload {
   readonly document: SaveDocumentV2;
   readonly receivedAtMs: number;
   /** §5's server-owned revision, carried so the Step 19 replica can upload against it rather than a null that would false-conflict. */
   readonly revision: number;
+  /** Step 22's server-computed offline grant; `null` when the server could not compute one. */
+  readonly offlineGrant: CloudSaveOfflineGrant | null;
 }
 
 /** Injected so tests fake the network call instead of hitting a real one. */
@@ -50,7 +64,42 @@ interface CloudSaveDownloadResponseBody {
   readonly revision?: unknown;
   readonly receivedAt?: unknown;
   readonly document?: unknown;
+  readonly offlineGrant?: unknown;
 }
+
+function parseOfflineGrant(value: unknown): CloudSaveOfflineGrant | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  const candidate = value as {
+    readonly elapsedDurationMs?: unknown;
+    readonly creditedDurationMs?: unknown;
+    readonly reward?: unknown;
+  };
+
+  if (
+    typeof candidate.elapsedDurationMs !== 'number' ||
+    typeof candidate.creditedDurationMs !== 'number' ||
+    typeof candidate.reward !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    elapsedDurationMs: candidate.elapsedDurationMs,
+    creditedDurationMs: candidate.creditedDurationMs,
+    reward: candidate.reward,
+  };
+}
+
+/**
+ * Server-milestone Step 22 review fix: the download must not hold the offline
+ * reward hostage to a stalled socket (a captive portal, a hung TLS handshake).
+ * On expiry the reconcile resolves `error`, and the reward is deferred to the
+ * next boot that reaches the server rather than credited from the device clock.
+ */
+export const CLOUD_SAVE_DOWNLOAD_TIMEOUT_MS = 10_000;
 
 /** The real `DownloadCloudSave`: §10.2 `GET /v1/save`. `204` (no cloud save yet) resolves `null`, never an error. */
 export async function downloadCloudSaveViaFetch(
@@ -59,6 +108,7 @@ export async function downloadCloudSaveViaFetch(
 ): Promise<CloudSaveDownload | null> {
   const response = await fetch(edgeFunctionUrl, {
     headers: { authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(CLOUD_SAVE_DOWNLOAD_TIMEOUT_MS),
   });
 
   if (response.status === 204) {
@@ -80,6 +130,7 @@ export async function downloadCloudSaveViaFetch(
     document: body.document as SaveDocumentV2,
     receivedAtMs: Date.parse(body.receivedAt),
     revision: body.revision,
+    offlineGrant: parseOfflineGrant(body.offlineGrant),
   };
 }
 
@@ -139,6 +190,16 @@ export interface CloudSaveReconcileDeps {
    * behaviours — the alternative is arming off a document that never validated.
    */
   readonly onServerRevision?: (revision: number) => void;
+  /**
+   * Server-milestone Step 22: the server's authoritative offline grant for the
+   * absence since the stored `received_at`. Reported only for the outcomes that
+   * keep this page running (`kept-local`, `same-progress`) — an
+   * `adopted-remote` outcome reloads, and its next boot's download returns the
+   * same grant (no upload advanced `received_at`), so applying it here would
+   * only be discarded. The caller credits it and is responsible for applying it
+   * at most once.
+   */
+  readonly onOfflineGrant?: (grant: CloudSaveOfflineGrant, receivedAtMs: number) => void;
 }
 
 export async function reconcileCloudSaveAtBoot(
@@ -181,10 +242,12 @@ export async function reconcileCloudSaveAtBoot(
     // case, not an action this module performs.
     if (resolution.kind === 'same-progress') {
       deps.onServerRevision?.(remote.revision);
+      reportOfflineGrant(deps, remote);
       return { kind: 'same-progress' };
     }
     if (resolution.kind === 'local-dominates') {
       deps.onServerRevision?.(remote.revision);
+      reportOfflineGrant(deps, remote);
       return { kind: 'kept-local' };
     }
     if (resolution.kind === 'fork') {
@@ -207,6 +270,16 @@ export async function reconcileCloudSaveAtBoot(
     return { kind: 'adopted-remote' };
   } catch (error) {
     return { kind: 'error', reason: describeError(error) };
+  }
+}
+
+/** Step 22: hand a server-computed grant to the caller, with the receipt it was computed against. */
+function reportOfflineGrant(
+  deps: CloudSaveReconcileDeps,
+  remote: CloudSaveDownload,
+): void {
+  if (remote.offlineGrant !== null) {
+    deps.onOfflineGrant?.(remote.offlineGrant, remote.receivedAtMs);
   }
 }
 

@@ -207,7 +207,9 @@ Version 2 is a strict plain-JSON document. Unknown properties are rejected. Runt
 
 ## Offline Income Contract
 
-Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. `calculateOfflineIncome` computes non-negative elapsed time from the validated save timestamp to an injected current timestamp, clamps credited time to the cap, and returns `savedEffectiveRate × creditedSeconds × efficiency` as a `GameNumber`. A future save timestamp produces zero elapsed time and zero reward. The calculation never changes spendable gold or other production state; it immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
+Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. One pure function, `calculateOfflineGrant(receivedAtTimestampMs, currentTimestampMs, rate, config)`, computes the reward from two opaque timestamps; `calculateOfflineIncome` (the client's local projection) and `save-sync`'s download handler (the server's authoritative grant) both call it, so the formula, the cap, and the efficiency cannot drift between them (finding F4). The two timestamps are not symmetric in authority: the client projection passes the document's own `savedAtTimestampMs` and `Date.now()`, while the server passes the stored `received_at` and its own `now()`, which is what makes a manipulated device clock irrelevant to the credited amount (Step 22).
+
+`calculateOfflineIncome` clamps credited time to the cap, returns `rate × creditedSeconds × efficiency` as a `GameNumber`, awards zero for a receipt at or after the current time, and immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
 
 The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The version-2 save schema and the version-1 IndexedDB schema are unchanged by a claim beyond the two counters it legitimately moves: only the post-claim authoritative snapshot is stored.
 
@@ -1143,6 +1145,68 @@ than asserted.
 **Early first sync.** Step 19's forced upload after boot reconcile
 (`no-cloud-save`/`kept-local`) already ensures a player who never returns has a
 cloud copy to restore; Step 21 relies on it rather than adding a second cadence.
+
+### The server clock is the only clock (Step 22)
+
+Offline settlement moved server-side. `save-sync`'s `GET /v1/save` computes an
+`offlineGrant` from the stored `received_at` to the function's own `now()` and
+returns it alongside the document; the device clock is never an input, so a
+client reporting hours ahead, hours behind, or moving backwards receives the
+same grant for the same real absence, and never more than the two-hour cap
+(F4's economy preserved by sharing `calculateOfflineGrant` with the client).
+
+On the client, `downloadCloudSaveViaFetch` parses the grant into
+`CloudSaveDownload.offlineGrant`, and `reconcileCloudSaveAtBoot` reports it
+through `onOfflineGrant` only for the outcomes that keep the page running
+(`kept-local`, `same-progress`) — an `adopted-remote` outcome reloads, and the
+next boot's download returns the same grant because no upload advanced
+`received_at`. `src/main.ts` credits the server's grant as the authoritative
+offline reward. The client's own projection is credited alone only where no
+server figure can exist — an unconfigured build, or an account with no cloud
+save (`204`); a failed download and a failed sign-in against a configured
+backend both credit nothing and settle on the next boot that reaches the server.
+Exactly one reward is presented, once the driver exists, because the download
+can finish before or after the IndexedDB load.
+
+`src/platform/web/appliedOfflineGrant.ts` records the `receivedAt` of the last
+credited grant in script-writable storage, so a reload between crediting a grant
+and uploading the credited state cannot credit the same server receipt twice.
+That double-credit window is the only one: once the upload advances
+`received_at`, the next grant covers only the new interval.
+
+**Open-tab/closed-tab asymmetry is preserved.** A backgrounded-but-alive tab is
+still advanced by `catchUpSimulation` at full pipeline rate; only a closed
+interval reaches the server grant, credited at the 0.5 efficiency. The grant is
+bounded by the client's own projection (`min`), because `received_at` is the
+last successful upload rather than the moment play stopped, so crediting it
+unbounded would hand back a cadence window — or hours, when sync lagged — of
+time the open tab already produced at full rate. **A null or zero projection is
+a zero bound, not an absent one**: a zero projection means the local save is at
+least as recent as the grant's receipt (the tab flushed before reloading), so
+nothing may be credited. `min` is cheat-safe: a manipulated clock can only make
+the projection larger (the server grant wins) or smaller (the player
+under-credits themselves), never more than either source.
+
+**The reward is decided once, and bounded.** `chooseOfflineReward`
+(`src/platform/web/chooseOfflineReward.ts`) is pure and unit-tested; it picks
+the server grant when one is positive, bounds it by the local projection, and
+credits the local projection alone only where no server figure can exist. The
+download carries a 10 s timeout, so a stalled socket cannot hold the reward
+indefinitely: on expiry the reconcile resolves `error`, which is deliberately
+*not* a local-projection case — the server figure exists and was merely not
+reached, so nothing is credited this session and the interval settles on the
+next boot that reaches the server. A failed sign-in against a configured
+backend is the same case one step earlier and is likewise not a fallback.
+Without those rules, dropping one request, or clearing the auth entry, would
+hand the device-clock cheat back.
+
+**The client E2E gate is backend-free by configuration.** `playwright.config.ts`
+pins `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` blank for the dev server, so
+that suite exercises the client-only projection deterministically — the
+behaviour those specs were written to pin (Step 19's "passes offline,
+unchanged"). The production smoke pins the save-sync surface to "no cloud save"
+for the same reason. The server-verified path is covered by the server
+integration and server-e2e suites.
 
 ### Guest linking and the identity collision (Step 13)
 

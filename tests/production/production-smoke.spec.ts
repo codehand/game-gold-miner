@@ -209,6 +209,23 @@ test('saves and restores authoritative progress across a production reload', asy
 
   await installControlledClock(page);
   await setControlledTime(page, START_TIMESTAMP_MS);
+  // Server-milestone Step 22: this smoke is the client-only production gate,
+  // and its controlled clock cannot produce a server-real absence. Pin the
+  // save-sync surface to "no cloud save" so the boot reconcile cannot deliver a
+  // server `offlineGrant`; the client then uses its own (zero, same-instant)
+  // projection, which is exactly what the modal assertion below is about. The
+  // server-verified reward is covered by the server integration and e2e suites.
+  await page.route('**/functions/v1/save-sync/**', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 204, body: '' });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ revision: 1, receivedAt: new Date().toISOString() }),
+    });
+  });
   await page.goto('/');
   await waitForBootedScene(page);
 

@@ -6,10 +6,10 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 21 gate.** Steps 1–8 are validated.
-Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–21 are implemented and await
-user validation together. **Step 22 must not begin until the user validates
-Step 21.**
+**Server milestone: in progress, at the Step 22 gate.** Steps 1–8 are validated.
+Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–22 are implemented and await
+user validation together. **Step 23 must not begin until the user validates
+Step 22.**
 
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
@@ -26,14 +26,14 @@ Full history is archived, not deleted:
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 21 — survive local storage eviction.** Implemented 2026-09-14, awaiting user validation. |
-| Blocked on the gate | Steps 22–37 |
+| Current gate | **Step 22 — the server clock is the only clock.** Implemented 2026-09-14, awaiting user validation. |
+| Blocked on the gate | Steps 23–37 |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
 
 Work proceeded past several gates on the user's explicit instruction rather than
-pausing at each one; Steps 9, 10, and 12–21 therefore sit
+pausing at each one; Steps 9, 10, and 12–22 therefore sit
 implemented-but-unvalidated as one batch.
 
 ## Server Milestone Step Status
@@ -63,8 +63,9 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 18 — Conflict resolution | Implemented 2026-09-13, awaiting validation |
 | 19 — Client remote repository | Implemented 2026-09-13, awaiting validation |
 | 20 — Adopt existing local saves | Implemented 2026-09-14, awaiting validation |
-| 21 — Survive local storage eviction | Implemented 2026-09-14, awaiting validation — **current gate**; the iOS Safari seven-day measurement is outstanding |
-| 22–37 | Not started, blocked by the Step 21 gate |
+| 21 — Survive local storage eviction | Implemented 2026-09-14, awaiting validation; the iOS Safari seven-day measurement is outstanding |
+| 22 — The server clock is the only clock | Implemented 2026-09-14, awaiting validation — **current gate** |
+| 23–37 | Not started, blocked by the Step 22 gate |
 
 ## Known Risks
 
@@ -74,10 +75,13 @@ with the reason each one closed.
 - **The provisional balance curve is unvalidated.** The reference clip is too
   short to establish exact formulas or all features, and the GDD's values remain
   starting hypotheses. Needs playtesting, not code.
-- **Offline rewards have no server-side validation.** The client bounds and caps
-  are in place and closed (see `archive/risks-resolved.md`), but nothing verifies
-  a manipulated client clock server-side. That is Phase 4 of the server milestone
-  (validate-on-save anti-cheat, Steps 20+).
+- **Offline-reward clock manipulation is closed; upper-bound validation is not.**
+  Step 22 moved settlement to the server: the credited reward is the server's
+  `offlineGrant`, computed from the stored `received_at` to the server's own
+  `now()`, so a manipulated client clock cannot move it. What remains open is
+  Step 23 — re-simulating from the last accepted save to bound what *any*
+  document may claim (gold, cumulative delivery, shaft levels) — and Step 24's
+  rejection handling. See `archive/risks-resolved.md` for the closed half.
 - **iOS Safari deletes all script-writable storage after seven days without
   interaction.** A lapsed player loses the entire local save today. Step 21 now
   detects the partial case (save gone, session still present), restores from the

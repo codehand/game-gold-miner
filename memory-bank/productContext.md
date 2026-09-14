@@ -158,6 +158,24 @@ guest whose session and save are swept in the same event still needs the
 recovery code to get back in, and the real seven-day iOS behaviour is being
 measured rather than assumed.
 
+Server-milestone Step 22 (2026-09-14; tightened 2026-09-15) makes the offline
+reward the server's. When the player returns to an account with a cloud save,
+the amount credited for their absence is computed by the server from its own
+record of when it last saw the save, not from the device clock — so changing the
+device clock, whether forward, backward, or mid-session, no longer changes what
+they earn. The figure cannot exceed the time they were actually away: the server
+grant is bounded by the game's own local estimate of the away interval, so an
+upload that lagged behind their last play cannot hand back time the open game
+already produced. The reward appears once that source is known (the download is
+bounded by a short timeout rather than left open), and offline play is
+unchanged; only when the game has no server figure to use at all — a brand-new
+account with nothing in the cloud, or no backend configured — does it fall back
+to its own local estimate. If the download or sign-in fails against a configured
+backend, the player is shown no offline reward for that session rather than a
+device-clock figure; the award is simply made on the next launch that reaches
+the server. The reward formula, the two-hour cap, and the 50% efficiency are
+unchanged; only the clock that decides the elapsed time is now the server's.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

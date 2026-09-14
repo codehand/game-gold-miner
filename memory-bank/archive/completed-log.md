@@ -1,7 +1,7 @@
 # Archive — Completed work log
 
 Finished work from the base-game milestone (Steps 1–37, closed 2026-09-08) and
-the server milestone through Step 20. Moved out of `progress.md` and
+the server milestone through Step 22. Moved out of `progress.md` and
 `activeContext.md` on 2026-09-14 because it is closed history, not live state.
 
 `## Next Steps` and `## Step 32A` are preserved under their original headings
@@ -12,6 +12,76 @@ Not part of the contract. Append newly finished work here; keep `progress.md`
 to live phase status.
 
 ## Completed
+
+- Fixed a follow-up 2026-09-15 review of Step 22 (two MEDIUM, one LOW).
+  **H2-R:** `chooseOfflineReward`'s `min` bound engaged only on a *positive*
+  local projection, but the exact H2 scenario — a tab that flushed at reload, or
+  uploads that lagged — yields a **zero** projection (`createPendingOfflineReward`
+  returns null for zero), so the full two-hour cap was credited unbounded on top
+  of open-tab production; a null or zero projection is now treated as a zero
+  closed interval and credits nothing. **H1-R:** `sign-in-failed` against a
+  configured backend was folded into the same fallback as `unconfigured`,
+  reopening the device-clock cheat by clearing the auth entry and blocking the
+  network; the fallback now requires `unconfigured` (or `no-cloud-save`), with
+  the recorded cost that a configured build whose sign-in keeps failing earns no
+  offline reward until one lands. **L5:** `productContext.md` now describes the
+  real behaviour (no reward that session on a failed download/sign-in, settled on
+  the next launch that reaches the server) instead of claiming the player always
+  sees it immediately. `npm run lint`, 628 unit tests, 100 Deno server unit
+  tests, 83 integration tests, 8 server-e2e tests, 52 Chromium E2E, build,
+  secret scan, 10 production smoke, and `npm run verify:server` all pass.
+
+- Fixed the 2026-09-15 review of Step 22 (one HIGH, two MEDIUM, four LOW).
+  **H1:** a failed download fell back to the client's own clock-derived
+  projection, so an attacker could reopen the device-clock cheat by dropping one
+  save-sync request and jumping the clock; the fallback is now allowed only
+  where no server figure can exist (unconfigured, no session, or `no-cloud-save`
+  `204`), and a failed download credits nothing and settles on the next boot
+  that reaches the server. **H2:** the server grant includes the cadence window
+  since the last upload, so it over-credited open-tab time the live tab already
+  banked; `chooseOfflineReward` now credits `min(serverGrant, localProjection)`,
+  restoring "only a closed interval reaches the grant" and staying cheat-safe (a
+  manipulated clock can only reduce the credit). **M1:** the reward waited on an
+  unbounded download; `downloadCloudSaveViaFetch` now carries a 10 s
+  `AbortSignal.timeout`, and the architecture sentence that claimed the client
+  does not wait was corrected. **L1:** the applied-receipt guard was burned when
+  the grant arrived, before the player claimed; it is now marked only when the
+  claim is persisted, so an unclaimed reward is not lost. **L2:** protocol §10.2
+  now documents that a `200` can carry `offlineGrant: null`. **L3:** the
+  server-e2e seed no longer races the app — the account is fresh and uploads
+  nothing, and the seeded remote now strictly dominates. **L4:** the four
+  ordering flags are now a pure, unit-tested `chooseOfflineReward`. `npm run
+  lint`, 628 unit tests, 100 Deno server unit tests, 83 integration tests, 8
+  server-e2e tests, 52 Chromium E2E, build, secret scan, 10 production smoke,
+  and `npm run verify:server` all pass.
+
+- Implemented server-milestone **Step 22, the server clock is the only clock**,
+  on 2026-09-14, on the user's explicit instruction. New pure
+  `calculateOfflineGrant` (`src/core/offline-income/calculateOfflineGrant.ts`)
+  computes the reward from two opaque timestamps; `calculateOfflineIncome` (the
+  client's projection) and `save-sync`'s `GET /v1/save` (the server's grant)
+  both call it, so the 7,200,000 ms cap and 0.5 efficiency cannot drift — F4's
+  "change which clock is authoritative and nothing else." The download response
+  now carries `offlineGrant`, computed from the stored `received_at` to the
+  server's `now()`; the device clock is never an input. `downloadCloudSaveViaFetch`
+  parses it, `reconcileCloudSaveAtBoot` reports it through `onOfflineGrant` for
+  the outcomes that keep the page running (`kept-local`/`same-progress`; an
+  `adopted-remote` reload's next boot returns the same grant), and `src/main.ts`
+  credits the server's figure, falling back to the client projection only when
+  no grant arrives. `appliedOfflineGrant.ts` records the credited `receivedAt`
+  so a reload between crediting and uploading cannot double-credit. The client
+  E2E config pins the Supabase env blank so that suite stays the deterministic,
+  backend-free client gate, and the production smoke pins the save-sync surface
+  to "no cloud save" for the same reason. Evidence: core parity/cap/future
+  tests; the server's own unit tests proving the document timestamps cannot move
+  the grant; `tests/server-integration/offline-grant.integration.test.ts` (3 —
+  honest, hours-ahead, and hours-behind clients get the same capped grant for
+  the same receipt, and a 90-second absence credits ~90 s regardless of the
+  document clock); and `tests/server-e2e/offline-grant.spec.ts` (the browser
+  credits the server's 12.96m figure, not the client's zero projection).
+  `npm run lint`, 620 unit tests, 100 Deno server unit tests, 83 integration
+  tests, 8 server-e2e tests, 52 Chromium E2E, build, secret scan, 10 production
+  smoke, and `npm run verify:server` all pass.
 
 - Fixed the 2026-09-14 review of Step 21 (one MEDIUM, four LOW). **M1:** the
   missing-local-save decision keyed on `loadActiveGame`'s `source === 'fresh'`,

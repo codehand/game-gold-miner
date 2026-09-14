@@ -2,14 +2,14 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 21 validation gate.** Step 21 (survive local
-storage eviction) was implemented on 2026-09-14, on the user's explicit
-instruction: the client now detects a returning player whose local save was
-evicted, restores from the cloud when it can, tells the truth when it cannot,
-asks for persistent storage, and syncs early enough that a lapsed player has a
-cloud copy to restore. Step 22 must not begin until the user validates it.
+**Server milestone, at the Step 22 validation gate.** Step 22 (the server clock
+is the only clock) was implemented on 2026-09-14, on the user's explicit
+instruction: offline-income settlement moved to the server, computed from the
+stored `received_at` to the server's own `now()`, so a manipulated device clock
+cannot change the credited reward. Step 23 must not begin until the user
+validates it.
 
-Steps 9, 10, and 12–21 are implemented but unvalidated as one batch, because the
+Steps 9, 10, and 12–22 are implemented but unvalidated as one batch, because the
 user directed work past several gates rather than pausing at each. Step 11
 (Apple sign-in) is cut.
 
@@ -102,6 +102,34 @@ of `navigator.storage`. The iOS Safari seven-day deletion measurement is
 **outstanding** — it needs a real device and a seven-day observation (finding
 F8) — and is recorded as such in `techContext.md`.
 
+**Step 22 (the server clock is the only clock).** Offline-income settlement
+moved to the server. New pure `calculateOfflineGrant` (`src/core/offline-income/`)
+computes the reward from two opaque timestamps; `calculateOfflineIncome` (the
+client's projection) and `save-sync`'s `GET /v1/save` (the server's grant) both
+call it, so the formula, the 7,200,000 ms cap, and the 0.5 efficiency cannot
+drift — F4's requirement that Step 22 change *which clock is authoritative* and
+nothing else. The download response carries `offlineGrant`, computed from the
+stored `received_at` to the server's `now()`; the device clock is never an
+input. The credited reward comes from the pure, unit-tested `chooseOfflineReward`
+(`src/platform/web/chooseOfflineReward.ts`): the server grant is the ceiling,
+bounded by the client projection (`min`) so only a closed interval is credited —
+and a null or zero projection is treated as a **zero** bound, not an absent one,
+which is what stops a tab-flush-at-reload from crediting the cap on top of
+open-tab production. The projection is credited alone only where no server
+figure can exist (unconfigured, or `no-cloud-save`); a failed download and a
+failed sign-in against a configured backend both credit nothing and settle on
+the next boot that reaches the server. The download carries a 10 s timeout. The
+applied-receipt guard is marked only when the claim is persisted. Evidence: core
+parity/cap/future tests; `chooseOfflineReward` unit tests; the server's own unit
+tests proving the document timestamps cannot move the grant; a live integration
+suite
+(`tests/server-integration/offline-grant.integration.test.ts`) proving an
+honest, hours-ahead, and hours-behind client get the same capped grant for the
+same receipt; and a server-e2e spec (`tests/server-e2e/offline-grant.spec.ts`)
+proving the browser credits the server's figure. The client E2E config pins the
+Supabase env blank, so that suite stays the deterministic, backend-free client
+gate while the server path is covered by the server suites.
+
 ## Active Decisions
 
 Decisions that still constrain code not yet written. Settled base-game decisions
@@ -133,11 +161,10 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 21.** This is the gate; nothing below
-   starts before it. The step's iOS Safari seven-day measurement is outstanding
-   and needs a real device plus a seven-day observation (finding F8).
-2. Step 22 onward — Phase 4, server-verified progress (validate-on-save
-   anti-cheat). Closes the open server-side-validation risk in `progress.md`.
+1. **Wait for the user to validate Step 22.** This is the gate; nothing below
+   starts before it.
+2. Step 23 onward — upper-bound re-simulation and rejection handling, closing
+   the remaining server-side-validation risk in `progress.md`.
 3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
    shipped only a DEV hook; it remains the one protocol requirement with no
    player-facing implementation.

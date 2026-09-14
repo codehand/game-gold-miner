@@ -28,6 +28,7 @@ export {
   reconcileCloudSaveAtBoot,
   type AdoptExistingLocalSaveDeps,
   type CloudSaveDownload,
+  type CloudSaveOfflineGrant,
   type CloudSaveReconcileDeps,
   type CloudSaveReconcileOutcome,
   type DownloadCloudSave,
@@ -63,3 +64,12 @@ export {
   type PersistentStorageState,
   type StorageManagerLike,
 } from './persistentStorage';
+export {
+  APPLIED_OFFLINE_GRANT_KEY,
+  markOfflineGrantApplied,
+  readAppliedOfflineGrantReceivedAtMs,
+} from './appliedOfflineGrant';
+export {
+  chooseOfflineReward,
+  type OfflineRewardChoiceParams,
+} from './chooseOfflineReward';
