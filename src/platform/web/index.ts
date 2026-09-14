@@ -23,12 +23,15 @@ export {
   type SupabaseClient,
 } from './supabaseClient';
 export {
+  adoptExistingLocalSave,
   downloadCloudSaveViaFetch,
   reconcileCloudSaveAtBoot,
+  type AdoptExistingLocalSaveDeps,
   type CloudSaveDownload,
   type CloudSaveReconcileDeps,
   type CloudSaveReconcileOutcome,
   type DownloadCloudSave,
+  type LocalSaveAdoptionResult,
 } from './cloudSaveReconcile';
 export {
   LIFECYCLE_SAVE_JOURNAL_KEY,

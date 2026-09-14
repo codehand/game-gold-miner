@@ -134,8 +134,16 @@ of the local one, the game adopts it rather than overwriting it, through the
 same dominance rule described above. As with the rest of this milestone no
 production surface exposes any of it yet; the player-facing promise — a save
 that survives a new device, cleared storage, or a lost browser — still waits
-on Step 20 (adopting existing local saves) and Step 21 (surviving storage
-eviction), and on a production sign-in UI.
+on Step 21 (surviving storage eviction) and on a production sign-in UI.
+
+Server-milestone Step 20 (2026-09-14) makes sure an existing player is not
+reset by the cloud. A player who has been playing the client-only build already
+holds their save on their device as a version-1 document. On the first sign-in
+that device makes, the game quietly adopts that save as the account's cloud
+save — migrating it to the current format losslessly — instead of letting a
+fresh, empty cloud save take its place. The player sees nothing; their
+progress is simply the same progress they already had, now also recoverable
+from their account.
 
 ## Closed incident reports
 

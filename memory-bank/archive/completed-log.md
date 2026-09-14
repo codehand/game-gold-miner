@@ -1,7 +1,7 @@
 # Archive — Completed work log
 
 Finished work from the base-game milestone (Steps 1–37, closed 2026-09-08) and
-the server milestone through Step 19. Moved out of `progress.md` and
+the server milestone through Step 20. Moved out of `progress.md` and
 `activeContext.md` on 2026-09-14 because it is closed history, not live state.
 
 `## Next Steps` and `## Step 32A` are preserved under their original headings
@@ -12,6 +12,57 @@ Not part of the contract. Append newly finished work here; keep `progress.md`
 to live phase status.
 
 ## Completed
+
+- Fixed the 2026-09-14 review of Step 20 (one MEDIUM, four LOW). **M1
+  (MEDIUM):** the server-e2e spec's final byte-for-byte poll compared a moving
+  local document against a cloud copy that §9's 60 s interval had pinned, so a
+  heartbeat write could make it time out inside the CI gate. It now forces the
+  lifecycle flush, captures the flushed local document once, and waits for the
+  cloud to reach *that constant*, so no later write can race it. **L2:** a
+  throwing `forceUpload` reported `unreadable` for a save that had read and
+  migrated fine; `adoptExistingLocalSave` now catches it separately as
+  `upload-failed`, and the dep's JSDoc no longer claims non-throwing. **L3:**
+  the adoption result was discarded, so the one step-defining operation had no
+  observable outcome; `src/main.ts` now publishes a DEV `localSaveAdoption`
+  diagnostic like every other identity/sync operation. **L4:** the step's own
+  tests seeded only fifteen-floor, zero-progress saves, leaving the legacy
+  four-floor expansion and progress preservation unexercised; the unit fixture
+  is now a progressed save and a new test expands a four-floor version-1
+  document to fifteen. **L5:** `activeContext.md` implied Step 20 changed
+  behaviour; it was trimmed to state accurately that Step 19 already wired the
+  load/migrate/force-upload path and Step 20 extracts, types, observes, and
+  evidences it. `npm run lint`, 588 unit tests, 99 Deno server unit tests, 80
+  integration tests, 4 server-e2e tests, build, secret scan, 10 production
+  smoke, and `npm run verify:server` all pass.
+
+- Implemented server-milestone **Step 20, adopt existing local saves**, on
+  2026-09-14, on the user's explicit instruction. A pre-milestone player holds
+  a version-1 `SaveDocument` in IndexedDB; on first sign-in their account has
+  no cloud save, so the boot reconcile's `204` (`no-cloud-save`) is the moment
+  the local save must become the cloud save rather than be replaced by a fresh
+  one. New `adoptExistingLocalSave` (`src/platform/web/cloudSaveReconcile.ts`)
+  names that operation: it reads whichever document the lifecycle-safe
+  repository would load, runs it through the shared `validateSaveDocument`
+  (which migrates version 1 to version 2, expanding a legacy four-floor payload
+  and defaulting `warehouse.totalOfflineGoldClaimed` to `"0"`), and hands the
+  migrated document to the Step 19 replica's `forceCloudUpload`. It never
+  throws: an absent local record resolves `no-local-save`, a corrupt one
+  `unreadable`, and both skip the upload. `src/main.ts`'s boot-reconcile
+  trigger now delegates to it on `no-cloud-save`/`kept-local`. The adopted
+  document is the migrated version-2 document, not the original version-1
+  bytes — the plan's Step 18 interaction note, honoured by the tests.
+  Evidence: five unit tests for the helper (migrated upload, no-local-save,
+  corrupt document, a rejecting repository, and a throwing `forceUpload`); a
+  live integration suite (`tests/server-integration/adopt-existing-save.integration.test.ts`,
+  3 tests) proving a pre-milestone save round-trips through `PUT`/`GET
+  /v1/save` byte-for-byte, its progress surviving with only `schemaVersion` and
+  the added counter differing, plus a raw version-1 upload the server itself
+  migrates; and a server-e2e spec (`tests/server-e2e/adopt-local-save.spec.ts`)
+  that seeds a real version-1 IndexedDB save before boot, signs in an anonymous
+  guest, and requires the cloud copy to be byte-for-byte the adopted local
+  document after a forced lifecycle flush. `npm run lint`, 587 unit tests, 99
+  Deno server unit tests, 80 integration tests, 4 server-e2e tests, build,
+  secret scan, and 10 production smoke all pass.
 
 - Fixed a third 2026-09-14 review pass of Step 19 (one LOW residual, R1). The
   state-shape guard from the second pass suppressed every later save once the

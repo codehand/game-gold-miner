@@ -2,12 +2,13 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 19 validation gate.** Step 19 (client remote
-repository) was implemented on 2026-09-13, completing protocol §9's upload
-cadence and the `409` half of §7 that Step 18 left to it. Step 20 must not begin
-until the user validates it.
+**Server milestone, at the Step 20 validation gate.** Step 20 (adopt existing
+local saves) was implemented on 2026-09-14, on the user's explicit instruction,
+so a player holding a pre-milestone version-1 IndexedDB save has it adopted as
+their cloud save on first sign-in rather than replaced by a fresh one. Step 21
+must not begin until the user validates it.
 
-Steps 9, 10, and 12–19 are implemented but unvalidated as one batch, because the
+Steps 9, 10, and 12–20 are implemented but unvalidated as one batch, because the
 user directed work past several gates rather than pausing at each. Step 11
 (Apple sign-in) is cut.
 
@@ -50,6 +51,27 @@ preserves a newer queued document, the retry budget is five retries (so the
 `save-sync` now migrates an older schema instead of refusing it, matching §4's
 `schema_unsupported` direction.
 
+**Step 20 (adopt existing local saves).** A pre-milestone player holds a
+version-1 `SaveDocument` in IndexedDB. On first sign-in their account has no
+cloud save, so the reconcile sees `204` (`no-cloud-save`). Step 20's delivery is
+the extraction of that adoption into the named, typed, tested
+`adoptExistingLocalSave` (`src/platform/web/cloudSaveReconcile.ts`), which reads
+the local document, runs it through the shared `validateSaveDocument` — migrating
+version 1 to version 2 and expanding a legacy four-floor payload, defaulting
+`warehouse.totalOfflineGoldClaimed` to `"0"` — and hands the migrated document to
+the Step 19 replica's `forceCloudUpload`. `src/main.ts`'s boot-reconcile trigger
+now delegates to it and publishes a DEV `localSaveAdoption` diagnostic. The
+underlying behaviour (load local, migrate, force-upload on `no-cloud-save`) was
+already wired in Step 19; Step 20 makes it explicit, observable, and evidenced,
+never throwing (`no-local-save`, `unreadable`, `upload-failed`). Evidence: six
+unit tests including a progressed fixture and a legacy four-floor expansion, a
+live integration suite
+(`tests/server-integration/adopt-existing-save.integration.test.ts`) proving the
+migrated document is stored and returned **byte-for-byte**, and a server-e2e
+spec (`tests/server-e2e/adopt-local-save.spec.ts`) that seeds a real version-1
+IndexedDB save in a browser and proves the cloud copy is byte-for-byte the
+adopted local document.
+
 The narrative account of every earlier phase is in
 `archive/phase-narrative.md`; finished work is in `archive/completed-log.md`.
 
@@ -84,10 +106,11 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 19.** This is the gate; nothing below
+1. **Wait for the user to validate Step 20.** This is the gate; nothing below
    starts before it.
-2. Step 20 onward — Phase 4, server-verified progress (validate-on-save
-   anti-cheat). Closes the open server-side-validation risk in `progress.md`.
+2. Step 21 onward — surviving local storage eviction, then Phase 4,
+   server-verified progress (validate-on-save anti-cheat). Closes the open
+   server-side-validation risk in `progress.md`.
 3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
    shipped only a DEV hook; it remains the one protocol requirement with no
    player-facing implementation.

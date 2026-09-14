@@ -6,10 +6,10 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 19 gate.** Steps 1–8 are validated.
-Step 11 (Apple sign-in) is cut. Steps 9, 10, 12, 13, 14, 15, 16, 17, 18, and 19
-are implemented and await user validation together. **Step 20 must not begin
-until the user validates Step 19.**
+**Server milestone: in progress, at the Step 20 gate.** Steps 1–8 are validated.
+Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–20 are implemented and await
+user validation together. **Step 21 must not begin until the user validates
+Step 20.**
 
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
@@ -26,15 +26,15 @@ Full history is archived, not deleted:
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 19 — client remote repository.** Implemented 2026-09-13, awaiting user validation. |
-| Blocked on the gate | Steps 20–37 |
+| Current gate | **Step 20 — adopt existing local saves.** Implemented 2026-09-14, awaiting user validation. |
+| Blocked on the gate | Steps 21–37 |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
 
 Work proceeded past several gates on the user's explicit instruction rather than
-pausing at each one; Steps 9, 10, 12–19 therefore sit implemented-but-unvalidated
-as one batch.
+pausing at each one; Steps 9, 10, and 12–20 therefore sit
+implemented-but-unvalidated as one batch.
 
 ## Server Milestone Step Status
 
@@ -61,8 +61,9 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 16 — `PUT /v1/save` | Implemented 2026-09-12; critical concurrency fix same day; awaiting validation |
 | 17 — `GET /v1/save` and boot-time reconcile | Implemented 2026-09-12; HIGH reload race fixed 2026-09-13; awaiting validation |
 | 18 — Conflict resolution | Implemented 2026-09-13, awaiting validation |
-| 19 — Client remote repository | Implemented 2026-09-13, awaiting validation — **current gate** |
-| 20–37 | Not started, blocked by the Step 19 gate |
+| 19 — Client remote repository | Implemented 2026-09-13, awaiting validation |
+| 20 — Adopt existing local saves | Implemented 2026-09-14, awaiting validation — **current gate** |
+| 21–37 | Not started, blocked by the Step 20 gate |
 
 ## Known Risks
 

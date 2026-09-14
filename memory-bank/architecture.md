@@ -1050,6 +1050,41 @@ terminal `malformed_request`. The one real network adapter sends
 a schema version newer than its own and passes older ones to the shared
 `migrateSaveDocument` instead of rejecting them.
 
+### Adopting an existing local save (Step 20)
+
+A player who has been playing the client-only build holds a version-1
+`SaveDocument` in IndexedDB, and the milestone must adopt it as the account's
+cloud save on first sign-in rather than let a fresh one replace it.
+
+`src/platform/web/cloudSaveReconcile.ts`'s `adoptExistingLocalSave` is the
+named operation. It reads whichever document the lifecycle-safe repository
+would load, runs it through the shared `validateSaveDocument` — which migrates
+version 1 to version 2, expanding a legacy four-floor payload and defaulting
+`warehouse.totalOfflineGoldClaimed` to `"0"` — and hands the migrated document
+to the Step 19 replica's `forceCloudUpload`. It never throws: a missing local
+record resolves `no-local-save`, a corrupt or unreadable one `unreadable`, and a
+forced-upload collaborator that breaks its non-throwing contract `upload-failed`
+(distinct from `unreadable`, because the save read and migrated fine).
+
+`src/main.ts`'s boot-reconcile trigger (`forceCloudUploadLatestLocalDocument`)
+delegates to it on `no-cloud-save` and `kept-local`. `no-cloud-save` is the
+first-sign-in path: the account has no cloud save, so the local save becomes
+the cloud save. The adopted document is therefore the **migrated** version-2
+document, not the original version-1 bytes — the plan's Step 18 interaction
+note records that, and the tests compare against the migrated document rather
+than pretending the v1 bytes come back. The upload path already carries the
+server's migration too (Step 19's `save-sync` change), so a raw version-1
+payload is never refused.
+
+Evidence: unit tests for `adoptExistingLocalSave` (a progressed migrated upload,
+a legacy four-floor save expanded to fifteen floors, no local save, corrupt
+document, a rejecting repository, and a throwing `forceUpload` reported
+`upload-failed`); a live integration suite that uploads a pre-milestone document
+and asserts the downloaded document is byte-for-byte the migrated one, with the
+counter the only difference; and a server-e2e spec that seeds a real version-1
+IndexedDB save, boots the browser, and requires the cloud copy to be
+byte-for-byte the adopted local document.
+
 ### Guest linking and the identity collision (Step 13)
 
 Three of the step's required flows fall out of what Steps 10/12/17 already

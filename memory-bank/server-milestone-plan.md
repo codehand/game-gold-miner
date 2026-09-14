@@ -365,7 +365,10 @@ the document later returned by download.
 > other field is carried across exactly — so "survives intact" holds, but this
 > step's test must compare against the migrated document (or assert the
 > specific added field is the only difference) rather than a byte-for-byte
-> match with the pre-migration payload. Step 20 is not yet implemented.
+> match with the pre-migration payload. Step 20 implements this: the new
+> `adoptExistingLocalSave` migrates the pre-milestone document and uploads it on
+> first sign-in, and its evidence compares against the migrated version-2
+> document and asserts the added counter is the only difference.
 
 ### Step 21: Survive local storage eviction
 
@@ -557,8 +560,8 @@ documentation alone.
 
 ## Status
 
-**Steps 1–8 validated. Step 11 cut. Steps 9, 10, and 12–19 implemented and
-awaiting user validation as one batch. Step 19 is the current gate: Step 20
+**Steps 1–8 validated. Step 11 cut. Steps 9, 10, and 12–20 implemented and
+awaiting user validation as one batch. Step 20 is the current gate: Step 21
 must not begin until the user validates it.**
 
 The canonical step-status table lives in `progress.md`

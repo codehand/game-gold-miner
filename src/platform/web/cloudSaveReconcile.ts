@@ -213,3 +213,66 @@ async function readLocalDocumentOrFresh(
   const fresh = createInitialGameState(config, nowMs);
   return createSaveDocument(fresh, config, nowMs);
 }
+
+export type LocalSaveAdoptionResult =
+  | { readonly kind: 'uploaded' }
+  | { readonly kind: 'no-local-save' }
+  | { readonly kind: 'unreadable' }
+  | { readonly kind: 'upload-failed' };
+
+export interface AdoptExistingLocalSaveDeps {
+  readonly repository: Pick<ActiveSaveRepository, 'loadActiveSave'>;
+  readonly config: BaseGameBalanceConfig;
+  /** The Step 19 replica's forced-upload entry point; synchronous, and expected not to throw. */
+  readonly forceUpload: (document: SaveDocumentV2) => void;
+}
+
+/**
+ * Server-milestone Step 20: adopt the save a pre-milestone player already has.
+ *
+ * A player who has been playing the client-only build holds a version-1
+ * `SaveDocument` in IndexedDB. On first sign-in their account has no cloud save,
+ * so the reconcile downloads `204`; this is the operation that then uploads the
+ * local document as that account's cloud save instead of letting a fresh one
+ * take its place. `validateSaveDocument` is what makes the pre-milestone save
+ * acceptable at all: it runs the shared `migrateSaveDocument`, so a version-1
+ * document (including the legacy four-floor shape) is upgraded to version 2 —
+ * defaulting `warehouse.totalOfflineGoldClaimed` to `"0"` — before a byte of it
+ * is sent. The adopted document is therefore the migrated document, not the
+ * original version-1 bytes, exactly as the plan's Step 18 interaction note
+ * records.
+ *
+ * Never throws: a missing local record resolves `no-local-save`, an unreadable
+ * or corrupt one `unreadable`, and a forced-upload collaborator that breaks its
+ * non-throwing contract `upload-failed`, so a failure never rejects an
+ * un-awaited background call.
+ */
+export async function adoptExistingLocalSave(
+  deps: AdoptExistingLocalSaveDeps,
+): Promise<LocalSaveAdoptionResult> {
+  let stored: unknown | null;
+  try {
+    stored = await deps.repository.loadActiveSave();
+  } catch {
+    return { kind: 'unreadable' };
+  }
+
+  if (stored === null) {
+    return { kind: 'no-local-save' };
+  }
+
+  let document: SaveDocumentV2;
+  try {
+    document = validateSaveDocument(stored, deps.config);
+  } catch {
+    return { kind: 'unreadable' };
+  }
+
+  try {
+    deps.forceUpload(document);
+  } catch {
+    return { kind: 'upload-failed' };
+  }
+
+  return { kind: 'uploaded' };
+}

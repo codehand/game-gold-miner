@@ -4,6 +4,7 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
 import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
 import {
+  adoptExistingLocalSave,
   downloadCloudSaveViaFetch,
   reconcileCloudSaveAtBoot,
   type CloudSaveDownload,
@@ -287,6 +288,131 @@ describe('reconcileCloudSaveAtBoot', () => {
     );
 
     expect(outcome).toEqual({ kind: 'error', reason: 'network unreachable' });
+  });
+});
+
+describe('adoptExistingLocalSave (Step 20)', () => {
+  /**
+   * A pre-milestone document: valid in every other respect, but schema 1 and
+   * with no `warehouse.totalOfflineGoldClaimed` (the field Step 18 added).
+   * Defaults to a progressed save, not a fresh one, so a migration that dropped
+   * progress would be caught.
+   */
+  function versionOneDocument(base: SaveDocumentV2 = progressingDocument()): Record<string, unknown> {
+    const current = base as unknown as Record<string, unknown> & {
+      state: { warehouse: Record<string, unknown> };
+    };
+    const warehouse = Object.fromEntries(
+      Object.entries(current.state.warehouse).filter(
+        ([key]) => key !== 'totalOfflineGoldClaimed',
+      ),
+    );
+
+    return {
+      ...current,
+      schemaVersion: 1,
+      state: { ...current.state, warehouse },
+    };
+  }
+
+  it('uploads the migrated document for a progressed pre-milestone version-1 local save', async () => {
+    const original = progressingDocument();
+    const forceUpload = vi.fn();
+    const result = await adoptExistingLocalSave({
+      repository: { loadActiveSave: async () => versionOneDocument(original) },
+      config: BASE_GAME_BALANCE,
+      forceUpload,
+    });
+
+    expect(result).toEqual({ kind: 'uploaded' });
+    expect(forceUpload).toHaveBeenCalledOnce();
+
+    const uploaded = forceUpload.mock.calls[0]?.[0] as SaveDocumentV2;
+    expect(uploaded.schemaVersion).toBe(2);
+    expect(uploaded.state.warehouse.totalOfflineGoldClaimed).toBe('0');
+    // Every other field — including the player's progress — survives exactly.
+    expect(uploaded.state.gold).toBe(original.state.gold);
+    expect(uploaded.state.elevator).toEqual(original.state.elevator);
+    expect(uploaded.state.floors).toEqual(original.state.floors);
+    expect(uploaded.savedAtTimestampMs).toBe(original.savedAtTimestampMs);
+    expect(uploaded.effectiveProductionRatePerSecond).toBe(
+      original.effectiveProductionRatePerSecond,
+    );
+  });
+
+  it('expands a legacy four-floor version-1 save to the current fifteen-floor shape', async () => {
+    const full = progressingDocument();
+    const legacy = versionOneDocument(full) as {
+      state: { floors: unknown[] };
+    } & Record<string, unknown>;
+    const fourFloor = {
+      ...legacy,
+      state: { ...legacy.state, floors: legacy.state.floors.slice(0, 4) },
+    };
+
+    const forceUpload = vi.fn();
+    const result = await adoptExistingLocalSave({
+      repository: { loadActiveSave: async () => fourFloor },
+      config: BASE_GAME_BALANCE,
+      forceUpload,
+    });
+
+    expect(result).toEqual({ kind: 'uploaded' });
+    const uploaded = forceUpload.mock.calls[0]?.[0] as SaveDocumentV2;
+    expect(uploaded.state.floors).toHaveLength(BASE_GAME_BALANCE.floors.length);
+    // The four pre-milestone floors survive; the added ones are locked defaults.
+    expect(uploaded.state.floors.slice(0, 4)).toEqual(full.state.floors.slice(0, 4));
+    expect(uploaded.state.floors.slice(4).every((floor) => !floor.isUnlocked)).toBe(true);
+  });
+
+  it('reports no-local-save and uploads nothing when the device has no record', async () => {
+    const forceUpload = vi.fn();
+    const result = await adoptExistingLocalSave({
+      repository: { loadActiveSave: async () => null },
+      config: BASE_GAME_BALANCE,
+      forceUpload,
+    });
+
+    expect(result).toEqual({ kind: 'no-local-save' });
+    expect(forceUpload).not.toHaveBeenCalled();
+  });
+
+  it('reports unreadable and uploads nothing when the local document is corrupt', async () => {
+    const forceUpload = vi.fn();
+    const result = await adoptExistingLocalSave({
+      repository: { loadActiveSave: async () => ({ not: 'a save document' }) },
+      config: BASE_GAME_BALANCE,
+      forceUpload,
+    });
+
+    expect(result).toEqual({ kind: 'unreadable' });
+    expect(forceUpload).not.toHaveBeenCalled();
+  });
+
+  it('reports unreadable rather than throwing when the repository rejects', async () => {
+    const result = await adoptExistingLocalSave({
+      repository: {
+        loadActiveSave: async () => {
+          throw new Error('storage unavailable');
+        },
+      },
+      config: BASE_GAME_BALANCE,
+      forceUpload: vi.fn(),
+    });
+
+    expect(result).toEqual({ kind: 'unreadable' });
+  });
+
+  it('reports upload-failed — not unreadable — when the forced upload does', async () => {
+    const result = await adoptExistingLocalSave({
+      repository: { loadActiveSave: async () => progressingDocument() },
+      config: BASE_GAME_BALANCE,
+      forceUpload: () => {
+        throw new Error('replica unavailable');
+      },
+    });
+
+    expect(result).toEqual({ kind: 'upload-failed' });
   });
 });
 

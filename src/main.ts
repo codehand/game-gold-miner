@@ -11,12 +11,12 @@ import {
   loadActiveGame,
   ReplicatingActiveSaveRepository,
   SavePersistenceCoordinator,
-  validateSaveDocument,
   type CloudSaveReplicaEvent,
   type SaveConflictCandidate,
   type SaveDocumentV2,
 } from './persistence';
 import {
+  adoptExistingLocalSave,
   beginGoogleAccountSwitch,
   beginGoogleSignIn,
   bindSaveLifecycle,
@@ -403,25 +403,28 @@ async function runCloudSaveReconcile(): Promise<CloudSaveReconcileOutcome> {
 }
 
 /**
- * Server-milestone Step 19: the boot-reconcile forced trigger. Reads whichever
- * local document the lifecycle-safe repository would load (IndexedDB or a
- * newer journal entry), validates it, and hands it to the replica. Best-effort:
- * a reconcile that runs before `startApplication()` has written its settled
- * document simply finds nothing, and the ordinary cadence uploads once the
- * first save lands.
+ * Server-milestone Step 19/20: the boot-reconcile forced trigger, and the
+ * first-sign-in adoption it performs. `adoptExistingLocalSave` reads whichever
+ * local document the lifecycle-safe repository would load (IndexedDB or a newer
+ * journal entry), migrates/validates it — a pre-milestone version-1 save becomes
+ * version 2 here — and hands it to the Step 19 replica as a forced upload. Run
+ * on `no-cloud-save` (the account's first sign-in, so the local save becomes
+ * the cloud save rather than being replaced by a fresh one) and on
+ * `kept-local`. Never throws.
  */
 async function forceCloudUploadLatestLocalDocument(): Promise<void> {
-  try {
-    const stored = await localRepository.loadActiveSave();
+  const result = await adoptExistingLocalSave({
+    repository: localRepository,
+    config: BASE_GAME_BALANCE,
+    forceUpload: (document) => repository.forceCloudUpload(document),
+  });
 
-    if (stored === null) {
-      return;
-    }
-
-    repository.forceCloudUpload(validateSaveDocument(stored, BASE_GAME_BALANCE));
-  } catch {
-    // Cloud sync is a replica; a local read or validation failure here must
-    // not surface anywhere. `loadActiveGame` owns the real recovery path.
+  // The same DEV-only diagnostic convention every other identity/sync
+  // operation follows, so the adoption is observable in the E2E suite and in a
+  // guided manual pass: `uploaded` vs `no-local-save` vs `unreadable` vs
+  // `upload-failed`.
+  if (import.meta.env.DEV) {
+    app.dataset.localSaveAdoption = JSON.stringify(result);
   }
 }
 
