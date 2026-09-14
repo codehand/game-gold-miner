@@ -29,6 +29,8 @@ import { LOCAL_ANON_KEY } from './authFixture';
  */
 const API_URL = 'http://127.0.0.1:54321';
 const REST_URL = `${API_URL}/rest/v1`;
+/** The database and this test process have separate clocks; allow for their skew. */
+const CLOCK_SKEW_TOLERANCE_MS = 5_000;
 
 interface GuestIdentity {
   readonly userId: string;
@@ -99,8 +101,12 @@ describe('profiles row-level security (server-milestone Step 9)', () => {
     const [row] = await response.json();
     expect(row).toMatchObject({ id: userA.userId, display_name: null });
     const createdAtMs = Date.parse(row.created_at);
-    expect(createdAtMs).toBeGreaterThanOrEqual(beforeUserASignUp - 1_000);
-    expect(createdAtMs).toBeLessThanOrEqual(afterUserASignUp);
+    // `created_at` is the database's clock and the bounds are the test
+    // process's, so a small skew between the Postgres container and the host
+    // must be tolerated on both sides or this fails on a clock difference that
+    // says nothing about the trigger.
+    expect(createdAtMs).toBeGreaterThanOrEqual(beforeUserASignUp - CLOCK_SKEW_TOLERANCE_MS);
+    expect(createdAtMs).toBeLessThanOrEqual(afterUserASignUp + CLOCK_SKEW_TOLERANCE_MS);
   });
 
   it('lets a user select their own row', async () => {
