@@ -130,7 +130,7 @@ Any change to the save shape must bump the schema version and add a migration pl
 
 Read `AGENTS.md` — its rules are binding. The key ones:
 
-- **Memory Bank first.** Read every Markdown file in `memory-bank/` before planning or editing. `game-design-document.md`, `tech-stack.md`, and `implementation-plan.md` are the sources of truth for scope; `architecture.md`, `techContext.md`, `productContext.md`, `activeContext.md`, `progress.md`, and `systemPatterns.md` are living context.
+- **`memory-bank/INDEX.md` first.** It maps every document to its sections; open only the files and sections the task needs — never the whole Memory Bank (~126k tokens live). `activeContext.md` and `progress.md` are short and always worth reading. `architecture.md` and `techContext.md` must be read by section (`grep -n '^## \|^### '`, then `sed -n`); a `PreToolUse` hook blocks whole-file reads over 20,000 bytes. Do not read `memory-bank/archive/` by default — it is closed history, not contract. `game-design-document.md`, `tech-stack.md`, and `implementation-plan.md` remain the sources of truth for scope.
 - **Update the Memory Bank in the same change** as any major feature or milestone (at minimum `architecture.md`, `techContext.md`, `productContext.md`, `activeContext.md`, `progress.md`).
 - **Step gates.** `memory-bank/implementation-plan.md` is a 37-step ordered sequence. Each step ends at a stop gate: implement, run its validation, then wait for explicit user authorization before starting the next step. `activeContext.md` records the current step and gate state.
 - Bug fixes ship with a regression test. Unit tests are `tests/unit/*.test.ts` (Vitest, node env, `fake-indexeddb` for storage); browser flows are `tests/e2e/*.spec.ts` (Playwright).

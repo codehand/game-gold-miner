@@ -4,5 +4,20 @@
     "stitch-build@google-labs-code-stitch-skills": true,
     "stitch-design@google-labs-code-stitch-skills": true,
     "stitch-utilities@google-labs-code-stitch-skills": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/memory-bank-guard.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking memory-bank read size"
+          }
+        ]
+      }
+    ]
   }
 }

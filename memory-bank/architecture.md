@@ -2,7 +2,7 @@
 
 ## Current Status
 
-All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game; it is the map any post-milestone work starts from. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
+All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game; it is the map any post-milestone work starts from. The IndexedDB database schema version remains 1; the save-document schema is version 2; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -47,8 +47,11 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/persistence/DexieActiveSaveRepository.ts` | Dexie 4.4.5 adapter for the version-1 `cat-mine-idle` IndexedDB database and fixed `active` record. |
 | `src/persistence/SavePersistenceCoordinator.ts` | Debounced writes, forced flushing, retry retention, and non-throwing load/save diagnostics. |
 | `src/persistence/loadActiveGame.ts` | Valid-save restoration plus typed malformed/incompatible-save recovery into a fresh state with a safe diagnostic payload snapshot. |
-| `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document and forces a flush when supported. |
+| `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document, forces a flush, and (Step 19) fires the optional best-effort `onForceSave` callback so a lifecycle flush is one of §9's forced cloud-upload triggers. |
 | `src/platform/web/WebLifecycleSaveJournal.ts` | Validated synchronous pagehide journal plus an active-save repository decorator that selects a newer valid lifecycle snapshot and clears it after IndexedDB catches up. |
+| `src/persistence/ReplicatingActiveSaveRepository.ts` | Server-milestone Step 19: composes the local repository with a cloud replica behind `ActiveSaveRepository`. Reads local only; writes local first and awaits it before offering the same document to the replica; `forceCloudUpload` is the §9 forced-trigger entry point. |
+| `src/persistence/cloudSaveReplica.ts` | Server-milestone Step 19: pure, injected upload policy — §9's 60 s interval, coalescing, forced bypass, bounded retry backoff, and §7's `409` handling through `resolveSaveConflict`. Holds no `fetch`, no DOM type, and no storage. |
+| `src/platform/web/cloudSaveUpload.ts` | Server-milestone Step 19: the single network call (`PUT /v1/save`), mapping every §4 status to `CloudSaveUploadResult` and refreshing the session once on `unauthenticated`. Never throws. |
 | `src/platform/web/supabaseClient.ts` | Server-milestone Step 8: builds the browser's Supabase client from `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, or returns `null` without attempting any network call when either is unset. |
 | `src/platform/web/guestSession.ts` | Server-milestone Step 8: `ensureGuestSession` reuses an existing session or signs in anonymously through an injected `GuestAuthClient` collaborator, never throwing — every failure resolves to a typed `sign-in-failed`/`unconfigured` result instead. |
 | `src/ui/OfflineRewardModal.ts`, `src/ui/MineShaftUpgradeModal.ts` | Accessible DOM overlays: offline reward claim/save/retry, and the live mine-floor detail with attributes plus x1/x5/MAX CTAs. The floor overlay blocks background Phaser input until dismissed and rebinds after each purchase. |
@@ -158,15 +161,15 @@ The newest debounced save must equal the policy-derived authoritative document e
 
 ## Lifecycle Persistence Contract
 
-Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-1 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
+Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-2 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
 
-## Save Document Schema — Version 1
+## Save Document Schema — Version 2
 
-Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation.
+Version 2 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation. Version 2 added `state.warehouse.totalOfflineGoldClaimed` (Server-milestone Step 18); a version-1 document is upgraded by defaulting that counter to `"0"`, which is exact because no version-1 save recorded an offline claim in it.
 
 | Path | JSON type | Constraints / relationship |
 |---|---|---|
-| `schemaVersion` | integer | Required; exactly `1`. Missing and unsupported versions fail through the migration dispatcher. |
+| `schemaVersion` | integer | Required; exactly `2`. A version-`1` document is upgraded by the migration dispatcher. Missing and unsupported versions fail. |
 | `savedAtTimestampMs` | number | Non-negative safe integer; cannot precede `state.lastUpdateTimestampMs`. |
 | `effectiveProductionRatePerSecond` | string | Finite non-negative serialized `GameNumber`; authoritative rate snapshot used by offline-income calculation. |
 | `state` | object | Exact serialized authoritative state described below. |
@@ -175,7 +178,7 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 | `state.simulationTick` | integer | Non-negative safe integer. |
 | `state.simulationRemainderMs` | number | Finite value in `[0, 100)`. |
 | `state.gold` | string | Finite non-negative serialized `GameNumber`. |
-| `state.floors` | array | Exactly fifteen entries in configured order with the exact configured identifiers and floor numbers. Legacy four-floor version-1 payloads are expanded before validation. |
+| `state.floors` | array | Exactly fifteen entries in configured order with the exact configured identifiers and floor numbers. Legacy four-floor payloads (version 1 or 2) are expanded before validation. |
 | `state.floors[].id` | string | Must equal the configured identifier at that array position. |
 | `state.floors[].floorNumber` | integer | Must equal the configured sequential floor number. |
 | `state.floors[].isUnlocked` | boolean | Floor one must be unlocked; unlocked floors must be sequential and satisfy the preceding configured level gate. |
@@ -193,9 +196,10 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 | `state.warehouse.capacity` | string | Positive serialized `GameNumber`; must equal the configured level effect. |
 | `state.warehouse.inputQueue` | string | Finite non-negative serialized `GameNumber`. |
 | `state.warehouse.conversionProgress` | number | Finite value in `[0, 1)`; zero when input is zero. |
-| `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`. |
+| `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`; lifetime warehouse deliveries. |
+| `state.warehouse.totalOfflineGoldClaimed` | string | Finite non-negative serialized `GameNumber`; lifetime `claimOfflineReward` grants. Monotonic, and part of the save-conflict progress vector. Defaults to `"0"` when a version-1 document is migrated. |
 
-`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point, `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
+`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point (upgrading a version-1 document by defaulting `state.warehouse.totalOfflineGoldClaimed` to `"0"` and stamping version 2), `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
 
 ## Save Recovery Contract
 
@@ -205,7 +209,7 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 
 Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. `calculateOfflineIncome` computes non-negative elapsed time from the validated save timestamp to an injected current timestamp, clamps credited time to the cap, and returns `savedEffectiveRate × creditedSeconds × efficiency` as a `GameNumber`. A future save timestamp produces zero elapsed time and zero reward. The calculation never changes spendable gold or other production state; it immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
 
-The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The version-1 save and IndexedDB schemas remain unchanged because only the post-claim authoritative gold snapshot is stored.
+The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The version-2 save schema and the version-1 IndexedDB schema are unchanged by a claim beyond the two counters it legitimately moves: only the post-claim authoritative snapshot is stored.
 
 ## Portrait Layout Contract
 
@@ -261,7 +265,10 @@ Queue fullness is still derived as four discrete `materialPileSteps` measured ag
 ## Save-Sync Protocol Contract
 
 Designed in server-milestone Step 2 and specified in full in
-`memory-bank/server-save-sync-protocol.md`. No code implements it yet.
+`memory-bank/server-save-sync-protocol.md`. Steps 15–19 implement it: the
+local-write-denied `saves` table (15), `PUT /v1/save` (16), `GET /v1/save`
+plus the boot reconcile (17), the §7 conflict policy (18), and the client
+remote repository with §9's upload cadence and §7's `409` half (19).
 
 `GET /v1/save` and `PUT /v1/save` on a Supabase Edge Function are the only save
 path; `saves` denies client writes entirely, so PostgREST is never used for a
@@ -278,14 +285,19 @@ never a server input.
 
 Divergent devices resolve by dominance over the monotonic progress vector —
 per-floor `isUnlocked`, `mineShaftLevel`, `totalExtracted`, `totalTransported`,
-plus `elevator.level`, `warehouse.level`, and `warehouse.totalGoldDelivered`.
+plus `elevator.level`, `warehouse.level`, `warehouse.totalGoldDelivered`, and
+`warehouse.totalOfflineGoldClaimed`.
 One document dominating the other is adopted silently because it loses nothing;
 only a genuine fork asks the player. `gold` and every queue, progress, and
 cursor value are excluded because they legitimately fall, which is the same
-distinction Step 23 makes. The predicate is pure, operates on two
-`SaveDocumentV1` values, and belongs in `src/persistence` — `src/core` must not
+distinction Step 23 makes. Excluding `gold` is sound only because every gold
+*source* is vectored: Step 18 added `warehouse.totalOfflineGoldClaimed` so an
+offline reward can no longer move `gold` without moving the vector (see the
+Step 18 section below). The predicate is pure, operates on two
+`SaveDocumentV2` values, and belongs in `src/persistence` — `src/core` must not
 learn that saves exist. It holds only while those fields are monotonic, so a
-prestige or reset mechanic would have to revise it in the same change.
+prestige or reset mechanic would have to revise it in the same change, and a new
+gold source would have to join the vector.
 
 Local persistence keeps its 500 ms debounce; cloud upload is a separate cadence
 of at most one per 60 seconds, forced on lifecycle flush, on a claimed offline
@@ -850,37 +862,76 @@ optional `SaveSyncDeps` (`resolveCaller`, `readCurrentSave`, `writeSaveRow`)
   exists, `204` with no body otherwise — "the normal first-sign-in path, not
   an error."
 
-`src/persistence/guestUpgradeReconciliation.ts` adds two pure functions,
-reused by both Step 17's boot reconcile and Step 13's collision resolution:
+`src/persistence/saveConflictPolicy.ts` is Step 18's implementation of §7's
+conflict policy — the single adjudicator both the boot reconcile and (from
+Step 19) the upload `409` path call:
 
-- `hasAnyProgress(document, config)` — true when any of the same
-  "progress vector" fields §7.1 of the protocol defines (per floor:
-  `isUnlocked`, `mineShaftLevel`, `totalExtracted`, `totalTransported`;
-  `elevator.level`; `warehouse.level`, `warehouse.totalGoldDelivered`) sits
-  above its configured starting value. Deliberately excludes `gold`, every
-  queue, `carriedMaterial`, and progress fractions — idle play alone moves
-  those from the very first tick, which would make "no progress" true for
-  only an instant.
-- `reconcileGuestUpgrade(local, remote, config)` → `'adopt-local'` (no
-  remote save, or remote has no progress), `'adopt-remote'` (local has no
-  progress), or `'ask'` (both have progress — a genuine fork), carrying each
-  candidate's document and last-played time per §7.3's display fields
-  (`local.lastPlayedMs` = `savedAtTimestampMs`; `remote.lastPlayedMs` =
-  the download's `receivedAt`).
+- `compareProgress(left, right)` — the §7.1 dominance comparison over the
+  "progress vector" `M`: per floor (all fifteen) `isUnlocked`,
+  `mineShaftLevel`, `totalExtracted`, `totalTransported`; `elevator.level`;
+  `warehouse.level`, `warehouse.totalGoldDelivered`,
+  `warehouse.totalOfflineGoldClaimed`. Returns `'equal'`, `'left-dominates'`,
+  `'right-dominates'`, or `'fork'`. Deliberately excludes `gold`, every queue,
+  `carriedMaterial`, every `*Progress` fraction, `roundRobinCursor`,
+  `simulationTick`, and all timestamps — idle play alone moves those from the
+  very first tick, so including any of them would report a fork on a device
+  that had merely bought an upgrade. Pure, no network or renderer, beside
+  `saveSchema.ts` and never in `src/core`. It also returns `'fork'` rather than
+  throwing when the two floor arrays differ in length, so a caller that hands a
+  `409` body straight in (as Step 19 will) cannot make it throw a raw
+  `TypeError`.
+- `resolveSaveConflict(local, remote)` — applies §7: `remote === null` (the
+  account has no cloud save) keeps local; otherwise `equal` → `'same-progress'`,
+  dominance → the dominating side, and neither-dominates → `'fork'` carrying
+  both §7.3 candidates. Step 17 shipped a narrower "does each side have any
+  progress at all" placeholder, deliberately; Step 18 replaces it, so a
+  strict-superset save is now adopted silently instead of asking.
+  **`gold` needs no special-casing because the vector completes its sources.**
+  `gold = startingGold + totalGoldDelivered + totalOfflineGoldClaimed − spent`,
+  and `spent` is a deterministic function of the levels and unlocks already in
+  `M`, so equal `M` implies equal `gold` and a dominating side has earned at
+  least as much cumulatively. A 2026-09-13 review found the earlier state — an
+  offline reward moving `gold` while touching no vector field — let a
+  strict-subset save be silently bankrupted by a dominating one; two heuristic
+  fixes (a `gold`-size comparison, then a lifetime-cumulative bound) were both
+  wrong (the first forked ordinary purchases and the new-device restore path,
+  the second was dead after any spending because `gold` falls while the bound
+  grows). The structural fix completed the vector by crediting
+  `warehouse.totalOfflineGoldClaimed` in `claimOfflineIncome.ts` and adding it
+  to `M`, so `resolveSaveConflict` carries no gold logic and needs no balance
+  config at all.
+- `describeSaveConflictCandidate(document, lastPlayedMs)` — §7.3's display
+  fields: `gold` and `totalGoldDelivered` as `GameNumber` (formatted by the
+  display layer through `formatAmount`, which is why this module stays free
+  of `src/game`), `floorsOpen` (count of `isUnlocked`), and
+  `deepestShaftLevel` (max `mineShaftLevel` across unlocked floors), plus
+  the candidate document itself so a choice can be applied verbatim. The
+  local candidate's `lastPlayedMs` is `savedAtTimestampMs`; the server
+  candidate's is the upload's `receivedAt`.
 
 `src/platform/web/cloudSaveReconcile.ts`'s `reconcileCloudSaveAtBoot` is the
 boot-order half (§11): downloads via `downloadCloudSaveViaFetch`, reads the
 local document via the injected repository (treating no local record at all
-— a genuinely new device — as the same "no progress" baseline
-`createInitialGameState` produces, not as "nothing to compare"), runs the
-downloaded document through `validateSaveDocument` before using it at all —
-a 2026-09-12 review found the original code cast `body.document` straight to
-`SaveDocumentV1` with no migration, harmless only by luck until a schema 2
-exists to skip past — and applies `reconcileGuestUpgrade`'s decision.
-`'adopt-remote'` writes the cloud document into local storage and reloads
-the page; `'adopt-local'` and `'ask'` are no-ops from this module's own
-point of view — `'ask'` is deliberately left for Step 18 (or, in-session,
-for Step 13's DEV hook) to resolve, never silently written over.
+— a genuinely new device — as the same fresh baseline `createInitialGameState`
+produces, not as "nothing to compare"), runs the downloaded document through
+`validateSaveDocument` before using it at all — a 2026-09-12 review found the
+original code cast `body.document` straight to `SaveDocumentV1` with no
+migration, harmless only by luck until a schema 2 exists to skip past — and
+applies `resolveSaveConflict`. `'remote-dominates'` writes the cloud document
+into local storage and reloads the page; `'local-dominates'` and
+`'same-progress'` are no-ops (the local document already holds at least the
+server's monotonic progress — adopting the remote over `'same-progress'` would
+only discard local gold or queues for no progress gain). A `'fork'` writes
+nothing at all and is returned as
+`{ kind: 'deferred-conflict', local, remote }`, carrying both §7.3 candidates
+so the save the player did not choose is retained for the session. §7's
+requirement is absolute: no accepted branch may destroy progress the player was
+not shown, and a fork is the only branch a silent resolution cannot cover.
+`src/main.ts`'s `triggerCloudSaveReconcile` stores that outcome in
+`pendingSaveConflict`, exposed through the DEV account hook, and publishes a
+compact candidate summary (never two whole documents) as
+`app.dataset.cloudSaveReconcile`.
+
 `src/main.ts` calls `triggerCloudSaveReconcile()` from the tail of both the
 guest and Telegram boot chains, once each resolves `signed-in` — a fourth
 independent consumer of `supabaseClientPromise`, with its own `.catch`,
@@ -900,14 +951,86 @@ the first call from outside `5173` this milestone makes, and
 gap and the test's own need to exclude this one documented, best-effort,
 sometimes-cancelled-by-teardown request from its otherwise-unchanged check.
 
+### Client remote repository (Step 19)
+
+The plan's own words — "IndexedDB stays the primary store and the cloud is a
+replica. Network work belongs in `src/persistence` and `src/platform`;
+`src/core` must not learn that a server exists" — split across three new
+modules plus two small additions to existing ones.
+
+`src/persistence/ReplicatingActiveSaveRepository.ts` implements
+`ActiveSaveRepository` by composing the existing
+`LifecycleSafeActiveSaveRepository` (Dexie plus the lifecycle journal) with a
+`CloudSaveReplica`:
+
+- `loadActiveSave` reads local only. §11 forbids a network call on the boot
+  path, and the download half is the separate boot reconcile.
+- `storeActiveSave` awaits `primary.storeActiveSave(document)` and only then
+  calls `replica.enqueue(document)`, un-awaited. A failed local write still
+  rejects, so `SavePersistenceCoordinator` reports its `save-failed`
+  diagnostic exactly as before; the replica can never turn a successful local
+  save into a failure.
+- `forceCloudUpload(document?)` is the §9 forced-trigger entry point and uses
+  the most recently stored document when none is passed.
+
+`src/persistence/cloudSaveReplica.ts` is the pure policy half. Every
+collaborator is injected — the upload call, `now`, and the timer functions —
+so Node tests drive the cadence and backoff with fake timers, and the module
+holds no `fetch`, no DOM type, and no storage:
+
+- **§9 cadence**: at most one upload per 60 s; coalescing keeps only the
+  newest queued document; `enqueue(..., { force: true })` bypasses the
+  interval but not an in-flight upload.
+- **§9 backoff**: a retryable failure schedules 1/2/4/8/16 s, at most five
+  attempts, then stops cloud sync for the session. Retries never block a
+  frame or a local save, and a failure that is terminal per §4
+  (`forbidden`/`malformed_request`/`payload_too_large`/`schema_unsupported`)
+  stops sync immediately, while `save_invalid`/`save_rejected` drop only that
+  document and keep syncing.
+- **§7 on `409`**: the `409` body is validated first, so the pure predicate
+  never indexes into an unvalidated document — exactly the caller Step 18's
+  own comment said must exist. `resolveSaveConflict` then decides:
+  `same-progress` adopts the server revision silently (the lost-response
+  retry); `local-dominates` re-uploads against the server revision; the
+  caller's `onRemoteDominates` adopts a dominating remote; and a `fork` is
+  emitted with both §7.3 candidates so the caller can retain them. A
+  conflict-resolution cap of five turns an adversarial ping-pong into a
+  stopped session rather than a request flood.
+- **Arming**: `arm(revision)` is idempotent and gates all uploads until the
+  boot download settles. Without it, a returning player's first routine save
+  carries a null `baseRevision` — "this client has never synced" — against a
+  row the server already holds and earns a real, avoidable `409`.
+
+`src/platform/web/cloudSaveUpload.ts` is the one network call,
+`uploadCloudSaveViaFetch` (`PUT /v1/save`), mirroring
+`downloadCloudSaveViaFetch`. It maps every §4 status to the typed
+`CloudSaveUploadResult`, refreshes the session once on `unauthenticated` and
+retries, and turns a rejected `fetch` into `retryable` rather than throwing.
+
+`reconcileCloudSaveAtBoot` gained two things: `CloudSaveDownload` now carries
+the server `revision`, and a new optional `onServerRevision` dep is called as
+soon as the cloud document is in hand. `src/main.ts` uses it to arm the
+replica with the real revision, then forces the §9 triggers — lifecycle flush
+(via `bindSaveLifecycle`'s new best-effort `onForceSave`), claimed offline
+reward, and once after boot reconcile when the outcome is `kept-local` or
+`no-cloud-save`. A `fork` stops the replica rather than re-uploading a
+document the policy just refused; a dominating remote is adopted through the
+same unbind-and-clear journal store-and-reload path as the boot reconcile;
+and an upload fork's candidates land in the same `pendingSaveConflict`
+session hook Step 18 established.
+
+The boundary is enforced, not just documented: `eslint.config.mjs` now bans
+`fetch`, `XMLHttpRequest`, `WebSocket`, and `EventSource` inside
+`src/core/**`, and `tests/unit/architecture.test.ts` probes all four.
+
 ### Guest linking and the identity collision (Step 13)
 
 Three of the step's required flows fall out of what Steps 10/12/17 already
 do: a fresh identity link keeps the same `auth.users` id (Steps 10/12), and
 "no progress, never asked" plus the silent no-conflict cases are exactly
-`reconcileGuestUpgrade`'s existing behaviour (Step 17). What Step 13 adds is
+`resolveSaveConflict`'s existing behaviour (Steps 17/18). What Step 13 adds is
 the missing piece — detecting and resolving the one collision Google's
-`linkIdentity` can produce that `reconcileGuestUpgrade` alone cannot get the
+`linkIdentity` can produce that `resolveSaveConflict` alone cannot get the
 caller into:
 
 - `detectGoogleIdentityCollision` (`src/platform/web/googleSignIn.ts`) calls
@@ -1337,7 +1460,7 @@ Three rules, and they differ by location.
 
 1. **Inside a save document, nothing changes.** `GameNumber` values stay
    serialized decimal/scientific strings inside the document text, exactly as
-   the version-1 save schema already defines them. The server neither reformats
+   the version-2 save schema already defines them. The server neither reformats
    nor re-serializes them.
 2. **Anywhere SQL must sort or rank a `GameNumber`, store two columns.**
    `*_exact text` holds the canonical serialized form and is the only value ever
@@ -1792,56 +1915,9 @@ The store has no auto-increment key, secondary indexes, foreign keys, relationsh
 
 The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
 
+## Closed incident reports
 
-## Marketplace popup — 2026-09-09
-
-The user authorized the Shop icon to open a marketplace design for buying and
-hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
-dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
-scene input on close, supports Escape/native focus containment, and is destroyed
-on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
-listings, name search, role/rarity filters, price sorting, empty-state reset, cat
-details, 1–24 hour rental totals, and validated session-only listing drafts with
-removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
-`public/assets/marketplace/` for this presentation only; gameplay assignments
-and rarity bonuses are not integrated.
-
-This is explicitly a Preview with sample prices/listings. Live trading is disabled;
-no ownership inventory, transaction service, gold debit, or public listing is
-implemented. Drafts survive popup close but disappear on reload. No database,
-IndexedDB, localStorage journal, save-document, or server schema changes.
-The existing server milestone remains at Step 8 awaiting validation.
-
-Validation: production build and lint pass. Marketplace browser coverage checks
-390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
-and removal, disabled live trading, and Escape dismissal. Navigation coverage
-closes Marketplace before testing the remaining icons.
-
-## Marketplace hardening and close-race correction — 2026-09-10
-
-`MarketplaceModal` is exported from the `src/ui/index.ts` barrel, restoring the
-rule that each layer's public surface is re-exported from its `index.ts`.
-`BootScene` still imports it by deep path, as it does `MineShaftUpgradeModal`.
-
-The modal constructs its entire tree with `createElement`/`textContent`. No
-`innerHTML` or `insertAdjacentHTML` remains anywhere in `src/`. This is a
-structural decision, not a cleanup: the marketplace is the one screen whose
-purpose is to render listings authored by other players, so the day `CATS` stops
-being a module constant, the template-string form would have been a stored-XSS
-sink. It narrows what finding F5 describes without closing it — `index.html`
-still ships no Content Security Policy, and F5 remains the single open item in
-`memory-bank/server-threat-model.md` §9.
-
-The close contract is now explicit. `dialog.close()` queues its `close` event as
-a task, so the native event — not `#close()` — is the sole place `#onClose()`
-runs, and a `#destroyed` flag suppresses it for the teardown path where
-`destroy()`'s synchronous `remove()` has already run. Suppression is safe
-because Phaser's `InputPlugin.start()` sets `enabled = true`, so a scene restart
-re-enables input regardless of whether the callback fired. `BootScene`
-surrenders scene input only after an explicit `this.#marketplace !== null`
-check, so input is never disabled for a modal that cannot restore it.
-
-`data-marketplace-close-count` is part of that contract rather than a bare
-counter: `BootScene` bumps it inside `#onClose()` *after* re-enabling input, so
-it is the one observable that proves input is live again. Browser tests wait on
-it before dispatching the next canvas press.
+Four base-game defect reports (marketplace popup, navigation hit-target,
+upgrade CTA press, marketplace hardening and close-race) previously appeared
+verbatim in this file and six others. They are now in
+`archive/incident-log.md`, one canonical copy.

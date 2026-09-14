@@ -345,27 +345,9 @@ design tham chiếu. Quy chuẩn đầy đủ nằm tại
 - [Tài liệu chính thức Cat Gold Miner](https://docs.catgoldminer.ai/) — mô tả idle mining, Manager, nâng cấp và tiến trình.
 - [Cat Gold Miner trên Google Play](https://play.google.com/store/apps/details?id=com.cgstudio.catgoldminer) — mô tả automation, offline income, tài nguyên và hơn 20 mỏ.
 
+## Closed incident reports
 
-## Marketplace popup — 2026-09-09
-
-The user authorized the Shop icon to open a marketplace design for buying and
-hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
-dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
-scene input on close, supports Escape/native focus containment, and is destroyed
-on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
-listings, name search, role/rarity filters, price sorting, empty-state reset, cat
-details, 1–24 hour rental totals, and validated session-only listing drafts with
-removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
-`public/assets/marketplace/` for this presentation only; gameplay assignments
-and rarity bonuses are not integrated.
-
-This is explicitly a Preview with sample prices/listings. Live trading is disabled;
-no ownership inventory, transaction service, gold debit, or public listing is
-implemented. Drafts survive popup close but disappear on reload. No database,
-IndexedDB, localStorage journal, save-document, or server schema changes.
-The existing server milestone remains at Step 8 awaiting validation.
-
-Validation: production build and lint pass. Marketplace browser coverage checks
-390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
-and removal, disabled live trading, and Escape dismissal. Navigation coverage
-closes Marketplace before testing the remaining icons.
+Four base-game defect reports (marketplace popup, navigation hit-target,
+upgrade CTA press, marketplace hardening and close-race) previously appeared
+verbatim in this file and six others. They are now in
+`archive/incident-log.md`, one canonical copy.

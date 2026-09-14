@@ -100,26 +100,46 @@ specifically, until Step 14's recovery code lands: script-writable storage
 (the session token included) is deleted by iOS Safari after seven days
 regardless of any of this milestone's work.
 
-## Marketplace popup — 2026-09-09
+Server-milestone Step 18 (2026-09-13) settles what happens when the same
+account's saves diverge across two devices. In player-facing terms: if one save
+is ahead of the other in every way that only ever moves forward — more floors
+opened, deeper shafts, more material extracted and transported, a higher
+elevator or warehouse, more gold ever delivered, more gold ever claimed
+offline — the game keeps the ahead save without asking, because keeping it
+loses nothing. If neither save is ahead in every way, each holds something the
+other lacks, so both are shown and the player chooses; the game never picks one
+on the player's behalf in that case and never destroys the save they did not
+choose. The rule lives in `src/persistence/saveConflictPolicy.ts`; only a
+genuine fork reaches the player as a prompt. Making "keeps the ahead save loses
+nothing" true required counting *every* gold source, so an offline reward now
+also increments a new monotonic `warehouse.totalOfflineGoldClaimed` counter
+(save schema version 2, migrated from version 1 by defaulting it to zero) that
+the conflict rule compares. Like the rest of this milestone,
+no production UI surfaces it yet: the candidate saves are retained for the
+session through a DEV-only hook, and the chooser screen plus the upload path
+that produces a conflicting write are later steps. This changes nothing a
+current player can see or do.
 
-The user authorized the Shop icon to open a marketplace design for buying and
-hourly rental of cat roles. `src/ui/MarketplaceModal.ts` now owns a native modal
-dialog opened by `BootScene`'s Shop callback. It blocks background input, restores
-scene input on close, supports Escape/native focus containment, and is destroyed
-on scene shutdown. The responsive navy/gold interface includes Buy, Rent and My
-listings, name search, role/rarity filters, price sorting, empty-state reset, cat
-details, 1–24 hour rental totals, and validated session-only listing drafts with
-removal. Four catalog portraits (Mofy, Baron, Elon, Cipher) are copied into
-`public/assets/marketplace/` for this presentation only; gameplay assignments
-and rarity bonuses are not integrated.
+Server-milestone Step 19 (2026-09-13) makes the cloud save a real replica of
+the local one without changing how the game plays. IndexedDB is still the
+store the game boots from and writes to; a separate background cadence — at
+most one upload per 60 seconds, plus an immediate one when the tab is hidden
+or closed, when an offline reward is claimed, or right after the boot
+comparison — sends the newest save to the account's cloud copy. Nothing about
+this delays a frame or a local save, and if the network is slow or absent the
+game is exactly as playable as before; a failed upload is retried silently in
+the background and, once retries are exhausted, simply stops for that session
+while the local save carries on. If the cloud copy has turned out to be ahead
+of the local one, the game adopts it rather than overwriting it, through the
+same dominance rule described above. As with the rest of this milestone no
+production surface exposes any of it yet; the player-facing promise — a save
+that survives a new device, cleared storage, or a lost browser — still waits
+on Step 20 (adopting existing local saves) and Step 21 (surviving storage
+eviction), and on a production sign-in UI.
 
-This is explicitly a Preview with sample prices/listings. Live trading is disabled;
-no ownership inventory, transaction service, gold debit, or public listing is
-implemented. Drafts survive popup close but disappear on reload. No database,
-IndexedDB, localStorage journal, save-document, or server schema changes.
-The existing server milestone remains at Step 8 awaiting validation.
+## Closed incident reports
 
-Validation: production build and lint pass. Marketplace browser coverage checks
-390×844 and 320×568 layouts, search/filter/reset, rental totals, draft creation
-and removal, disabled live trading, and Escape dismissal. Navigation coverage
-closes Marketplace before testing the remaining icons.
+Four base-game defect reports (marketplace popup, navigation hit-target,
+upgrade CTA press, marketplace hardening and close-race) previously appeared
+verbatim in this file and six others. They are now in
+`archive/incident-log.md`, one canonical copy.
