@@ -61,8 +61,9 @@ Journey E2E
 Google sign-in (Step 10) · Telegram sign-in (Step 12) · Save storage, upload,
 and download (Steps 15–17) · Client remote repository (Step 19) · Adopting an
 existing local save (Step 20) · Surviving local storage eviction (Step 21) ·
-The server clock is the only clock (Step 22) · Guest linking and the identity
-collision (Step 13) · Recovery code (Step 14)
+The server clock is the only clock (Step 22) · Upper-bound re-simulation
+(Step 23) · Guest linking and the identity collision (Step 13) · Recovery code
+(Step 14)
 
 **`## Complete Database Schema`** — subsections: How a `GameNumber` is stored ·
 Storage of the save document (`text`, not `jsonb`) · Tables · Column reference ·
@@ -82,7 +83,7 @@ file only when you need the provenance of a specific step or decision.
 
 | File | Holds |
 |---|---|
-| `completed-log.md` | Finished work: base-game Steps 1–37 and server Steps 1–22. |
+| `completed-log.md` | Finished work: base-game Steps 1–37 and server Steps 1–23. |
 | `acceptance-gates.md` | Passed gates with evidence; features deferred at the Step 37 close. |
 | `decision-log.md` | Settled base-game decisions and their rationale. |
 | `risks-resolved.md` | Risks closed by code, each with the reason it closed. |

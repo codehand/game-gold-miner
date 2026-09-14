@@ -27,5 +27,9 @@ Not part of the contract.
   exactly once, with the consumed interval persisted *before* the reward is
   exposed.
   *Still open, and kept in `progress.md`:* the **server-side validation** half.
-  Nothing verifies a manipulated client clock server-side yet; that is the
-  server milestone's Phase 4 (validate-on-save anti-cheat, Steps 20+).
+  Steps 22 and 23 of the server milestone now implement it — the server clock
+  settles offline income (`calculateOfflineGrant`) and `evaluateProgressBound`
+  bounds what any uploaded document may claim — but they await user validation,
+  and Step 24's rejection handling (what a refused save does to the player, and
+  the audit row) is still unbuilt. The risk stays in `progress.md` until those
+  land and are validated.

@@ -11,6 +11,7 @@ import {
 } from '../../src/persistence';
 import { downloadCloudSaveViaFetch } from '../../src/platform/web';
 import { LOCAL_ANON_KEY } from './authFixture';
+import { ageStoredSave } from './saveAgeFixture';
 
 /**
  * Server-milestone Step 18's own required test, against the live stack: "Two
@@ -105,20 +106,29 @@ interface ConflictDetail {
  * Runs the §5 flow to its `409` and returns the server's own conflict detail:
  * device A commits `deviceADocument` at revision 2, device B's stale
  * `baseRevision: 1` upload of `deviceBDocument` is refused against it.
+ *
+ * The seed row is aged thirty days before device A uploads, because device A's
+ * document is a *linear* descendant of it that represents offline play: Step
+ * 23's tight bound measures elapsed time from the stored `received_at`, and
+ * without that interval the fabricated upgrades are (correctly) rejected as
+ * impossible. Device B's later re-upload needs no such aging — the stored row's
+ * own `previous_*` ancestor is that aged seed, which is the anchor Step 23 uses
+ * for a branch that diverged from it instead of descending from the row.
  */
 async function uploadUntilConflict(
-  accessToken: string,
+  account: GuestIdentity,
   deviceADocument: SaveDocumentV2,
   deviceBDocument: SaveDocumentV2,
 ): Promise<ConflictDetail> {
-  const seed = await putSave(accessToken, { baseRevision: null, document: progressDocument(1, 1) });
+  const seed = await putSave(account.accessToken, { baseRevision: null, document: progressDocument(1, 1) });
   expect(seed.status).toBe(200);
+  await ageStoredSave(API_URL, account.userId, 30 * 24 * 60 * 60);
 
-  const deviceAUpload = await putSave(accessToken, { baseRevision: 1, document: deviceADocument });
+  const deviceAUpload = await putSave(account.accessToken, { baseRevision: 1, document: deviceADocument });
   expect(deviceAUpload.status).toBe(200);
   expect((await deviceAUpload.json()).revision).toBe(2);
 
-  const deviceBUpload = await putSave(accessToken, { baseRevision: 1, document: deviceBDocument });
+  const deviceBUpload = await putSave(account.accessToken, { baseRevision: 1, document: deviceBDocument });
   expect(deviceBUpload.status).toBe(409);
 
   const body = await deviceBUpload.json();
@@ -132,7 +142,7 @@ describe('save conflict resolution across two devices (server-milestone Step 18)
     const deviceA = progressDocument(2, 2);
     const deviceB = progressDocument(1, 1);
 
-    const conflict = await uploadUntilConflict(account.accessToken, deviceA, deviceB);
+    const conflict = await uploadUntilConflict(account, deviceA, deviceB);
 
     const decision = resolveSaveConflict(deviceB, {
       document: conflict.document,
@@ -151,7 +161,7 @@ describe('save conflict resolution across two devices (server-milestone Step 18)
     const deviceA = progressDocument(1, 1);
     const deviceB = progressDocument(3, 3);
 
-    const conflict = await uploadUntilConflict(account.accessToken, deviceA, deviceB);
+    const conflict = await uploadUntilConflict(account, deviceA, deviceB);
 
     const decision = resolveSaveConflict(deviceB, {
       document: conflict.document,
@@ -161,6 +171,10 @@ describe('save conflict resolution across two devices (server-milestone Step 18)
 
     // Taking the ahead device's save loses nothing: it is a strict superset of
     // what the account held. Uploading it against the fresh revision succeeds.
+    // The stored row's `previous_*` is the aged seed, so Step 23 accepts the
+    // re-upload through its ancestor anchor with no extra aging — the F2
+    // regression: a §7 merge must remain committable seconds after the branch
+    // that became the stored row.
     const reupload = await putSave(account.accessToken, {
       baseRevision: conflict.serverRevision,
       document: deviceB,
@@ -177,7 +191,7 @@ describe('save conflict resolution across two devices (server-milestone Step 18)
     const deviceA = progressDocument(2, 1);
     const deviceB = progressDocument(2, 1);
 
-    const conflict = await uploadUntilConflict(account.accessToken, deviceA, deviceB);
+    const conflict = await uploadUntilConflict(account, deviceA, deviceB);
 
     const decision = resolveSaveConflict(deviceB, {
       document: conflict.document,
@@ -201,7 +215,7 @@ describe('save conflict resolution across two devices (server-milestone Step 18)
     const deviceA = progressDocument(1, 3);
     const deviceB = progressDocument(3, 1);
 
-    const conflict = await uploadUntilConflict(account.accessToken, deviceA, deviceB);
+    const conflict = await uploadUntilConflict(account, deviceA, deviceB);
     const remote: SaveConflictRemote = {
       document: conflict.document,
       receivedAtMs: Date.parse(conflict.receivedAt),
@@ -239,7 +253,7 @@ describe('save conflict resolution across two devices (server-milestone Step 18)
     const deviceA = progressDocument(2, 2);
     const deviceB = progressDocument(1, 1, BASE_GAME_BALANCE.startingGold + offlineReward, offlineReward);
 
-    const conflict = await uploadUntilConflict(account.accessToken, deviceA, deviceB);
+    const conflict = await uploadUntilConflict(account, deviceA, deviceB);
     const decision = resolveSaveConflict(deviceB, {
       document: conflict.document,
       receivedAtMs: Date.parse(conflict.receivedAt),
@@ -273,7 +287,7 @@ describe('save conflict resolution across two devices (server-milestone Step 18)
     const deviceA = progressDocument(2, 2, 37);
     const deviceB = progressDocument(1, 1);
 
-    const conflict = await uploadUntilConflict(account.accessToken, deviceA, deviceB);
+    const conflict = await uploadUntilConflict(account, deviceA, deviceB);
     const decision = resolveSaveConflict(deviceB, {
       document: conflict.document,
       receivedAtMs: Date.parse(conflict.receivedAt),
@@ -290,7 +304,7 @@ describe('save conflict resolution across two devices (server-milestone Step 18)
     const deviceA = progressDocument(1, 1);
     const deviceB = progressDocument(3, 3, 37);
 
-    const conflict = await uploadUntilConflict(account.accessToken, deviceA, deviceB);
+    const conflict = await uploadUntilConflict(account, deviceA, deviceB);
     const decision = resolveSaveConflict(deviceB, {
       document: conflict.document,
       receivedAtMs: Date.parse(conflict.receivedAt),

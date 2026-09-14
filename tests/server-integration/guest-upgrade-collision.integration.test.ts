@@ -6,6 +6,7 @@ import { calculateLevelEffect, createInitialGameState } from '../../src/core';
 import { createSaveDocument, resolveSaveConflict, type SaveDocumentV2 } from '../../src/persistence';
 import { downloadCloudSaveViaFetch } from '../../src/platform/web';
 import { LOCAL_ANON_KEY } from './authFixture';
+import { ageStoredSave } from './saveAgeFixture';
 
 /**
  * Server-milestone Step 13: proves the three required guest-upgrade flows
@@ -154,6 +155,12 @@ describe('guest-upgrade collision reconciliation (server-milestone Step 13)', ()
     expect(decision.remote.lastPlayedMs).toBe(remote?.receivedAtMs);
 
     // Choice A: "keep local" — uploads local, replacing the account's save.
+    // The account's save is its own first upload, so there is no `previous_*`
+    // ancestor for the branch to anchor against; the stored row's own age is
+    // the only interval the server has, so age it to represent that the
+    // account's save is old and the local progress is within what that time
+    // allows.
+    await ageStoredSave(API_URL, existingAccount.userId, 30 * 24 * 60 * 60);
     const keepLocal = await putSave(existingAccount.accessToken, {
       baseRevision: existingRevision,
       document: localDocument,

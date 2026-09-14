@@ -78,14 +78,14 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, and pending-reward claim transitions. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, pending-reward claim transitions, and the server-side progress bound on an uploaded save (`src/core/anti-cheat/progressBound.ts`). |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration, semantic placeholder-asset manifest, pure portrait geometry, pure presentation models and cosmetic animation maths, live simulation driver, reusable HUD/floor/shared-stage/purchase views, generated-sprite presentation, interactive controls, scroll input, and the single scene that pulls snapshots into them. |
 | `src/ui/` | Owns the offline-reward modal, live mine-floor upgrade modal, and save-diagnostic notice. The HUD remains a Phaser view. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding and, since server-milestone Step 8, the Supabase client factory and anonymous guest-session bootstrap — the first `src/` code that makes a network call, never awaited before boot and never throwing. Broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Runtime original placeholder sprites, art-direction brief, and provenance manifest. Generated source and processor outputs live in `art-source/placeholder/` so production builds ship only the semantic runtime files. |
-| `tests/unit/` | Deterministic core, economy, save, migration, and offline-income tests. |
+| `tests/unit/` | Deterministic core, economy, save, migration, offline-income, and anti-cheat progress-bound tests. |
 | `tests/e2e/` | Browser-level player journeys, responsive layout, persistence, and production-bundle smoke tests. |
 
 ## Dependency Boundaries
@@ -860,6 +860,20 @@ optional `SaveSyncDeps` (`resolveCaller`, `readCurrentSave`, `writeSaveRow`)
   whole body into memory by the time it ran), and the same post-read check
   still runs afterward as the authoritative one for a chunked body with no
   `Content-Length` header, or one that understates it.
+- **Upper-bound validation (Step 23)**: after the `baseRevision` concurrency
+  check and before any write, `handleSaveUpload` calls
+  `findProgressBoundViolation` (`src/core/anti-cheat/progressBound.ts`'s
+  `evaluateProgressBound`). It re-derives, from the last accepted document over
+  the server-measured elapsed time, the most the mine could have produced, and
+  returns `422 save_rejected` with `detail: { counter, claimed, maximum }` for a
+  document that claims more; the stored row and revision are unchanged. **A
+  first upload (`current === null`) is exempt**, and a stored row whose document
+  or `received_at` cannot be read also skips the check (logged), so the server
+  never rejects an honest save over its own unreadable row. When the tight bound
+  fails but the row's one-generation ancestor exists, the check is retried
+  against that ancestor over the full interval — a §7 branch re-upload diverged
+  from it, not from the stored row (review finding F2). The modelling rule, the
+  carried terms, and the tolerance are in the Step 23 section below.
 - **Download** (`GET`): `200 {revision, receivedAt, document}` when a row
   exists, `204` with no body otherwise — "the normal first-sign-in path, not
   an error."
@@ -1207,6 +1221,117 @@ behaviour those specs were written to pin (Step 19's "passes offline,
 unchanged"). The production smoke pins the save-sync surface to "no cloud save"
 for the same reason. The server-verified path is covered by the server
 integration and server-e2e suites.
+
+### Upper-bound re-simulation (Step 23)
+
+`src/core/anti-cheat/progressBound.ts`'s pure `evaluateProgressBound` decides
+whether an uploaded document claims more than the last accepted one could have
+produced over the server-measured elapsed time. `save-sync` calls it on every
+non-first `PUT /v1/save`; a violation becomes `422 save_rejected` with
+`detail: { counter, claimed, maximum }`, and the stored row and revision are
+untouched (§10.3).
+
+**The modelling rule, stated rather than implied (finding F3).** Between two
+uploads the server does not know which upgrades the player bought or when, so it
+cannot compute a tight bound. It uses the shared core's own rate and cost
+functions on the **candidate's final configuration**:
+
+- A cumulative counter may not exceed its previous value plus the candidate's
+  own production rate held for the whole interval, times the tolerance, **plus
+  whatever material was already in the pipeline when the interval opened**. A
+  proportional rate term alone is near-zero over a short interval, while one
+  completed extraction cycle and one drained queue are fixed amounts, so
+  without the carried terms a warm mine that simply kept playing is rejected
+  (review finding **F1**). The carried terms are each unlocked floor's in-flight
+  cycle yield (valued at the candidate's level, the largest it can complete at)
+  and, for `totalTransported`/`totalGoldDelivered`, the material already sitting
+  in floor queues, the elevator's load, and the warehouse's input queue. The
+  counters bounded are each unlocked floor's `totalExtracted` and
+  `totalTransported` (transport further capped by the shared elevator's
+  throughput), `warehouse.totalGoldDelivered`, and
+  `warehouse.totalOfflineGoldClaimed` (which carries no in-flight material — an
+  offline claim is produced by an absence).
+- The total gold the upgrades and floor unlocks between the two documents
+  required (`state.upgradeSpend`, computed with the core's own batch-cost
+  functions) may not exceed the previous balance plus **one** maximum-earning
+  term. The interval was either played (deliveries) or spent away (a capped
+  offline claim), never both at full rate, so the delivery and offline
+  allowances are not added together (review finding **F5**).
+
+**No ticks are simulated.** The interval can exceed `MAX_CATCH_UP_MS` (two
+hours), so an `O(elapsed)` walk would blow the §7.1 upload latency budget, while
+the shared rate model gives the same (looser) upper bound in `O(floors)`.
+
+**Two anchors, because §7 makes forks first-class (finding F2).** The tight
+bound measures from the stored row's own receipt. A device that resolves a `409`
+re-uploads *its own* branch seconds after the branch that became the stored row,
+and that branch diverged from an older common ancestor — measuring its whole
+divergence against a few seconds rejects a legitimate merge and pins the
+account to the inferior branch. The row keeps one generation of rollback
+(`previous_document_json`/`previous_received_at`), so when the tight bound fails
+and an ancestor exists, `save-sync` retries against that ancestor over the full
+interval between its receipt and now. A candidate is accepted if either anchor
+allows it. The accepted cost is that a strict-superset claim gains the wider
+ancestor window; that is the same accept-biased direction as the tolerance.
+
+**The ancestor anchor is one generation deep — a stated known limit (N1).** The
+row keeps exactly one generation of rollback, so a fork is accepted only when
+its divergence point is the stored row or its immediate predecessor. §9 allows a
+peer one new generation per 60 s, so a fork older than roughly two minutes
+against an actively-syncing peer — a tablet left open while the player plays on
+their phone offline, which then dominates on return — has both anchors too
+recent and its honest branch is rejected (reproduced: the peer uploading at
+−60 s and now while the other device was away three hours rejects
+`state.warehouse.totalGoldDelivered` against both anchors). This is the residual
+of the F2 fix, **not** a claim that the fork case is closed. The sound full fix
+is to retain fork points (a history/`saves`-schema change) or to have the client
+supply a verifiable fork revision — a design decision that overlaps Step 24, not
+a patch. A server-side "accept any strict superset" exemption was considered and
+rejected: supersets are exactly what an inflating cheat submits, so it would gut
+the bound. Until the fix lands, the player's local save and play are intact;
+only the cloud copy lags, and Step 21's eviction restore would return that
+branch, which is why the limit is tracked as an open risk in `progress.md`.
+
+**Never current `gold`, and the same exclusion §7 makes.** `gold` legitimately
+falls when the player spends, so it is bounded only indirectly, through spend;
+this is exactly the reason `compareProgress`'s progress vector `M` omits `gold`
+(§7.1). The economy is not changed: this only decides whether to reject a
+document the client already produced.
+
+**The tolerance, and its size.** `PROGRESS_BOUND_TOLERANCE = 0.05` absorbs the
+remaining differences between the client's fixed-step simulation and the
+continuous rate — sub-tick remainders, fractional yields, and the rounding in
+each `GameNumber` update — without letting a materially larger claim through.
+The rate model already over-estimates by holding the final configuration for the
+entire interval and the carried terms already settle all in-flight material; the
+5% covers only the residual. `tests/unit/progress-bound.test.ts` pins it from
+**both sides** (over an interval long enough that the rate term dominates the
+fixed carried amount), so widening it silently fails. The direction is
+deliberate: per the threat model's §1 ranking, a player's own progress outranks
+leaderboard integrity, so the bound prefers accepting a slightly generous save to
+rejecting an honest one.
+
+**First uploads and unreadable rows are exempt.** `findProgressBoundViolation`
+returns `null` (accept) when the account has no stored row: there is no last
+accepted document to bound against, and it is how a brand-new account seeds its
+cloud save and how Step 20 adopts a save the player earned before the account
+existed. A stored row whose document cannot be deserialized skips the check, and
+so does a stored `received_at` that cannot be parsed — an unreadable row is the
+server's own state being unreadable, not evidence against the document, and must
+not collapse to a zero-second bound that rejects every claim (review finding
+**F4**). The server therefore never rejects an honest save because its own row is
+unreadable.
+
+Evidence: 9 core unit tests (`tests/unit/progress-bound.test.ts`) covering honest
+accept (including a warm mine over a short interval — the F1 regression), each
+inflated counter, and both sides of the tolerance; server unit tests in
+`save-sync/index.test.ts` (including the F2 ancestor-anchor and F4 skip); a live
+integration suite (`tests/server-integration/save-rejection.integration.test.ts`)
+plus the conflict/collision suites, whose `409` re-upload now commits through the
+ancestor anchor with no extra `ageStoredSave`. `saveAgeFixture.ts`'s
+`ageStoredSave` is used only where the fixture's document is a *linear*
+descendant that stands for offline play, never to fake a divergent branch into
+the linear bound.
 
 ### Guest linking and the identity collision (Step 13)
 

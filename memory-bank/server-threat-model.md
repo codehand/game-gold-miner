@@ -97,8 +97,10 @@ server.
 
 **Defended by.** Step 16 migrates and validates every uploaded document through
 the same `migrateSaveDocument`/`validateSaveDocument` chain the client uses.
-Step 23 bounds the monotonic cumulative counters against server-measured
-elapsed time. Step 15 makes the Edge Function the only writer, so an edited
+Step 23 (**implemented 2026-09-14**) bounds the monotonic cumulative counters —
+and the upgrade/unlock spend — against server-measured elapsed time via the pure
+`evaluateProgressBound`, using the candidate's own rate model held for the whole
+interval. Step 15 makes the Edge Function the only writer, so an edited
 local document cannot reach Postgres unexamined.
 
 **Not defended.** An unlinked guest editing their own offline game. This is
@@ -585,6 +587,39 @@ server does not have between two uploads.
 reachable from the last accepted document over the elapsed interval. It is
 therefore **loose by construction and biased toward acceptance**, which matches
 the ranking in §1. Step 23 must state this rather than imply a tight bound.
+**Implemented 2026-09-14, modelling rule stated:** `evaluateProgressBound`
+re-derives the bound from the shared core's rate and cost functions applied to
+the **candidate's final configuration** and held for the whole interval — no
+ticks simulated, so it stays `O(floors)` inside the §7.1 upload latency budget.
+Because levels only rise, that final-configuration rate is a genuine upper bound,
+and a loose one (the player actually upgraded gradually). Each counter also
+carries the material already in the pipeline at the interval's open (a floor's
+in-flight cycle, its queue, the elevator's load, the warehouse's input queue),
+because a proportional term is near-zero over a short interval while one cycle is
+a fixed amount — without it a warm mine that simply kept playing is rejected
+(review finding F1). It bounds each floor's
+`totalExtracted`/`totalTransported` (transport capped by the shared elevator's
+throughput), `warehouse.totalGoldDelivered`, `warehouse.totalOfflineGoldClaimed`,
+and the total gold the levels and unlocks between the two documents required
+(`state.upgradeSpend`) — never current `gold`, the same exclusion §7's progress
+vector makes; the spend allowance uses one earning term, not the delivery and
+offline allowances summed (review finding F5). Because §7 makes forks
+first-class, when the tight bound (measured from the stored row) fails and the
+row's one-generation ancestor exists, the check is retried against that ancestor
+over the full interval — a `409` re-upload is a branch that diverged from the
+ancestor, not a descendant of the row (review finding F2). `PROGRESS_BOUND_TOLERANCE = 0.05`
+absorbs the fixed-step-vs-continuous-rate remainder;
+`tests/unit/progress-bound.test.ts` pins it from both sides (over an interval
+long enough that the rate term dominates the carried amount) so widening it
+silently fails. A first upload is exempt (no last accepted document to bound
+against), and a stored row whose document or `received_at` cannot be read skips
+the check, so the server never rejects an honest save over its own unreadable row
+(review finding F4). **Known limit (N1):** the ancestor anchor is one generation
+deep, so an honest dominating fork older than roughly two minutes against an
+actively-syncing peer is still rejected; the sound fix is to retain fork points,
+which overlaps Step 24, and a server-side "accept any strict superset" exemption
+was rejected because an inflating cheat submits supersets. Recorded in
+`architecture.md`'s Step 23 section and `progress.md`'s known risks.
 
 **F4 — Step 22 must not change the economy.**
 Moving settlement server-side touches a balance rule the game is tuned around:
@@ -730,7 +765,7 @@ depends on nothing outside them.
 | 20 Adopt existing local saves | Existing saves must survive | §7.7 |
 | 21 Survive storage eviction | No first-party cookie; measurement needs seven days | §7.5; **F8** |
 | 22 Server clock | **Implemented 2026-09-14** — must change the clock without changing the economy; the one `calculateOfflineGrant` is shared by client and server | **F4** (exercised) |
-| 23 Upper-bound re-simulation | Bound's modelling rule; tolerance direction | **F3**; §1 with §7.4 |
+| 23 Upper-bound re-simulation | **Implemented 2026-09-14** — the modelling rule and the 5% tolerance are stated in the module and in `architecture.md`; bounds cumulative counters and upgrade spend, never current `gold` | **F3** (exercised and stated); §1 with §7.4 |
 | 24 Rejection handling | A rejected player stays playable | §1 |
 | 25 Abuse limits | No fingerprint collection; limits sit above the upload cadence | §7.2; **F6** |
 | 26 Adversarial suite | The capability list it must cover | §4, §5 |

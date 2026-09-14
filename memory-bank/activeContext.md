@@ -2,14 +2,14 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 22 validation gate.** Step 22 (the server clock
-is the only clock) was implemented on 2026-09-14, on the user's explicit
-instruction: offline-income settlement moved to the server, computed from the
-stored `received_at` to the server's own `now()`, so a manipulated device clock
-cannot change the credited reward. Step 23 must not begin until the user
-validates it.
+**Server milestone, at the Step 23 validation gate.** Step 23 (upper-bound
+re-simulation) was implemented on 2026-09-14, on the user's explicit
+instruction: on `PUT /v1/save` the server re-derives the maximum the mine could
+have produced from the last accepted document across the server-measured elapsed
+time and rejects a document claiming more (`422 save_rejected`). Step 24 must not
+begin until the user validates it.
 
-Steps 9, 10, and 12–22 are implemented but unvalidated as one batch, because the
+Steps 9, 10, and 12–23 are implemented but unvalidated as one batch, because the
 user directed work past several gates rather than pausing at each. Step 11
 (Apple sign-in) is cut.
 
@@ -130,6 +130,85 @@ proving the browser credits the server's figure. The client E2E config pins the
 Supabase env blank, so that suite stays the deterministic, backend-free client
 gate while the server path is covered by the server suites.
 
+**Step 23 (upper-bound re-simulation).** New pure
+`evaluateProgressBound` (`src/core/anti-cheat/progressBound.ts`) bounds an
+uploaded document against the last accepted one. It re-derives the maximum the
+mine could have produced over the server-measured elapsed time using the shared
+core's own rate and cost functions **on the candidate's final configuration**,
+and never simulates ticks — the interval can exceed the two-hour catch-up cap, so
+an `O(elapsed)` walk would blow the §7.1 upload latency budget, while the rate
+model gives the same (looser) bound in `O(floors)`. It bounds the **monotonic
+cumulative counters** — each floor's `totalExtracted`/`totalTransported`,
+`warehouse.totalGoldDelivered`, `warehouse.totalOfflineGoldClaimed` — plus the
+total gold the levels and unlocks between the two documents required
+(`state.upgradeSpend`), never current `gold`, which legitimately falls when the
+player spends; this is the same exclusion §7's progress vector makes. Each
+counter also carries the material already in the pipeline at the interval's open
+(a floor's in-flight cycle, its queue, the elevator's load, the warehouse's input
+queue), because a proportional rate term is near-zero over a short interval while
+one completed cycle is a fixed amount — without the carried terms a warm mine
+that simply kept playing is rejected (**F1**). The spend allowance uses **one**
+earning term, not the delivery and offline allowances summed, since the interval
+was either played or spent away (**F5**). `PROGRESS_BOUND_TOLERANCE = 0.05`
+absorbs the remaining fixed-step-vs-continuous-rate difference;
+`tests/unit/progress-bound.test.ts` pins it from both sides (over an interval
+long enough that the rate term dominates the carried amount) so widening it
+silently fails. The direction is deliberate per the threat model's §1 ranking:
+reject a slightly generous save before rejecting an honest one (finding F3).
+`save-sync`'s `handleSaveUpload` runs the check after the `baseRevision`
+concurrency check and before the write, returning `422 save_rejected` with
+`detail: { counter, claimed, maximum }`; the stored row and revision are
+unchanged. **A first upload (`current === null`) is deliberately exempt** — there
+is no last accepted document to bound against, and it is how a brand-new account
+seeds its cloud save and how Step 20 adopts a save earned before the account
+existed; a stored row whose document or `received_at` cannot be read also skips
+the check rather than collapsing to the strictest bound (**F4**), so the server
+never rejects an honest save because its own row is unreadable. **Two anchors,
+because §7 makes forks first-class (F2):** the tight bound measures from the
+stored row, but a device that resolved a `409` re-uploads a branch that diverged
+from the row's one-generation ancestor, so when the tight bound fails and an
+ancestor exists the check is retried against it over the full interval. Evidence:
+9 core unit tests (warm short intervals, each inflated counter, tolerance pinned
+both sides), server unit tests in `save-sync/index.test.ts` (the F2 ancestor
+anchor and F4 skip), a live integration suite
+(`tests/server-integration/save-rejection.integration.test.ts`), and the
+conflict/collision suites, whose re-upload now commits through the ancestor
+anchor with no extra aging. See `memory-bank/architecture.md`'s Step 23 section
+for the full modelling rule.
+
+**Step 23's integration fixtures.** `tests/server-integration/saveAgeFixture.ts`'s
+`ageStoredSave` moves a stored row's `received_at` into the past through the
+service-role client, so a fixture document that represents *linear offline play*
+is within the interval it stands for. It is deliberately not used to fake a
+divergent branch into the linear bound: the conflict suite's `409` re-upload now
+needs no aging because the row's `previous_*` ancestor is the anchor. The
+`profiles-rls` suite's profile-`created_at` assertion also gained a
+`CLOCK_SKEW_TOLERANCE_MS` bound on both sides, because it compares the Postgres
+container's clock with the test process's.
+
+**A 2026-09-14 review of Step 23 found and fixed six issues**, all on the bound:
+**F1 (HIGH)** — no term for material already in the pipeline, so an honest warm
+mine was rejected over short intervals (the pagehide/offline-claim forced
+uploads §9 specifies); the carried terms above fix it. **F2 (HIGH)** — elapsed
+was measured only from the stored row, so a §7 conflict resolution could never be
+uploaded (the winning branch's whole divergence was compared to a few seconds);
+the ancestor anchor fixes it. **F3 (MEDIUM)** — the tests began from a cold start
+(the only zero-in-flight state) and the fixtures aged rows to mask F1/F2; new
+warm-interval and ancestor-anchor regressions were added and the fixtures' role
+narrowed. **F4 (LOW)** — an unparseable `received_at` produced a zero-second
+bound instead of skipping. **F5 (LOW)** — the spend allowance summed two earning
+terms, doubling it. **F6 (LOW)** — `architecture.md`'s file-responsibility row
+now names the anti-cheat module.
+
+**N1 (MEDIUM, open) is the residual of F2.** The ancestor anchor is one
+generation deep, so a fork older than roughly two minutes against an
+actively-syncing peer is still rejected — the exact "tablet open while the phone
+plays offline" case. It is recorded as a **stated limit** in `architecture.md`'s
+Step 23 section and as an open risk in `progress.md`, not presented as closed.
+The sound full fix (retain fork points, or a verifiable fork revision) overlaps
+Step 24 and is not scheduled; a server-side "accept any strict superset"
+exemption is unsound (cheats submit supersets) and was rejected.
+
 ## Active Decisions
 
 Decisions that still constrain code not yet written. Settled base-game decisions
@@ -161,10 +240,10 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 22.** This is the gate; nothing below
+1. **Wait for the user to validate Step 23.** This is the gate; nothing below
    starts before it.
-2. Step 23 onward — upper-bound re-simulation and rejection handling, closing
-   the remaining server-side-validation risk in `progress.md`.
+2. Step 24 onward — rejection handling (what a rejected save does to the player,
+   playable session, one audit row) and the remaining anti-cheat steps.
 3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
    shipped only a DEV hook; it remains the one protocol requirement with no
    player-facing implementation.

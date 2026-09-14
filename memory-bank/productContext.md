@@ -176,6 +176,28 @@ device-clock figure; the award is simply made on the next launch that reaches
 the server. The reward formula, the two-hour cap, and the 50% efficiency are
 unchanged; only the clock that decides the elapsed time is now the server's.
 
+Server-milestone Step 23 (2026-09-14) is the other half of that promise: the
+server now checks that an uploaded save claims only progress the elapsed time
+could have produced. It re-derives the maximum from the player's last accepted
+save and rejects a document claiming more, bounding the counters that only ever
+rise — material extracted and transported, gold ever delivered, offline gold ever
+claimed, and the gold the levels and unlocks cost — not the current gold balance,
+which is *supposed* to fall when a player spends. The check is deliberately
+generous: it assumes the player was at their best production for the whole gap
+and allows for whatever their mine already had in progress at the moment the gap
+began, so an honest save is never rejected over a rounding difference or over
+work that was simply already underway, and it only rejects a claim that is
+impossible by a clear margin. A player who legitimately did a lot while away
+still sees it kept, and a player who reconciled two devices normally keeps the
+branch they chose — with **one known limit**: if the other device kept syncing
+during the last couple of minutes of the absence, the chosen branch can be
+refused and the cloud copy stays on the other one. Play and the local save are
+unaffected in that case; only the cloud backup lags, and the fix is tracked as an
+open item for Step 24. A tampered save is not uploaded. This
+does not yet decide what the player is *told* when a save is refused — that
+notice and the audit record are Step 24 — so today a refused upload simply leaves
+the cloud copy unchanged while local play continues.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

@@ -6,10 +6,10 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 22 gate.** Steps 1–8 are validated.
-Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–22 are implemented and await
-user validation together. **Step 23 must not begin until the user validates
-Step 22.**
+**Server milestone: in progress, at the Step 23 gate.** Steps 1–8 are validated.
+Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–23 are implemented and await
+user validation together. **Step 24 must not begin until the user validates
+Step 23.**
 
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
@@ -26,14 +26,14 @@ Full history is archived, not deleted:
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 22 — the server clock is the only clock.** Implemented 2026-09-14, awaiting user validation. |
-| Blocked on the gate | Steps 23–37 |
+| Current gate | **Step 23 — upper-bound re-simulation.** Implemented 2026-09-14, awaiting user validation. |
+| Blocked on the gate | Steps 24–37 |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
 
 Work proceeded past several gates on the user's explicit instruction rather than
-pausing at each one; Steps 9, 10, and 12–22 therefore sit
+pausing at each one; Steps 9, 10, and 12–23 therefore sit
 implemented-but-unvalidated as one batch.
 
 ## Server Milestone Step Status
@@ -64,8 +64,9 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 19 — Client remote repository | Implemented 2026-09-13, awaiting validation |
 | 20 — Adopt existing local saves | Implemented 2026-09-14, awaiting validation |
 | 21 — Survive local storage eviction | Implemented 2026-09-14, awaiting validation; the iOS Safari seven-day measurement is outstanding |
-| 22 — The server clock is the only clock | Implemented 2026-09-14, awaiting validation — **current gate** |
-| 23–37 | Not started, blocked by the Step 22 gate |
+| 22 — The server clock is the only clock | Implemented 2026-09-14, awaiting validation |
+| 23 — Upper-bound re-simulation | Implemented 2026-09-14, awaiting validation — **current gate** |
+| 24–37 | Not started, blocked by the Step 23 gate |
 
 ## Known Risks
 
@@ -75,13 +76,31 @@ with the reason each one closed.
 - **The provisional balance curve is unvalidated.** The reference clip is too
   short to establish exact formulas or all features, and the GDD's values remain
   starting hypotheses. Needs playtesting, not code.
-- **Offline-reward clock manipulation is closed; upper-bound validation is not.**
-  Step 22 moved settlement to the server: the credited reward is the server's
-  `offlineGrant`, computed from the stored `received_at` to the server's own
-  `now()`, so a manipulated client clock cannot move it. What remains open is
-  Step 23 — re-simulating from the last accepted save to bound what *any*
-  document may claim (gold, cumulative delivery, shaft levels) — and Step 24's
-  rejection handling. See `archive/risks-resolved.md` for the closed half.
+- **Offline-reward clock manipulation is closed; upper-bound validation is
+  implemented, pending validation.** Step 22 moved settlement to the server: the
+  credited reward is the server's `offlineGrant`, computed from the stored
+  `received_at` to the server's own `now()`, so a manipulated client clock cannot
+  move it. Step 23 now bounds what *any* document may claim: on upload the server
+  re-derives the maximum the mine could have produced from the last accepted save
+  over the server-measured elapsed time (plus material already in the pipeline)
+  and rejects a document claiming more (`422 save_rejected`), bounding the
+  monotonic cumulative counters and upgrade spend, never current `gold`. A branch
+  that resolved a save conflict is measured from the row's one-generation
+  ancestor, so a chosen branch still commits. What remains open is Step 24's
+  rejection handling (what a rejected save does to the player, and the audit
+  row). See `archive/risks-resolved.md` for the closed half.
+- **The Step 23 fork anchor is one generation deep (N1, known limit).** A save
+  that resolved a `409` is measured from the row's immediate predecessor, so a
+  fork older than roughly two minutes against an actively-syncing peer (a tablet
+  left open while the player plays on their phone offline, then returns and
+  dominates) is still rejected — both anchors are too recent. The player's local
+  save is intact and play continues; only the cloud copy lags, and Step 21's
+  eviction restore would return that inferior branch. The sound fix is to retain
+  fork points (a `saves` history/schema change) or accept a client-supplied
+  verifiable fork revision, a design decision that overlaps Step 24. A
+  server-side "accept any strict superset" exemption was rejected because an
+  inflating cheat submits exactly supersets, so it would gut the bound. Recorded
+  in `architecture.md`'s Step 23 section; not yet scheduled.
 - **iOS Safari deletes all script-writable storage after seven days without
   interaction.** A lapsed player loses the entire local save today. Step 21 now
   detects the partial case (save gone, session still present), restores from the

@@ -1338,6 +1338,55 @@ build whose sign-in keeps failing earns no offline reward until a sign-in lands.
 next boot" behaviour instead of claiming the player always sees the reward
 immediately.
 
+Server-milestone Step 23 added the upload upper bound. New pure
+`evaluateProgressBound` (`src/core/anti-cheat/progressBound.ts`, exported from
+`src/core/index.ts` and therefore in the Step 6 server-core bundle) bounds an
+uploaded document against the last accepted one: each unlocked floor's
+`totalExtracted`/`totalTransported` (transport capped by the shared elevator's
+throughput), `warehouse.totalGoldDelivered`, `warehouse.totalOfflineGoldClaimed`,
+and the total upgrade/unlock spend (`state.upgradeSpend`). It uses the shared
+core's `calculateMineProductionRates` and batch-cost functions on the candidate's
+final configuration held for the whole interval in `O(floors)` — no ticks
+simulated, since the interval can exceed `MAX_CATCH_UP_MS` and an `O(elapsed)`
+walk would blow the §7.1 latency budget. Each counter also carries the material
+in the pipeline at the interval's open (in-flight cycle, floor queue, elevator
+load, warehouse input) so a warm mine over a short interval is accepted (F1); the
+spend allowance is one earning term, not two (F5). `PROGRESS_BOUND_TOLERANCE = 0.05`
+absorbs the fixed-step-vs-continuous-rate remainder and is pinned from both sides
+by `tests/unit/progress-bound.test.ts` (9 tests). `save-sync`'s
+`handleSaveUpload` runs `findProgressBoundViolation` after the `baseRevision`
+check and before the write, returning `422 save_rejected` with
+`detail: { counter, claimed, maximum }` and leaving the row and revision
+unchanged; a first upload is exempt and a stored row whose document or
+`received_at` is unreadable skips the check rather than rejecting (F4). When the
+tight bound fails and the row's one-generation ancestor exists, the check is
+retried against that ancestor over the full interval, so a §7 `409` re-upload of
+a branch that diverged from it commits (F2). The client already handles
+`save_rejected` (Step 19): `describeCloudSaveNotice` maps it to the
+`cloud-sync-*` banner and the document is dropped by shape.
+`supabase/functions/save-sync/index.test.ts` gained the server unit tests,
+including the F2 ancestor anchor and F4 skip, and
+`tests/server-integration/save-rejection.integration.test.ts` proves the live
+rejection plus honest-accept. `tests/server-integration/saveAgeFixture.ts`
+ages a stored row's `received_at` through the service-role client for a fixture
+document that stands for linear offline play (never to fake a divergent branch
+into the linear bound). The `profiles-rls` suite's profile-`created_at`
+assertion gained a `CLOCK_SKEW_TOLERANCE_MS` bound on both sides, because it
+compares the Postgres container's clock with the test process's.
+
+A 2026-09-14 review of Step 23 fixed: **F1 (HIGH)** — a warm mine was rejected
+over short intervals (no term for in-flight material); **F2 (HIGH)** — a §7
+conflict resolution could never be uploaded (elapsed measured only from the
+stored row); **F3 (MEDIUM)** — the tests began cold and the fixtures masked
+F1/F2; new warm-interval and ancestor-anchor regressions were added; **F4
+(LOW)** — an unparseable `received_at` collapsed to a zero-second bound; **F5
+(LOW)** — the spend allowance summed two earning terms; **F6 (LOW)** —
+`architecture.md`'s file-responsibility row now names the module. **N1 (MEDIUM)
+remains open and is a stated limit:** the ancestor anchor is one generation
+deep, so a fork older than ~2 minutes against an actively-syncing peer is still
+rejected; the sound fix (retain fork points) overlaps Step 24. See
+`architecture.md`'s Step 23 section and `progress.md`'s known risks.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

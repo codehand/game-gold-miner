@@ -13,7 +13,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { createInitialGameState, createSaveDocument, BASE_GAME_BALANCE } from '../_shared/generated/core-bundle.js';
+import { createInitialGameState, createSaveDocument, GameNumber, BASE_GAME_BALANCE } from '../_shared/generated/core-bundle.js';
 import { handleRequest, resolveFunctionRoute, type SaveSyncDeps, type StoredSaveRow } from './index.ts';
 
 const FIXTURE_USER_ID = '11111111-1111-1111-1111-111111111111';
@@ -27,6 +27,34 @@ function validSaveDocument(): unknown {
 /** The schema version the server stamps rows with, read off a valid document rather than hardcoded. */
 function serverSchemaVersion(): number {
   return (validSaveDocument() as { schemaVersion: number }).schemaVersion;
+}
+
+/** A valid document whose floor 1 and warehouse carry the given monotonic totals. */
+function progressedSaveDocument(overrides: {
+  readonly delivered: string;
+  readonly extracted: string;
+  readonly transported: string;
+}): unknown {
+  const base = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
+  const state = {
+    ...base,
+    warehouse: {
+      ...base.warehouse,
+      totalGoldDelivered: GameNumber.from(overrides.delivered),
+      totalOfflineGoldClaimed: GameNumber.from(0),
+    },
+    floors: base.floors.map((floor: Record<string, unknown>, index: number) =>
+      index === 0
+        ? {
+            ...floor,
+            totalExtracted: GameNumber.from(overrides.extracted),
+            totalTransported: GameNumber.from(overrides.transported),
+          }
+        : floor,
+    ),
+  };
+
+  return createSaveDocument(state, BASE_GAME_BALANCE, NOW_MS);
 }
 
 function noopDeps(overrides: Partial<SaveSyncDeps> = {}): SaveSyncDeps {
@@ -327,6 +355,8 @@ Deno.test('handleSaveUpload accepts a subsequent upload matching the stored revi
     revision: 7,
     documentJson: JSON.stringify({ schemaVersion: 1, fixture: 'old' }),
     receivedAt: '2026-01-01T00:00:00.000Z',
+    previousDocumentJson: null,
+    previousReceivedAt: null,
   };
   const request = putSaveRequest({ baseRevision: 7, document });
   let written: unknown;
@@ -369,6 +399,8 @@ Deno.test('handleSaveUpload answers 409 revision_conflict when writeSaveRow lose
     revision: 8,
     documentJson: JSON.stringify({ schemaVersion: 1, fixture: 'the-other-request-won' }),
     receivedAt: '2026-01-03T00:00:00.000Z',
+    previousDocumentJson: null,
+    previousReceivedAt: null,
   };
   let readCalls = 0;
   const response = await handleRequest(
@@ -378,7 +410,13 @@ Deno.test('handleSaveUpload answers 409 revision_conflict when writeSaveRow lose
       readCurrentSave: async () => {
         readCalls += 1;
         return readCalls === 1
-          ? { revision: 7, documentJson: JSON.stringify({ schemaVersion: 1, fixture: 'stale' }), receivedAt: '2026-01-01T00:00:00.000Z' }
+          ? {
+              revision: 7,
+              documentJson: JSON.stringify({ schemaVersion: 1, fixture: 'stale' }),
+              receivedAt: '2026-01-01T00:00:00.000Z',
+              previousDocumentJson: null,
+              previousReceivedAt: null,
+            }
           : winner;
       },
       writeSaveRow: async () => false,
@@ -398,6 +436,8 @@ Deno.test('handleSaveUpload answers 409 revision_conflict for a stale baseRevisi
     revision: 9,
     documentJson: JSON.stringify({ schemaVersion: 1, fixture: 'server-side' }),
     receivedAt: '2026-01-02T00:00:00.000Z',
+    previousDocumentJson: null,
+    previousReceivedAt: null,
   };
   const request = putSaveRequest({ baseRevision: 7, document: validSaveDocument() });
   const response = await handleRequest(
@@ -428,6 +468,146 @@ Deno.test('handleSaveUpload answers 409 revision_conflict when the client claims
 
   assert.equal(response.status, 409);
   assert.equal((await response.json()).error.code, 'revision_conflict');
+});
+
+Deno.test('handleSaveUpload answers 422 save_rejected for a document claiming more than the elapsed time allows', async () => {
+  // Step 23: a fresh stored row one minute old, and a candidate claiming a
+  // trillion delivered gold against it.
+  const current = validSaveDocument() as {
+    state: { warehouse: Record<string, unknown> };
+  } & Record<string, unknown>;
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const inflated = {
+    ...current,
+    state: {
+      ...current.state,
+      warehouse: { ...current.state.warehouse, totalGoldDelivered: '1000000000000' },
+    },
+  };
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document: inflated }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async () => {
+        throw new Error('a rejected save must not be written');
+      },
+    }),
+  );
+
+  assert.equal(response.status, 422);
+  const body = await response.json();
+  assert.equal(body.error.code, 'save_rejected');
+  assert.equal(body.error.detail.counter, 'state.warehouse.totalGoldDelivered');
+});
+
+Deno.test('handleSaveUpload accepts a document within the elapsed-time bound', async () => {
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  let written = false;
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document: validSaveDocument() }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async () => {
+        written = true;
+        return true;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(written, true);
+});
+
+Deno.test('handleSaveUpload accepts a dominating branch re-uploaded after a conflict, anchored at the stored row\'s ancestor', async () => {
+  // §7 makes forks first-class: a device that resolved a 409 re-uploads its
+  // OWN branch, which diverged from an older common ancestor, seconds after
+  // the branch that became the stored row. The tight bound (2 s since the
+  // stored row) rejects the divergence; the row's `previous_*` ancestor (3 h)
+  // accepts it. This is review finding F2's regression.
+  const stored: StoredSaveRow = {
+    revision: 2,
+    documentJson: JSON.stringify(
+      progressedSaveDocument({ delivered: '1000', extracted: '1000', transported: '900' }),
+    ),
+    receivedAt: new Date(Date.now() - 2_000).toISOString(),
+    previousDocumentJson: JSON.stringify(validSaveDocument()),
+    previousReceivedAt: new Date(Date.now() - 3 * 60 * 60 * 1_000).toISOString(),
+  };
+  let written = false;
+
+  const response = await handleRequest(
+    putSaveRequest({
+      baseRevision: 2,
+      document: progressedSaveDocument({
+        delivered: '50000',
+        extracted: '50000',
+        transported: '48000',
+      }),
+    }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async () => {
+        written = true;
+        return true;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(written, true);
+});
+
+Deno.test('handleSaveUpload skips the bound when the stored receipt is unparseable, rather than rejecting', async () => {
+  // Review finding F4: an unreadable receipt is the server's own row being
+  // unreadable, not evidence against the document. It must not collapse to a
+  // zero-second bound that rejects every claim.
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt: 'not-a-timestamp',
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  let written = false;
+
+  const response = await handleRequest(
+    putSaveRequest({
+      baseRevision: 1,
+      document: progressedSaveDocument({
+        delivered: '50000',
+        extracted: '50000',
+        transported: '48000',
+      }),
+    }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async () => {
+        written = true;
+        return true;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(written, true);
 });
 
 Deno.test('handleSaveDownload answers 401 with no Authorization header', async () => {
@@ -466,6 +646,8 @@ Deno.test('handleSaveDownload answers 200 with the stored revision, receivedAt, 
     revision: 4,
     documentJson: JSON.stringify(document),
     receivedAt: '2026-03-01T00:00:00.000Z',
+    previousDocumentJson: null,
+    previousReceivedAt: null,
   };
   const response = await handleRequest(
     getSaveRequest(),
@@ -517,6 +699,8 @@ Deno.test('handleSaveDownload derives the offlineGrant from the server receipt, 
           revision: 4,
           documentJson: JSON.stringify(document),
           receivedAt,
+          previousDocumentJson: null,
+          previousReceivedAt: null,
         }),
       }),
     );

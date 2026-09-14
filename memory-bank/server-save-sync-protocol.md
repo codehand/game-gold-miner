@@ -136,7 +136,7 @@ player is shown nothing at all.
 | `save_invalid` | 422 | No | The document failed server-side migrate/validate. Keep playing from local state, stop uploading this document, log the reason. | **"Your progress could not be uploaded. Your game on this device is unchanged."** |
 | `schema_unsupported` | 422 | No | The client is newer than the server. Stop cloud sync for the session. | **"Cloud sync needs an app update. Your progress is saved on this device."** |
 | `revision_conflict` | 409 | No — resolved instead | Run the §7 conflict policy against the returned server document. | *(nothing when dominance resolves it)* — on a genuine fork, the chooser in §7.3 |
-| `save_rejected` | 422 | No | **Reserved for Step 23**; no server code produces it before then. Session stays playable, local save untouched, one audit row written (Step 24). | **"Your progress could not be verified and was not uploaded. Your game on this device is unchanged."** |
+| `save_rejected` | 422 | No | **Emitted from Step 23** when the document claims more than the elapsed time allows. Drop this document and keep syncing (Step 19); the session stays playable and the local save is untouched. One audit row is written in Step 24. | **"Your progress could not be verified and was not uploaded. Your game on this device is unchanged."** |
 | `rate_limited` | 429 | Yes, after `Retry-After` | Back off and retry. Never surfaced — it is self-healing. | *(nothing)* |
 | `server_error` | 500 | Yes, with backoff | Retry per §9; after attempts are exhausted, stop cloud sync for the session. | *(nothing until attempts are exhausted)* — then **"Cloud sync is unavailable. Your progress is saved on this device."** |
 | `service_unavailable` | 503 | Yes, after `Retry-After` | As `server_error`. | As `server_error`. |
@@ -563,17 +563,23 @@ Content-Type: application/json; charset=utf-8
 { "error": { "code": "schema_unsupported", "message": "Unsupported schemaVersion 3.", "detail": { "supported": [2] } } }
 ```
 
-**422 — reserved for Step 23; no server code emits it before then**
+**422 — claimed progress exceeds the elapsed-time bound (Step 23)**
 
 ```json
 {
   "error": {
     "code": "save_rejected",
     "message": "Claimed progress exceeds what the elapsed time allows.",
-    "detail": { "counter": "warehouse.totalGoldDelivered" }
+    "detail": { "counter": "state.warehouse.totalGoldDelivered", "claimed": "1234.5", "maximum": "900.2" }
   }
 }
 ```
+
+`counter` names the bounded field (`state.warehouse.totalGoldDelivered`,
+`state.warehouse.totalOfflineGoldClaimed`, `state.floors[<id>].totalExtracted`,
+`state.floors[<id>].totalTransported`, or `state.upgradeSpend`); `claimed` and
+`maximum` are the two serialized `GameNumber` values that decided it. A first
+upload — no last accepted document to bound against — never produces this code.
 
 **403 / 429 / 500 / 503** — identical bodies to §10.2.
 
@@ -599,7 +605,11 @@ running; §4 decides what, if anything, is shown.
 - Which of the two documents Step 13's chooser presents first, and its visual
   design — Step 13.
 - Rate-limit thresholds and the size cap's enforcement point — Step 25.
-- The re-simulation bound that makes `save_rejected` reachable — Step 23.
+- ~~The re-simulation bound that makes `save_rejected` reachable — Step 23.~~
+  **Implemented by Step 23**: the bound (cumulative counters plus upgrade spend,
+  derived from the candidate's final configuration held over the interval, with a
+  stated 5% tolerance) lives in `src/core/anti-cheat/progressBound.ts` and is
+  applied by `save-sync` before the write.
 - ~~Whether `offlineGrant` is computed on download, upload, or both — Step 22.~~
   **Resolved by Step 22: computed on download**, from the stored `received_at` to
   the server's `now()`, returned in the `GET /v1/save` response (§10.2).
@@ -615,7 +625,7 @@ running; §4 decides what, if anything, is shown.
 | D5 cadence | Finding **F6**, now resolved |
 | Banner reuse and the mostly-blank "player sees" column | `src/ui/SaveDiagnosticBanner.ts`'s recorded no-retraction contract |
 | 64 KB cap | Threat model §4.4; enforced in Step 25 |
-| `save_rejected` reserved | Step 23, biased toward acceptance per threat model §1 |
+| `save_rejected` | Step 23 (`evaluateProgressBound`), biased toward acceptance per threat model §1 |
 
 ## 14. CORS policy — added by Step 12, resolving finding F11
 

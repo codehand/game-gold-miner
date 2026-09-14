@@ -47,6 +47,8 @@ import {
   CURRENT_SAVE_SCHEMA_VERSION,
   GameNumber,
   calculateOfflineGrant,
+  deserializeSaveDocument,
+  evaluateProgressBound,
   SaveDocumentError,
   validateSaveDocument,
 } from '../_shared/generated/core-bundle.js';
@@ -163,6 +165,14 @@ export interface StoredSaveRow {
   readonly revision: number;
   readonly documentJson: string;
   readonly receivedAt: string;
+  /**
+   * One generation of rollback (Step 3's shape). Step 23 uses it as the most
+   * recent common ancestor the server still holds: a document that resolved a
+   * §7 conflict was produced on a branch that diverged from here, not from
+   * `documentJson`.
+   */
+  readonly previousDocumentJson: string | null;
+  readonly previousReceivedAt: string | null;
 }
 
 export type ReadCurrentSave = (userId: string, bearerToken: string) => Promise<StoredSaveRow | null>;
@@ -285,6 +295,24 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     return revisionConflictResponse(current, origin);
   }
 
+  // Server-milestone Step 23: bound what this document may claim over the
+  // server-measured elapsed time since the last accepted document. A first
+  // upload has no last accepted document to bound against and is deliberately
+  // accepted: it is how a brand-new account — and Step 20's adoption of a save
+  // a player earned before the account existed — seeds its cloud save. Rejected
+  // documents never reach the row; the stored revision is unchanged. See
+  // `memory-bank/architecture.md`'s Step 23 section for the modelling rule and
+  // the tolerance's size.
+  const boundViolation = findProgressBoundViolation(current, validatedDocumentJson);
+  if (boundViolation !== null) {
+    return errorResponse(
+      422,
+      'save_rejected',
+      'Claimed progress exceeds what the elapsed time allows.',
+      { detail: { ...boundViolation }, origin },
+    );
+  }
+
   const receivedAt = new Date().toISOString();
   const revision = (current?.revision ?? 0) + 1;
 
@@ -307,6 +335,88 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   }
 
   return jsonResponse(200, { revision, receivedAt }, origin);
+}
+
+interface ProgressBoundDetail {
+  readonly counter: string;
+  readonly claimed: string;
+  readonly maximum: string;
+}
+
+/**
+ * Step 23's upper-bound check, adapted to the stored row shapes. Returns `null`
+ * (accept) for a first upload, which has no previous document to bound against,
+ * and when the previous document cannot be read well enough: the server must
+ * never reject an honest save because its own stored row is unreadable.
+ *
+ * **Two anchors, because §7 makes forks first-class (review finding F2).** The
+ * tight bound measures from the stored row's own receipt. But a device that
+ * resolved a `409` re-uploads *its own* branch seconds after the branch that
+ * became the stored row: that branch diverged from an older document, so
+ * measuring its whole divergence against a few seconds rejects a legitimate
+ * merge. The row keeps one generation of rollback, so when the tight bound
+ * fails and an ancestor exists, the check is retried against that ancestor over
+ * the full interval between its receipt and now. A candidate is accepted if
+ * either anchor allows it.
+ */
+function findProgressBoundViolation(
+  current: StoredSaveRow | null,
+  candidateDocumentJson: string,
+): ProgressBoundDetail | null {
+  if (current === null) {
+    return null;
+  }
+
+  try {
+    const candidate = deserializeState(candidateDocumentJson);
+    const nowMs = Date.now();
+
+    const receivedAtMs = Date.parse(current.receivedAt);
+    if (!Number.isFinite(receivedAtMs)) {
+      // The receipt is the server's own row being unreadable, not evidence
+      // against the document: skip rather than impose the strictest bound
+      // (review finding F4).
+      return null;
+    }
+
+    const tight = evaluateProgressBound({
+      previous: deserializeState(current.documentJson),
+      candidate,
+      elapsedMs: nowMs - receivedAtMs,
+      config: BASE_GAME_BALANCE,
+    });
+    if (tight === null) {
+      return null;
+    }
+
+    if (
+      current.previousDocumentJson !== null &&
+      current.previousReceivedAt !== null
+    ) {
+      const previousReceivedAtMs = Date.parse(current.previousReceivedAt);
+      if (Number.isFinite(previousReceivedAtMs)) {
+        const loose = evaluateProgressBound({
+          previous: deserializeState(current.previousDocumentJson),
+          candidate,
+          elapsedMs: nowMs - previousReceivedAtMs,
+          config: BASE_GAME_BALANCE,
+        });
+        if (loose === null) {
+          return null;
+        }
+      }
+    }
+
+    return tight;
+  } catch (error) {
+    console.error('save-sync upload: skipping the progress bound.', error);
+    return null;
+  }
+}
+
+function deserializeState(documentJson: string) {
+  return deserializeSaveDocument(JSON.parse(documentJson), BASE_GAME_BALANCE)
+    .state;
 }
 
 function revisionConflictResponse(current: StoredSaveRow | null, origin: string | null): Response {
@@ -455,7 +565,9 @@ async function readCurrentSaveRow(userId: string, bearerToken: string): Promise<
 
   const { data, error } = await client
     .from('saves')
-    .select('revision, document_json, received_at')
+    .select(
+      'revision, document_json, received_at, previous_document_json, previous_received_at',
+    )
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -466,7 +578,13 @@ async function readCurrentSaveRow(userId: string, bearerToken: string): Promise<
     return null;
   }
 
-  return { revision: data.revision, documentJson: data.document_json, receivedAt: data.received_at };
+  return {
+    revision: data.revision,
+    documentJson: data.document_json,
+    receivedAt: data.received_at,
+    previousDocumentJson: data.previous_document_json,
+    previousReceivedAt: data.previous_received_at,
+  };
 }
 
 /**

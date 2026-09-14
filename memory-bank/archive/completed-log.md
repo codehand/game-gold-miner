@@ -13,6 +13,98 @@ to live phase status.
 
 ## Completed
 
+- Fixed a 2026-09-14 review of **Step 23** (two HIGH, one MEDIUM, three LOW),
+  all in the upload bound. **F1 (HIGH):** the bound had no term for material
+  already in the pipeline at the interval's open, so a proportional rate term
+  was near-zero over a short interval while a completed extraction cycle and a
+  drained queue were fixed amounts; an honest warm mine that simply kept playing
+  was rejected for intervals of 1–20 s (reproduced: `warm=300s n=1s` rejected
+  `floors[floor-3].totalExtracted`), and those sub-minute intervals are the
+  canonical §9 forced-upload cadence (a routine save, then a pagehide three
+  seconds later). `evaluateProgressBound` now carries each floor's in-flight
+  cycle yield (at the candidate's level), its `materialQueue`, the elevator's
+  `carriedMaterial`, and the warehouse's `inputQueue`. **F2 (HIGH):** elapsed
+  was measured only from the stored row, so a device that resolved a §7 `409`
+  and re-uploaded its *own* branch seconds later had its whole divergence
+  compared to those seconds and was rejected — the winning branch could never
+  commit, pinning the account to the inferior branch. `save-sync` now retries
+  the bound against the row's one-generation ancestor
+  (`previous_document_json`/`previous_received_at`) over the full interval when
+  the tight bound fails; `StoredSaveRow` and the `saves` read gained those two
+  columns. **F3 (MEDIUM):** the tests began from a cold start (the only
+  zero-in-flight state) and the fixtures aged rows to mask F1/F2; a warm-mine
+  short-interval regression and a dominating-sibling ancestor-anchor regression
+  were added, and `saveAgeFixture.ts`'s role narrowed with its comment corrected
+  (its conflict-suite re-upload now commits through the ancestor anchor with no
+  extra aging). **F4 (LOW):** an unparseable `received_at` produced
+  `elapsedMs = 0` (the strictest bound) rather than skipping; it now returns
+  `null`, matching the documented rule. **F5 (LOW):** the spend allowance summed
+  the delivery and offline earning terms (2× the maximum obtainable); it now
+  uses one earning term. **F6 (LOW):** `architecture.md`'s file-responsibility
+  row now names the anti-cheat module. Re-verified end to end: `npm run lint`,
+  637 unit tests, 104 Deno server unit tests, 85 integration tests, 8 server-e2e
+  tests, 52 Chromium E2E, build, secret scan, 10 production smoke, and
+  `npm run verify:server` all pass. Step 24 must not begin until the user
+  validates Step 23. **A follow-up 2026-09-14 review left one MEDIUM open (N1),
+  now recorded as a stated limit rather than a claim of closure:** the ancestor
+  anchor is one generation deep, so a fork older than roughly two minutes
+  against an actively-syncing peer (the tablet-open/phone-offline case) still has
+  both anchors too recent and its honest dominating branch is rejected. The
+  sound fix — retain fork points (a `saves` history/schema change) or accept a
+  client-supplied verifiable fork revision — overlaps Step 24 and is not
+  scheduled; a server-side "accept any strict superset" exemption was rejected
+  because an inflating cheat submits supersets. Recorded in `architecture.md`'s
+  Step 23 section and `progress.md`'s known risks. The same follow-up review
+  found one LOW documentation issue (N2): `productContext.md` claimed a
+  reconciled branch is always kept; it now states the N1 limit, matching the
+  established Step 20/22 L5 standard for not overstating a behavioural change.
+
+- Implemented server-milestone **Step 23, upper-bound re-simulation**, on
+  2026-09-14, on the user's explicit instruction. New pure
+  `evaluateProgressBound` (`src/core/anti-cheat/progressBound.ts`, exported from
+  `src/core/index.ts` and therefore in the Step 6 server-core bundle) bounds an
+  uploaded document against the last accepted one. It re-derives the maximum the
+  mine could have produced over the server-measured elapsed time using the shared
+  core's own rate and batch-cost functions **on the candidate's final
+  configuration held for the whole interval** — a genuine upper bound because
+  levels only rise, and a loose one because a player upgrades gradually. No ticks
+  are simulated: the interval can exceed `MAX_CATCH_UP_MS` (two hours), so an
+  `O(elapsed)` walk would blow the §7.1 upload latency budget, while the rate
+  model gives the same (looser) bound in `O(floors)`. It bounds each unlocked
+  floor's `totalExtracted`/`totalTransported` (transport capped by the shared
+  elevator's throughput), `warehouse.totalGoldDelivered`,
+  `warehouse.totalOfflineGoldClaimed`, and the total gold the levels and unlocks
+  between the two documents required (`state.upgradeSpend`) — never current
+  `gold`, which legitimately falls when the player spends, the same exclusion
+  §7's progress vector makes. `PROGRESS_BOUND_TOLERANCE = 0.05` absorbs the
+  residual between the client's fixed-step simulation and the continuous rate;
+  `tests/unit/progress-bound.test.ts` (8 tests) pins it from **both sides** so
+  widening it silently fails, and the direction is deliberately biased toward
+  accepting a slightly generous save over rejecting an honest one (threat-model
+  §1, finding F3). `save-sync`'s `handleSaveUpload` calls
+  `findProgressBoundViolation` after the `baseRevision` concurrency check and
+  before the write, returning `422 save_rejected` with
+  `detail: { counter, claimed, maximum }`; the stored row and revision are
+  unchanged. A **first upload is exempt** (no last accepted document to bound
+  against — it is how a new account seeds its cloud save and how Step 20 adopts a
+  pre-account save), and an unreadable stored row skips the check rather than
+  rejecting, so the server never rejects an honest save over its own row.
+  Evidence: 8 core unit tests, server unit tests in
+  `supabase/functions/save-sync/index.test.ts`, a live integration suite
+  (`tests/server-integration/save-rejection.integration.test.ts` — rejection plus
+  honest-accept), and `tests/server-integration/saveAgeFixture.ts`'s
+  `ageStoredSave` (service-role), which moves a stored row's `received_at` into
+  the past so the conflict/collision suites' fictional offline progress
+  represents a real interval. **A same-day review then fixed six issues (F1–F6;
+  see the entry above) and raised these counts to 9 core unit tests and 104 Deno
+  server unit tests.** The `profiles-rls`
+  suite's profile-`created_at` assertion gained a `CLOCK_SKEW_TOLERANCE_MS` bound
+  on both sides, because it compares the Postgres container's clock with the test
+  process's. `npm run lint`, 637 unit tests, 104 Deno server unit tests, 85
+  integration tests, 8 server-e2e tests, 52 Chromium E2E, build, secret scan, 10
+  production smoke, and `npm run verify:server` all pass. Step 24 must not begin
+  until the user validates Step 23.
+
 - Fixed a follow-up 2026-09-15 review of Step 22 (two MEDIUM, one LOW).
   **H2-R:** `chooseOfflineReward`'s `min` bound engaged only on a *positive*
   local projection, but the exact H2 scenario — a tab that flushed at reload, or
