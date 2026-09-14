@@ -729,6 +729,110 @@ describe('the Step 17 cloud-save reconcile trigger in src/main.ts', () => {
   });
 });
 
+describe('the Step 18 conflict policy in src/', () => {
+  const reconcileSource = readProjectFile('src/platform/web/cloudSaveReconcile.ts');
+  const policySource = readProjectFile('src/persistence/saveConflictPolicy.ts');
+
+  it('applies the single §7 dominance policy rather than keeping a second, narrower one', () => {
+    // Step 17 shipped a placeholder ("does each side have any progress at
+    // all") and Step 18 replaces it. Both callers must share the one predicate
+    // so an upload `409` and a boot reconcile can never disagree.
+    expect(reconcileSource).toContain('resolveSaveConflict');
+    expect(reconcileSource).not.toContain('reconcileGuestUpgrade');
+    expect(policySource).toContain('export function compareProgress');
+    expect(policySource).toContain('export function resolveSaveConflict');
+  });
+
+  it('is pure save code beside saveSchema.ts, with no network or renderer reachable from it', () => {
+    expect(policySource).toContain("from './saveSchema'");
+    expect(policySource).not.toContain('fetch(');
+    expect(policySource).not.toContain('phaser');
+  });
+
+  it('retains both fork candidates for the session in src/main.ts (§7.3)', () => {
+    const mainSource = readProjectFile('src/main.ts');
+
+    expect(mainSource).toContain('pendingSaveConflict');
+    expect(mainSource).toMatch(/outcome\.kind === 'deferred-conflict'/);
+    expect(mainSource).toContain('pendingSaveConflict: () => pendingSaveConflict');
+  });
+});
+
+describe('the Step 19 client remote repository in src/', () => {
+  const mainSource = readProjectFile('src/main.ts');
+  const replicaSource = readProjectFile('src/persistence/cloudSaveReplica.ts');
+  const compositionSource = readProjectFile('src/persistence/ReplicatingActiveSaveRepository.ts');
+  const uploadSource = readProjectFile('src/platform/web/cloudSaveUpload.ts');
+  const eslintConfig = readProjectFile('eslint.config.mjs');
+
+  it('composes the Dexie repository with a cloud replica, local first', () => {
+    expect(mainSource).toContain('new ReplicatingActiveSaveRepository(localRepository, cloudReplica)');
+    expect(compositionSource).toContain("await this.#primary.storeActiveSave(document)");
+    expect(compositionSource).toContain('this.#replica.enqueue(document)');
+    // The replica is offered only after the local write succeeds, so a failed
+    // local save still rejects and the coordinator still reports it.
+    expect(compositionSource.indexOf('await this.#primary.storeActiveSave(document)'))
+      .toBeLessThan(compositionSource.indexOf('this.#replica.enqueue(document)'));
+  });
+
+  it('keeps the conflict policy pure — the replica reuses it rather than reimplementing §7', () => {
+    expect(replicaSource).toContain('resolveSaveConflict');
+    expect(replicaSource).not.toContain('fetch(');
+    expect(replicaSource).not.toContain('phaser');
+    expect(compositionSource).not.toContain('fetch(');
+  });
+
+  it('puts the one network call in src/platform, never in src/persistence or src/core', () => {
+    expect(uploadSource).toContain('export async function uploadCloudSaveViaFetch');
+    expect(uploadSource).toContain('method: \'PUT\'');
+    expect(eslintConfig).toContain("name: 'fetch'");
+    expect(eslintConfig).toContain('Core modules must not depend on the network.');
+  });
+
+  it('forces the three §9 triggers: lifecycle flush, claimed reward, post-reconcile', () => {
+    expect(mainSource).toContain('onForceSave: (document) => repository.forceCloudUpload(document)');
+    expect(mainSource).toContain("outcome.kind === 'kept-local' || outcome.kind === 'no-cloud-save'");
+    expect(mainSource).toContain('forceCloudUploadLatestLocalDocument');
+    expect(mainSource).toContain('repository.forceCloudUpload(claimedDocument)');
+  });
+
+  it('retains an upload fork’s candidates through the same session hook as a boot fork', () => {
+    expect(mainSource).toMatch(/onFork: \(local, remote\) => \{[\s\S]*pendingSaveConflict = \{ kind: 'deferred-conflict', local, remote \}/);
+    expect(mainSource).toContain('toPublicCloudUploadEvent');
+  });
+
+  it('stops cloud sync on an upload fork, so the unshown remote branch cannot be replaced', () => {
+    // §7.3: with no chooser, a fork must stop. The client holds the server's
+    // revision after the conflict, so one more routine save would be accepted
+    // and would silently replace the branch the player never saw.
+    expect(replicaSource).toMatch(/case 'fork':[\s\S]*this\.stop\(\)/);
+  });
+
+  it('surfaces a terminal cloud failure through the §4 banner copy', () => {
+    // §4 fixes the exact player-facing copy; it must reach the banner, not
+    // only a DEV diagnostic.
+    expect(mainSource).toContain('describeCloudSaveNotice');
+    expect(mainSource).toMatch(/'sync-stopped' \|\| event\.kind === 'document-dropped'/);
+    expect(mainSource).toContain('saveDiagnostics.report(describeCloudSaveNotice(event.code))');
+  });
+
+  it('suspends local saves while a mid-session remote save is adopted and reloaded', () => {
+    // 2026-09-13 follow-up: `reload()` keeps running the current script, so the
+    // driver's purchase/heartbeat paths could overwrite the just-adopted
+    // document with a stale one. The flag, the cancel, and both guards are the
+    // fix.
+    expect(mainSource).toContain('suspendLocalSavesForCloudAdopt');
+    expect(mainSource).toContain('localSavesSuspended = true');
+    expect(mainSource).toContain('persistence.cancelScheduledSave()');
+    expect(mainSource).toMatch(/if \(localSavesSuspended\) \{\s*return;/);
+    const adoptFn = mainSource.slice(mainSource.indexOf('async function adoptRemoteDocumentFromUpload'));
+    const adoptBody = adoptFn.slice(0, adoptFn.indexOf('\n}\n') + 3);
+    expect(adoptBody.indexOf('suspendLocalSavesForCloudAdopt()')).toBeLessThan(
+      adoptBody.indexOf('await localRepository.storeActiveSave(document)'),
+    );
+  });
+});
+
 describe('verification wiring', () => {
   const packageJson = JSON.parse(readProjectFile('package.json'));
 

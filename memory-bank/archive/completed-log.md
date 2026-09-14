@@ -13,6 +13,75 @@ to live phase status.
 
 ## Completed
 
+- Fixed a third 2026-09-14 review pass of Step 19 (one LOW residual, R1). The
+  state-shape guard from the second pass suppressed every later save once the
+  server rejected one — every valid save of the fixed fifteen-floor schema
+  shares the same shape — while `isStopped` reported sync as live, so a
+  transient rejection (a mid-rollout deploy, a config mismatch) killed cloud
+  sync for the session with no recovery. A **forced** trigger (lifecycle flush,
+  claimed reward, post-reconcile upload) now bypasses the guard, and a
+  successful forced upload clears the suppression so the routine cadence
+  resumes. Two regressions cover forced recovery and the resumed cadence;
+  `npm run lint`, 582 unit tests, 99 Deno server unit tests, 51 Chromium E2E,
+  build, secret scan, 10 production smoke, and `npm run verify:server` all
+  pass.
+
+- Fixed a second 2026-09-14 review pass of Step 19 (one CRITICAL, one MEDIUM
+  residual). **CRITICAL (C1):** the upload-path `409` fork only recorded its
+  two candidates and never stopped the replica, so the next routine save —
+  carrying the server revision the client had just learned — was accepted and
+  silently replaced the remote branch the player was never shown, violating
+  protocol §7's preamble and §7.3. The fork branch now calls `stop()`, exactly
+  as the boot fork and the malformed-`409` branch already did; a regression
+  asserts `isStopped` and that a later forced save uploads nothing, and a
+  `server-stack.test.ts` static assertion now requires the fork branch to stop
+  rather than pinning the record-only behaviour. **MEDIUM (M3 residual):** the
+  first fix keyed the dropped-document memory on `JSON.stringify(document)`,
+  which includes the ever-moving `savedAtTimestampMs`, so the running game's
+  next save still re-uploaded the same broken save once per cadence window. The
+  memory is now `stateShapeSignature(document.state)` — sorted keys and value
+  types, with array length — which is stable across idle play but changes if
+  the state's structure does. Two regressions cover the fresh-timestamp case
+  and a genuine structural change. `npm run lint`, 581 unit tests, 99 Deno
+  server unit tests, 51 Chromium E2E, build, secret scan, 10 production smoke,
+  and `npm run verify:server` all pass.
+
+- Fixed the 2026-09-14 review of Step 19 (one HIGH, three MEDIUM, six LOW),
+  each verified. **HIGH (H2):** §4's entire "Player sees" column was
+  unimplemented — terminal cloud failures reached only a DEV diagnostic, so a
+  production player whose sync permanently stopped was told nothing.
+  `describeCloudSaveNotice(code)` now maps every §4 failure code to its exact
+  copy under a namespaced `cloud-sync-*` code, and `src/main.ts`'s replica
+  `onEvent` reports it through the existing `SaveDiagnosticBanner` on
+  `sync-stopped`/`document-dropped`; retryable failures still surface nothing
+  while a retry is pending. **MEDIUM (M3):** `save_invalid`/`save_rejected`
+  now remember the rejected document's serialization and refuse to re-upload
+  a byte-identical one, so the coordinator's next debounce no longer becomes
+  one failed request per cadence window. **MEDIUM (M4):** the mid-session
+  `remote-dominates` adopt now sets a `localSavesSuspended` flag and cancels
+  the coordinator's scheduled save before storing and reloading, and the
+  purchase/heartbeat/claim paths all honour it, closing the window in which a
+  debounced flush could overwrite the adopted remote with the stale
+  in-memory document. **MEDIUM (M5):** the version-2 save bump had left the
+  protocol's §3/§10.2/§10.3 examples and the two schema-copy references at
+  `SaveDocumentV1` / `schemaVersion: 1`; all updated to V2, including the
+  `schema_unsupported` example and the `warehouse.totalOfflineGoldClaimed`
+  field. **LOW (L6):** `local-dominates` no longer overwrites a newer queued
+  document with the older one it just sent. **(L7):** the retry budget is now
+  five retries after the initial attempt, so the 16 s step is reached, and
+  §9 was amended to match (the 60 s cap applies only to a longer sequence).
+  **(L8):** `#attempt` resets on the `local-dominates` re-upload, so attempts
+  are scoped per trigger. **(L9):** the upload `Content-Type` now carries
+  `; charset=utf-8`. **(L10):** a `409` whose `receivedAt` does not parse is a
+  terminal `malformed_request` rather than `NaN` in the fork display.
+  **(L11):** `save-sync` now refuses only a schema version *newer* than the
+  server's and passes older ones to the shared `migrateSaveDocument`, matching
+  §4's definition of `schema_unsupported` and no longer rejecting a
+  Step 16/17-written v1 row. Evidence: 7 added client unit tests plus a new
+  Deno server unit test; `npm run lint`, 578 unit tests, 99 Deno server unit
+  tests, 51 Chromium E2E, build, secret scan, and 10 production smoke all
+  pass.
+
 - Implemented server-milestone **Step 19, client remote repository**, on
   2026-09-13, on the user's explicit instruction — §9's upload cadence and
   §7's `409` half that Step 18 deferred. Local storage stays primary; the
@@ -30,7 +99,8 @@ to live phase status.
   2. `src/persistence/cloudSaveReplica.ts` is the pure policy half: §9's
      minimum 60 s interval with coalescing (only the newest document is
      ever sent), forced bypass, the 1/2/4/8/16 s bounded backoff (five
-     attempts, then cloud sync stops for the session), and §7 applied to a
+     retries after the initial request, then cloud sync stops for the
+     session), and §7 applied to a
      `409` through the one `resolveSaveConflict` predicate — a dominating
      local re-uploads against the server revision, a dominating remote is
      handed to the caller to adopt, an equal pair adopts the revision

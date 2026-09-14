@@ -249,7 +249,13 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     typeof document === 'object' && document !== null && 'schemaVersion' in document
       ? (document as { schemaVersion: unknown }).schemaVersion
       : undefined;
-  if (schemaVersion !== CURRENT_SAVE_SCHEMA_VERSION) {
+  // §4 defines `schema_unsupported` as "the client is newer than the server",
+  // so only a version *above* the current one is refused here. An older
+  // version is deliberately passed through to `validateSaveDocument`, which
+  // runs the shared `migrateSaveDocument` (version 1 → 2) the client bundle
+  // already ships — refusing it would make this function stricter than the
+  // shared chain it exists to reuse and would reject a Step 16/17-written row.
+  if (typeof schemaVersion !== 'number' || schemaVersion > CURRENT_SAVE_SCHEMA_VERSION) {
     return errorResponse(422, 'schema_unsupported', `Unsupported schemaVersion ${String(schemaVersion)}.`, {
       detail: { supported: [CURRENT_SAVE_SCHEMA_VERSION] },
       origin,

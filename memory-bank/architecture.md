@@ -272,7 +272,7 @@ remote repository with §9's upload cadence and §7's `409` half (19).
 
 `GET /v1/save` and `PUT /v1/save` on a Supabase Edge Function are the only save
 path; `saves` denies client writes entirely, so PostgREST is never used for a
-save. A `SaveDocumentV1` crosses the wire byte-for-byte — the protocol adds no
+save. A `SaveDocumentV2` crosses the wire byte-for-byte — the protocol adds no
 field to it and rewrites none of it. A server-owned monotonic `revision`
 provides optimistic concurrency: an upload carries the `baseRevision` it started
 from, and a stale one is refused with the server's current revision and
@@ -915,7 +915,7 @@ local document via the injected repository (treating no local record at all
 — a genuinely new device — as the same fresh baseline `createInitialGameState`
 produces, not as "nothing to compare"), runs the downloaded document through
 `validateSaveDocument` before using it at all — a 2026-09-12 review found the
-original code cast `body.document` straight to `SaveDocumentV1` with no
+original code cast `body.document` straight to an unvalidated document type with no
 migration, harmless only by luck until a schema 2 exists to skip past — and
 applies `resolveSaveConflict`. `'remote-dominates'` writes the cloud document
 into local storage and reloads the page; `'local-dominates'` and
@@ -982,11 +982,13 @@ holds no `fetch`, no DOM type, and no storage:
   newest queued document; `enqueue(..., { force: true })` bypasses the
   interval but not an in-flight upload.
 - **§9 backoff**: a retryable failure schedules 1/2/4/8/16 s, at most five
-  attempts, then stops cloud sync for the session. Retries never block a
+  retries (six requests including the initial one), then stops cloud sync for
+  the session. Retries never block a
   frame or a local save, and a failure that is terminal per §4
   (`forbidden`/`malformed_request`/`payload_too_large`/`schema_unsupported`)
   stops sync immediately, while `save_invalid`/`save_rejected` drop only that
-  document and keep syncing.
+  document and keep syncing — the dropped document is remembered by
+  serialization, so the coordinator's next identical re-offer is not retried.
 - **§7 on `409`**: the `409` body is validated first, so the pure predicate
   never indexes into an unvalidated document — exactly the caller Step 18's
   own comment said must exist. `resolveSaveConflict` then decides:
@@ -1022,6 +1024,31 @@ session hook Step 18 established.
 The boundary is enforced, not just documented: `eslint.config.mjs` now bans
 `fetch`, `XMLHttpRequest`, `WebSocket`, and `EventSource` inside
 `src/core/**`, and `tests/unit/architecture.test.ts` probes all four.
+
+A 2026-09-14 review fixed eleven issues here. **The upload `409` fork now calls
+`stop()`**, exactly like the boot fork: the client holds the server's revision
+after the conflict, so without stopping, one later routine save would be
+accepted and silently replace the remote branch the player was never shown
+(§7 preamble and §7.3). Terminal cloud failures also reach the player:
+`describeCloudSaveNotice(code)` maps every §4 failure code to its exact copy
+under a namespaced `cloud-sync-*` code, and `src/main.ts`'s replica `onEvent`
+reports it through the existing `SaveDiagnosticBanner` on
+`sync-stopped`/`document-dropped`; retryable failures still show nothing while
+a retry is pending. A `save_invalid`/`save_rejected` save is remembered by the
+*shape* of its authoritative state (stable across moving values, so the loop
+does not survive a fresh timestamp) and is not retried by the routine cadence;
+a **forced** trigger still bypasses that guard, and a successful one clears it,
+so sync is genuinely live (`isStopped` stays false) and a transient
+server-side rejection can recover without a reload (R1, pass 3). The
+mid-session `remote-dominates` adopt sets `localSavesSuspended` and cancels the
+coordinator's scheduled save before storing and reloading, and the
+purchase/heartbeat/claim paths honour it. `local-dominates` preserves a newer
+queued document; the retry budget is five retries after the initial request
+(so the 16 s step is reached); an unparseable `receivedAt` on a `409` is a
+terminal `malformed_request`. The one real network adapter sends
+`application/json; charset=utf-8`. On the server, `save-sync` now refuses only
+a schema version newer than its own and passes older ones to the shared
+`migrateSaveDocument` instead of rejecting them.
 
 ### Guest linking and the identity collision (Step 13)
 
@@ -1762,7 +1789,7 @@ create table public.entitlements (
 | `saves` | `user_id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade; one row per user |
 | `saves` | `revision` | bigint | no | — | `> 0`; monotonic, `+1` per accepted upload; the D2 concurrency token |
 | `saves` | `schema_version` | integer | no | — | `> 0`; denormalized from the document for migration sweeps |
-| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV1` |
+| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV2` |
 | `saves` | `received_at` | timestamptz | no | `now()` | server clock; the D3 anchor for every elapsed-time calculation |
 | `saves` | `previous_revision` | bigint | yes | — | `< revision`; null-together with the other two `previous_*` columns |
 | `saves` | `previous_document_json` | text | yes | — | ≤ 65536 bytes; one generation of rollback |
@@ -1903,15 +1930,15 @@ Throttling belongs per caller and per address, in Step 25.
 | Object store | Field | Type | Required / nullable | Key / constraint |
 |---|---|---|---|---|
 | `saves` | `id` | string | Required, non-null | Primary key via key path `id`; application writes only the literal `active`. |
-| `saves` | `document` | structured-clone-compatible `SaveDocumentV1` object | Required, non-null | Must pass version-1 migration and validation before runtime deserialization. |
+| `saves` | `document` | structured-clone-compatible `SaveDocumentV2` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
 
-The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, legacy version-1 saves containing the former four-floor prefix are expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults; the document and database versions remain `1`.
+The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, a legacy version-1 save (including the former four-floor prefix, expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults) is migrated to version 2 by defaulting `warehouse.totalOfflineGoldClaimed` to `"0"`; the IndexedDB database version remains `1`.
 
 **Synchronous lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1`.
 
 | Key | Value | Lifetime / relationship |
 |---|---|---|
-| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV1` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV2` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
 
 The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
 

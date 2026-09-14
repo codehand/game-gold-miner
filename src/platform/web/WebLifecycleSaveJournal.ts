@@ -2,7 +2,7 @@ import type { BaseGameBalanceConfig } from '../../config';
 import {
   validateSaveDocument,
   type ActiveSaveRepository,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
 } from '../../persistence';
 
 export const LIFECYCLE_SAVE_JOURNAL_KEY =
@@ -34,7 +34,7 @@ export class WebLifecycleSaveJournal {
     this.#config = config;
   }
 
-  public read(): SaveDocumentV1 | null {
+  public read(): SaveDocumentV2 | null {
     if (this.#storage === null) {
       return null;
     }
@@ -53,7 +53,7 @@ export class WebLifecycleSaveJournal {
     }
   }
 
-  public write(document: SaveDocumentV1): void {
+  public write(document: SaveDocumentV2): void {
     if (this.#storage === null) {
       return;
     }
@@ -157,7 +157,7 @@ implements ActiveSaveRepository {
     }
   }
 
-  public async storeActiveSave(document: SaveDocumentV1): Promise<void> {
+  public async storeActiveSave(document: SaveDocumentV2): Promise<void> {
     await this.#repository.storeActiveSave(document);
     this.#journal.clearThrough(document.savedAtTimestampMs);
   }

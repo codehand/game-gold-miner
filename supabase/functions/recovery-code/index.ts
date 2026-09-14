@@ -96,9 +96,9 @@
  * completes `verifyOtp`, `src/main.ts` runs the exact same
  * `triggerCloudSaveReconcile()` every other sign-in path already runs —
  * the redeeming device's local IndexedDB save is untouched by the session
- * swap, so Step 17's `reconcileCloudSaveAtBoot`/`reconcileGuestUpgrade`
- * compares it against the recovered account's cloud save exactly as it
- * would for a Google or Telegram sign-in.
+ * swap, so Step 17's `reconcileCloudSaveAtBoot`/`resolveSaveConflict`
+ * (Step 18) compares it against the recovered account's cloud save exactly as
+ * it would for a Google or Telegram sign-in.
  */
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0';
 

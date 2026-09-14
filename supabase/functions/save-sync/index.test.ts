@@ -24,6 +24,11 @@ function validSaveDocument(): unknown {
   return createSaveDocument(state, BASE_GAME_BALANCE, NOW_MS);
 }
 
+/** The schema version the server stamps rows with, read off a valid document rather than hardcoded. */
+function serverSchemaVersion(): number {
+  return (validSaveDocument() as { schemaVersion: number }).schemaVersion;
+}
+
 function noopDeps(overrides: Partial<SaveSyncDeps> = {}): SaveSyncDeps {
   return {
     resolveCaller: async () => {
@@ -218,7 +223,7 @@ Deno.test('handleSaveUpload answers 400 when baseRevision is neither a number no
 });
 
 Deno.test('handleSaveUpload answers 422 schema_unsupported for a schemaVersion the server does not understand', async () => {
-  const document = { ...(validSaveDocument() as Record<string, unknown>), schemaVersion: 2 };
+  const document = { ...(validSaveDocument() as Record<string, unknown>), schemaVersion: 3 };
   const request = putSaveRequest({ baseRevision: null, document });
   const response = await handleRequest(
     request,
@@ -228,7 +233,44 @@ Deno.test('handleSaveUpload answers 422 schema_unsupported for a schemaVersion t
   assert.equal(response.status, 422);
   const body = await response.json();
   assert.equal(body.error.code, 'schema_unsupported');
-  assert.deepEqual(body.error.detail.supported, [1]);
+  assert.deepEqual(body.error.detail.supported, [serverSchemaVersion()]);
+});
+
+Deno.test('handleSaveUpload migrates and accepts an older version-1 document rather than refusing it', async () => {
+  const current = validSaveDocument() as Record<string, unknown> & {
+    state: { warehouse: Record<string, unknown> };
+  };
+  const legacyWarehouse = Object.fromEntries(
+    Object.entries(current.state.warehouse).filter(
+      ([key]) => key !== 'totalOfflineGoldClaimed',
+    ),
+  );
+  const legacy = {
+    ...current,
+    schemaVersion: 1,
+    state: { ...current.state, warehouse: legacyWarehouse },
+  };
+  const request = putSaveRequest({ baseRevision: null, document: legacy });
+  let writtenDocumentJson = '';
+  const response = await handleRequest(
+    request,
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => null,
+      writeSaveRow: async (_userId, row) => {
+        writtenDocumentJson = row.documentJson;
+        return true;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const written = JSON.parse(writtenDocumentJson) as {
+    schemaVersion: number;
+    state: { warehouse: Record<string, unknown> };
+  };
+  assert.equal(written.schemaVersion, serverSchemaVersion());
+  assert.equal(written.state.warehouse.totalOfflineGoldClaimed, '0');
 });
 
 Deno.test('handleSaveUpload answers 422 save_invalid for a document that fails validation', async () => {
@@ -269,7 +311,7 @@ Deno.test('handleSaveUpload accepts a first upload (baseRevision null, no stored
     userId: FIXTURE_USER_ID,
     row: {
       revision: 1,
-      schemaVersion: 1,
+      schemaVersion: serverSchemaVersion(),
       documentJson: JSON.stringify(document),
       receivedAt: body.receivedAt,
       previousRevision: null,
@@ -307,7 +349,7 @@ Deno.test('handleSaveUpload accepts a subsequent upload matching the stored revi
     userId: FIXTURE_USER_ID,
     row: {
       revision: 8,
-      schemaVersion: 1,
+      schemaVersion: serverSchemaVersion(),
       documentJson: JSON.stringify(document),
       receivedAt: body.receivedAt,
       previousRevision: 7,

@@ -11,7 +11,7 @@ import {
 import {
   createSaveDocument,
   deserializeSaveDocument,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
 } from '../../src/persistence';
 import { LIFECYCLE_SAVE_JOURNAL_KEY } from '../../src/platform/web';
 
@@ -257,7 +257,7 @@ async function waitForBootedScene(page: Page): Promise<void> {
     .toHaveAttribute('data-boot-scene', 'BootScene');
 }
 
-async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
+async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
   return page.evaluate(async () => {
     const request = indexedDB.open('cat-mine-idle');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -272,7 +272,7 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV1 } | undefined>(
+    const record = await new Promise<{ document?: SaveDocumentV2 } | undefined>(
       (resolve, reject) => {
         getRequest.onerror = () => reject(getRequest.error);
         getRequest.onsuccess = () => resolve(getRequest.result);
@@ -286,13 +286,13 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
 
 async function readLifecycleJournal(
   page: Page,
-): Promise<SaveDocumentV1 | null> {
+): Promise<SaveDocumentV2 | null> {
   return page.evaluate((key) => {
     const serialized = localStorage.getItem(key);
 
     return serialized === null
       ? null
-      : JSON.parse(serialized) as SaveDocumentV1;
+      : JSON.parse(serialized) as SaveDocumentV2;
   }, LIFECYCLE_SAVE_JOURNAL_KEY);
 }
 

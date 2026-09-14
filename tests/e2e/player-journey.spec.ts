@@ -30,7 +30,7 @@ import { calculateMineLayout } from '../../src/game/layout';
 import {
   createSaveDocument,
   deserializeSaveDocument,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
 } from '../../src/persistence';
 import {
   formatCreditedDuration,
@@ -52,21 +52,21 @@ test.setTimeout(120_000);
 interface JourneyStep {
   readonly event: EconomyProgressionEvent;
   readonly controlKey: string;
-  readonly expectedDocument: SaveDocumentV1;
+  readonly expectedDocument: SaveDocumentV2;
 }
 
 interface JourneyPlan {
   readonly steps: readonly JourneyStep[];
-  readonly finalDocument: SaveDocumentV1;
+  readonly finalDocument: SaveDocumentV2;
   readonly returnTimestampMs: number;
-  readonly expectedClaimDocument: SaveDocumentV1;
+  readonly expectedClaimDocument: SaveDocumentV2;
   readonly expectedOfflineRewardLabel: string;
   readonly expectedOfflineTimeLabel: string;
 }
 
 interface JourneyResult {
-  readonly beforeOffline: SaveDocumentV1;
-  readonly afterClaim: SaveDocumentV1;
+  readonly beforeOffline: SaveDocumentV2;
+  readonly afterClaim: SaveDocumentV2;
   readonly browserErrors: readonly string[];
 }
 
@@ -113,7 +113,7 @@ function createJourneyPlan(): JourneyPlan {
     state = applyExpectedPurchase(state, event);
     exercised.add(event.type);
 
-    let expectedDocument: SaveDocumentV1;
+    let expectedDocument: SaveDocumentV2;
 
     try {
       expectedDocument = createSaveDocument(
@@ -406,7 +406,7 @@ function firstMilestoneLevel(): number {
 }
 
 function highestStageLevel(
-  state: SaveDocumentV1['state'] | GameState,
+  state: SaveDocumentV2['state'] | GameState,
 ): number {
   return Math.max(
     ...state.floors
@@ -559,7 +559,7 @@ async function readJsonAttribute<T>(page: Page, attribute: string): Promise<T> {
   return JSON.parse(serialized) as T;
 }
 
-async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
+async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
   return page.evaluate(async () => {
     const request = indexedDB.open('cat-mine-idle');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -574,7 +574,7 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV1 } | undefined>(
+    const record = await new Promise<{ document?: SaveDocumentV2 } | undefined>(
       (resolve, reject) => {
         getRequest.onerror = () => reject(getRequest.error);
         getRequest.onsuccess = () => resolve(getRequest.result);
@@ -586,7 +586,7 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
   });
 }
 
-async function requireStoredSave(page: Page): Promise<SaveDocumentV1> {
+async function requireStoredSave(page: Page): Promise<SaveDocumentV2> {
   const document = await readStoredSave(page);
 
   if (document === null) {

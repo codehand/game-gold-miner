@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { createInitialGameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV1 } from '../../src/persistence';
+import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
 import { LOCAL_ANON_KEY } from './authFixture';
 
 /**
@@ -36,7 +36,7 @@ async function createGuestIdentity(): Promise<GuestIdentity> {
   return { userId: data.user.id, accessToken: data.session.access_token };
 }
 
-function validDocument(): SaveDocumentV1 {
+function validDocument(): SaveDocumentV2 {
   const state = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
   return createSaveDocument(state, BASE_GAME_BALANCE, NOW_MS);
 }

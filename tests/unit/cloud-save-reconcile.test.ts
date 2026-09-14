@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV1 } from '../../src/persistence';
+import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
 import {
   downloadCloudSaveViaFetch,
   reconcileCloudSaveAtBoot,
@@ -18,12 +18,12 @@ import {
  */
 const NOW_MS = 1_788_000_000_000;
 
-function freshDocument(): SaveDocumentV1 {
+function freshDocument(): SaveDocumentV2 {
   const state = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
   return createSaveDocument(state, BASE_GAME_BALANCE, NOW_MS);
 }
 
-function progressingDocument(): SaveDocumentV1 {
+function progressingDocument(): SaveDocumentV2 {
   const state = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
   const level = state.elevator.level + 1;
   const progressed: GameState = {
@@ -57,14 +57,37 @@ describe('reconcileCloudSaveAtBoot', () => {
     expect(outcome).toEqual({ kind: 'no-session' });
   });
 
-  it('does nothing when the account has no cloud save', async () => {
-    const outcome = await reconcileCloudSaveAtBoot('token', NOW_MS, fakeDeps({ download: async () => null }));
-    expect(outcome).toEqual({ kind: 'no-cloud-save' });
+  it('reports the server revision to the Step 19 replica as soon as the cloud document arrives', async () => {
+    const onServerRevision = vi.fn();
+
+    await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: { loadActiveSave: async () => null, storeActiveSave: async () => {} },
+        download: async () => ({ document: progressingDocument(), receivedAtMs: NOW_MS, revision: 11 }),
+        onServerRevision,
+      }),
+    );
+
+    expect(onServerRevision).toHaveBeenCalledWith(11);
+  });
+
+  it('reports no revision when the account has no cloud save', async () => {
+    const onServerRevision = vi.fn();
+
+    await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({ download: async () => null, onServerRevision }),
+    );
+
+    expect(onServerRevision).not.toHaveBeenCalled();
   });
 
   it('treats a device with no local record at all as having no progress, and adopts the cloud save', async () => {
-    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS };
-    let written: SaveDocumentV1 | null = null;
+    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, revision: 1 };
+    let written: SaveDocumentV2 | null = null;
     const reload = vi.fn();
     const clearLifecycleJournal = vi.fn();
 
@@ -108,7 +131,7 @@ describe('reconcileCloudSaveAtBoot', () => {
       NOW_MS,
       fakeDeps({
         repository: { loadActiveSave: async () => progressingDocument(), storeActiveSave: async () => {} },
-        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS }),
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 1 }),
         clearLifecycleJournal,
       }),
     );
@@ -120,7 +143,7 @@ describe('reconcileCloudSaveAtBoot', () => {
   });
 
   it('adopts the cloud save when the local device has a fresh record but no progress', async () => {
-    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS };
+    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, revision: 1 };
     const reload = vi.fn();
 
     const outcome = await reconcileCloudSaveAtBoot(
@@ -141,7 +164,7 @@ describe('reconcileCloudSaveAtBoot', () => {
   });
 
   it('keeps local untouched when local has progress and the cloud save has none', async () => {
-    const stored: CloudSaveDownload = { document: freshDocument(), receivedAtMs: NOW_MS };
+    const stored: CloudSaveDownload = { document: freshDocument(), receivedAtMs: NOW_MS, revision: 1 };
     const storeActiveSave = vi.fn(async () => {});
     const reload = vi.fn();
 
@@ -160,7 +183,7 @@ describe('reconcileCloudSaveAtBoot', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('defers a genuine fork — both sides have progress — writing and reloading nothing', async () => {
+  it('defers a genuine fork — both sides have progress — writing and reloading nothing, and retains both candidates', async () => {
     const remoteDocument = (() => {
       const state = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
       return createSaveDocument(
@@ -171,24 +194,74 @@ describe('reconcileCloudSaveAtBoot', () => {
     })();
     const storeActiveSave = vi.fn(async () => {});
     const reload = vi.fn();
+    const localDocument = progressingDocument();
 
     const outcome = await reconcileCloudSaveAtBoot(
       'token',
       NOW_MS,
       fakeDeps({
-        repository: { loadActiveSave: async () => progressingDocument(), storeActiveSave },
-        download: async () => ({ document: remoteDocument, receivedAtMs: NOW_MS }),
+        repository: { loadActiveSave: async () => localDocument, storeActiveSave },
+        download: async () => ({ document: remoteDocument, receivedAtMs: NOW_MS, revision: 1 }),
         reload,
       }),
     );
 
-    expect(outcome).toEqual({ kind: 'deferred-conflict' });
+    expect(outcome.kind).toBe('deferred-conflict');
+    if (outcome.kind !== 'deferred-conflict') {
+      throw new Error('expected a deferred conflict');
+    }
+    // §7.3: neither candidate is destroyed, and both travel back to the caller
+    // so the unchosen one survives the session.
+    expect(outcome.local.document).toEqual(localDocument);
+    expect(outcome.local.lastPlayedMs).toBe(localDocument.savedAtTimestampMs);
+    expect(outcome.remote.document).toEqual(remoteDocument);
+    expect(outcome.remote.lastPlayedMs).toBe(NOW_MS);
+    expect(storeActiveSave).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('reports same progress — vectors equal — without writing over either document', async () => {
+    const localDocument = freshDocument();
+    const storeActiveSave = vi.fn(async () => {});
+    const reload = vi.fn();
+
+    const outcome = await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: { loadActiveSave: async () => localDocument, storeActiveSave },
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 1 }),
+        reload,
+      }),
+    );
+
+    expect(outcome).toEqual({ kind: 'same-progress' });
+    expect(storeActiveSave).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('adopts local silently when local is a strict superset of the cloud save', async () => {
+    const localDocument = progressingDocument();
+    const storeActiveSave = vi.fn(async () => {});
+    const reload = vi.fn();
+
+    const outcome = await reconcileCloudSaveAtBoot(
+      'token',
+      NOW_MS,
+      fakeDeps({
+        repository: { loadActiveSave: async () => localDocument, storeActiveSave },
+        download: async () => ({ document: freshDocument(), receivedAtMs: NOW_MS, revision: 1 }),
+        reload,
+      }),
+    );
+
+    expect(outcome).toEqual({ kind: 'kept-local' });
     expect(storeActiveSave).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
   });
 
   it('falls back to a fresh baseline, rather than failing, when the local document is corrupt', async () => {
-    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS };
+    const stored: CloudSaveDownload = { document: progressingDocument(), receivedAtMs: NOW_MS, revision: 1 };
 
     const outcome = await reconcileCloudSaveAtBoot(
       'token',
@@ -243,7 +316,11 @@ describe('downloadCloudSaveViaFetch', () => {
 
     const result = await downloadCloudSaveViaFetch('https://example.test/v1/save', 'token');
 
-    expect(result).toEqual({ document, receivedAtMs: Date.parse('2026-01-01T00:00:00.000Z') });
+    expect(result).toEqual({
+      document,
+      receivedAtMs: Date.parse('2026-01-01T00:00:00.000Z'),
+      revision: 3,
+    });
     vi.unstubAllGlobals();
   });
 

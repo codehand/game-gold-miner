@@ -17,7 +17,7 @@ import {
   SAVE_FAILURE_MESSAGE,
   createSaveDocument,
   deserializeSaveDocument,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
 } from '../../src/persistence';
 
 interface Rect {
@@ -593,7 +593,7 @@ async function waitForBootedScene(page: Page): Promise<void> {
   );
 }
 
-async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
+async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
   return page.evaluate(async () => {
     const request = indexedDB.open('cat-mine-idle');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -608,7 +608,7 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV1 } | undefined>(
+    const record = await new Promise<{ document?: SaveDocumentV2 } | undefined>(
       (resolve, reject) => {
         getRequest.onerror = () => reject(getRequest.error);
         getRequest.onsuccess = () => resolve(getRequest.result);

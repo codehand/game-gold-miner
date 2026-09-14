@@ -81,6 +81,20 @@ describe('core architecture boundary', () => {
     expect(restrictedImportMessages).toHaveLength(2);
     expect(restrictedGlobalMessages).toHaveLength(1);
   });
+
+  it('rejects network APIs (Step 19: src/core must not learn a server exists)', async () => {
+    const messages = await lintCore(`
+      void fetch('https://example.test/save');
+      new XMLHttpRequest();
+      new WebSocket('wss://example.test');
+      new EventSource('/events');
+    `);
+    const restrictedGlobalMessages = messages.filter(
+      ({ ruleId }) => ruleId === 'no-restricted-globals',
+    );
+
+    expect(restrictedGlobalMessages).toHaveLength(4);
+  });
 });
 
 describe('layout geometry boundary', () => {

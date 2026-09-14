@@ -5,7 +5,7 @@ import { catchUpSimulation, createInitialGameState } from '../../src/core';
 import {
   createSaveDocument,
   type ActiveSaveRepository,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
 } from '../../src/persistence';
 import {
   LIFECYCLE_SAVE_JOURNAL_KEY,
@@ -120,7 +120,7 @@ describe('web lifecycle save journal', () => {
   });
 });
 
-function createDocument(elapsedMs: number): SaveDocumentV1 {
+function createDocument(elapsedMs: number): SaveDocumentV2 {
   const initialState = createInitialGameState(
     BASE_GAME_BALANCE,
     START_TIMESTAMP_MS,
@@ -151,13 +151,13 @@ class MemoryKeyValueStorage implements KeyValueStorage {
 }
 
 class MemoryActiveSaveRepository implements ActiveSaveRepository {
-  public document: SaveDocumentV1 | null = null;
+  public document: SaveDocumentV2 | null = null;
 
   public async loadActiveSave(): Promise<unknown | null> {
     return this.document;
   }
 
-  public async storeActiveSave(document: SaveDocumentV1): Promise<void> {
+  public async storeActiveSave(document: SaveDocumentV2): Promise<void> {
     this.document = document;
   }
 }

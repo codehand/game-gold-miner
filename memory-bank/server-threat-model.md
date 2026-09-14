@@ -612,7 +612,7 @@ by discipline, not the bundle by policy. The gap F5 names is unchanged: no CSP,
 no dependency-integrity check, and nothing preventing the next surface from
 reintroducing a sink.
 
-**F6 — Upload cadence is unspecified, and it is the cost driver.** *(Resolved by Step 2 decision D5 in `memory-bank/server-save-sync-protocol.md` §9.)*
+**F6 — Upload cadence is unspecified, and it is the cost driver.** *(Resolved by Step 2 decision D5 in `memory-bank/server-save-sync-protocol.md` §9; implemented by Step 19 on 2026-09-13 — exercised.)*
 `SavePersistenceCoordinator` debounces at `DEFAULT_SAVE_DEBOUNCE_MS = 500`. Step 19
 composes a remote repository with the Dexie one; taken literally that is a
 network write every 500 ms per player, which sets the Step 25 rate limits, the
@@ -620,9 +620,13 @@ network write every 500 ms per player, which sets the Step 25 rate limits, the
 **Default:** local persistence keeps its 500 ms debounce unchanged; **cloud
 upload is a separate, slower cadence** — at most one upload per 60 seconds per
 player, plus one forced upload at each lifecycle flush (`pagehide`,
-`visibilitychange`) and one after a claimed offline reward. Step 2 must specify
-this in the protocol; Step 19 must implement the two cadences as distinct;
-Step 25's limits must be set above it.
+`visibilitychange`), one after a claimed offline reward, and one after boot
+reconcile when local is ahead. Step 2 specified this in the protocol; Step 19
+implements the two cadences as distinct in
+`src/persistence/cloudSaveReplica.ts`
+(`CLOUD_UPLOAD_MIN_INTERVAL_MS = 60_000`, coalescing, and the forced
+`enqueue(..., { force: true })` path wired to all three triggers in
+`src/main.ts`); Step 25's limits must be set above it.
 
 **F7 — Step 11 presumes an Apple Developer Program membership that the budget
 does not contain.** Sign in with Apple on the web is not like Google's: it
@@ -711,7 +715,7 @@ depends on nothing outside them.
 | 16 Save upload | Reuses the shared validation chain | Step 6, **F2** |
 | 17 Download and boot order | Boot from local, reconcile after; sync cadence | Plan; **F6** |
 | 18 Conflict resolution | No progress lost unseen | §1, §6 |
-| 19 Client remote repository | Local and cloud cadences are distinct; `src/core` stays pure | **F6**; §6 |
+| 19 Client remote repository | **Implemented 2026-09-13** — local and cloud cadences are distinct (`cloudSaveReplica.ts`), `src/core` stays pure (lint + architecture probe) | **F6** (exercised); §6 |
 | 20 Adopt existing local saves | Existing saves must survive | §7.7 |
 | 21 Survive storage eviction | No first-party cookie; measurement needs seven days | §7.5; **F8** |
 | 22 Server clock | Must change the clock without changing the economy | **F4** |

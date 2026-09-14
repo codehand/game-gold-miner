@@ -54,6 +54,16 @@ export function claimOfflineReward(
     state: {
       ...state,
       gold: state.gold.add(pendingReward.reward),
+      // Server-milestone Step 18: the offline reward is the one gold source
+      // that does not pass through `warehouse.totalGoldDelivered`, so it is
+      // recorded in its own monotonic counter. That counter is part of the
+      // save-conflict progress vector, which is what keeps a claimed reward
+      // from being silently discarded by a dominating save.
+      warehouse: {
+        ...state.warehouse,
+        totalOfflineGoldClaimed:
+          state.warehouse.totalOfflineGoldClaimed.add(pendingReward.reward),
+      },
     },
     pendingReward: null,
     claimedReward: pendingReward.reward,

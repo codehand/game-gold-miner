@@ -23,7 +23,7 @@ import {
   type ActiveSaveRepository,
   type ActiveGameLoadResult,
   type PersistenceDiagnostic,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
   type SaveRecoveryWarning,
 } from '../../src/persistence';
 import { bindSaveLifecycle } from '../../src/platform/web';
@@ -130,7 +130,7 @@ describe('save persistence coordination', () => {
     });
     const page = new FakeLifecycleTarget();
     const visibility = new FakeVisibilityTarget();
-    const journalDocuments: SaveDocumentV1[] = [];
+    const journalDocuments: SaveDocumentV2[] = [];
     const document = createProgressedDocument();
     const unbind = bindSaveLifecycle(
       coordinator,
@@ -300,7 +300,7 @@ describe('corrupt and incompatible save recovery', () => {
   it('starts fresh and records an incompatible-version warning', async () => {
     const unsupportedPayload = {
       ...createProgressedDocument(),
-      schemaVersion: 2,
+      schemaVersion: 3,
     };
     const repository = new MemoryActiveSaveRepository();
     repository.loadedValue = unsupportedPayload;
@@ -501,7 +501,7 @@ describe('corrupt and incompatible save recovery', () => {
 });
 
 class MemoryActiveSaveRepository implements ActiveSaveRepository {
-  public readonly storedDocuments: SaveDocumentV1[] = [];
+  public readonly storedDocuments: SaveDocumentV2[] = [];
   public failLoads = false;
   public failWrites = false;
   public loadedValue: unknown | null | undefined;
@@ -516,7 +516,7 @@ class MemoryActiveSaveRepository implements ActiveSaveRepository {
       : this.loadedValue;
   }
 
-  public async storeActiveSave(document: SaveDocumentV1): Promise<void> {
+  public async storeActiveSave(document: SaveDocumentV2): Promise<void> {
     if (this.failWrites) {
       throw new Error('Simulated write failure.');
     }
@@ -559,7 +559,7 @@ function nextDatabaseName(): string {
   return `cat-mine-idle-test-${databaseSequence}`;
 }
 
-function createProgressedDocument(durationMs = 350_000): SaveDocumentV1 {
+function createProgressedDocument(durationMs = 350_000): SaveDocumentV2 {
   const state = simulateEconomyProgression(durationMs, TIMESTAMP_MS).state;
 
   return createSaveDocument(

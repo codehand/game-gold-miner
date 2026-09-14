@@ -90,6 +90,26 @@ export default defineConfig(
           name: 'Deno',
           message: 'Core modules must not depend on the Deno/server runtime.',
         },
+        {
+          // Server-milestone Step 19: "`src/core` must not learn that a server
+          // exists." Step 19 adds the first cloud code in `src/`, and the
+          // architecture test probes these names so a future core module
+          // cannot quietly grow a network call.
+          name: 'fetch',
+          message: 'Core modules must not depend on the network.',
+        },
+        {
+          name: 'XMLHttpRequest',
+          message: 'Core modules must not depend on the network.',
+        },
+        {
+          name: 'WebSocket',
+          message: 'Core modules must not depend on the network.',
+        },
+        {
+          name: 'EventSource',
+          message: 'Core modules must not depend on the network.',
+        },
       ],
       'no-restricted-imports': [
         'error',

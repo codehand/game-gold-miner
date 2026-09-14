@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState } from '../../src/core';
-import { createSaveDocument, reconcileGuestUpgrade, type SaveDocumentV1 } from '../../src/persistence';
+import { createSaveDocument, resolveSaveConflict, type SaveDocumentV2 } from '../../src/persistence';
 import { downloadCloudSaveViaFetch } from '../../src/platform/web';
 import { LOCAL_ANON_KEY } from './authFixture';
 
@@ -11,7 +11,14 @@ import { LOCAL_ANON_KEY } from './authFixture';
  * Server-milestone Step 13: proves the three required guest-upgrade flows
  * against the live stack, composing the real Step 16/17 endpoints
  * (`downloadCloudSaveViaFetch`, `PUT /v1/save`) with the real, pure
- * `reconcileGuestUpgrade` predicate from `src/persistence`.
+ * `resolveSaveConflict` predicate from `src/persistence`.
+ *
+ * Step 18 completed §7's dominance rule, so a divergent pair that is a strict
+ * superset no longer asks — it resolves silently, which is exactly what the
+ * Step 2 protocol requires. These flows therefore build each case explicitly:
+ * a fresh account (nothing to compare), a progress-free guest (adopt the
+ * account's save), and a genuine fork where each side holds progress the other
+ * lacks.
  *
  * The real trigger — `identity_already_exists` after a `linkIdentity`
  * redirect (Google) or every sign-in (Telegram, which never links) —
@@ -58,13 +65,13 @@ function putSave(accessToken: string, body: unknown): Promise<Response> {
   });
 }
 
-function freshDocument(): SaveDocumentV1 {
+function freshDocument(): SaveDocumentV2 {
   const state = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
   return createSaveDocument(state, BASE_GAME_BALANCE, NOW_MS);
 }
 
-/** A validly-upgraded elevator level `bump` past starting, so two calls with different bumps produce genuinely different documents. */
-function progressingDocument(bump: number): SaveDocumentV1 {
+/** A validly-upgraded elevator level `bump` past starting. */
+function elevatorDocument(bump: number): SaveDocumentV2 {
   const state = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
   const level = state.elevator.level + bump;
   return createSaveDocument(
@@ -81,6 +88,24 @@ function progressingDocument(bump: number): SaveDocumentV1 {
   );
 }
 
+/** A validly-upgraded warehouse level `bump` past starting — progress on a different axis from the elevator. */
+function warehouseDocument(bump: number): SaveDocumentV2 {
+  const state = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
+  const level = state.warehouse.level + bump;
+  return createSaveDocument(
+    {
+      ...state,
+      warehouse: {
+        ...state.warehouse,
+        level,
+        capacity: calculateLevelEffect(BASE_GAME_BALANCE.warehouse.baseCapacity, level, BASE_GAME_BALANCE.warehouse.upgrade),
+      },
+    },
+    BASE_GAME_BALANCE,
+    NOW_MS,
+  );
+}
+
 describe('guest-upgrade collision reconciliation (server-milestone Step 13)', () => {
   it('flow 1: a fresh identity link keeps everything — nothing to ask when the account never had a save', async () => {
     // Standing in for a successful `linkIdentity`: Steps 10/12 already prove
@@ -88,21 +113,21 @@ describe('guest-upgrade collision reconciliation (server-milestone Step 13)', ()
     // the linked account from here on — there is no separate "remote" id to
     // switch to at all.
     const guest = await createGuestIdentity();
-    const localDocument = progressingDocument(1);
+    const localDocument = elevatorDocument(1);
 
     const remote = await downloadCloudSaveViaFetch(SAVE_URL, guest.accessToken);
     expect(remote).toBeNull();
 
-    const decision = reconcileGuestUpgrade(localDocument, remote, BASE_GAME_BALANCE);
-    expect(decision).toEqual({ kind: 'adopt-local' });
+    const decision = resolveSaveConflict(localDocument, remote);
+    expect(decision).toEqual({ kind: 'local-dominates' });
 
     const uploaded = await putSave(guest.accessToken, { baseRevision: null, document: localDocument });
     expect(uploaded.status).toBe(200);
   });
 
-  it('flow 2: guest with progress signs into an account holding a different save, and is asked — each choice honoured exactly', async () => {
+  it('flow 2: guest with progress signs into an account holding a genuinely different save, and is asked — each choice honoured exactly', async () => {
     const existingAccount = await createGuestIdentity();
-    const existingDocument = progressingDocument(2);
+    const existingDocument = warehouseDocument(1);
     const uploadedExisting = await putSave(existingAccount.accessToken, {
       baseRevision: null,
       document: existingDocument,
@@ -110,18 +135,18 @@ describe('guest-upgrade collision reconciliation (server-milestone Step 13)', ()
     expect(uploadedExisting.status).toBe(200);
     const existingRevision = (await uploadedExisting.json()).revision;
 
-    // The still-present local device document — genuinely different progress
-    // from the account's own, so this is a real fork, not a same-document
-    // no-op.
-    const localDocument = progressingDocument(3);
+    // The still-present local device document — a different axis of progress
+    // (elevator rather than warehouse), so neither save dominates the other
+    // and this is a real fork, not a same-document no-op.
+    const localDocument = elevatorDocument(1);
 
     const remote = await downloadCloudSaveViaFetch(SAVE_URL, existingAccount.accessToken);
     expect(remote).not.toBeNull();
 
-    const decision = reconcileGuestUpgrade(localDocument, remote, BASE_GAME_BALANCE);
-    expect(decision.kind).toBe('ask');
-    if (decision.kind !== 'ask') {
-      throw new Error('expected an ask decision');
+    const decision = resolveSaveConflict(localDocument, remote);
+    expect(decision.kind).toBe('fork');
+    if (decision.kind !== 'fork') {
+      throw new Error('expected a fork decision');
     }
     expect(decision.local.document).toEqual(localDocument);
     expect(decision.local.lastPlayedMs).toBe(localDocument.savedAtTimestampMs);
@@ -140,13 +165,13 @@ describe('guest-upgrade collision reconciliation (server-milestone Step 13)', ()
 
   it('flow 2b: choosing to keep the account\'s save instead leaves it unchanged', async () => {
     const existingAccount = await createGuestIdentity();
-    const existingDocument = progressingDocument(4);
+    const existingDocument = warehouseDocument(2);
     await putSave(existingAccount.accessToken, { baseRevision: null, document: existingDocument });
 
-    const localDocument = progressingDocument(5);
+    const localDocument = elevatorDocument(2);
     const remote = await downloadCloudSaveViaFetch(SAVE_URL, existingAccount.accessToken);
-    const decision = reconcileGuestUpgrade(localDocument, remote, BASE_GAME_BALANCE);
-    expect(decision.kind).toBe('ask');
+    const decision = resolveSaveConflict(localDocument, remote);
+    expect(decision.kind).toBe('fork');
 
     // Choice B: "keep account" — no upload at all; the account's save is
     // exactly what a client would now adopt locally (Step 17's reconcile
@@ -157,13 +182,13 @@ describe('guest-upgrade collision reconciliation (server-milestone Step 13)', ()
 
   it('flow 3: a guest with no progress signing into an existing account is not asked at all', async () => {
     const existingAccount = await createGuestIdentity();
-    const existingDocument = progressingDocument(6);
+    const existingDocument = elevatorDocument(3);
     await putSave(existingAccount.accessToken, { baseRevision: null, document: existingDocument });
 
     const remote = await downloadCloudSaveViaFetch(SAVE_URL, existingAccount.accessToken);
-    const decision = reconcileGuestUpgrade(freshDocument(), remote, BASE_GAME_BALANCE);
+    const decision = resolveSaveConflict(freshDocument(), remote);
 
-    expect(decision).toEqual({ kind: 'adopt-remote' });
+    expect(decision).toEqual({ kind: 'remote-dominates' });
   });
 
   it('flow 3b: a fresh guest signing into an account with no save either is not asked, and has nothing to lose', async () => {
@@ -172,7 +197,7 @@ describe('guest-upgrade collision reconciliation (server-milestone Step 13)', ()
     const remote = await downloadCloudSaveViaFetch(SAVE_URL, existingAccount.accessToken);
     expect(remote).toBeNull();
 
-    const decision = reconcileGuestUpgrade(freshDocument(), remote, BASE_GAME_BALANCE);
-    expect(decision).toEqual({ kind: 'adopt-local' });
+    const decision = resolveSaveConflict(freshDocument(), remote);
+    expect(decision).toEqual({ kind: 'local-dominates' });
   });
 });

@@ -43,3 +43,7 @@ export {
   type RecoveryCodeAuthClient,
   type RedeemRecoveryCodeResult,
 } from './recoveryCode';
+export {
+  uploadCloudSaveViaFetch,
+  type CloudSaveUploadAuthClient,
+} from './cloudSaveUpload';

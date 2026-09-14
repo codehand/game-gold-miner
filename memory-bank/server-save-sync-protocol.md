@@ -79,7 +79,7 @@ player-facing copy is fixed in §4 so it can be reviewed without reading code.
 
 ### The save document
 
-The `document` field is a `SaveDocumentV1` exactly as
+The `document` field is a `SaveDocumentV2` exactly as
 `memory-bank/architecture.md` defines it, passed through byte-for-byte in both
 directions. The protocol adds no field to it and rewrites none of it. Examples
 below elide the floor array for readability; the real payload carries all
@@ -87,7 +87,7 @@ fifteen entries.
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "savedAtTimestampMs": 1757332496789,
   "effectiveProductionRatePerSecond": "12.5",
   "state": {
@@ -111,7 +111,7 @@ fifteen entries.
     "warehouse": {
       "level": 9, "capacity": "48",
       "inputQueue": "12", "conversionProgress": 0.2,
-      "totalGoldDelivered": "84210"
+      "totalGoldDelivered": "84210", "totalOfflineGoldClaimed": "0"
     }
   }
 }
@@ -226,7 +226,8 @@ increase:
 - per floor, all fifteen: `isUnlocked` (false < true), `mineShaftLevel`,
   `totalExtracted`, `totalTransported`
 - `elevator.level`
-- `warehouse.level`, `warehouse.totalGoldDelivered`
+- `warehouse.level`, `warehouse.totalGoldDelivered`,
+  `warehouse.totalOfflineGoldClaimed`
 
 `A` **dominates** `B` when every component of `M(A)` is greater than or equal to
 its counterpart in `M(B)`.
@@ -245,20 +246,66 @@ fork on a device that had simply bought an upgrade. This is the same distinction
 Step 23 makes when it bounds cumulative counters rather than current gold, and
 for the same reason.
 
-**A constraint this places on future features.** Dominance holds only while
-those fields are monotonic. A prestige, respec, or reset mechanic would break
-it, and would have to revise this policy in the same change. Recorded here so
-the coupling is not discovered afterwards.
+**The rule in player-facing terms.** A player never reads `M` or the word
+"dominance". What they experience is:
+
+> If one save is ahead of the other in every way that only ever moves forward —
+> more floors opened, deeper shafts, more material extracted and transported, a
+> higher elevator or warehouse, more gold ever delivered, more gold ever claimed
+> offline — the game keeps the ahead save without asking, because keeping it
+> loses nothing. If neither save is ahead in every way, each one holds something
+> the other lacks, so the game shows both and lets the player choose. The game
+> never picks one for the player in that case, and the save that was not chosen
+> is not destroyed.
+
+Every branch is checked against one rule, not against a win condition: **no
+accepted branch may destroy progress the player was not shown.** A silent
+resolution is only ever allowed when the chosen save is a superset of the other
+in the vector above.
+
+**Why `gold` needs no special case: the vector completes its sources.** §7.1
+excludes `gold` so a purchase does not false-fork, and that is safe only if every
+gold *source* is vectored. `gold = startingGold + totalGoldDelivered +
+totalOfflineGoldClaimed − spent`, and `spent` is a deterministic function of the
+levels and unlocks already in `M`, so equal `M` implies equal `gold` and a
+dominating side has earned at least as much cumulatively. `claimOfflineReward`
+was the one source that broke this — it credited a capped offline reward
+straight to `gold` and moved no vector field, letting a strict-subset save be
+silently bankrupted by a dominating one. Step 18 fixed it structurally by
+crediting the new monotonic counter `warehouse.totalOfflineGoldClaimed` (a
+version-2 save field) alongside `gold` and adding it to `M`. Two earlier
+heuristic patches were rejected as unsound: a "discarded side holds more gold"
+comparison forked the ordinary purchase and the new-device restore path, and a
+lifetime-cumulative bound was dead after any spending because `gold` falls while
+the bound grows. With the vector complete, `resolveSaveConflict` carries no
+`gold` logic at all.
+
+**Two further constraints on future features.** Dominance holds only while
+those fields are monotonic: a prestige, respec, or reset mechanic would break it
+and would have to revise this policy in the same change. And any future gold (or
+resource) source that can increase `gold` outside `totalGoldDelivered` must join
+`M` — as `totalOfflineGoldClaimed` did — or the equal-`M`-implies-equal-`gold`
+argument fails again. Both are recorded here so the coupling is not discovered
+afterwards.
 
 The predicate is pure and belongs beside `saveSchema.ts` in `src/persistence`,
-over two `SaveDocumentV1` values. It must not go in `src/core`, which is not
-allowed to know that saves exist.
+over two `SaveDocumentV2` values. It must not go in `src/core`, which is not
+allowed to know that saves exist. Step 18 lands it as
+`compareProgress`/`resolveSaveConflict` in
+`src/persistence/saveConflictPolicy.ts`, with the §7.3 chooser fields in
+`describeSaveConflictCandidate`.
 
 ### 7.2 Where it runs
 
 Client-side, on the `409` response, which already contains both documents. The
 server does not adjudicate — it only refuses a stale write. This keeps
 adjudication next to the only party who can be asked a question.
+
+The same predicate runs at **boot reconcile** (§11), where the client compares
+its local document against the account's downloaded cloud document before any
+upload has happened. Both callers share the one function, so an upload conflict
+and a boot comparison can never disagree. Step 19 wires the `409` half; Step 17/18
+wire the boot half.
 
 ### 7.3 What the player is shown on a genuine fork
 
@@ -326,8 +373,10 @@ specified here rather than discovered in Step 36.
 - **Coalescing:** only the newest document is ever uploaded. A queued upload is
   replaced, never queued behind. This mirrors the local coordinator, which
   already keeps a single `#pendingDocument`.
-- **Retry backoff** for retryable codes: 1 s, 2 s, 4 s, 8 s, 16 s, capped at
-  60 s, at most five attempts per trigger. Retries never block a frame, never
+- **Retry backoff** for retryable codes: 1 s, 2 s, 4 s, 8 s, 16 s, at most
+  five retries per trigger (six requests including the initial one). The
+  listed sequence ends at 16 s, so the 60 s cap applies only to a longer
+  sequence if one is ever introduced. Retries never block a frame, never
   delay a local save, and never hold up teardown at a lifecycle flush.
 - A lifecycle-flush upload is best-effort: the local write is what must survive
   teardown, and it already does through the localStorage journal.
@@ -371,7 +420,7 @@ Authorization: Bearer <access token>
 {
   "revision": 8,
   "receivedAt": "2026-09-08T12:34:56.789Z",
-  "document": { "schemaVersion": 1, "savedAtTimestampMs": 1757332496789, "…": "…" }
+  "document": { "schemaVersion": 2, "savedAtTimestampMs": 1757332496789, "…": "…" }
 }
 ```
 
@@ -422,7 +471,7 @@ Content-Type: application/json; charset=utf-8
 ```json
 {
   "baseRevision": 8,
-  "document": { "schemaVersion": 1, "savedAtTimestampMs": 1757332496789, "…": "…" }
+  "document": { "schemaVersion": 2, "savedAtTimestampMs": 1757332496789, "…": "…" }
 }
 ```
 
@@ -456,7 +505,7 @@ Content-Type: application/json; charset=utf-8
     "detail": {
       "serverRevision": 9,
       "receivedAt": "2026-09-08T12:36:10.221Z",
-      "document": { "schemaVersion": 1, "…": "…" }
+      "document": { "schemaVersion": 2, "…": "…" }
     }
   }
 }
@@ -483,7 +532,7 @@ Content-Type: application/json; charset=utf-8
 **422 — schema newer than the server understands**
 
 ```json
-{ "error": { "code": "schema_unsupported", "message": "Unsupported schemaVersion 2.", "detail": { "supported": [1] } } }
+{ "error": { "code": "schema_unsupported", "message": "Unsupported schemaVersion 3.", "detail": { "supported": [2] } } }
 ```
 
 **422 — reserved for Step 23; no server code emits it before then**

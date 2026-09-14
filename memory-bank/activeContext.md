@@ -29,6 +29,27 @@ What Step 19 added, in one line each:
 banned there by `eslint.config.mjs` with its own `architecture.test.ts` probe, so
 the network boundary is enforced rather than documented.
 
+Three 2026-09-14 review passes of Step 19 found and fixed: **C1 (CRITICAL,
+pass 2)** — the upload `409` fork did not stop the replica, so the next routine
+save was accepted against the server's revision and silently replaced the
+branch the player was never shown; the fork branch now calls `stop()`, exactly
+as the boot fork does. **H2 (HIGH, pass 1)** — §4's player-facing copy was only
+a DEV diagnostic; `describeCloudSaveNotice` now maps every failure code to its
+namespaced `cloud-sync-*` banner notice. **M3 (MEDIUM, passes 1 and 2)** — a
+`save_invalid`/`save_rejected` save is remembered by the *shape* of its
+authoritative state; routine saves of that shape are not retried, while a
+forced trigger still is and clears the suppression on success, so a transient
+server rejection can recover without killing sync. **R1 (LOW, pass 3)** was
+that a shape key alone left sync dead-but-reported-live; the forced-trigger
+recovery path is the fix. **M4** — local saves are suspended while a
+mid-session remote is adopted and reloaded. **M5** — the protocol and both
+schema copies now describe the V2 wire format. **L6–L10** — `local-dominates`
+preserves a newer queued document, the retry budget is five retries (so the
+16 s step is reached), `#attempt` resets per trigger, the upload sends
+`charset=utf-8`, and an unparseable `receivedAt` is rejected. **L11** —
+`save-sync` now migrates an older schema instead of refusing it, matching §4's
+`schema_unsupported` direction.
+
 The narrative account of every earlier phase is in
 `archive/phase-narrative.md`; finished work is in `archive/completed-log.md`.
 
