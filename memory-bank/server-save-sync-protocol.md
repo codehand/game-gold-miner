@@ -586,6 +586,21 @@ upload — no last accepted document to bound against — never produces this co
 On every rejection the stored row is unchanged and the stored revision does not
 advance.
 
+**Audit (Step 24).** Every authenticated upload attempt — accepted or rejected —
+writes exactly one append-only `save_audit` row the client can neither read nor
+write: the outcome, the error code, the client's claimed `baseRevision` and the
+server's resulting revision, the body size, the server-authored reason, and the
+client's own `savedAtTimestampMs` recorded beside the server's `occurred_at` and
+never trusted. An instant outside the range a `timestamptz` round-trips (years
+0001–9999) is recorded as absent with the raw value kept in `detail`, so the row
+is still written. The write is best-effort: a failure is logged and never changes
+the response. An unauthenticated request (401) writes nothing. An unexpected
+server failure after the caller resolves is recorded as a `rejected` /
+`server_error` row before the `500`, so even a crash leaves one row. A
+`baseRevision` that is not `null` or a positive integer is a §5 violation and is
+refused as `400 malformed_request` (recorded, with a null revision in the row)
+before it could reach the audit's typed column.
+
 ## 11. Boot order
 
 Cloud latency must never delay the first frame (Step 17). The sequence:

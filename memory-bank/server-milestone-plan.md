@@ -560,8 +560,8 @@ documentation alone.
 
 ## Status
 
-**Steps 1–8 validated. Step 11 cut. Steps 9, 10, and 12–23 implemented and
-awaiting user validation as one batch. Step 23 is the current gate: Step 24
+**Steps 1–8 validated. Step 11 cut. Steps 9, 10, and 12–24 implemented and
+awaiting user validation as one batch. Step 24 is the current gate: Step 25
 must not begin until the user validates it.** Step 21's iOS Safari seven-day
 deletion measurement is outstanding and needs a real device plus a seven-day
 observation (finding F8); the `navigator.storage.persist()` half is measured

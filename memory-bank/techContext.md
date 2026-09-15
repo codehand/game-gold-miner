@@ -1384,8 +1384,54 @@ F1/F2; new warm-interval and ancestor-anchor regressions were added; **F4
 `architecture.md`'s file-responsibility row now names the module. **N1 (MEDIUM)
 remains open and is a stated limit:** the ancestor anchor is one generation
 deep, so a fork older than ~2 minutes against an actively-syncing peer is still
-rejected; the sound fix (retain fork points) overlaps Step 24. See
-`architecture.md`'s Step 23 section and `progress.md`'s known risks.
+rejected; the sound fix (retain fork points) was not taken up by Step 24 and is
+not scheduled. See `architecture.md`'s Step 23 section and `progress.md`'s known
+risks.
+
+Server-milestone Step 24 (rejection handling). The `save_audit` table already
+exists in the Step 5 migration with no RLS policy for any client role; Step 24 is
+its writer. `save-sync`'s `handleSaveUpload` records one row per authenticated
+`PUT /v1/save` attempt through the new `writeSaveAudit` dep
+(`writeSaveAuditViaServiceRole`, the second and last service-role use in the
+function): `outcome`, `error_code`, `base_revision`, `resulting_revision`,
+`document_bytes`, `client_reported_at` (the document's own `savedAtTimestampMs`,
+recorded and never trusted), and a `detail` with the server-authored reason (a
+Step 23 bound violation's `{counter, claimed, maximum}`, a validation `reason`, a
+conflict's `serverRevision`, and so on). Accepted attempts are recorded too; the
+write is best-effort (logged, never fatal); an unauthenticated request writes
+nothing. The `server-stack.test.ts` service-role pin now also asserts
+`admin.from('save_audit').insert(`. Evidence: 6 new Deno unit tests,
+`tests/server-integration/save-audit.integration.test.ts` (5 live tests including
+RLS invisibility/unwritability to a client token and an unrepresentable client
+clock still writing its row), and `tests/server-e2e/save-rejection.spec.ts`
+proving the player keeps their local save, keeps playing, and sees the
+`cloud-sync-save-rejected` notice.
+
+A 2026-09-14 review of Step 24 fixed: **H1 (HIGH)** — `readClientClock` now
+bounds `savedAtTimestampMs` to the range a `timestamptz` round-trips through
+`Date#toISOString` (years 0001–9999) and records the raw out-of-range value in
+`detail.clientReportedAtOutOfRangeMs`; previously a year-10000+ value formatted
+as an extended-year string Postgres refused, so the insert threw, the
+best-effort writer swallowed it, and the attempt left no row — erasing the
+evidence of the clock attack the column exists to expose. **M1 (MEDIUM)** — an
+unexpected collaborator failure (`readCurrentSave`/`writeSaveRow` throwing, or
+the non-`SaveDocumentError` rethrow in validation) is now caught and recorded as
+a `rejected`/`server_error` row before the 500, so a repeated crash is visible
+instead of a silent unaudited 500. **L1 (LOW)** — the Content-Length rejection
+path adds `declaredBytes` to `detail`, marking that `document_bytes` there is
+the client's own header, not a measurement. **L2 (LOW)** — every rejection costs
+a service-role round trip on the response path; bounding that is Step 25's job
+and is carried there. A follow-up pass found **H2 (HIGH)**: `baseRevision` was
+written to the audit's `bigint` column unvalidated, so a fractional (`1.5`) or
+out-of-int8 (`1e300`) value aborted the insert and the attempt left no row —
+including M1's own `server_error` row. It is now validated against §5 before
+`auditContext.baseRevision` is assigned (null or a positive safe integer;
+anything else is a recorded `400 malformed_request`), and
+`writeSaveAuditViaServiceRole` coerces non-safe-integer revisions to null and
+clamps `document_bytes` defensively. **L3 (LOW)** — `request.text()` on an
+aborted body and building a `409` from a corrupted stored row are now also
+caught and recorded as `server_error` rows. Evidence rose to 112 Deno server
+unit tests and 91 integration tests.
 
 ## Closed incident reports
 

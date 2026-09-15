@@ -766,7 +766,7 @@ depends on nothing outside them.
 | 21 Survive storage eviction | No first-party cookie; measurement needs seven days | §7.5; **F8** |
 | 22 Server clock | **Implemented 2026-09-14** — must change the clock without changing the economy; the one `calculateOfflineGrant` is shared by client and server | **F4** (exercised) |
 | 23 Upper-bound re-simulation | **Implemented 2026-09-14** — the modelling rule and the 5% tolerance are stated in the module and in `architecture.md`; bounds cumulative counters and upgrade spend, never current `gold` | **F3** (exercised and stated); §1 with §7.4 |
-| 24 Rejection handling | A rejected player stays playable | §1 |
+| 24 Rejection handling | **Implemented 2026-09-14** — a refused save leaves the session playable and the local save intact, surfaces the §4 notice, and writes one best-effort `save_audit` row per authenticated attempt with enough context (outcome, reason, size, the client's own clock beside the server's) to tell a bug from an attack | §1 |
 | 25 Abuse limits | No fingerprint collection; limits sit above the upload cadence | §7.2; **F6** |
 | 26 Adversarial suite | The capability list it must cover | §4, §5 |
 | 27 Leaderboard storage | Representation from Step 3; row count | Step 3; §7.1 |

@@ -197,10 +197,41 @@ export interface SaveRowToWrite {
  */
 export type WriteSaveRow = (userId: string, row: SaveRowToWrite) => Promise<boolean>;
 
+/**
+ * Server-milestone Step 24: one `save_audit` row per `PUT /v1/save` attempt.
+ *
+ * The table was designed at Step 3 and already exists; Step 24 is the writer.
+ * Every field exists to tell a bug from an attack later: the outcome and error
+ * code, the client's claimed `baseRevision`, the server's resulting revision,
+ * the body size, and `clientReportedAt` — the client's *own* clock, recorded
+ * and never trusted, so a device-clock attack shows up as a divergence from
+ * `occurred_at`. `detail` holds the server-authored reason (a bound violation,
+ * a validation message, a conflict's server revision).
+ */
+export interface SaveAuditEntry {
+  readonly userId: string;
+  readonly outcome: 'accepted' | 'rejected';
+  readonly errorCode: string | null;
+  readonly baseRevision: number | null;
+  readonly resultingRevision: number | null;
+  readonly documentBytes: number;
+  readonly clientReportedAt: string | null;
+  readonly detail: Record<string, unknown> | null;
+}
+
+/**
+ * Best-effort: an audit write failing must never turn an otherwise-good upload
+ * into a rejected one, or lose the player's save, so the caller logs and moves
+ * on. The `save_audit` RLS grants no client access at all, so only the
+ * service-role writer can reach it.
+ */
+export type WriteSaveAudit = (entry: SaveAuditEntry) => Promise<void>;
+
 export interface SaveSyncDeps {
   readonly resolveCaller: ResolveCaller;
   readonly readCurrentSave: ReadCurrentSave;
   readonly writeSaveRow: WriteSaveRow;
+  readonly writeSaveAudit: WriteSaveAudit;
 }
 
 /**
@@ -219,6 +250,53 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     return errorResponse(401, 'unauthenticated', 'Invalid or expired token.', { origin });
   }
 
+  // Step 24: every outcome past authentication writes exactly one `save_audit`
+  // row. The fields fill in as the request is understood; an early rejection
+  // records what is known rather than nothing.
+  const auditContext: {
+    baseRevision: number | null;
+    documentBytes: number;
+    clientReportedAt: string | null;
+    clientClockOutOfRangeMs: number | null;
+  } = {
+    baseRevision: null,
+    documentBytes: 0,
+    clientReportedAt: null,
+    clientClockOutOfRangeMs: null,
+  };
+
+  const reject = async (
+    response: Response,
+    errorCode: string,
+    detail: Record<string, unknown> | null,
+  ): Promise<Response> => {
+    await recordSaveAudit(deps, {
+      userId: caller.userId,
+      outcome: 'rejected',
+      errorCode,
+      resultingRevision: null,
+      baseRevision: auditContext.baseRevision,
+      documentBytes: auditContext.documentBytes,
+      clientReportedAt: auditContext.clientReportedAt,
+      detail: withClientClockNote(detail, auditContext.clientClockOutOfRangeMs),
+    });
+    return response;
+  };
+
+  // Step 24 (review finding M1): a collaborator throwing — a database error in
+  // the read or the compare-and-swap write, or any other unexpected bug — is
+  // itself an outcome that must be recorded, or a repeated crash (or a hunt for
+  // one) leaves `save_audit` empty exactly where the evidence matters most. The
+  // audit write is best-effort, so it cannot mask the 500 it records.
+  const serverError = async (error: unknown): Promise<Response> => {
+    console.error('save-sync: unexpected error handling an upload.', error);
+    return await reject(
+      errorResponse(500, 'server_error', 'Unexpected server error.', { origin }),
+      'server_error',
+      { error: error instanceof Error ? error.name : 'UnknownError' },
+    );
+  };
+
   // Cheap first: a truthful `Content-Length` refuses an oversized body
   // before buffering it at all. Not authoritative on its own — chunked
   // transfer encoding omits the header entirely, and nothing stops a client
@@ -226,19 +304,41 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   // regardless of what this one finds.
   const declaredLength = Number(request.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_SAVE_BODY_BYTES) {
-    return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_SAVE_BODY_BYTES} bytes.`, { origin });
+    auditContext.documentBytes = clampDocumentBytes(declaredLength);
+    return await reject(
+      errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_SAVE_BODY_BYTES} bytes.`, { origin }),
+      'payload_too_large',
+      { limitBytes: MAX_SAVE_BODY_BYTES, declaredBytes: clampDocumentBytes(declaredLength) },
+    );
   }
 
-  const rawBody = await request.text();
-  if (new TextEncoder().encode(rawBody).length > MAX_SAVE_BODY_BYTES) {
-    return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_SAVE_BODY_BYTES} bytes.`, { origin });
+  let rawBody: string;
+  try {
+    rawBody = await request.text();
+  } catch (error) {
+    // Step 24 (review finding L3): a client that aborts mid-body must still be
+    // recorded rather than escaping as an unaudited 500.
+    return await serverError(error);
+  }
+  const bodyBytes = new TextEncoder().encode(rawBody).length;
+  auditContext.documentBytes = bodyBytes;
+  if (bodyBytes > MAX_SAVE_BODY_BYTES) {
+    return await reject(
+      errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_SAVE_BODY_BYTES} bytes.`, { origin }),
+      'payload_too_large',
+      { limitBytes: MAX_SAVE_BODY_BYTES },
+    );
   }
 
   let parsedBody: unknown;
   try {
     parsedBody = JSON.parse(rawBody);
   } catch {
-    return errorResponse(400, 'malformed_request', 'Body is not valid JSON.', { origin });
+    return await reject(
+      errorResponse(400, 'malformed_request', 'Body is not valid JSON.', { origin }),
+      'malformed_request',
+      { reason: 'Body is not valid JSON.' },
+    );
   }
 
   if (
@@ -247,15 +347,33 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     !('document' in parsedBody) ||
     !('baseRevision' in parsedBody)
   ) {
-    return errorResponse(400, 'malformed_request', 'Body is not an object with document and baseRevision.', {
-      origin,
-    });
+    return await reject(
+      errorResponse(400, 'malformed_request', 'Body is not an object with document and baseRevision.', {
+        origin,
+      }),
+      'malformed_request',
+      { reason: 'Body is not an object with document and baseRevision.' },
+    );
   }
 
   const { document, baseRevision } = parsedBody as { document: unknown; baseRevision: unknown };
-  if (baseRevision !== null && typeof baseRevision !== 'number') {
-    return errorResponse(400, 'malformed_request', 'baseRevision must be a number or null.', { origin });
+  // §5: "a monotonic integer… the revision the client last received, or null".
+  // Anything else is a client bug (§4 `malformed_request`). Validating here,
+  // before the row reads that follow, also keeps a poisoned value out of the
+  // audit's typed `base_revision` column: a fractional or out-of-int8 value
+  // would abort the `save_audit` insert and leave the attempt unrecorded
+  // (review finding H2).
+  if (!isValidBaseRevision(baseRevision)) {
+    return await reject(
+      errorResponse(400, 'malformed_request', 'baseRevision must be null or a positive integer.', { origin }),
+      'malformed_request',
+      { reason: 'baseRevision must be null or a positive integer.' },
+    );
   }
+  auditContext.baseRevision = baseRevision;
+  const clientClock = readClientClock(document);
+  auditContext.clientReportedAt = clientClock.reportedAt;
+  auditContext.clientClockOutOfRangeMs = clientClock.outOfRangeMs;
 
   const schemaVersion =
     typeof document === 'object' && document !== null && 'schemaVersion' in document
@@ -268,10 +386,14 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   // already ships — refusing it would make this function stricter than the
   // shared chain it exists to reuse and would reject a Step 16/17-written row.
   if (typeof schemaVersion !== 'number' || schemaVersion > CURRENT_SAVE_SCHEMA_VERSION) {
-    return errorResponse(422, 'schema_unsupported', `Unsupported schemaVersion ${String(schemaVersion)}.`, {
-      detail: { supported: [CURRENT_SAVE_SCHEMA_VERSION] },
-      origin,
-    });
+    return await reject(
+      errorResponse(422, 'schema_unsupported', `Unsupported schemaVersion ${String(schemaVersion)}.`, {
+        detail: { supported: [CURRENT_SAVE_SCHEMA_VERSION] },
+        origin,
+      }),
+      'schema_unsupported',
+      { supported: [CURRENT_SAVE_SCHEMA_VERSION] },
+    );
   }
 
   let validatedDocumentJson: string;
@@ -280,19 +402,36 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     validatedDocumentJson = JSON.stringify(validated);
   } catch (error) {
     if (error instanceof SaveDocumentError) {
-      return errorResponse(422, 'save_invalid', 'Document failed validation.', {
-        detail: { reason: error.message },
-        origin,
-      });
+      return await reject(
+        errorResponse(422, 'save_invalid', 'Document failed validation.', {
+          detail: { reason: error.message },
+          origin,
+        }),
+        'save_invalid',
+        { reason: error.message },
+      );
     }
-    throw error;
+    return await serverError(error);
   }
 
-  const current = await deps.readCurrentSave(caller.userId, token);
+  let current: Awaited<ReturnType<typeof deps.readCurrentSave>>;
+  try {
+    current = await deps.readCurrentSave(caller.userId, token);
+  } catch (error) {
+    return await serverError(error);
+  }
   const storedRevision = current?.revision ?? null;
 
   if (baseRevision !== storedRevision) {
-    return revisionConflictResponse(current, origin);
+    let response: Response;
+    try {
+      response = revisionConflictResponse(current, origin);
+    } catch (error) {
+      // Only reachable if a row this function itself wrote was corrupted
+      // out-of-band; recorded rather than escaping unaudited (L3).
+      return await serverError(error);
+    }
+    return await reject(response, 'revision_conflict', { serverRevision: storedRevision });
   }
 
   // Server-milestone Step 23: bound what this document may claim over the
@@ -305,36 +444,163 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   // the tolerance's size.
   const boundViolation = findProgressBoundViolation(current, validatedDocumentJson);
   if (boundViolation !== null) {
-    return errorResponse(
-      422,
+    return await reject(
+      errorResponse(422, 'save_rejected', 'Claimed progress exceeds what the elapsed time allows.', {
+        detail: { ...boundViolation },
+        origin,
+      }),
       'save_rejected',
-      'Claimed progress exceeds what the elapsed time allows.',
-      { detail: { ...boundViolation }, origin },
+      { ...boundViolation },
     );
   }
 
   const receivedAt = new Date().toISOString();
   const revision = (current?.revision ?? 0) + 1;
 
-  const applied = await deps.writeSaveRow(caller.userId, {
-    revision,
-    schemaVersion: CURRENT_SAVE_SCHEMA_VERSION,
-    documentJson: validatedDocumentJson,
-    receivedAt,
-    previousRevision: current?.revision ?? null,
-    previousDocumentJson: current?.documentJson ?? null,
-    previousReceivedAt: current?.receivedAt ?? null,
-  });
+  let applied: boolean;
+  try {
+    applied = await deps.writeSaveRow(caller.userId, {
+      revision,
+      schemaVersion: CURRENT_SAVE_SCHEMA_VERSION,
+      documentJson: validatedDocumentJson,
+      receivedAt,
+      previousRevision: current?.revision ?? null,
+      previousDocumentJson: current?.documentJson ?? null,
+      previousReceivedAt: current?.receivedAt ?? null,
+    });
+  } catch (error) {
+    return await serverError(error);
+  }
 
   if (!applied) {
     // Lost a race against a concurrent upload that wrote between the read
     // above and this write — re-read so the conflict carries the actual
     // winner's document, not the snapshot this request lost against.
-    const afterRace = await deps.readCurrentSave(caller.userId, token);
-    return revisionConflictResponse(afterRace, origin);
+    let afterRace: Awaited<ReturnType<typeof deps.readCurrentSave>>;
+    try {
+      afterRace = await deps.readCurrentSave(caller.userId, token);
+    } catch (error) {
+      return await serverError(error);
+    }
+    let response: Response;
+    try {
+      response = revisionConflictResponse(afterRace, origin);
+    } catch (error) {
+      return await serverError(error);
+    }
+    return await reject(response, 'revision_conflict', {
+      serverRevision: afterRace?.revision ?? null,
+    });
   }
 
+  await recordSaveAudit(deps, {
+    userId: caller.userId,
+    outcome: 'accepted',
+    errorCode: null,
+    resultingRevision: revision,
+    baseRevision: auditContext.baseRevision,
+    documentBytes: auditContext.documentBytes,
+    clientReportedAt: auditContext.clientReportedAt,
+    detail: withClientClockNote(null, auditContext.clientClockOutOfRangeMs),
+  });
+
   return jsonResponse(200, { revision, receivedAt }, origin);
+}
+
+/**
+ * Step 24: writes one audit row, swallowing (and logging) a failure. The audit
+ * is evidence, not a precondition — a database hiccup while logging must not
+ * reject an honest save or lose the player's game.
+ */
+async function recordSaveAudit(deps: SaveSyncDeps, entry: SaveAuditEntry): Promise<void> {
+  try {
+    await deps.writeSaveAudit(entry);
+  } catch (error) {
+    console.error('save-sync: writing save_audit row failed.', error);
+  }
+}
+
+/**
+ * The instant range `timestamptz` round-trips through the ISO-8601 string
+ * `Date#toISOString` produces, which uses a four-digit year. At year 10000 and
+ * beyond JS emits the extended-year form (`+010000-01-01T00:00:00.000Z`) that
+ * Postgres refuses, which would abort the audit insert and erase the evidence
+ * of the very clock attack `client_reported_at` exists to expose (review
+ * finding H1). `Date#getTime` stays finite to ±8.64e15 ms, so the gap is real.
+ */
+const MIN_AUDIT_INSTANT_MS = -62_135_596_800_000; // 0001-01-01T00:00:00.000Z
+const MAX_AUDIT_INSTANT_MS = 253_402_300_799_999; // 9999-12-31T23:59:59.999Z
+
+interface ClientClockReading {
+  /** The client's own claim in a form `timestamptz` accepts, or `null`. */
+  readonly reportedAt: string | null;
+  /** The raw millisecond value when it fell outside the round-trippable range. */
+  readonly outOfRangeMs: number | null;
+}
+
+/**
+ * The client's own claimed save time, recorded for later comparison with the
+ * server's `occurred_at` and never trusted for any decision. Anything missing,
+ * non-numeric, already unrepresentable, or outside the range a `timestamptz`
+ * column can hold is recorded as absent — with the raw out-of-range value kept
+ * for the audit `detail` — rather than left to abort the whole insert.
+ */
+function readClientClock(document: unknown): ClientClockReading {
+  if (typeof document !== 'object' || document === null) {
+    return { reportedAt: null, outOfRangeMs: null };
+  }
+
+  const value = (document as { savedAtTimestampMs?: unknown }).savedAtTimestampMs;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return { reportedAt: null, outOfRangeMs: null };
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { reportedAt: null, outOfRangeMs: null };
+  }
+
+  if (value < MIN_AUDIT_INSTANT_MS || value > MAX_AUDIT_INSTANT_MS) {
+    return { reportedAt: null, outOfRangeMs: value };
+  }
+
+  return { reportedAt: date.toISOString(), outOfRangeMs: null };
+}
+
+/** Keeps an out-of-range client clock in the audit `detail` even when the instant is dropped. */
+function withClientClockNote(
+  detail: Record<string, unknown> | null,
+  outOfRangeMs: number | null,
+): Record<string, unknown> | null {
+  return outOfRangeMs === null
+    ? detail
+    : { ...(detail ?? {}), clientReportedAtOutOfRangeMs: outOfRangeMs };
+}
+
+/**
+ * §5 defines `baseRevision` as null or the monotonic integer revision the
+ * client last received. A fractional, negative, or unsafe value is a client bug
+ * (§4 `malformed_request`), and — because `save_audit.base_revision` is a
+ * `bigint` — letting one through would abort the audit insert and lose the
+ * attempt's row (review finding H2).
+ */
+function isValidBaseRevision(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0);
+}
+
+/**
+ * Defense in depth for the audit's typed integer columns: anything that is not a
+ * safe integer is written as `null` rather than handed to Postgres as a string
+ * it will reject, so a future caller cannot reopen H2 through this writer.
+ * Exported so a unit test can pin the coercion directly.
+ */
+export function normalizeAuditRevision(value: number | null): number | null {
+  return value !== null && Number.isSafeInteger(value) ? value : null;
+}
+
+/** `save_audit.document_bytes` is an `integer`; a claimed length can exceed it. */
+function clampDocumentBytes(bytes: number): number {
+  return Math.min(Math.max(0, Math.floor(bytes)), 2_147_483_647);
 }
 
 interface ProgressBoundDetail {
@@ -669,10 +935,47 @@ async function writeSaveRowViaServiceRole(userId: string, row: SaveRowToWrite): 
   return (data?.length ?? 0) > 0;
 }
 
+/**
+ * Step 24: the only writer of `save_audit`. That table carries no RLS policy
+ * at all (Step 3's matrix: no select/insert/update/delete for any client
+ * role), so the service-role key is required here exactly as it is for
+ * `saves` — and this is the second and last place in this function that reads
+ * it. The insert is append-only by construction: no update or delete path
+ * exists, and a unique id is generated by the table.
+ */
+async function writeSaveAuditViaServiceRole(entry: SaveAuditEntry): Promise<void> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('save-sync: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured.');
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { error } = await admin.from('save_audit').insert({
+    user_id: entry.userId,
+    outcome: entry.outcome,
+    error_code: entry.errorCode,
+    base_revision: normalizeAuditRevision(entry.baseRevision),
+    resulting_revision: normalizeAuditRevision(entry.resultingRevision),
+    document_bytes: clampDocumentBytes(entry.documentBytes),
+    client_reported_at: entry.clientReportedAt,
+    detail: entry.detail,
+  });
+
+  if (error) {
+    throw new Error(`save-sync: writing save_audit row failed: ${error.message}`);
+  }
+}
+
 const defaultSaveSyncDeps: SaveSyncDeps = {
   resolveCaller: resolveCallerViaSupabaseAuth,
   readCurrentSave: readCurrentSaveRow,
   writeSaveRow: writeSaveRowViaServiceRole,
+  writeSaveAudit: writeSaveAuditViaServiceRole,
 };
 
 export async function handleRequest(

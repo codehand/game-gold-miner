@@ -198,6 +198,19 @@ does not yet decide what the player is *told* when a save is refused — that
 notice and the audit record are Step 24 — so today a refused upload simply leaves
 the cloud copy unchanged while local play continues.
 
+Server-milestone Step 24 (2026-09-14) delivers that notice and the record. A save
+the server refuses never costs the player anything: their local save is written
+first and is untouched, the game keeps running, and they see one plain sentence —
+"Your progress could not be verified and was not uploaded. Your game on this
+device is unchanged." The game also quietly retries later, so a refusal that was
+a false alarm (or a now-irrelevant document) does not permanently stop cloud
+sync. Every upload attempt, accepted or refused, is written to a server-side audit
+log the client can neither read nor write, recording the server's decision, the
+body size, the reason, and the device's own claimed clock alongside the server's
+— enough to tell a bug from cheating after the fact without ever trusting the
+player's clock. This is groundwork for the later alerting step, not a
+player-facing feature.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

@@ -304,7 +304,7 @@ describe('every Edge Function', () => {
     expect(source).toContain('admin.generateLink');
   });
 
-  it('save-sync does read the service-role key, and only to write saves through a compare-and-swap', () => {
+  it('save-sync does read the service-role key, and only to write saves through a compare-and-swap and append one audit row', () => {
     const source = readProjectFile('supabase/functions/save-sync/index.ts');
     expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
     // A 2026-09-12 review found a blind `upsert` here let two concurrent
@@ -315,6 +315,9 @@ describe('every Edge Function', () => {
     expect(source).not.toContain('.upsert(');
     expect(source).toContain("admin.from('saves').insert(");
     expect(source).toMatch(/admin\s*\.from\('saves'\)\s*\.update\(/);
+    // Step 24: the service-role key is also the only way to append to
+    // `save_audit`, which carries no RLS policy for any client role.
+    expect(source).toContain("admin.from('save_audit').insert(");
   });
 
   it('recovery-code does read the service-role key, and only to rotate/redeem codes and mint a session', () => {

@@ -873,7 +873,8 @@ optional `SaveSyncDeps` (`resolveCaller`, `readCurrentSave`, `writeSaveRow`)
   fails but the row's one-generation ancestor exists, the check is retried
   against that ancestor over the full interval — a §7 branch re-upload diverged
   from it, not from the stored row (review finding F2). The modelling rule, the
-  carried terms, and the tolerance are in the Step 23 section below.
+  carried terms, and the tolerance are in the Step 23 section below; every
+  authenticated attempt also writes one `save_audit` row (Step 24 section below).
 - **Download** (`GET`): `200 {revision, receivedAt, document}` when a row
   exists, `204` with no body otherwise — "the normal first-sign-in path, not
   an error."
@@ -1332,6 +1333,86 @@ ancestor anchor with no extra `ageStoredSave`. `saveAgeFixture.ts`'s
 `ageStoredSave` is used only where the fixture's document is a *linear*
 descendant that stands for offline play, never to fake a divergent branch into
 the linear bound.
+
+### Rejection handling (Step 24)
+
+**What a rejected save does to the player.** Nothing is lost. The local save is
+written first and independently of the network (Step 19), so a refused upload
+never touches it; the session keeps running; and the refusal reaches the player
+as one banner notice through `describeCloudSaveNotice`. A `save_rejected` is
+terminal-but-keep-syncing (§4): the replica drops *that document*, records its
+state shape so routine saves of the same shape are not retried, and keeps
+syncing. The player's next real play changes the shape, and a forced lifecycle
+trigger bypasses the suppression and clears it on success, so a false positive
+recovers without a reload. The exact copy is
+"Your progress could not be verified and was not uploaded. Your game on this
+device is unchanged."
+
+**One `save_audit` row per authenticated attempt.** The table was designed at
+Step 3 and already exists; Step 24 is its writer. `handleSaveUpload` records via
+the new `writeSaveAudit` dep (`writeSaveAuditViaServiceRole` — the second and
+last service-role use in this function, because `save_audit` grants no client
+role any access at all):
+
+- `outcome` (`accepted`/`rejected`), `error_code` (present exactly when
+  rejected), `base_revision` (what the client claimed), `resulting_revision`
+  (present exactly when accepted), and `document_bytes`.
+- `client_reported_at` — the document's own `savedAtTimestampMs`, recorded
+  verbatim and **never trusted**, so a device-clock attack shows up as
+  divergence from the server's `occurred_at`. It is bounded to the range a
+  `timestamptz` column round-trips through `Date#toISOString` (years 0001–9999);
+  a value past that — which JS formats in the extended-year form Postgres
+  refuses — is recorded as `null` with the raw claim kept in
+  `detail.clientReportedAtOutOfRangeMs`. Without that bound the insert would
+  throw, the best-effort writer would swallow it, and the attempt would leave no
+  row at all — the field meant to expose a clock attack would erase its own
+  evidence (review finding **H1**).
+- `detail` — the server-authored reason: a Step 23 bound violation's
+  `{counter, claimed, maximum}`, a validation `reason`, a conflict's
+  `serverRevision`, the size cap and the client's declared length for a
+  `payload_too_large`, or a malformed-body reason. This is what makes a bug
+  distinguishable from an attack after the fact.
+
+Accepted attempts are recorded too, not only rejections — the table was designed
+for both, and its partial index on rejections exists because rejections are the
+rare minority Step 35 will watch. The write is **best-effort**: a failure is
+logged and must never turn an accepted save into a rejected one or lose the
+player's game. An unauthenticated request writes nothing, because
+`save_audit.user_id` is `not null` and there is no resolved caller. An
+**unexpected collaborator failure** — a database error in the `readCurrentSave`
+or `writeSaveRow` call, the `request.text()` read of an aborted body, building a
+`409` response from a corrupted stored row, or the non-`SaveDocumentError`
+rethrow in validation — is caught after the caller resolves and recorded as a
+`rejected`/`server_error` row before the `500`, so a repeated crash (or a
+deliberate hunt for one) is visible rather than a silent 500 with no trace
+(review findings **M1**, **L3**).
+
+**No client-controlled field may reach a typed audit column unvalidated.** Two
+did, and each aborted the insert (the best-effort writer then swallowed it, so
+the attempt left no row): the client clock (fixed by bounding it, **H1**) and
+`baseRevision` (fixed by validating it against §5, **H2**). `baseRevision` must
+now be `null` or a positive safe integer — a fractional or out-of-int8 value is
+recorded as `400 malformed_request` *before* `auditContext.baseRevision` is
+assigned, so the rejection writes a clean row. That is also a §5 conformance fix
+in its own right ("a monotonic integer… or null"). `writeSaveAuditViaServiceRole`
+additionally coerces any non-safe-integer revision to `null` (`normalizeAuditRevision`)
+and clamps `document_bytes`, so a future typed column added to this table cannot
+reopen the hole a third time.
+
+Evidence: 8 Deno unit tests in `save-sync/index.test.ts` (accepted row carrying
+the client clock, bound-violation row, validation row, no row without a caller,
+an out-of-range client clock still writing one row with the raw value in
+`detail`, a throwing collaborator writing a `server_error` row, a non-integer
+`baseRevision` refused with one `malformed_request` row, and the
+`normalizeAuditRevision` coercion);
+`tests/unit/server-stack.test.ts` pins the `admin.from('save_audit').insert(`
+line alongside the `saves` writes;
+`tests/server-integration/save-audit.integration.test.ts` (6 live tests —
+accepted row, `save_rejected` row, `revision_conflict` row, an unrepresentable
+client clock still writing the row, invalid `baseRevision` values each writing
+their own row, and RLS proving the log is invisible and unwritable to any client
+token); and `tests/server-e2e/save-rejection.spec.ts` proves the player-facing
+half in a real browser against a stubbed `422 save_rejected`.
 
 ### Guest linking and the identity collision (Step 13)
 

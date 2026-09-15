@@ -14,7 +14,7 @@
 import assert from 'node:assert/strict';
 
 import { createInitialGameState, createSaveDocument, GameNumber, BASE_GAME_BALANCE } from '../_shared/generated/core-bundle.js';
-import { handleRequest, resolveFunctionRoute, type SaveSyncDeps, type StoredSaveRow } from './index.ts';
+import { handleRequest, normalizeAuditRevision, resolveFunctionRoute, type SaveSyncDeps, type StoredSaveRow } from './index.ts';
 
 const FIXTURE_USER_ID = '11111111-1111-1111-1111-111111111111';
 const NOW_MS = 1_757_000_000_000;
@@ -68,6 +68,10 @@ function noopDeps(overrides: Partial<SaveSyncDeps> = {}): SaveSyncDeps {
     writeSaveRow: async () => {
       throw new Error('writeSaveRow should not have been called');
     },
+    // Step 24: the audit write is best-effort, so a no-op default keeps every
+    // existing test focused on its own subject. Audit-specific tests override
+    // this to capture the row.
+    writeSaveAudit: async () => {},
     ...overrides,
   };
 }
@@ -608,6 +612,218 @@ Deno.test('handleSaveUpload skips the bound when the stored receipt is unparseab
 
   assert.equal(response.status, 200);
   assert.equal(written, true);
+});
+
+Deno.test('handleSaveUpload records exactly one accepted save_audit row', async () => {
+  const document = validSaveDocument();
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const audits: Record<string, unknown>[] = [];
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async () => true,
+      writeSaveAudit: async (entry) => {
+        audits.push(entry as unknown as Record<string, unknown>);
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].outcome, 'accepted');
+  assert.equal(audits[0].errorCode, null);
+  assert.equal(audits[0].resultingRevision, 2);
+  assert.equal(audits[0].baseRevision, 1);
+  assert.equal(typeof audits[0].documentBytes, 'number');
+  assert.equal(
+    audits[0].clientReportedAt,
+    new Date((document as { savedAtTimestampMs: number }).savedAtTimestampMs).toISOString(),
+  );
+});
+
+Deno.test('handleSaveUpload records one rejected save_audit row carrying the bound violation', async () => {
+  const current = validSaveDocument() as {
+    state: { warehouse: Record<string, unknown> };
+  } & Record<string, unknown>;
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const inflated = {
+    ...current,
+    state: {
+      ...current.state,
+      warehouse: { ...current.state.warehouse, totalGoldDelivered: '1000000000000' },
+    },
+  };
+  const audits: Record<string, unknown>[] = [];
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document: inflated }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveAudit: async (entry) => {
+        audits.push(entry as unknown as Record<string, unknown>);
+      },
+    }),
+  );
+
+  assert.equal(response.status, 422);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].outcome, 'rejected');
+  assert.equal(audits[0].errorCode, 'save_rejected');
+  assert.equal(audits[0].resultingRevision, null);
+  assert.deepEqual(
+    { ...(audits[0].detail as Record<string, unknown>) }.counter,
+    'state.warehouse.totalGoldDelivered',
+  );
+});
+
+Deno.test('handleSaveUpload records a rejected save_audit row for a document that fails validation', async () => {
+  const audits: Record<string, unknown>[] = [];
+
+  const response = await handleRequest(
+    putSaveRequest({
+      baseRevision: null,
+      document: { schemaVersion: 2, savedAtTimestampMs: 'nope', state: {} },
+    }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      writeSaveAudit: async (entry) => {
+        audits.push(entry as unknown as Record<string, unknown>);
+      },
+    }),
+  );
+
+  assert.equal(response.status, 422);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].outcome, 'rejected');
+  assert.equal(audits[0].errorCode, 'save_invalid');
+  assert.equal(typeof (audits[0].detail as Record<string, unknown>).reason, 'string');
+});
+
+Deno.test('handleSaveUpload writes no save_audit row when the caller cannot be resolved', async () => {
+  const audits: unknown[] = [];
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: null, document: validSaveDocument() }),
+    noopDeps({
+      resolveCaller: async () => null,
+      writeSaveAudit: async (entry) => {
+        audits.push(entry);
+      },
+    }),
+  );
+
+  assert.equal(response.status, 401);
+  assert.equal(audits.length, 0);
+});
+
+Deno.test('handleSaveUpload still writes one audit row when the client clock is outside the timestamptz range', async () => {
+  // Review finding H1: a `savedAtTimestampMs` at year 10000+ formats as an
+  // extended-year ISO string Postgres refuses, which aborted the audit insert
+  // and erased the evidence of the very clock attack the field exists to
+  // expose. The row must still be written, with the raw claim kept in detail.
+  const farFuture = {
+    ...(validSaveDocument() as Record<string, unknown>),
+    savedAtTimestampMs: 300_000_000_000_000,
+  };
+  const audits: Record<string, unknown>[] = [];
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: null, document: farFuture }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => null,
+      writeSaveRow: async () => true,
+      writeSaveAudit: async (entry) => {
+        audits.push(entry as unknown as Record<string, unknown>);
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].outcome, 'accepted');
+  assert.equal(audits[0].clientReportedAt, null);
+  assert.equal(
+    (audits[0].detail as Record<string, unknown>).clientReportedAtOutOfRangeMs,
+    300_000_000_000_000,
+  );
+});
+
+Deno.test('handleSaveUpload records a rejected server_error row when a collaborator throws', async () => {
+  // Review finding M1: a database failure in the read must not escape as an
+  // unaudited 500 — a repeated crash, or a hunt for one, would be invisible.
+  const audits: Record<string, unknown>[] = [];
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: null, document: validSaveDocument() }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => {
+        throw new Error('database is down');
+      },
+      writeSaveAudit: async (entry) => {
+        audits.push(entry as unknown as Record<string, unknown>);
+      },
+    }),
+  );
+
+  assert.equal(response.status, 500);
+  assert.equal((await response.json()).error.code, 'server_error');
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].outcome, 'rejected');
+  assert.equal(audits[0].errorCode, 'server_error');
+});
+
+Deno.test('handleSaveUpload rejects a non-integer baseRevision and still writes one audit row', async () => {
+  // Review finding H2: `baseRevision` was written to the audit's `bigint`
+  // column unvalidated, so a fractional or out-of-range value aborted the
+  // insert and the attempt left no row. §5 requires null or a positive integer;
+  // anything else is a client bug and must be recorded, not swallowed.
+  for (const bad of [1.5, 1e300, -1, 0]) {
+    const audits: Record<string, unknown>[] = [];
+
+    const response = await handleRequest(
+      putSaveRequest({ baseRevision: bad, document: validSaveDocument() }),
+      noopDeps({
+        resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+        writeSaveAudit: async (entry) => {
+          audits.push(entry as unknown as Record<string, unknown>);
+        },
+      }),
+    );
+
+    assert.equal(response.status, 400, `baseRevision ${bad} is refused`);
+    assert.equal((await response.json()).error.code, 'malformed_request');
+    assert.equal(audits.length, 1);
+    assert.equal(audits[0].outcome, 'rejected');
+    assert.equal(audits[0].errorCode, 'malformed_request');
+    assert.equal(audits[0].baseRevision, null);
+  }
+});
+
+Deno.test('normalizeAuditRevision coerces anything but a safe integer to null', () => {
+  assert.equal(normalizeAuditRevision(7), 7);
+  assert.equal(normalizeAuditRevision(0), 0);
+  assert.equal(normalizeAuditRevision(null), null);
+  assert.equal(normalizeAuditRevision(1.5), null);
+  assert.equal(normalizeAuditRevision(1e300), null);
+  assert.equal(normalizeAuditRevision(Number.MAX_SAFE_INTEGER + 1), null);
 });
 
 Deno.test('handleSaveDownload answers 401 with no Authorization header', async () => {

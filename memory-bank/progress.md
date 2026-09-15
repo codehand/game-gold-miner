@@ -6,10 +6,10 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 23 gate.** Steps 1–8 are validated.
-Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–23 are implemented and await
-user validation together. **Step 24 must not begin until the user validates
-Step 23.**
+**Server milestone: in progress, at the Step 24 gate.** Steps 1–8 are validated.
+Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–24 are implemented and await
+user validation together. **Step 25 must not begin until the user validates
+Step 24.**
 
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
@@ -26,14 +26,14 @@ Full history is archived, not deleted:
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 23 — upper-bound re-simulation.** Implemented 2026-09-14, awaiting user validation. |
-| Blocked on the gate | Steps 24–37 |
+| Current gate | **Step 24 — rejection handling.** Implemented 2026-09-14, awaiting user validation. |
+| Blocked on the gate | Steps 25–37 |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
 
 Work proceeded past several gates on the user's explicit instruction rather than
-pausing at each one; Steps 9, 10, and 12–23 therefore sit
+pausing at each one; Steps 9, 10, and 12–24 therefore sit
 implemented-but-unvalidated as one batch.
 
 ## Server Milestone Step Status
@@ -65,8 +65,9 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 20 — Adopt existing local saves | Implemented 2026-09-14, awaiting validation |
 | 21 — Survive local storage eviction | Implemented 2026-09-14, awaiting validation; the iOS Safari seven-day measurement is outstanding |
 | 22 — The server clock is the only clock | Implemented 2026-09-14, awaiting validation |
-| 23 — Upper-bound re-simulation | Implemented 2026-09-14, awaiting validation — **current gate** |
-| 24–37 | Not started, blocked by the Step 23 gate |
+| 23 — Upper-bound re-simulation | Implemented 2026-09-14; six review fixes absorbed; awaiting validation |
+| 24 — Rejection handling | Implemented 2026-09-14; review fixes absorbed (H1/H2 HIGH, M1, L1–L3); awaiting validation — **current gate** |
+| 25–37 | Not started, blocked by the Step 24 gate |
 
 ## Known Risks
 
@@ -86,9 +87,11 @@ with the reason each one closed.
   and rejects a document claiming more (`422 save_rejected`), bounding the
   monotonic cumulative counters and upgrade spend, never current `gold`. A branch
   that resolved a save conflict is measured from the row's one-generation
-  ancestor, so a chosen branch still commits. What remains open is Step 24's
-  rejection handling (what a rejected save does to the player, and the audit
-  row). See `archive/risks-resolved.md` for the closed half.
+  ancestor, so a chosen branch still commits. Step 24 now handles what a rejected
+  save does to the player — local save intact, session playable, a comprehensible
+  notice, one `save_audit` row per attempt — so what remains open is only Step
+  25's abuse limits and Step 26's adversarial suite. See
+  `archive/risks-resolved.md` for the closed half.
 - **The Step 23 fork anchor is one generation deep (N1, known limit).** A save
   that resolved a `409` is measured from the row's immediate predecessor, so a
   fork older than roughly two minutes against an actively-syncing peer (a tablet
@@ -97,7 +100,8 @@ with the reason each one closed.
   save is intact and play continues; only the cloud copy lags, and Step 21's
   eviction restore would return that inferior branch. The sound fix is to retain
   fork points (a `saves` history/schema change) or accept a client-supplied
-  verifiable fork revision, a design decision that overlaps Step 24. A
+  verifiable fork revision. Step 24 handled rejection handling without taking
+  this on, so the design decision is still open. A
   server-side "accept any strict superset" exemption was rejected because an
   inflating cheat submits exactly supersets, so it would gut the bound. Recorded
   in `architecture.md`'s Step 23 section; not yet scheduled.

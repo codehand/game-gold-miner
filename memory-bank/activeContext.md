@@ -2,14 +2,13 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 23 validation gate.** Step 23 (upper-bound
-re-simulation) was implemented on 2026-09-14, on the user's explicit
-instruction: on `PUT /v1/save` the server re-derives the maximum the mine could
-have produced from the last accepted document across the server-measured elapsed
-time and rejects a document claiming more (`422 save_rejected`). Step 24 must not
-begin until the user validates it.
+**Server milestone, at the Step 24 validation gate.** Step 24 (rejection
+handling) was implemented on 2026-09-14, on the user's explicit instruction: a
+rejected save leaves the local save intact and the session playable, surfaces a
+comprehensible notice, and writes one `save_audit` row per authenticated
+`PUT /v1/save` attempt. Step 25 must not begin until the user validates it.
 
-Steps 9, 10, and 12–23 are implemented but unvalidated as one batch, because the
+Steps 9, 10, and 12–24 are implemented but unvalidated as one batch, because the
 user directed work past several gates rather than pausing at each. Step 11
 (Apple sign-in) is cut.
 
@@ -205,9 +204,83 @@ generation deep, so a fork older than roughly two minutes against an
 actively-syncing peer is still rejected — the exact "tablet open while the phone
 plays offline" case. It is recorded as a **stated limit** in `architecture.md`'s
 Step 23 section and as an open risk in `progress.md`, not presented as closed.
-The sound full fix (retain fork points, or a verifiable fork revision) overlaps
-Step 24 and is not scheduled; a server-side "accept any strict superset"
-exemption is unsound (cheats submit supersets) and was rejected.
+The sound full fix (retain fork points, or a verifiable fork revision) was not
+taken up by Step 24 and is not scheduled; a server-side "accept any strict
+superset" exemption is unsound (cheats submit supersets) and was rejected.
+
+**Step 24 (rejection handling).** The `save_audit` table was designed at Step 3
+and already exists (`supabase/migrations/20260908130000_create_platform_tables.sql`),
+with no RLS policy for any client role and a partial index on rejections; Step 24
+is its writer. `save-sync`'s `handleSaveUpload` now records **exactly one row per
+authenticated attempt** through a new `writeSaveAudit` dep
+(`writeSaveAuditViaServiceRole`, the second and last service-role use in this
+function): `outcome`, `error_code`, the client's claimed `base_revision`, the
+server's `resulting_revision`, `document_bytes`, and `client_reported_at` — the
+client's own `savedAtTimestampMs`, recorded verbatim and never trusted, so a
+device-clock attack is visible as divergence from the server's `occurred_at`.
+`detail` carries the server-authored reason (a Step 23 bound violation's
+`{counter, claimed, maximum}`, a validation `reason`, a conflict's
+`serverRevision`, a size cap, a malformed-body reason). The write is
+**best-effort**: a failure is logged and never turns an accepted save into a
+rejected one or loses the player's game. Unauthenticated requests write nothing
+(there is no `user_id`); the `save_audit.user_id` foreign key is `not null`.
+Accepted attempts are recorded too, not just rejections — the table was designed
+for both, and the partial rejection index exists because rejections are the rare
+minority that Step 35 will watch.
+
+The player-facing half was already built by Step 19 and is now pinned end to
+end: a `save_rejected` is terminal-but-keep-syncing, so the replica drops that
+document, remembers its state shape so routine saves of it are not retried,
+keeps the local save (which is written first and independently), keeps the
+session playable, and reports the §4 notice
+`cloud-sync-save-rejected` — "Your progress could not be verified and was not
+uploaded. Your game on this device is unchanged." — through the save banner. A
+forced trigger bypasses the shape suppression and a success clears it, so a
+false positive recovers without a reload. N1 remains the known limit (an old
+honest fork can be refused), and Step 24's no-loss guarantee is what makes that
+limit survivable: the player keeps playing and keeps their local save either way.
+
+Evidence: 4 new Deno unit tests (accepted row + client clock, bound-violation
+row, validation row, no row without a caller); `server-stack.test.ts` pins the
+`save_audit` insert; `tests/server-integration/save-audit.integration.test.ts`
+(4 live tests: accepted row, bound rejection row, conflict row, and RLS proving
+the log is invisible and unwritable to a client token); and
+`tests/server-e2e/save-rejection.spec.ts` (a stubbed `422 save_rejected` leaves
+the session producing gold, the local save intact, one comprehensible notice,
+and no uncaught error).
+
+**A 2026-09-14 review of Step 24 found and fixed two issues** (one HIGH).
+**H1 (HIGH):** `readClientClock` converts the document's `savedAtTimestampMs`
+with `Date#toISOString`, which for a year-10000+ value emits the extended-year
+form Postgres refuses — the insert threw, the best-effort writer swallowed it,
+and the attempt left no row at all, so an attacker probing the Step 23 bound
+with a far-future clock erased their own trace. The instant is now bounded to the
+`timestamptz` round-trippable range (years 0001–9999); an out-of-range claim is
+recorded as a null instant with the raw value in
+`detail.clientReportedAtOutOfRangeMs`, so the row still exists and still shows
+the divergence. **M1 (MEDIUM):** an unexpected collaborator failure
+(`readCurrentSave`/`writeSaveRow` throwing, or the non-`SaveDocumentError`
+rethrow in validation) escaped as an unaudited 500; it is now caught after the
+caller resolves and recorded as a `rejected`/`server_error` row before the 500.
+**L1 (LOW)** added `declaredBytes` to the Content-Length rejection's `detail`, so
+the one attacker-declared field is marked as declared. **L2 (LOW, carried to
+Step 25):** every rejection costs a service-role round trip on the response path,
+and a caller gets 1-request-to-1-audit-write amplification; Step 25's abuse
+limits should bound that.
+
+**A follow-up 2026-09-14 pass found H2 (HIGH) and L3 (LOW).** **H2:** the same
+defect class as H1, reached through `baseRevision` — a client-controlled number
+written straight into the audit's `bigint` column. A fractional (`1.5`) or
+out-of-int8 (`1e300`) value aborted the insert and the attempt left no row,
+silencing even M1's `server_error` row. `baseRevision` is now validated against
+§5 (`null` or a positive safe integer; anything else is a recorded
+`400 malformed_request`) *before* `auditContext.baseRevision` is assigned, which
+also closes the §5 conformance gap; `writeSaveAuditViaServiceRole` additionally
+coerces non-safe-integer revisions to `null` (`normalizeAuditRevision`) and
+clamps `document_bytes`, so the next typed column cannot reopen the hole.
+**L3:** the two remaining unaudited-500 paths (`request.text()` on an aborted
+body, and building a `409` from an out-of-band-corrupted stored row) are now
+caught and recorded too. Counts rose to 112 Deno unit and 91 integration tests.
 
 ## Active Decisions
 
@@ -240,14 +313,20 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 23.** This is the gate; nothing below
+1. **Wait for the user to validate Step 24.** This is the gate; nothing below
    starts before it.
-2. Step 24 onward — rejection handling (what a rejected save does to the player,
-   playable session, one audit row) and the remaining anti-cheat steps.
+2. Step 25 onward — abuse limits (rate limits per user/address, a size cap before
+   parsing, no fingerprint-derived authority) and Step 26's adversarial suite.
+   **Carry-in from Step 24's L2:** every rejection now costs a service-role
+   round trip on the response path, and any authenticated caller gets a
+   1-request-to-1-audit-write amplification; Step 25's limits should bound both.
 3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
    shipped only a DEV hook; it remains the one protocol requirement with no
    player-facing implementation.
-4. Non-blocking carry-overs from the base-game milestone: a physical mid-range
+4. The Step 23 N1 limit (a fork older than ~2 minutes against an actively-syncing
+   peer is refused) needs a real fix — retain fork points, or accept a
+   verifiable fork revision. Not scheduled.
+5. Non-blocking carry-overs from the base-game milestone: a physical mid-range
    Android Chrome pass, and a human playtest of the 30-second-comprehension
    criterion.
 

@@ -27,9 +27,9 @@ Not part of the contract.
   exactly once, with the consumed interval persisted *before* the reward is
   exposed.
   *Still open, and kept in `progress.md`:* the **server-side validation** half.
-  Steps 22 and 23 of the server milestone now implement it — the server clock
-  settles offline income (`calculateOfflineGrant`) and `evaluateProgressBound`
-  bounds what any uploaded document may claim — but they await user validation,
-  and Step 24's rejection handling (what a refused save does to the player, and
-  the audit row) is still unbuilt. The risk stays in `progress.md` until those
-  land and are validated.
+  Steps 22, 23, and 24 of the server milestone now implement it — the server
+  clock settles offline income (`calculateOfflineGrant`), `evaluateProgressBound`
+  bounds what any uploaded document may claim, and a refused save leaves the
+  session playable with the local save intact and one `save_audit` row — but they
+  await user validation. The risk stays in `progress.md` until those land and are
+  validated.
