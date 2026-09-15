@@ -4,6 +4,7 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
 import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
 import { LIFECYCLE_SAVE_JOURNAL_KEY } from '../../src/platform/web';
+import { tolerateNavigation } from './navigationFixture';
 
 /**
  * Server-milestone Step 21: survive local storage eviction.
@@ -250,7 +251,7 @@ test('restores a signed-in player from the cloud after the local save is evicted
   await page.reload();
 
   await expect
-    .poll(() => readStoredLevel(page), {
+    .poll(() => tolerateNavigation(() => readStoredLevel(page)), {
       message: 'the cloud save is restored rather than a fresh game',
       timeout: 20_000,
     })

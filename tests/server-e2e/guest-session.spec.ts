@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { tolerateNavigation } from './navigationFixture';
+
 /**
  * Server-milestone Step 8: proves the one thing nothing fakeable locally can
  * prove — that a real Supabase Auth service hands two different browsers two
@@ -96,11 +98,11 @@ test('a blocked auth service never delays boot, and local progress still persist
   // uses) proves the save reaches IndexedDB without waiting on the ordinary
   // 30 s heartbeat or a real production cycle.
   await forceHiddenFlush(page);
-  await expect.poll(() => readStoredGold(page)).not.toBeNull();
+  await expect.poll(() => tolerateNavigation(() => readStoredGold(page))).not.toBeNull();
 
   await page.reload();
   await assertGameIsPlayable(page);
-  await expect.poll(() => readStoredGold(page)).not.toBeNull();
+  await expect.poll(() => tolerateNavigation(() => readStoredGold(page))).not.toBeNull();
 });
 
 test('two browser contexts receive distinct identities that cannot answer for each other', async ({

@@ -5,6 +5,7 @@ import { GameNumber, calculateLevelEffect, createInitialGameState } from '../../
 import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
 import { formatAmount } from '../../src/game/view-model/formatAmount';
 import { createServiceRoleClient } from '../server-integration/serviceRoleFixture';
+import { tolerateNavigation } from './navigationFixture';
 
 /**
  * Server-milestone Step 22: the credited offline reward is the server's.
@@ -33,6 +34,17 @@ async function waitForGuestSession(page: Page): Promise<GuestSessionDiagnostic> 
     .poll(async () => JSON.parse((await page.locator('#app').getAttribute('data-guest-session')) ?? '{}').status)
     .toBe('signed-in');
   return JSON.parse((await page.locator('#app').getAttribute('data-guest-session')) ?? '{}') as GuestSessionDiagnostic;
+}
+
+/**
+ * `NaN` — not `0` — while a navigation is in flight: this value is asserted
+ * from both sides (at least the grant, and under the grant plus one), and
+ * `Number(null)` would have *satisfied* the upper bound, turning a mid-reload
+ * read into a false pass instead of a retry.
+ */
+async function readStoredGoldNumber(page: Page): Promise<number> {
+  const gold = await tolerateNavigation(() => readStoredGold(page));
+  return gold === null ? Number.NaN : Number(gold);
 }
 
 async function readStoredGold(page: Page): Promise<string | null> {
@@ -149,9 +161,9 @@ test('credits the server offlineGrant, not the client clock projection', async (
   // sub-unit representation tail rather than requiring a byte-exact string.
   const expectedGold = BASE_GAME_BALANCE.startingGold + 12_960_000;
   await expect
-    .poll(async () => Number(await readStoredGold(page)), { timeout: 10_000 })
+    .poll(() => readStoredGoldNumber(page), { timeout: 10_000 })
     .toBeGreaterThanOrEqual(expectedGold);
   await expect
-    .poll(async () => Number(await readStoredGold(page)))
+    .poll(() => readStoredGoldNumber(page))
     .toBeLessThan(expectedGold + 1);
 });
