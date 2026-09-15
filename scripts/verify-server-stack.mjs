@@ -45,6 +45,21 @@
  * Vite gives `process.env` priority over `.env.local`, so a developer's own
  * file (already required for `npm run dev`) is untouched either way.
  *
+ * Also provisions the Edge Function runtime environment Steps 12 and 14 read.
+ * `supabase/functions/telegram-sign-in` reads `TELEGRAM_BOT_TOKEN`, and
+ * `supabase/functions/recovery-code` reads `RECOVERY_CODE_PEPPER` and
+ * `RECOVERY_CODE_TEST_RESET_TOKEN`, from `supabase/functions/.env` — the file
+ * `supabase start` auto-loads into the Edge Function runtime. It is
+ * git-ignored, because it is a developer's own local file, so a clean checkout
+ * and every CI runner has none. Without it `telegram-sign-in` throws
+ * "TELEGRAM_BOT_TOKEN is not configured" and answers `500` to every call while
+ * `recovery-code`'s test-only rate-limit reset refuses with `400` — eight
+ * failures that cannot reproduce on the machine that has the file, which is
+ * how they outlived the steps that introduced them. Before starting the stack,
+ * this script runs `scripts/write-functions-env.mjs`, which writes that file
+ * from the fixture constants the tests already commit and refuses to overwrite
+ * an existing one, so a development machine's real configuration is untouched.
+ *
  * Run with `npm run verify:server`. It requires Docker; the stack runs entirely
  * offline once the CLI images are cached.
  *
@@ -266,6 +281,19 @@ async function main() {
     run('npm', ['run', 'test:server-unit']).status === 0,
     'Edge Function unit tests pass (no live stack required)',
   );
+
+  // Before `supabase start`, not after: the CLI reads this file once, when it
+  // creates the Edge Function runtime container, so writing it afterwards
+  // leaves an already-running stack without it.
+  console.log('\n> node scripts/write-functions-env.mjs (Steps 12 and 14)');
+  const functionsEnv = run('node', ['scripts/write-functions-env.mjs']);
+  report(
+    functionsEnv.status === 0,
+    'Edge Function runtime environment is provisioned (Steps 12 and 14)',
+  );
+  if (functionsEnv.status !== 0) {
+    process.exit(1);
+  }
 
   console.log('\n> supabase start');
   const start = supabase(['start']);
