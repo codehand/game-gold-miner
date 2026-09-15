@@ -7,6 +7,20 @@ export default defineConfig({
   testDir: './tests/e2e',
   outputDir: 'test-results',
   reporter: 'html',
+  // This suite's two longest specs measure real elapsed play rather than a
+  // single interaction: `player-journey` runs the whole fresh-player journey
+  // twice (~20 s on a fast development machine) and `production-stages`'
+  // animation-speed trial boots the driver twice and advances a paused clock
+  // by 8 s each time (~10 s). Playwright's bare 30 s default left the first
+  // at two-thirds of its budget before CI was even considered; a GitHub
+  // `ubuntu-latest` runner executing two workers on two vCPUs is several
+  // times slower again, so both were load-dependent flakes rather than
+  // genuine failures. Sized to the measured worst case with CI headroom,
+  // matching the explicit timeouts `playwright.server-e2e.config.ts` (60 s),
+  // `playwright.production.config.ts` and `playwright.performance.config.ts`
+  // already carry for the same reason. Retries are deliberately not enabled:
+  // a test that genuinely hangs must still fail this gate.
+  timeout: 90_000,
   use: {
     baseURL: BASE_URL,
     trace: 'on-first-retry',
