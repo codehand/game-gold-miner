@@ -2,7 +2,7 @@ import type { BaseGameBalanceConfig } from '../../config';
 import {
   validateSaveDocument,
   type ActiveSaveRepository,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
 } from '../../persistence';
 
 export const LIFECYCLE_SAVE_JOURNAL_KEY =
@@ -34,7 +34,7 @@ export class WebLifecycleSaveJournal {
     this.#config = config;
   }
 
-  public read(): SaveDocumentV1 | null {
+  public read(): SaveDocumentV2 | null {
     if (this.#storage === null) {
       return null;
     }
@@ -53,7 +53,7 @@ export class WebLifecycleSaveJournal {
     }
   }
 
-  public write(document: SaveDocumentV1): void {
+  public write(document: SaveDocumentV2): void {
     if (this.#storage === null) {
       return;
     }
@@ -77,6 +77,24 @@ export class WebLifecycleSaveJournal {
     ) {
       this.#discard();
     }
+  }
+
+  /**
+   * Unconditionally discards the journal, regardless of what timestamp it
+   * carries. `clearThrough` deliberately compares timestamps instead — a
+   * routine flush must never clobber a *newer* entry a concurrent
+   * `pagehide` wrote while that flush was still in flight — but that
+   * comparison is exactly what a cloud-save adopt cannot rely on: the
+   * adopted document carries another device's clock, so a journal entry
+   * written earlier in *this* session (a `visibilitychange`→hidden while
+   * the player backgrounds the tab during boot, before the adopt ever
+   * runs) can still read as chronologically newer and survive
+   * `clearThrough`, then win on the very next boot and silently revert the
+   * adopt. Call this only when the caller is about to reload with no
+   * further local writes expected — never from the routine flush path.
+   */
+  public clear(): void {
+    this.#discard();
   }
 
   #discard(): void {
@@ -139,7 +157,7 @@ implements ActiveSaveRepository {
     }
   }
 
-  public async storeActiveSave(document: SaveDocumentV1): Promise<void> {
+  public async storeActiveSave(document: SaveDocumentV2): Promise<void> {
     await this.#repository.storeActiveSave(document);
     this.#journal.clearThrough(document.savedAtTimestampMs);
   }

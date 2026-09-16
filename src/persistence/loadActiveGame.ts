@@ -7,9 +7,9 @@ import {
 } from '../core';
 import type { SavePersistenceCoordinator } from './SavePersistenceCoordinator';
 import {
-  CURRENT_SAVE_SCHEMA_VERSION,
   createSaveDocument,
   deserializeSaveDocument,
+  isSupportedSaveSchemaVersion,
   type LoadedSaveDocument,
 } from './saveSchema';
 
@@ -142,7 +142,7 @@ function hasUnsupportedSchemaVersion(candidate: unknown): boolean {
     return false;
   }
 
-  return Reflect.get(candidate, 'schemaVersion') !== CURRENT_SAVE_SCHEMA_VERSION;
+  return !isSupportedSaveSchemaVersion(Reflect.get(candidate, 'schemaVersion'));
 }
 
 function preservePayload(candidate: unknown): unknown | null {

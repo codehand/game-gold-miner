@@ -17,7 +17,7 @@ import {
   SAVE_FAILURE_MESSAGE,
   createSaveDocument,
   deserializeSaveDocument,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
 } from '../../src/persistence';
 
 interface Rect {
@@ -133,7 +133,10 @@ test('serves the optimized bundle and every runtime asset from the root base pat
   await expect(canvas).toHaveAttribute('data-boot-scene-starts', '1');
   await expect(canvas).toHaveAttribute('data-renderer', /^(canvas|webgl)$/);
   await expect(canvas).toHaveAttribute('data-layout-viewport', '360,640');
-  await expect(canvas).toHaveAttribute('data-layout-bottom-navigation', 'none');
+  await expect(canvas).toHaveAttribute(
+    'data-layout-bottom-navigation',
+    '0,582,360,58',
+  );
   await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
   await expect(page.getByTestId('save-diagnostic')).toHaveCount(0);
 
@@ -167,9 +170,17 @@ test('serves the optimized bundle and every runtime asset from the root base pat
     }),
   ).toEqual({ semibold: true, bold: true });
 
-  expect(failedRequests, 'no request fails against the production server').toEqual(
-    [],
-  );
+  // Server-milestone Step 17's cloud-save reconcile is deliberately a
+  // background, best-effort request — "the game never blocks on cloud
+  // sync" — fired once a guest session exists and never awaited before this
+  // test's own assertions run. It is expected, not a bundle-loading defect,
+  // for the browser to still cancel it mid-flight when this test's page
+  // closes before it resolves; every other request this build makes must
+  // still complete cleanly.
+  expect(
+    failedRequests.filter((request) => !request.includes('/functions/v1/save-sync/v1/save')),
+    'no request fails against the production server',
+  ).toEqual([]);
   expect(
     responses.filter((response) => response.status >= 400),
     'no response is an error against the production server',
@@ -198,6 +209,23 @@ test('saves and restores authoritative progress across a production reload', asy
 
   await installControlledClock(page);
   await setControlledTime(page, START_TIMESTAMP_MS);
+  // Server-milestone Step 22: this smoke is the client-only production gate,
+  // and its controlled clock cannot produce a server-real absence. Pin the
+  // save-sync surface to "no cloud save" so the boot reconcile cannot deliver a
+  // server `offlineGrant`; the client then uses its own (zero, same-instant)
+  // projection, which is exactly what the modal assertion below is about. The
+  // server-verified reward is covered by the server integration and e2e suites.
+  await page.route('**/functions/v1/save-sync/**', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 204, body: '' });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ revision: 1, receivedAt: new Date().toISOString() }),
+    });
+  });
   await page.goto('/');
   await waitForBootedScene(page);
 
@@ -466,7 +494,12 @@ for (const viewport of VIEWPORTS) {
     );
     expect(canvasBox.width / canvasBox.height).toBeCloseTo(360 / 640, 2);
 
-    for (const datasetKey of ['layoutHud', 'layoutSurface', 'layoutMine']) {
+    for (const datasetKey of [
+      'layoutHud',
+      'layoutSurface',
+      'layoutMine',
+      'layoutBottomNavigation',
+    ]) {
       const region = toScreen(
         await readLogicalRegion(page, datasetKey),
         canvasBox,
@@ -483,8 +516,14 @@ for (const viewport of VIEWPORTS) {
       );
     }
 
-    await expect(canvas).toHaveAttribute('data-layout-bottom-navigation', 'none');
-    await expect(page.locator('nav')).toHaveCount(0);
+    await expect(canvas).toHaveAttribute(
+      'data-layout-bottom-navigation',
+      '0,582,360,58',
+    );
+    // Scoped to a direct child of the Phaser parent — see the identical
+    // comment in tests/e2e/layout.spec.ts: the marketplace dialog renders its
+    // own unrelated `<nav class="market-tabs">` when open.
+    await expect(page.locator('#game-viewport > nav')).toHaveCount(0);
     expect(browserErrors).toEqual([]);
   });
 }
@@ -571,7 +610,7 @@ async function waitForBootedScene(page: Page): Promise<void> {
   );
 }
 
-async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
+async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
   return page.evaluate(async () => {
     const request = indexedDB.open('cat-mine-idle');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -586,7 +625,7 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV1 | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV1 } | undefined>(
+    const record = await new Promise<{ document?: SaveDocumentV2 } | undefined>(
       (resolve, reject) => {
         getRequest.onerror = () => reject(getRequest.error);
         getRequest.onsuccess = () => resolve(getRequest.result);

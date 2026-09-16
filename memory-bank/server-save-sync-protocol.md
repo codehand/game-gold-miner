@@ -79,7 +79,7 @@ player-facing copy is fixed in §4 so it can be reviewed without reading code.
 
 ### The save document
 
-The `document` field is a `SaveDocumentV1` exactly as
+The `document` field is a `SaveDocumentV2` exactly as
 `memory-bank/architecture.md` defines it, passed through byte-for-byte in both
 directions. The protocol adds no field to it and rewrites none of it. Examples
 below elide the floor array for readability; the real payload carries all
@@ -87,7 +87,7 @@ fifteen entries.
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "savedAtTimestampMs": 1757332496789,
   "effectiveProductionRatePerSecond": "12.5",
   "state": {
@@ -111,7 +111,7 @@ fifteen entries.
     "warehouse": {
       "level": 9, "capacity": "48",
       "inputQueue": "12", "conversionProgress": 0.2,
-      "totalGoldDelivered": "84210"
+      "totalGoldDelivered": "84210", "totalOfflineGoldClaimed": "0"
     }
   }
 }
@@ -136,7 +136,7 @@ player is shown nothing at all.
 | `save_invalid` | 422 | No | The document failed server-side migrate/validate. Keep playing from local state, stop uploading this document, log the reason. | **"Your progress could not be uploaded. Your game on this device is unchanged."** |
 | `schema_unsupported` | 422 | No | The client is newer than the server. Stop cloud sync for the session. | **"Cloud sync needs an app update. Your progress is saved on this device."** |
 | `revision_conflict` | 409 | No — resolved instead | Run the §7 conflict policy against the returned server document. | *(nothing when dominance resolves it)* — on a genuine fork, the chooser in §7.3 |
-| `save_rejected` | 422 | No | **Reserved for Step 23**; no server code produces it before then. Session stays playable, local save untouched, one audit row written (Step 24). | **"Your progress could not be verified and was not uploaded. Your game on this device is unchanged."** |
+| `save_rejected` | 422 | No | **Emitted from Step 23** when the document claims more than the elapsed time allows. Drop this document and keep syncing (Step 19); the session stays playable and the local save is untouched. One audit row is written in Step 24. | **"Your progress could not be verified and was not uploaded. Your game on this device is unchanged."** |
 | `rate_limited` | 429 | Yes, after `Retry-After` | Back off and retry. Never surfaced — it is self-healing. | *(nothing)* |
 | `server_error` | 500 | Yes, with backoff | Retry per §9; after attempts are exhausted, stop cloud sync for the session. | *(nothing until attempts are exhausted)* — then **"Cloud sync is unavailable. Your progress is saved on this device."** |
 | `service_unavailable` | 503 | Yes, after `Retry-After` | As `server_error`. | As `server_error`. |
@@ -203,13 +203,15 @@ The server stores `received_at` from its own clock on every accepted upload.
 - `savedAtTimestampMs` and `state.lastUpdateTimestampMs` inside the document are
   **stored verbatim and returned verbatim**, because the client's own local
   simulation needs them. They are data being carried, never a server input.
-- Nothing in this step credits income. Step 22 moves settlement server-side, and
-  when it does, the grant travels in the download response as `offlineGrant` —
-  named here so Step 22 does not invent a second contract. The field is **absent
-  until Step 22**.
-- Finding F4 stands: Step 22 changes *which clock is authoritative* and nothing
+- **Nothing in this step credited income.** Step 22 has since moved settlement
+  server-side: `GET /v1/save` returns the grant in the download response as
+  `offlineGrant` (see §10.2), computed on download — the decision §12 left to
+  it. The field was absent before Step 22.
+- Finding F4 stands: Step 22 changed *which clock is authoritative* and nothing
   else. The formula, the 7,200,000 ms cap, the 0.5 efficiency, the zero award for
-  a future timestamp, and the open-tab/closed-tab asymmetry are all preserved.
+  a future timestamp, and the open-tab/closed-tab asymmetry are all preserved,
+  because the client projection and the server grant call the one
+  `calculateOfflineGrant`.
 
 ## 7. Conflict policy
 
@@ -226,7 +228,8 @@ increase:
 - per floor, all fifteen: `isUnlocked` (false < true), `mineShaftLevel`,
   `totalExtracted`, `totalTransported`
 - `elevator.level`
-- `warehouse.level`, `warehouse.totalGoldDelivered`
+- `warehouse.level`, `warehouse.totalGoldDelivered`,
+  `warehouse.totalOfflineGoldClaimed`
 
 `A` **dominates** `B` when every component of `M(A)` is greater than or equal to
 its counterpart in `M(B)`.
@@ -245,20 +248,66 @@ fork on a device that had simply bought an upgrade. This is the same distinction
 Step 23 makes when it bounds cumulative counters rather than current gold, and
 for the same reason.
 
-**A constraint this places on future features.** Dominance holds only while
-those fields are monotonic. A prestige, respec, or reset mechanic would break
-it, and would have to revise this policy in the same change. Recorded here so
-the coupling is not discovered afterwards.
+**The rule in player-facing terms.** A player never reads `M` or the word
+"dominance". What they experience is:
+
+> If one save is ahead of the other in every way that only ever moves forward —
+> more floors opened, deeper shafts, more material extracted and transported, a
+> higher elevator or warehouse, more gold ever delivered, more gold ever claimed
+> offline — the game keeps the ahead save without asking, because keeping it
+> loses nothing. If neither save is ahead in every way, each one holds something
+> the other lacks, so the game shows both and lets the player choose. The game
+> never picks one for the player in that case, and the save that was not chosen
+> is not destroyed.
+
+Every branch is checked against one rule, not against a win condition: **no
+accepted branch may destroy progress the player was not shown.** A silent
+resolution is only ever allowed when the chosen save is a superset of the other
+in the vector above.
+
+**Why `gold` needs no special case: the vector completes its sources.** §7.1
+excludes `gold` so a purchase does not false-fork, and that is safe only if every
+gold *source* is vectored. `gold = startingGold + totalGoldDelivered +
+totalOfflineGoldClaimed − spent`, and `spent` is a deterministic function of the
+levels and unlocks already in `M`, so equal `M` implies equal `gold` and a
+dominating side has earned at least as much cumulatively. `claimOfflineReward`
+was the one source that broke this — it credited a capped offline reward
+straight to `gold` and moved no vector field, letting a strict-subset save be
+silently bankrupted by a dominating one. Step 18 fixed it structurally by
+crediting the new monotonic counter `warehouse.totalOfflineGoldClaimed` (a
+version-2 save field) alongside `gold` and adding it to `M`. Two earlier
+heuristic patches were rejected as unsound: a "discarded side holds more gold"
+comparison forked the ordinary purchase and the new-device restore path, and a
+lifetime-cumulative bound was dead after any spending because `gold` falls while
+the bound grows. With the vector complete, `resolveSaveConflict` carries no
+`gold` logic at all.
+
+**Two further constraints on future features.** Dominance holds only while
+those fields are monotonic: a prestige, respec, or reset mechanic would break it
+and would have to revise this policy in the same change. And any future gold (or
+resource) source that can increase `gold` outside `totalGoldDelivered` must join
+`M` — as `totalOfflineGoldClaimed` did — or the equal-`M`-implies-equal-`gold`
+argument fails again. Both are recorded here so the coupling is not discovered
+afterwards.
 
 The predicate is pure and belongs beside `saveSchema.ts` in `src/persistence`,
-over two `SaveDocumentV1` values. It must not go in `src/core`, which is not
-allowed to know that saves exist.
+over two `SaveDocumentV2` values. It must not go in `src/core`, which is not
+allowed to know that saves exist. Step 18 lands it as
+`compareProgress`/`resolveSaveConflict` in
+`src/persistence/saveConflictPolicy.ts`, with the §7.3 chooser fields in
+`describeSaveConflictCandidate`.
 
 ### 7.2 Where it runs
 
 Client-side, on the `409` response, which already contains both documents. The
 server does not adjudicate — it only refuses a stale write. This keeps
 adjudication next to the only party who can be asked a question.
+
+The same predicate runs at **boot reconcile** (§11), where the client compares
+its local document against the account's downloaded cloud document before any
+upload has happened. Both callers share the one function, so an upload conflict
+and a boot comparison can never disagree. Step 19 wires the `409` half; Step 17/18
+wire the boot half.
 
 ### 7.3 What the player is shown on a genuine fork
 
@@ -307,6 +356,18 @@ Three consequences, and the first is the one that matters most:
    ships the credential in the Supabase client's default storage as decided
    here.
 
+**Step 21 implementation note (2026-09-14).** Consequence 1's dependency is now
+enforced rather than implied. When the sweep takes the local save but leaves the
+session, the client can tell a returning player from a new one: a *reused*
+session (`ensureGuestSession`'s `isNewSession === false`, added by Step 21) with
+no local save is a state a first-time player can never be in. In that state a
+cloud save is restored by the Step 17/18 boot reconcile; with no cloud save, the
+player gets the honest `local-save-missing` notice instead of a silent reset.
+When the sweep takes **both** — the common iOS Safari case — the client cannot
+know the player ever existed, so cloud save is not sufficient and the Step 14
+recovery code remains the only path back for an unlinked guest. That is
+unchanged by Step 21 and is the reason the recovery code ships before it.
+
 ## 9. Cadence and retry — decision D5, resolving F6
 
 **Local persistence is unchanged.** `SavePersistenceCoordinator` keeps its
@@ -326,8 +387,10 @@ specified here rather than discovered in Step 36.
 - **Coalescing:** only the newest document is ever uploaded. A queued upload is
   replaced, never queued behind. This mirrors the local coordinator, which
   already keeps a single `#pendingDocument`.
-- **Retry backoff** for retryable codes: 1 s, 2 s, 4 s, 8 s, 16 s, capped at
-  60 s, at most five attempts per trigger. Retries never block a frame, never
+- **Retry backoff** for retryable codes: 1 s, 2 s, 4 s, 8 s, 16 s, at most
+  five retries per trigger (six requests including the initial one). The
+  listed sequence ends at 16 s, so the 60 s cap applies only to a longer
+  sequence if one is ever introduced. Retries never block a frame, never
   delay a local save, and never hold up teardown at a lifecycle flush.
 - A lifecycle-flush upload is best-effort: the local write is what must survive
   teardown, and it already does through the localStorage journal.
@@ -371,9 +434,23 @@ Authorization: Bearer <access token>
 {
   "revision": 8,
   "receivedAt": "2026-09-08T12:34:56.789Z",
-  "document": { "schemaVersion": 1, "savedAtTimestampMs": 1757332496789, "…": "…" }
+  "document": { "schemaVersion": 2, "savedAtTimestampMs": 1757332496789, "…": "…" },
+  "offlineGrant": {
+    "elapsedDurationMs": 3600000,
+    "creditedDurationMs": 3600000,
+    "reward": "12.5"
+  }
 }
 ```
+
+`offlineGrant` (added by Step 22) is the server's authoritative offline reward
+for the absence since `receivedAt`, computed from the server's own clock to its
+own `now()` with the shared `calculateOfflineGrant` (7,200,000 ms cap, 0.5
+efficiency). `reward` is a serialized `GameNumber`. A `204` carries no grant.
+A `200` may still carry `offlineGrant: null` when the stored row cannot be
+parsed well enough to compute one (defense-in-depth — the upload path validates
+every stored document); the client treats a null grant as "no server figure",
+not as a zero reward.
 
 **204 — the account has no cloud save yet.** No body. The client keeps playing
 from local and uploads at the next trigger. This is the normal first-sign-in
@@ -422,7 +499,7 @@ Content-Type: application/json; charset=utf-8
 ```json
 {
   "baseRevision": 8,
-  "document": { "schemaVersion": 1, "savedAtTimestampMs": 1757332496789, "…": "…" }
+  "document": { "schemaVersion": 2, "savedAtTimestampMs": 1757332496789, "…": "…" }
 }
 ```
 
@@ -456,7 +533,7 @@ Content-Type: application/json; charset=utf-8
     "detail": {
       "serverRevision": 9,
       "receivedAt": "2026-09-08T12:36:10.221Z",
-      "document": { "schemaVersion": 1, "…": "…" }
+      "document": { "schemaVersion": 2, "…": "…" }
     }
   }
 }
@@ -483,25 +560,46 @@ Content-Type: application/json; charset=utf-8
 **422 — schema newer than the server understands**
 
 ```json
-{ "error": { "code": "schema_unsupported", "message": "Unsupported schemaVersion 2.", "detail": { "supported": [1] } } }
+{ "error": { "code": "schema_unsupported", "message": "Unsupported schemaVersion 3.", "detail": { "supported": [2] } } }
 ```
 
-**422 — reserved for Step 23; no server code emits it before then**
+**422 — claimed progress exceeds the elapsed-time bound (Step 23)**
 
 ```json
 {
   "error": {
     "code": "save_rejected",
     "message": "Claimed progress exceeds what the elapsed time allows.",
-    "detail": { "counter": "warehouse.totalGoldDelivered" }
+    "detail": { "counter": "state.warehouse.totalGoldDelivered", "claimed": "1234.5", "maximum": "900.2" }
   }
 }
 ```
+
+`counter` names the bounded field (`state.warehouse.totalGoldDelivered`,
+`state.warehouse.totalOfflineGoldClaimed`, `state.floors[<id>].totalExtracted`,
+`state.floors[<id>].totalTransported`, or `state.upgradeSpend`); `claimed` and
+`maximum` are the two serialized `GameNumber` values that decided it. A first
+upload — no last accepted document to bound against — never produces this code.
 
 **403 / 429 / 500 / 503** — identical bodies to §10.2.
 
 On every rejection the stored row is unchanged and the stored revision does not
 advance.
+
+**Audit (Step 24).** Every authenticated upload attempt — accepted or rejected —
+writes exactly one append-only `save_audit` row the client can neither read nor
+write: the outcome, the error code, the client's claimed `baseRevision` and the
+server's resulting revision, the body size, the server-authored reason, and the
+client's own `savedAtTimestampMs` recorded beside the server's `occurred_at` and
+never trusted. An instant outside the range a `timestamptz` round-trips (years
+0001–9999) is recorded as absent with the raw value kept in `detail`, so the row
+is still written. The write is best-effort: a failure is logged and never changes
+the response. An unauthenticated request (401) writes nothing. An unexpected
+server failure after the caller resolves is recorded as a `rejected` /
+`server_error` row before the `500`, so even a crash leaves one row. A
+`baseRevision` that is not `null` or a positive integer is a §5 violation and is
+refused as `400 malformed_request` (recorded, with a null revision in the row)
+before it could reach the audit's typed column.
 
 ## 11. Boot order
 
@@ -522,8 +620,14 @@ running; §4 decides what, if anything, is shown.
 - Which of the two documents Step 13's chooser presents first, and its visual
   design — Step 13.
 - Rate-limit thresholds and the size cap's enforcement point — Step 25.
-- The re-simulation bound that makes `save_rejected` reachable — Step 23.
-- Whether `offlineGrant` is computed on download, upload, or both — Step 22.
+- ~~The re-simulation bound that makes `save_rejected` reachable — Step 23.~~
+  **Implemented by Step 23**: the bound (cumulative counters plus upgrade spend,
+  derived from the candidate's final configuration held over the interval, with a
+  stated 5% tolerance) lives in `src/core/anti-cheat/progressBound.ts` and is
+  applied by `save-sync` before the write.
+- ~~Whether `offlineGrant` is computed on download, upload, or both — Step 22.~~
+  **Resolved by Step 22: computed on download**, from the stored `received_at` to
+  the server's `now()`, returned in the `GET /v1/save` response (§10.2).
 
 ## 13. Traceability
 
@@ -536,4 +640,60 @@ running; §4 decides what, if anything, is shown.
 | D5 cadence | Finding **F6**, now resolved |
 | Banner reuse and the mostly-blank "player sees" column | `src/ui/SaveDiagnosticBanner.ts`'s recorded no-retraction contract |
 | 64 KB cap | Threat model §4.4; enforced in Step 25 |
-| `save_rejected` reserved | Step 23, biased toward acceptance per threat model §1 |
+| `save_rejected` | Step 23 (`evaluateProgressBound`), biased toward acceptance per threat model §1 |
+
+## 14. CORS policy — added by Step 12, resolving finding F11
+
+Not part of the original Step 2 design — §1 lists save-sync as the only
+in-scope contract, and no step before Step 12 ever called a function
+directly from a browser (Steps 8–10 go through the Supabase Auth client SDK
+or server-side tests only). Finding F11
+(`memory-bank/server-threat-model.md`) named the trigger condition exactly:
+"the first step whose own client code calls a function... directly from
+`src/`... must add an explicit CORS policy... and record the decision in
+the protocol document rather than each function inventing its own." Step 12
+(Telegram sign-in) was that step, not Step 16/17 (save upload/download) as
+F11 had guessed.
+
+**The policy**, implemented once in
+`supabase/functions/_shared/http.ts` for every function to reuse rather
+than invented per function:
+
+- Allowed origins are the two known dev origins,
+  `http://127.0.0.1:5173` and `http://localhost:5173` — the same pair
+  `additional_redirect_urls` in `supabase/config.toml` already allow-lists.
+  No deployed origin exists yet (threat model §7.5); add the real one to
+  `ALLOWED_ORIGINS` in `_shared/http.ts` when one does, rather than widening
+  it to a wildcard.
+- `corsPreflightResponse(request, allowedMethods)` answers `OPTIONS` with
+  204, the matched origin (or none), `Access-Control-Allow-Methods`, and
+  `Access-Control-Allow-Headers: content-type, authorization` — checked
+  **before** any route or body parsing, since a preflight itself carries no
+  body and no `Authorization` header and would otherwise fail as malformed.
+  A 2026-09-12 review of Step 14 found this listed `content-type` alone: the
+  reasoning above ("a preflight carries no... `Authorization` header") is
+  what produced the bug — it describes the preflight request itself, not
+  the *real* cross-origin request behind it, which does carry
+  `Authorization` for both `recoveryCode.ts` (generating a code) and
+  `cloudSaveReconcile.ts` (downloading a save), and a real browser refuses
+  to send that real request at all once its preflight's own
+  `Access-Control-Allow-Headers` omits it. Invisible locally only because
+  Kong's own CORS override (finding F12, immediately below) replaces every
+  function's CORS headers regardless of what this code returns.
+- `jsonResponse`/`errorResponse` both grew an optional `origin` parameter
+  that adds the matched-origin header to an ordinary response too, so a
+  rejection is exactly as CORS-visible to the calling page as a success.
+
+**What was found proving it against the real stack (finding F12, threat
+model §8):** the local Kong gateway in front of every Edge Function
+unconditionally injects `Access-Control-Allow-Origin: *` onto any response
+whose request carries an `Origin` header — reproduced against
+`whoami-check`, which sets no CORS header of its own at all, and against a
+deliberately unlisted origin. This runs after the function and overwrites
+whatever specific-origin value `corsHeaders()` computed, so the origin
+restriction above is correct and tested at the application layer but is not
+what a real browser calling the live **local** stack actually observes —
+`*` is, regardless of origin. Whether a real deployment's gateway behaves
+the same way is unverified (no deployment exists); re-verify before relying
+on this policy as the sole defense for a future function where the calling
+origin genuinely matters.

@@ -10,7 +10,25 @@ import type {
 } from '../core/state/GameState';
 import { INITIAL_SAVE_VERSION } from '../core/state/createInitialGameState';
 
-export const CURRENT_SAVE_SCHEMA_VERSION = 1;
+export const CURRENT_SAVE_SCHEMA_VERSION = 2;
+
+/**
+ * The immediately preceding save schema. Version 1 has no
+ * `warehouse.totalOfflineGoldClaimed`; `migrateSaveDocument` upgrades it by
+ * defaulting that counter to zero.
+ */
+const SAVE_SCHEMA_VERSION_1 = 1;
+
+/**
+ * Whether a `schemaVersion` value is one this build can read — either the
+ * current version or an older one a migration upgrades. Used by
+ * `loadActiveGame` to tell an *unsupported* version apart from a merely
+ * malformed document: both fail validation, but only the former should be
+ * reported as an incompatible save rather than a corrupt one.
+ */
+export function isSupportedSaveSchemaVersion(value: unknown): boolean {
+  return value === SAVE_SCHEMA_VERSION_1 || value === CURRENT_SAVE_SCHEMA_VERSION;
+}
 const SERIALIZED_GAME_NUMBER_PATTERN =
   /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 
@@ -39,6 +57,7 @@ export interface SerializedWarehouseState {
   readonly inputQueue: SerializedGameNumber;
   readonly conversionProgress: number;
   readonly totalGoldDelivered: SerializedGameNumber;
+  readonly totalOfflineGoldClaimed: SerializedGameNumber;
 }
 
 export interface SerializedGameState {
@@ -52,7 +71,7 @@ export interface SerializedGameState {
   readonly warehouse: SerializedWarehouseState;
 }
 
-export interface SaveDocumentV1 {
+export interface SaveDocumentV2 {
   readonly schemaVersion: typeof CURRENT_SAVE_SCHEMA_VERSION;
   readonly savedAtTimestampMs: number;
   readonly effectiveProductionRatePerSecond: SerializedGameNumber;
@@ -77,8 +96,8 @@ export function createSaveDocument(
   state: GameState,
   config: BaseGameBalanceConfig,
   savedAtTimestampMs: number,
-): SaveDocumentV1 {
-  const document: SaveDocumentV1 = {
+): SaveDocumentV2 {
+  const document: SaveDocumentV2 = {
     schemaVersion: CURRENT_SAVE_SCHEMA_VERSION,
     savedAtTimestampMs,
     effectiveProductionRatePerSecond: calculateMineProductionRates(
@@ -103,23 +122,76 @@ export function migrateSaveDocument(
 
   const schemaVersion = document.schemaVersion;
 
-  if (schemaVersion !== CURRENT_SAVE_SCHEMA_VERSION) {
+  if (
+    schemaVersion !== SAVE_SCHEMA_VERSION_1 &&
+    schemaVersion !== CURRENT_SAVE_SCHEMA_VERSION
+  ) {
     throw new SaveDocumentError(
       `Unsupported save schema version ${String(schemaVersion)}.`,
     );
   }
 
+  // A version-1 document predates `warehouse.totalOfflineGoldClaimed`. That
+  // field records a gold source the old shape could not distinguish, and a
+  // version-1 save by definition never recorded an offline claim in it, so the
+  // upgrade default is zero and every other value is carried across exactly.
+  const upgraded =
+    schemaVersion === SAVE_SCHEMA_VERSION_1
+      ? upgradeVersionOneDocument(document)
+      : document;
+
   if (config === undefined) {
-    return candidate;
+    return upgraded;
   }
 
-  return migrateLegacyFourFloorDocument(document, config) ?? candidate;
+  return migrateLegacyFourFloorDocument(upgraded, config) ?? upgraded;
+}
+
+/**
+ * Adds `warehouse.totalOfflineGoldClaimed: '0'` to a version-1 document and
+ * stamps it as `CURRENT_SAVE_SCHEMA_VERSION`. A malformed document is stamped
+ * and returned unchanged rather than repaired here — `validateSerializedGameState`
+ * is what reports the actual shape error, and inventing a `warehouse` object
+ * would only move where the failure surfaces.
+ */
+function upgradeVersionOneDocument(
+  document: Record<string, unknown>,
+): Record<string, unknown> {
+  const upgradedToCurrent = {
+    ...document,
+    schemaVersion: CURRENT_SAVE_SCHEMA_VERSION,
+  };
+  const state = document.state;
+
+  if (!isPlainRecord(state)) {
+    return upgradedToCurrent;
+  }
+
+  const warehouse = state.warehouse;
+
+  if (
+    !isPlainRecord(warehouse) ||
+    Object.hasOwn(warehouse, 'totalOfflineGoldClaimed')
+  ) {
+    return upgradedToCurrent;
+  }
+
+  return {
+    ...upgradedToCurrent,
+    state: {
+      ...state,
+      warehouse: {
+        ...warehouse,
+        totalOfflineGoldClaimed: '0',
+      },
+    },
+  };
 }
 
 export function validateSaveDocument(
   candidate: unknown,
   config: BaseGameBalanceConfig,
-): SaveDocumentV1 {
+): SaveDocumentV2 {
   const migrated = migrateSaveDocument(candidate, config);
   const document = assertRecord(migrated, 'save');
   assertExactKeys(
@@ -146,14 +218,15 @@ export function validateSaveDocument(
     );
   }
 
-  return migrated as SaveDocumentV1;
+  return migrated as SaveDocumentV2;
 }
 
 /**
- * Expands the former four-floor version-1 payload into the new fifteen-floor
- * shape. Existing progress is preserved byte-for-byte and the added floors use
- * their configured locked defaults, so the schema version can remain 1 while
- * local prototype saves continue to load.
+ * Expands the former four-floor payload into the fifteen-floor shape. Existing
+ * progress is preserved and the added floors use their configured locked
+ * defaults. The shape is orthogonal to the schema version: a four-floor
+ * document may arrive as version 1 or 2, and `migrateSaveDocument` has already
+ * normalized the version (and added any missing fields) before this runs.
  */
 function migrateLegacyFourFloorDocument(
   document: Record<string, unknown>,
@@ -261,6 +334,7 @@ function serializeWarehouse(
     inputQueue: warehouse.inputQueue.serialize(),
     conversionProgress: warehouse.conversionProgress,
     totalGoldDelivered: warehouse.totalGoldDelivered.serialize(),
+    totalOfflineGoldClaimed: warehouse.totalOfflineGoldClaimed.serialize(),
   };
 }
 
@@ -478,6 +552,7 @@ function validateWarehouse(
       'inputQueue',
       'conversionProgress',
       'totalGoldDelivered',
+      'totalOfflineGoldClaimed',
     ],
     path,
   );
@@ -512,6 +587,10 @@ function validateWarehouse(
   parseGameNumber(
     warehouse.totalGoldDelivered,
     `${path}.totalGoldDelivered`,
+  );
+  parseGameNumber(
+    warehouse.totalOfflineGoldClaimed,
+    `${path}.totalOfflineGoldClaimed`,
   );
 
   if (inputQueue.equals(0) && warehouse.conversionProgress !== 0) {
@@ -552,6 +631,9 @@ function deserializeGameState(state: SerializedGameState): GameState {
       conversionProgress: state.warehouse.conversionProgress,
       totalGoldDelivered: GameNumber.deserialize(
         state.warehouse.totalGoldDelivered,
+      ),
+      totalOfflineGoldClaimed: GameNumber.deserialize(
+        state.warehouse.totalOfflineGoldClaimed,
       ),
     },
   };

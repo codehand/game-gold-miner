@@ -11,6 +11,13 @@
 -- a real row instead of six empty tables, and Step 7's fixture pattern for an
 -- authenticated caller has a known id to hold a token for.
 --
+-- The `profiles` row is no longer inserted directly, below: Step 9's
+-- `on_auth_user_created` trigger fires on the `auth.users` insert and creates
+-- it, the same as it would for a real anonymous sign-up. Inserting it by hand
+-- here as well would violate `profiles`'s primary key the moment that trigger
+-- exists, so the fixture's `display_name` is applied with an `update`
+-- afterward instead.
+--
 -- `saves`, `save_audit`, `leaderboard_entries`, and `entitlements` are left
 -- unseeded on purpose: a fixture save document has to be a document the shared
 -- `src/persistence` validator would accept, which does not yet run on the
@@ -59,5 +66,6 @@ insert into auth.users (
   now()
 );
 
-insert into public.profiles (id, display_name)
-values ('11111111-1111-1111-1111-111111111111', 'Dev Guest');
+update public.profiles
+   set display_name = 'Dev Guest'
+ where id = '11111111-1111-1111-1111-111111111111';

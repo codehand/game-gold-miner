@@ -285,6 +285,47 @@ version change is authorized in this phase.
   `VITE_` variable set inlines both as `undefined` and lets the bundler
   eliminate the dynamic import. `tests/unit/server-stack.test.ts`'s
   static-source assertions on `src/main.ts` carry the CI gate instead.
+- Server-milestone Step 10 flips `enable_manual_linking` from `false` to
+  `true` in `supabase/config.toml` and adds `[auth.external.google]`
+  (`client_id = "env(GOOGLE_CLIENT_ID)"`, `secret = "env(GOOGLE_CLIENT_SECRET)"`).
+  Manual linking is required: Supabase refuses `linkIdentity()` with "Manual
+  linking is disabled" while it is `false`, and `linkIdentity()` — not
+  `signInWithOAuth()` — is what keeps the same `auth.users` id when a guest
+  session already exists, which is the step's core requirement.
+  `src/platform/web/googleSignIn.ts`'s `beginGoogleSignIn` picks between the
+  two based on whether `getSession()` already returns a session, mirroring
+  `guestSession.ts`'s injected-collaborator, never-throws shape, faked by
+  `tests/unit/google-sign-in.test.ts` rather than mocking the SDK;
+  `signOutOfSession` wraps `signOut()` the same way. Linking an identity
+  already claimed by a different account fails with "Identity is already
+  linked to another user" — surfaced as a typed `error` result and
+  deliberately left unresolved; that collision belongs to Step 13.
+- `config.toml`'s `env(...)` substitution is read by the Supabase CLI itself
+  and only auto-loads a file literally named `.env` at the project root, not
+  `.env.local` — `supabase start`/`stop`/`reset` have no flag to point it
+  elsewhere. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` therefore live in a
+  second, separate git-ignored `.env` file (already covered by `.gitignore`'s
+  existing `.env`/`.env.*` rules), documented in `.env.example` alongside the
+  exact Google Cloud Console setup — a Web application OAuth client with
+  `http://127.0.0.1:54321/auth/v1/callback` (the fixed local GoTrue callback)
+  as its redirect URI, needing no domain.
+- No production UI exists for Google sign-in yet: `HudView.ts`'s fixed HUD
+  already covers the 360×640 canvas edge-to-edge (gold left, warehouse queue
+  centered, income right), leaving no free region for a DOM overlay that
+  would not risk covering existing HUD content or an existing canvas click
+  target. `import.meta.env.DEV` gates a `window.catMineIdleAccount` hook in
+  `src/main.ts` exposing `beginGoogleSignIn()`/`signOut()`, the same
+  `app.dataset.guestSession`-style diagnostic pattern Step 8 established. A
+  real human completing Google's own consent screen is the one thing nothing
+  local can substitute for, so the step's "same user id, same account after
+  sign-out/in" proof is a guided manual verification rather than part of
+  `npm run verify:server` — the same kind of unautomatable external
+  prerequisite Steps 11 (Apple membership/domain) and 12 (Telegram bot host)
+  already record for themselves.
+- `tests/unit/server-stack.test.ts` gained two static-source assertions
+  pinning `enable_manual_linking = true` and the `[auth.external.google]`
+  block, plus `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in the "declares the
+  server-only names" `.env.example` check — no Docker needed for any of them.
 - `scripts/scan-bundle-secrets.mjs` (`npm run scan:secrets`) fails the build when
   `dist/` contains a JWT declaring `role=service_role`, an `sb_secret_*` key, an
   exact non-`VITE_` value from `.env.local` or the running stack, or any
@@ -326,7 +367,7 @@ version change is authorized in this phase.
 - Upgrade prices use `baseCost × costGrowthRate^currentLevel` with `GameNumber` exponentiation and no rounding. Separate mine-shaft, elevator, and warehouse commands return discriminated success/failure results and preserve the original state on expected failures. Success deducts gold and increments the selected level; the shared level-effect calculation applies growth plus every reached milestone to shaft yield and shared-stage capacity. Milestone effects are derived from level, not stored as grant state, so reloads cannot apply them twice. Cycle durations, queues, carried material, totals, cursors, timestamps, and normalized progress remain unchanged.
 - The floor-unlock command requires an existing locked target, an unlocked immediately previous floor at the configured shaft level, and sufficient `GameNumber` gold. Success deducts the configured cost once and initializes the target from balance data with its starting level and zero progress, queues, and totals. Expected failures preserve the original state object.
 - The economy progression harness advances a fresh base-game state in one-second decisions for ten minutes. It unlocks an eligible next floor first, reserves gold when that unlock prerequisite is met, and otherwise selects the affordable upgrade with the largest hypothetical improvement to effective production per second. Deterministic ties favor the next unlock prerequisite and then configured order. Its report records exact action timing, target, cost, modeled improvement, final state, unlocked-floor count, highest level, and milestone status; it is analysis-only and does not automate player runtime.
-- Save schema version 1 is a strict plain-JSON document with exactly `schemaVersion`, `savedAtTimestampMs`, `effectiveProductionRatePerSecond`, and `state`. `state` contains version/timing counters, serialized gold, exactly fifteen configured floor records, elevator state, and warehouse state. Every `GameNumber` is a finite decimal/scientific string. Validation rejects unknown properties, missing/unsupported versions, unsafe or inconsistent timestamps, invalid counters/progress, non-positive levels/capacities, unknown/reordered/missing floors, broken unlock order/gates, locked-floor production, negative quantities, transported totals above extracted totals, mismatched level-derived capacities, and active progress without corresponding material. Migration dispatch first expands a valid legacy four-floor prefix with locked defaults for floors 5–15; runtime deserialization follows strict validation before restored state can enter the game.
+- Save schema version 2 is a strict plain-JSON document with exactly `schemaVersion`, `savedAtTimestampMs`, `effectiveProductionRatePerSecond`, and `state`. `state` contains version/timing counters, serialized gold, exactly fifteen configured floor records, elevator state, and warehouse state (including `totalOfflineGoldClaimed`, added in version 2). Every `GameNumber` is a finite decimal/scientific string. Validation rejects unknown properties, missing/unsupported versions, unsafe or inconsistent timestamps, invalid counters/progress, non-positive levels/capacities, unknown/reordered/missing floors, broken unlock order/gates, locked-floor production, negative quantities, transported totals above extracted totals, mismatched level-derived capacities, and active progress without corresponding material. Migration dispatch upgrades a version-1 document to version 2 by defaulting `totalOfflineGoldClaimed` to `"0"`, then expands a valid legacy four-floor prefix with locked defaults for floors 5–15; runtime deserialization follows strict validation before restored state can enter the game.
 - `ActiveSaveRepository` keeps storage replaceable. `DexieActiveSaveRepository` stores only `{ id: 'active', document }`, and reopening the same database restores the full serialized snapshot. `SavePersistenceCoordinator` keeps only the newest pending document, debounces routine writes by 500 ms, retains a failed write for retry, resolves load/save failures without throwing into the session, and exposes stable diagnostic messages/callbacks. The web adapter forces the latest document on hidden visibility and page-hide events when those targets exist.
 - `loadActiveGame` accepts only a completely deserialized valid save. Empty storage returns fresh state without warning. Failed migration or validation returns fresh state at the supplied timestamp plus either a `corrupt-save` or `incompatible-save` warning, including a detached copy of the invalid payload when structured cloning succeeds. Neither warning callbacks nor persistence diagnostic callbacks may escape into the load/save flow.
 - Balance configuration includes `offlineIncome.capDurationMs = 7_200_000` and `offlineIncome.efficiency = 0.5`; startup validation requires a positive safe-integer cap and finite efficiency in `[0, 1]`.
@@ -342,8 +383,8 @@ version change is authorized in this phase.
 - `BootScene` publishes `data-hud-view`, `data-floor-views`, `data-surface-views`, `data-purchase-controls`, `data-floor-upgrade-modal`, and `data-animation` at most every 100 ms rather than every frame, because displayed progress changes continuously and an unthrottled read-back would serialize the whole screen 60 times a second for diagnostics alone.
 - The surface headhouse has matched filled and empty 512×512 textures. `BootScene` derives the visible hopper state from `warehouse.queueSteps`: positive input shows gold, while zero shows the empty steel bin, with the same 128×128 display bounds after every texture swap.
 - The same `warehouse.queueSteps > 0` predicate exclusively drives surface cargo feedback: filled lead/assistant carts and the chute's gold-pour effect. Material still carried by the elevator cannot appear at the surface before authoritative delivery into `warehouse.inputQueue`; at zero queue every moving cart uses the empty texture and the pour is hidden, while all workers keep looping.
-- `src/game/layout/` is pure Phaser-free geometry and palette data, so `tests/unit/layout.test.ts` and the Playwright layout spec both import the `src/game/layout` barrel without loading Phaser. `eslint.config.mjs` enforces that purity for `src/game/layout/**` (no `document`/`window`/`navigator`, no `phaser` import) and `tests/unit/architecture.test.ts` probes the rule. It exports the 360×640 constants, `calculateMineLayout`, `calculateMineContentHeight`, `calculateFloorSlotRegion`, `regionContainsPoint`, `assertTouchTargetRegion`, and `serializeRegion`, and rejects non-finite/non-positive dimensions, heights below 416 logical pixels, invalid floor counts, negative floor indexes, and interactive regions below 44×44.
-- The portrait layout tiles `hud` (`0,0,360,52`), `surface` (`0,52,360,164`), and `mine` (`0,216,360,424`) with no gaps and no reserved bottom navigation. The initial five edge-to-edge 288×132 floor slots plus vertical content padding produce 680 logical pixels of mine content, so the mine area scrolls by 256; the content height expands at the 10-floor and 15-floor reveal gates. The elevator shaft is 64 px wide with a 62 px cabin, 50 px cargo cat, and no floor plaques; its 192×528 source artwork is a 64×1,980 `TileSprite` with tile scale `(1/3, 1)`, so it repeats at native vertical resolution instead of blurring through full-depth stretching. Adjusted shaft inset/gap/right inset preserve the floor width. `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects anything smaller.
+- `src/game/layout/` is pure Phaser-free geometry and palette data, so `tests/unit/layout.test.ts` and the Playwright layout spec both import the `src/game/layout` barrel without loading Phaser. `eslint.config.mjs` enforces that purity for `src/game/layout/**` (no `document`/`window`/`navigator`, no `phaser` import) and `tests/unit/architecture.test.ts` probes the rule. It exports the 360×640 constants, `calculateMineLayout`, `calculateMineContentHeight`, `calculateFloorSlotRegion`, `regionContainsPoint`, `assertTouchTargetRegion`, and `serializeRegion`, and rejects non-finite/non-positive dimensions, heights below 488 logical pixels, invalid floor counts, negative floor indexes, and interactive regions below 44×44.
+- The portrait layout tiles `hud` (`0,0,360,52`), `surface` (`0,52,360,164`), `mine` (`0,216,360,366`), and fixed `bottomNavigation` (`0,582,360,58`) with no gaps. The five code-native navigation illustrations are a treasure chest, storefront, bolt, cat-manager badge, and folded map. Each complete visible control uses a child container at scale `0.6`, while the interactive parent remains 48×44 for standard controls and 62×50 for the wider, raised Boost. Every hit region is therefore at least 44×44, and presses animate the visual child without shrinking input coverage or issuing a core command. The initial five edge-to-edge 288×132 floor slots plus vertical content padding produce 680 logical pixels of mine content, so the mine area scrolls by 314; the content height expands at the 10-floor and 15-floor reveal gates. The elevator shaft is 64 px wide with a 62 px cabin, 50 px cargo cat, and no floor plaques; its 192×528 source artwork is a 64×1,980 `TileSprite` with tile scale `(1/3, 1)`, so it repeats at native vertical resolution instead of blurring through full-depth stretching. Adjusted shaft inset/gap/right inset preserve the floor width. `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects anything smaller.
 - `index.html` declares `viewport-fit=cover` and hosts the Phaser parent in `#game-viewport`; `#app` applies `env(safe-area-inset-*)` padding so the scale manager measures the safe box. `Phaser.Scale.FIT` with `CENTER_BOTH` preserves aspect ratio and letterboxes instead of cropping.
 - Phaser 4 removed WebGL geometry masks (`setMask` logs a warning and does nothing), so the mine area is clipped by a dedicated camera viewport instead. The main camera ignores the mine content layer, the mine camera ignores the fixed HUD/surface layers, and the scroll gesture drives only that camera's `scrollY`. Phaser hit-tests through the same camera and honours both its scroll and each object's camera filter, so a scrolled control's pressable rectangle follows what is drawn without extra bookkeeping.
 - Elevator route geometry stays in mine-world coordinates. Its surface endpoint is always `SURFACE_ELEVATOR_STOP_Y - SURFACE_HEIGHT`, and the fixed-layer cabin twin maps from that world Y without applying mine-camera `scrollY`; scrolling can clip/reveal the cabin but cannot shorten a deep return leg or move the tower entry point.
@@ -365,7 +406,7 @@ version change is authorized in this phase.
 
 | Path | Type and constraint |
 |---|---|
-| `schemaVersion` | Integer exactly `1`. |
+| `schemaVersion` | Integer exactly `2`. A version-`1` document is upgraded by the migration dispatcher, which defaults `state.warehouse.totalOfflineGoldClaimed` to `"0"`. |
 | `savedAtTimestampMs` | Non-negative safe integer, at least `state.lastUpdateTimestampMs`. |
 | `effectiveProductionRatePerSecond` | Non-negative finite numeric string. |
 | `state.saveVersion` | Integer exactly `1`. |
@@ -373,7 +414,7 @@ version change is authorized in this phase.
 | `state.simulationTick` | Non-negative safe integer. |
 | `state.simulationRemainderMs` | Finite number in `[0, 100)`. |
 | `state.gold` | Non-negative finite numeric string. |
-| `state.floors` | Exactly fifteen configured, ordered floor objects. A legacy four-floor version-1 prefix is expanded to locked defaults for floors 5–15 before validation. |
+| `state.floors` | Exactly fifteen configured, ordered floor objects. A legacy four-floor prefix (arriving as version 1 or 2) is expanded to locked defaults for floors 5–15 before validation. |
 | `state.floors[].id`, `floorNumber` | Exact configured identifier and sequential integer. |
 | `state.floors[].isUnlocked`, `mineShaftLevel` | Boolean plus positive safe integer; floor one stays open and deeper unlocks are sequential/gated. |
 | `state.floors[].extractionProgress` | Finite number in `[0, 1)`; zero while locked. |
@@ -382,6 +423,7 @@ version change is authorized in this phase.
 | `state.elevator.roundRobinCursor`, `transitProgress`, `carriedMaterial` | Signed route cursor integer in `[-15, 15)` (non-negative downward target, negative upward origin), progress in `[0, 1)`, non-negative finite numeric string; empty travel may retain positive progress. |
 | `state.warehouse.level`, `capacity` | Positive safe integer plus positive finite numeric string matching the configured level effect. |
 | `state.warehouse.inputQueue`, `conversionProgress`, `totalGoldDelivered` | Non-negative finite numeric strings around progress in `[0, 1)`; empty input requires zero progress. |
+| `state.warehouse.totalOfflineGoldClaimed` | Non-negative finite numeric string; lifetime `claimOfflineReward` grants. Monotonic and in the save-conflict progress vector; absent in version 1, defaulted to `"0"` on migration. |
 
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
@@ -411,7 +453,7 @@ Three rules, and they differ by location.
 
 1. **Inside a save document, nothing changes.** `GameNumber` values stay
    serialized decimal/scientific strings inside the document text, exactly as
-   the version-1 save schema already defines them. The server neither reformats
+   the version-2 save schema already defines them. The server neither reformats
    nor re-serializes them.
 2. **Anywhere SQL must sort or rank a `GameNumber`, store two columns.**
    `*_exact text` holds the canonical serialized form and is the only value ever
@@ -472,6 +514,26 @@ create table public.profiles (
 create trigger profiles_set_updated_at
   before update on public.profiles
   for each row execute function public.set_updated_at();
+
+-- Server-milestone Step 9: creates the row `profiles` has no insert policy
+-- for. `security definer` lets it run as the function's owner (`postgres`,
+-- which owns `profiles` and so bypasses its RLS) rather than as
+-- `supabase_auth_admin`, the role that actually performs the `auth.users`
+-- insert and holds no privilege on `public.profiles` at all.
+create function public.handle_new_user() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id) values (new.id);
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
 
 -- ------------------------------------------------------------------- saves --
 create table public.saves (
@@ -550,6 +612,91 @@ create unique index recovery_codes_one_active_per_user_idx
   on public.recovery_codes (user_id)
   where redeemed_at is null and revoked_at is null;
 
+-- Server-milestone Step 14 review finding (2026-09-12): rotating a code was
+-- a revoke `update` followed by a separate `insert` — two independent,
+-- non-transactional PostgREST requests. An insert failure after a
+-- successful revoke stranded a user with no active code. Wrapping both
+-- statements in one `plpgsql` function makes them one transaction.
+--
+-- This does not mean Postgres serializes two concurrent `generate` calls
+-- for the same user into a well-ordered queue (a 2026-09-13 correction —
+-- the migration's own comment originally overstated this): both
+-- transactions' revokes can still clear the same predicate before either
+-- commits, and both then race their own insert. `recovery_codes_one_active_per_user_idx`
+-- is what makes that race safe — the loser's insert raises `23505`, and
+-- because the revoke and insert share one transaction, that failure rolls
+-- the loser's revoke back too.
+create function public.rotate_recovery_code(p_user_id uuid, p_code_hash text) returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  update public.recovery_codes
+  set revoked_at = now()
+  where user_id = p_user_id
+    and redeemed_at is null
+    and revoked_at is null;
+
+  insert into public.recovery_codes (user_id, code_hash) values (p_user_id, p_code_hash);
+end;
+$$;
+
+-- Server-milestone Step 14 review finding (2026-09-13): a `generate` landing
+-- in the narrow window between a failed session mint and
+-- `revertRecoveryCodeRedemption` running could leave the account holding a
+-- fresh active code by the time the revert executes — a plain `update`
+-- would then try to revive the just-spent code as a *second* active row,
+-- colliding with `recovery_codes_one_active_per_user_idx`. This function
+-- checks for that fresher code first and no-ops instead of raising an
+-- avoidable constraint violation in the common case — though the check and
+-- the write are not atomic with each other, so a `generate` committing in
+-- the narrow gap between them can still make the `update` itself raise the
+-- identical `23505`; `handleRedeem`'s own try/catch around this call stays
+-- for exactly that reason, and the outcome is safe either way.
+create function public.revert_recovery_code_redemption(p_code_hash text) returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_user_id uuid;
+begin
+  select user_id into v_user_id from public.recovery_codes where code_hash = p_code_hash;
+
+  if v_user_id is null then
+    return;
+  end if;
+
+  update public.recovery_codes
+  set redeemed_at = null
+  where code_hash = p_code_hash
+    and revoked_at is null
+    and not exists (
+      select 1
+      from public.recovery_codes existing
+      where existing.user_id = v_user_id
+        and existing.redeemed_at is null
+        and existing.revoked_at is null
+    );
+end;
+$$;
+
+-- Server-milestone Step 14 review finding (2026-09-13, optional hardening):
+-- both RPCs above are `security invoker` with Postgres's default execute
+-- grant to `public`. `recovery_codes` RLS (no policy at all) already makes
+-- them inert for `anon`/`authenticated`; this closes it at the grant layer
+-- too. `revoke ... from public` alone is not enough — Supabase's own
+-- bootstrap grants execute to `anon`/`authenticated`/`service_role`
+-- individually when a function is created, not merely through `public` —
+-- and `service_role` is not a superuser locally, so it needs its own
+-- explicit re-grant.
+revoke execute on function public.rotate_recovery_code(uuid, text) from public, anon, authenticated;
+grant execute on function public.rotate_recovery_code(uuid, text) to service_role;
+
+revoke execute on function public.revert_recovery_code_redemption(text) from public, anon, authenticated;
+grant execute on function public.revert_recovery_code_redemption(text) to service_role;
+
 -- ------------------------------------------------------ leaderboard_entries --
 create table public.leaderboard_entries (
   board_key       text             not null,
@@ -608,7 +755,7 @@ create table public.entitlements (
 | `saves` | `user_id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade; one row per user |
 | `saves` | `revision` | bigint | no | — | `> 0`; monotonic, `+1` per accepted upload; the D2 concurrency token |
 | `saves` | `schema_version` | integer | no | — | `> 0`; denormalized from the document for migration sweeps |
-| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV1` |
+| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV2` |
 | `saves` | `received_at` | timestamptz | no | `now()` | server clock; the D3 anchor for every elapsed-time calculation |
 | `saves` | `previous_revision` | bigint | yes | — | `< revision`; null-together with the other two `previous_*` columns |
 | `saves` | `previous_document_json` | text | yes | — | ≤ 65536 bytes; one generation of rollback |
@@ -666,7 +813,7 @@ schema.
 
 | Table | select | insert | update | delete |
 |---|---|---|---|---|
-| `profiles` | own row | none — created by the Step 9 sign-up trigger | own row | none |
+| `profiles` | own row | none — created by the `on_auth_user_created` sign-up trigger (Step 9) | own row | none |
 | `saves` | own row | **none** | **none** | **none** |
 | `save_audit` | none | none | none | none |
 | `recovery_codes` | none | none | none | none |
@@ -676,7 +823,12 @@ schema.
 `saves` denying every client write is the rule the whole anti-cheat design rests
 on: row-level security cannot re-simulate a save, so it cannot judge one, and a
 client that could reach `saves` through PostgREST would make Phase 4 decoration.
-Step 15 establishes it and Step 26 attacks it.
+The table and this exact policy already existed from the Step 5 migration;
+Step 15 (implemented 2026-09-12) added the live-stack evidence
+(`tests/server-integration/saves-rls.integration.test.ts`) that select-own,
+insert, update, delete, and upsert all behave exactly as this matrix says —
+insert/upsert refused `403`/`42501`, update/delete affecting zero rows, own-row
+select working both before and after a row exists. Step 26 attacks it.
 
 `leaderboard_entries` is world-readable by design — that is what a leaderboard
 is. It carries its own `display_name` snapshot precisely so that publishing a
@@ -730,6 +882,31 @@ There is deliberately **no per-code failed-attempt counter**: a wrong code
 usually matches no row at all, so counting per code would miss the attack.
 Throttling belongs per caller and per address, in Step 25.
 
+A 2026-09-12 review of Step 14 fixed five issues in the Edge Function itself
+(the highest: a failed session mint after a successful redemption
+permanently burned the code with no session ever delivered — now reverted;
+see `architecture.md`'s Step 14 review entry for all five). One of them
+changed the address the interim rate limiter keys on: `extractCallerAddress`
+now reads the *last* `X-Forwarded-For` hop (the platform gateway's own,
+unforgeable one) rather than the first (client-suppliable) one, and the
+threshold rose from 10 to 30 attempts/minute — confirmed live that the local
+gateway supplies this trusted hop for every request regardless of what the
+client sends, so the higher threshold absorbs legitimate traffic sharing one
+observed address without weakening the real backstop, the code's own
+128-bit entropy.
+
+A 2026-09-13 follow-up review fixed five more issues: the rotation
+migration's own comment overstated what atomicity guarantees (corrected
+above, in the schema section); the atomicity fix had no committed
+behavioral test (added two); the revert path could itself collide with the
+one-active-code index in a narrow window (fixed with its own RPC,
+`revert_recovery_code_redemption`, also in the schema section); the
+rate-limit sweep ran on every request rather than being gated by map size;
+and — a consequence of the address fix above — the whole integration suite
+was found to share one real rate-limit bucket with no way to reset it,
+fixed with a token-gated `POST /v1/test-only-reset-rate-limit` route (see
+`architecture.md`'s Step 14 review entries for full detail on all five).
+
 ### What Step 3 does not design
 
 - The Step 32 account audit log covering identity changes, recovery issuance and
@@ -749,11 +926,11 @@ Throttling belongs per caller and per address, in Step 25.
 | Store | Field | Type | Nullability/default | Key, index, relationship |
 |---|---|---|---|---|
 | `saves` | `id` | string | Required; no default | Primary key/key path; fixed application value `active`; not auto-incremented. |
-| `saves` | `document` | `SaveDocumentV1` structured object | Required; no default | No index; validated/migrated application payload. |
+| `saves` | `document` | `SaveDocumentV2` structured object | Required; no default | No index; validated/migrated application payload. |
 
-There are no secondary indexes, foreign keys, relationships, or other object stores. One logical record is maintained by `put` at the fixed key. Dexie version 1 creates the store with schema `id`; no IndexedDB structural migration exists. The save-document boundary performs a same-version four-floor-to-fifteen-floor expansion before strict validation, so existing prototype progress remains readable without changing either version number.
+There are no secondary indexes, foreign keys, relationships, or other object stores. One logical record is maintained by `put` at the fixed key. Dexie version 1 creates the store with schema `id`; no IndexedDB structural migration exists. The save-document boundary migrates a version-1 document (including the legacy four-floor-to-fifteen-floor expansion) to version 2 before strict validation, so existing prototype progress remains readable.
 
-**Lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1` stores at most one JSON-encoded, validated `SaveDocumentV1`. It is a synchronous pagehide recovery record, not an authoritative second save. A newer valid journal wins during load and is deleted after the same-or-newer snapshot commits to IndexedDB; malformed values are discarded.
+**Lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1` stores at most one JSON-encoded, validated `SaveDocumentV2`. It is a synchronous pagehide recovery record, not an authoritative second save. A newer valid journal wins during load and is deleted after the same-or-newer snapshot commits to IndexedDB; malformed values are discarded.
 
 If a database is introduced, replace this statement with the complete authoritative schema: every table, column, data type, default, nullable rule, primary/foreign key, unique/check constraint, index, and relationship. Update this section in the same change as each migration; do not leave schema details only in migration files.
 
@@ -761,11 +938,130 @@ If a database is introduced, replace this statement with the complete authoritat
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)
-- `npm run test`: 401 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture (Step 6), and — Step 7 — `tests/unit/server-stack.test.ts`'s Retry-After assertion updated to read the response envelope from its new home in `_shared/http.ts`, its "never reads the service-role key" and `config.toml` `verify_jwt` checks generalized to `it.each` loops over every directory under `supabase/functions/` rather than hardcoding `save-sync` (a 2026-09-09 review finding). Step 8 added `tests/unit/guest-session.test.ts` (`createSupabaseClient`'s null-when-unconfigured behavior; `ensureGuestSession` reusing a session including a linked non-anonymous one, defaulting `isAnonymous` to `false` when absent, signing in fresh, and never throwing on a fake `GuestAuthClient`'s rejection) and flipped `tests/unit/server-stack.test.ts`'s two `@supabase/supabase-js` pin assertions from `devDependencies` to `dependencies`, plus added `test:server-e2e` to its documented-commands list (a 2026-09-09 Step 8 review finding). A third Step 8 review pass added `describe('the guest-session bootstrap in src/main.ts')` — three static-source assertions (the chain is never awaited before boot, a `.catch` sits between its two `.then`s, and the DEV diagnostic is published through `toPublicGuestSessionDiagnostic` rather than stringifying the raw result with its access token). They are static because `src/main.ts` is a module of top-level side effects no unit test can import, and because the only behavioural test of that contract — the production-smoke lazy-chunk spec — can run solely against a build with Supabase configuration inlined, which CI has not; the same static-beside-behavioural pattern a Step 7 review established for `resolveCallerViaSupabaseAuth`.
-- `npm run test:server-unit` (`deno test supabase/functions`): 19 tests pass across `_shared/http.test.ts`, `save-sync/index.test.ts`, and `whoami-check/index.test.ts` (Step 7), every one with zero `--allow-*` permission flags. Needs no Docker and no database.
-- `npm run test:server-integration` (`vitest run --config vitest.server-integration.config.ts`): 6 tests pass against the live local stack (Step 7) — the seeded fixture guest's real `profiles.display_name` for a valid token, and 401 for no header / a syntactically invalid token / a wrong-secret-signed token / an expired token, plus 400 for a non-GET method. Assumes `supabase start` and `supabase db reset` already ran.
-- `npm run test:server-e2e` (`playwright.server-e2e.config.ts`, port 4176): 3 Chromium tests pass against the live local stack (Step 8) — a fresh browser boots playable and holds a real anonymous session with a UUID `user.id`; every `**/auth/v1/**` request aborted still boots the game and a forced `visibilitychange` flush still reaches IndexedDB across a reload; two fresh browser contexts receive distinct `user.id`s whose access tokens each answer only for themselves through the live `whoami-check` function. Assumes `supabase start` and `supabase db reset` already ran and needs `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` pointed at that stack.
-- `npm run test:e2e`: all 42 Chromium tests pass, including explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios.
+- `npm run test`: 628 tests pass, including the fifteen-floor configuration, legacy four-floor save expansion, progressive visibility, scroll resizing, unavailable-journal fallback, lifecycle recovery, exact shaft/elevator/warehouse x1/x5/MAX batch quoting, fixed-step miner-progress interpolation, the ten-minute fractional-transport save-invariant regression, the core/Deno architecture-boundary probe and the pinned ten-minute core-portability fixture (Step 6), and — Step 7 — `tests/unit/server-stack.test.ts`'s Retry-After assertion updated to read the response envelope from its new home in `_shared/http.ts`, its "never reads the service-role key" and `config.toml` `verify_jwt` checks generalized to `it.each` loops over every directory under `supabase/functions/` rather than hardcoding `save-sync` (a 2026-09-09 review finding). Step 8 added `tests/unit/guest-session.test.ts` (`createSupabaseClient`'s null-when-unconfigured behavior; `ensureGuestSession` reusing a session including a linked non-anonymous one, defaulting `isAnonymous` to `false` when absent, signing in fresh, and never throwing on a fake `GuestAuthClient`'s rejection) and flipped `tests/unit/server-stack.test.ts`'s two `@supabase/supabase-js` pin assertions from `devDependencies` to `dependencies`, plus added `test:server-e2e` to its documented-commands list (a 2026-09-09 Step 8 review finding). A third Step 8 review pass added `describe('the guest-session bootstrap in src/main.ts')` — three static-source assertions (the chain is never awaited before boot, a `.catch` sits between its two `.then`s, and the DEV diagnostic is published through `toPublicGuestSessionDiagnostic` rather than stringifying the raw result with its access token). They are static because `src/main.ts` is a module of top-level side effects no unit test can import, and because the only behavioural test of that contract — the production-smoke lazy-chunk spec — can run solely against a build with Supabase configuration inlined, which CI has not; the same static-beside-behavioural pattern a Step 7 review established for `resolveCallerViaSupabaseAuth`. Step 10 added `tests/unit/google-sign-in.test.ts` (`beginGoogleSignIn` links to an existing session and starts a fresh OAuth sign-in when there is none, both branches confirmed by which collaborator was and was not called and by the `redirectTo` option passed through; a failure of the pre-redirect "issue an authorize URL" request — e.g. rate limiting, not Google's real identity-collision, which cannot surface through this promise at all — resolves typed rather than throwing; `signOutOfSession` mirrors the same never-throws contract) and `tests/unit/server-stack.test.ts` static assertions pinning `enable_manual_linking = true`, the `[auth.external.google]` block, and (added in the 2026-09-10 review below) that the `DEV` account hook carries its own `.catch` and passes `window.location.origin` as `redirectTo`. A 2026-09-10 review of Step 10 found and fixed four issues: the account hook's `.catch` was missing (a second independent consumer of `supabaseClientPromise` reintroducing Step 8's own already-fixed unhandled-rejection class, DEV-only); `scan-bundle-secrets.mjs` never read the new `.env` file, so `GOOGLE_CLIENT_SECRET` had no exact-value guard, only the weaker name-level one — fixed by merging `.env` into the same check as `.env.local`, with `tests/unit/bundle-secret-scan.test.ts` gaining a dedicated `.env` describe block; the claim that Google's "identity already linked to another user" surfaces as this module's typed `error` result was wrong and is corrected throughout the Memory Bank — that conflict is discoverable only after the OAuth redirect returns, as `error_code=identity_already_exists` on the return URL, empirically confirmed during the review's own second live pass; and `describeError` was deduplicated into `src/platform/web/describeError.ts`, `GoogleAuthClient`'s unread session-user field was narrowed to `unknown`, the `declare global` block moved out from between two import statements, and `redirectTo: window.location.origin` was added so the OAuth return trip lands back on whichever origin actually started it rather than always `site_url` (`describeError` at the time lived at `src/platform/web/describeError.ts`; Step 12 moved it to `src/platform/describeError.ts`, see below). All four mutation-proven; the full client gate (422 unit tests, 51 E2E, build, secret scan, 10 production smoke) passes after the fixes. A follow-up review found a fifth issue inside the fourth fix's own test: the code built `{ provider: 'google', options: undefined }` while the test's title claimed the key was omitted entirely, and `toHaveBeenCalledExactlyOnceWith` is itself undefined-tolerant, so it passed under either shape — confirmed with a standalone Vitest probe first. Fixed both sides: the credentials object now genuinely omits `options` when no `redirectTo` is given, and the test reads `Object.keys()` off the real mock call to distinguish "absent" from "present but undefined"; mutation-proven in both directions. Steps 15–17 and 13 (2026-09-12) added 37 tests: `tests/unit/guest-upgrade-reconciliation.test.ts` (12 — `hasAnyProgress` true/false across every progress-vector field and false across every excluded transient one, `reconcileGuestUpgrade`'s four decision branches); `tests/unit/cloud-save-reconcile.test.ts` (11 — `reconcileCloudSaveAtBoot` against a faked repository/download/reload for every outcome including a device with no local record at all, and `downloadCloudSaveViaFetch` against a stubbed `fetch` for 204/200/non-ok); 10 more in `tests/unit/google-sign-in.test.ts` for `detectGoogleIdentityCollision`/`beginGoogleAccountSwitch`; and new `describe` blocks in `tests/unit/server-stack.test.ts` (the `save-sync` service-role exception, the Step 17 reconcile-trigger wiring in both boot chains, the Step 13 DEV-hook additions). Step 14 (2026-09-12) added 17 more: `tests/unit/recovery-code.test.ts` (13 — `generateRecoveryCode`/`redeemRecoveryCode` against a stubbed `fetch` and a faked auth collaborator, covering unconfigured/no-session/success/non-ok/rate-limited/invalid-code/verifyOtp-failure/rejected-collaborator for each) and more in `tests/unit/server-stack.test.ts` (the `recovery-code` service-role exception, the `RECOVERY_CODE_PEPPER` name check, and the DEV-hook wiring including that `redeemRecoveryCode` only calls `triggerCloudSaveReconcile()` when redemption actually succeeded). A same-day review of Step 14 added 3 more `tests/unit/server-stack.test.ts` assertions: rotation goes through the `rotate_recovery_code` RPC rather than a separate `.insert()`, with the migration's own DDL checked too; `revertRecoveryCodeRedemption`/`redeemed_at: null` appear in the function's source; and the rate limiter's `'unknown'` fallback bucket is gone in favor of `address: string | null`. A 2026-09-13 follow-up review added 3 more: the revert now goes through `revert_recovery_code_redemption` rather than a plain `.update()`, with that migration's own DDL checked too; the rate-limit sweep is gated by `RATE_LIMIT_PRUNE_SIZE_THRESHOLD` rather than running on every request; and the test-only rate-limit reset route is gated by `RECOVERY_CODE_TEST_RESET_TOKEN`, which `.env.example` documents. The same review added a `tests/unit/server-stack.test.ts` static assertion pinning that `main.ts`'s `reload` callback calls `unbindSaveLifecycle?.()` before `window.location.reload()` — mutation-proven (reverting the call fails the assertion by name) — the fix for a HIGH-severity Step 17 reload race (see `activeContext.md`). A follow-up pass on the same review added 4 more: `tests/unit/lifecycle-journal.test.ts` gained `WebLifecycleSaveJournal.clear()`'s two tests (unconditional discard, unlike `clearThrough` against an older timestamp; a no-op rather than a throw when storage is unavailable), and `tests/unit/cloud-save-reconcile.test.ts` gained two more proving `clearLifecycleJournal` is called exactly on an adopt outcome and never on any other — the fix for a LOW residual in the Step 17 reload fix (the unbind alone does not clear a journal entry already written earlier in the same session). A new `server-stack.test.ts` assertion also pins the optional grant-layer hardening (`20260913090200_recovery_code_rpc_grants.sql`). Step 18 (2026-09-13) replaced `tests/unit/guest-upgrade-reconciliation.test.ts` with `tests/unit/save-conflict-policy.test.ts` (18 tests after the same-day review below: `compareProgress` equal/dominance/fork plus every excluded transient field, `describeSaveConflictCandidate`'s §7.3 fields, `resolveSaveConflict`'s `same-progress`/dominance/`fork` branches, the malformed-floor-count guard, and offline-counter cases), added three `tests/unit/cloud-save-reconcile.test.ts` cases (same-progress, a local strict superset, and a fork retaining both candidates), a `tests/unit/save-schema.test.ts` version 1→2 migration test, and three `server-stack.test.ts` static assertions pinning the single shared predicate, its purity, and `main.ts`'s `pendingSaveConflict` retention. A same-day 2026-09-13 user review found five issues and the HIGH one took three attempts: a silent adopt could destroy a fresh capped offline reward (`claimOfflineReward` credited `gold` without moving any vector field). Two heuristic fixes were rejected (a `gold`-size comparison over-fired on purchases and broke the new-device restore; a lifetime-cumulative bound was dead after any spending because `gold` falls while the bound grows), and the structural fix completed the vector — `claimOfflineReward` now credits the new monotonic `warehouse.totalOfflineGoldClaimed`, which joins `M`, so `CURRENT_SAVE_SCHEMA_VERSION` bumps 1→2 with a migration defaulting it to `"0"`, and `resolveSaveConflict` carries no `gold` logic. Also fixed a MEDIUM unchecked floor-index that could throw on an unvalidated `409` body (now a `fork` guard) and three LOW items. Step 19 (2026-09-13) added the client remote repository: `tests/unit/cloud-save-replica.test.ts` (20 — §9 cadence and coalescing, forced bypass, bounded backoff and exhaustion, every §7 conflict branch including an unvalidated `409` body, and §11 arming so no upload runs before the boot download settles), `tests/unit/cloud-save-upload.test.ts` (18 — every §4 status mapped to the typed result, the `unauthenticated` refresh-once rule, and a dropped connection resolving retryable rather than throwing), `tests/unit/replicating-active-save-repository.test.ts` (7 — local-only load, local-write-first ordering, a failed local write still rejecting, and forced-trigger behavior), two added `tests/unit/cloud-save-reconcile.test.ts` cases for the new `onServerRevision` dep, five static assertions in `tests/unit/server-stack.test.ts`, and a core-network probe in `tests/unit/architecture.test.ts` banning `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource` from `src/core`.
+- Server-milestone Step 11 (Apple sign-in) was cut on 2026-09-11 rather than
+  implemented: it needs a paid Apple Developer Program membership, a
+  verified real domain, and a deployed HTTPS return URL, none of which
+  exist, and Apple accepts no `localhost` redirect at all — no local-dev
+  escape hatch the way Google has. Offered the choice between acquiring
+  those, building to spec with live verification deferred, or cutting the
+  step outright, the user chose to cut it, exercising the contingency
+  `server-threat-model.md` finding F7 already recorded. No code, config, or
+  test exists for it.
+- Server-milestone Step 12 (Telegram sign-in), implemented 2026-09-11.
+  Unlike Steps 10–11, `initData` verification is self-contained
+  HMAC-SHA256 that never contacts Telegram, so the step's full test —
+  valid `initData` mints a session; tampered/stale/wrong-bot-token payloads
+  are each rejected with none issued; the bot token never leaks — is
+  provable against the real local stack with hand-signed fixture vectors,
+  no real bot or Mini App host needed. `supabase/functions/telegram-sign-in/index.ts`'s
+  `verifyTelegramInitData` matches Telegram's documented algorithm exactly
+  (data-check-string excludes `hash`/`signature`, sorted `key=value` pairs
+  joined by `\n`; `secret_key = HMAC_SHA256(key="WebAppData", data=botToken)`;
+  `computed = hex(HMAC_SHA256(key=secret_key, data=dataCheckString))` must
+  equal `hash`, constant-time compared; `auth_date` freshness defaults to
+  86400 s, a documented convention, not a Telegram mandate), entirely on
+  `crypto.subtle` so it runs unmodified on Deno. Session-minting uses the
+  confirmed community pattern for a provider Supabase Auth has no
+  first-class API for: `admin.generateLink({ type: 'magiclink', email })`
+  (creates `auth.users` if absent) returns `properties.hashed_token`; the
+  client calls `auth.verifyOtp({ token_hash, type: 'email' })` to complete a
+  real, GoTrue-tracked session. No schema change: a Telegram user maps to
+  the deterministic, RFC 2606-reserved placeholder email
+  `telegram-<id>@telegram.invalid`, so `generateLink` finds-or-creates
+  without a `profiles` column or migration — identity linking stays in
+  `auth.users`, matching Steps 8 and 10. **This is only safe with
+  `[auth.email] enable_signup = false`** (`supabase/config.toml`) — see
+  finding F13 (`server-threat-model.md`) below: with public signup open, an
+  attacker who knows a Telegram id can claim that placeholder email by
+  password before the real user ever signs in, and `generateLink` would
+  then hand the real user a session into the attacker's account.
+- This is the first function `src/` calls directly with `fetch()` — finding
+  F11's trigger (`server-threat-model.md`), actually tripped by Step 12, not
+  Step 16/17 as F11 had guessed. `supabase/functions/_shared/http.ts` grew
+  `corsHeaders`/`corsPreflightResponse` (allow-listing
+  `http://127.0.0.1:5173`/`http://localhost:5173`, matching
+  `additional_redirect_urls`) and `jsonResponse`/`errorResponse` grew an
+  optional `origin` parameter; `memory-bank/server-save-sync-protocol.md`
+  §14 records the policy per F11's own instruction. Proving it against the
+  real stack surfaced finding F12: the local Kong gateway unconditionally
+  overwrites every Edge Function's `Access-Control-Allow-Origin` with `*`
+  when the request carries an `Origin` header — reproduced against
+  `whoami-check`, which sets no CORS header of its own, and against a
+  deliberately unlisted origin — so the origin restriction is correct and
+  tested at the application layer but is not what a real browser calling
+  the live *local* stack observes today; whether a real deployment's
+  gateway behaves the same way is unverified.
+- `src/platform/telegram/telegramSignIn.ts`: `readTelegramInitData()` reads
+  `window.Telegram.WebApp.initData` (never `initDataUnsafe`), resolving
+  `null` for every player today since no Telegram Web App `<script>` tag
+  was added to `index.html` — that is the still-unbuilt Mini App host
+  (finding F1), deliberately separate, later work. `signInWithTelegram`
+  POSTs the raw `initData` and completes `verifyOtp` on success; same
+  never-throws, typed-result shape as the other identity modules.
+  `src/main.ts` computes `readTelegramInitData()` once at boot, before
+  either identity chain: non-null calls `signInWithTelegram` **instead of**
+  `ensureGuestSession` — "replaces the guest path entirely," not a linking
+  flow — so `supabaseClientPromise` now has three independent consumers
+  (Telegram, guest, the Step 10 DEV hook), and the Telegram chain carries
+  its own `.catch` from the start, the lesson Step 10's own review already
+  taught. `describeError` moved from `src/platform/web/` to
+  `src/platform/describeError.ts`, shared by `web/` and the new
+  `telegram/` sibling.
+- `tests/unit/server-stack.test.ts`'s `extractMainBlock` helper replaced
+  order-dependent `void supabaseClientPromise` occurrence-counting (broken
+  by inserting a third consumer before the existing two) with anchor-string
+  extraction, and gained a dedicated Telegram-bootstrap describe block plus
+  a positive assertion that `telegram-sign-in` — and only it — reads
+  `SUPABASE_SERVICE_ROLE_KEY`, the first function that legitimately needs
+  it (`admin.generateLink`), exempted from the "never reads the
+  service-role key" blanket check that file's own prior comment already
+  anticipated a future function would need. `tests/server-integration/telegramInitDataFixture.ts`
+  independently re-implements the signing algorithm with `node:crypto`
+  (not Web Crypto) — a real, deployed function accepting a vector signed
+  this way proves two independent implementations of the same published
+  algorithm agree, not that one merely matches itself, the same principle
+  `authFixture.ts` already established.
+- A 2026-09-12 review found and fixed one critical issue and three smaller
+  ones. **Critical, finding F13:** the placeholder-email mechanism above
+  was pre-account-stealable — `[auth.email]` had `enable_signup = true`
+  with `enable_confirmations = false`, so an attacker who knows a Telegram
+  id could `POST /auth/v1/signup` with that exact `telegram-<id>@telegram.invalid`
+  and a password of their own choosing before the real user ever signed in,
+  and `generateLink` would then hand the real user a session into the
+  attacker's account. Reproduced live end to end (attacker signup → 200;
+  Telegram sign-in for the same id → the identical `auth.users` id;
+  attacker password login afterward → still that id), independently
+  confirmed, then fixed with `enable_signup = false` — nothing in this
+  codebase calls `signUp`/`signInWithPassword`, and `admin.generateLink`/
+  `verifyOtp` are admin/OTP paths this flag does not gate (confirmed live:
+  the full server suite and the Telegram flow both still pass with it set).
+  `tests/server-integration/telegram-sign-in.integration.test.ts` gained a
+  test reproducing the exact attack attempt against the live stack; a
+  static assertion in `tests/unit/server-stack.test.ts` needed its own
+  fix first — an initial version's lazy regex crossed past `[auth.email]`
+  into the unrelated, already-`false` `[auth.sms] enable_signup` further
+  down the same file and so passed vacuously against a mutated flag, caught
+  by mutation-testing the test itself before trusting it. **Medium:**
+  `scan-bundle-secrets.mjs` still missed `supabase/functions/.env` — the
+  most sensitive of the three env files it now covers, since
+  `TELEGRAM_BOT_TOKEN` is the HMAC key signing every Telegram user's
+  `initData` — fixed by merging it into the same exact-value check as
+  `.env`/`.env.local`. **Minor:** `MintSessionResult`'s unread `reason`
+  field was removed (nothing ever read it), and `verifyTelegramInitData`'s
+  freshness check gained `Math.abs` so a future-dated (not just past-dated)
+  payload is also caught. **Deliberately not changed:** the reviewer's note
+  that a wrong method should answer `405`/`Allow` rather than `400
+  malformed_request` — `save-sync/index.ts`'s own header comment already
+  made 400 the deliberate, documented choice for exactly this case across
+  every function reusing the save-sync protocol's vocabulary, which
+  `server-save-sync-protocol.md` §1 says identity endpoints do too;
+  introducing `405` here would be the actual inconsistency. All fixes
+  mutation-proven.
+- `npm run test:server-unit` (`deno test supabase/functions`): 100 tests pass across `_shared/http.test.ts` (including the CORS helpers, and — a 2026-09-12 Step 14 review finding — `corsPreflightResponse`'s `access-control-allow-headers` now asserted as `content-type, authorization`), `save-sync/index.test.ts` (health/routing plus, from Steps 16–17, `handleSaveUpload`/`handleSaveDownload` against an injected `SaveSyncDeps` covering every 401/413/400/422/409/200/204 branch — including, from a 2026-09-12 review, `writeSaveRow` resolving `false` to model a lost compare-and-swap race, which `handleSaveUpload` must turn into a re-read `409` rather than the `200` a blind write would have returned, and a dedicated `Content-Length`-declares-70000-over-a-2-byte-body case pinning that the size cap's pre-check — not only its post-read check — can independently answer `413` — 26 tests in the file total), `telegram-sign-in/index.test.ts` (Step 12 — `verifyTelegramInitData` against hand-signed valid/tampered/stale/future-dated/wrong-bot-token/malformed vectors, `handleTelegramSignIn` against every response shape with faked collaborators, and a defensive scan proving no response can carry the bot token), `whoami-check/index.test.ts` (Step 7), and `recovery-code/index.test.ts` (Step 14, 29 tests — `handleGenerate`/`handleRedeem` against an injected `RecoveryCodeDeps`: the code format and its canonicalization, the rate-limit check firing before the body is even read, malformed/wrong/already-redeemed codes all answering the identical generic `recovery_code_invalid`, the lost-compare-and-swap-race path answering the same code rather than a 500, a defensive scan proving no response can carry `RECOVERY_CODE_PEPPER`, and — the 2026-09-12 review's five fixes — that a failed mint triggers `revertRecoveryCodeRedemption` with the same canonical code (and that a 500 still answers even when the revert itself throws, and that a successful mint never reverts anything), and that `handleRedeem` passes `null` to `checkRedemptionRateLimit` when no `X-Forwarded-For` is sent but the *last* comma-separated hop when one is — plus, from the 2026-09-13 follow-up review, the new `POST /v1/test-only-reset-rate-limit` route answering the identical `malformed_request`/"Unknown route" shape an actually-unknown route gets when unauthorized, receiving `null` when no token header is sent, and clearing rate-limit state and answering `200` once authorized), every one with zero `--allow-*` permission flags. Needs no Docker and no database. A 2026-09-14 Step 19 review added one more: an older version-1 document is migrated and accepted rather than refused as `schema_unsupported`.
+- `npm run test:server-integration` (`vitest run --config vitest.server-integration.config.ts`): 83 tests pass against the live local stack — 6 for `whoami-check` (Step 7: the seeded fixture guest's real `profiles.display_name` for a valid token, and 401 for no header / a syntactically invalid token / a wrong-secret-signed token / an expired token, plus 400 for a non-GET method), 7 for `profiles-rls` (Step 9), 8 for `telegram-sign-in` (Step 12, 7 original + the F13 regression test), 10 for `saves-rls` (Step 15 — select/insert/update/delete/upsert against real anonymous identities, one row seeded via a service-role client that mints its key at run time via `supabase status --output json`, never as a tracked-file literal), 11 for `save-upload` (Step 16 — first upload at revision 1, a second accepted upload advancing to revision 2, a stale-`baseRevision` upload refused `409` with the server's real document attached, malformed/oversized/unsupported-schema-version rejections, that the same token still cannot `PATCH saves` directly through PostgREST after a successful upload, and — a 2026-09-12 review finding proven live rather than only reasoned about — two genuinely concurrent `Promise.all`-issued uploads, both racing the same first write and both racing the same subsequent revision, each resolving to exactly one `200`/one `409` with the revision advancing exactly once, never twice and never zero), 5 for `save-download` (Step 17 — 204 for no cloud save, the step's own "new device restores it" test, the latest revision after a second upload, and cross-user isolation), 5 for `guest-upgrade-collision` (Step 13 — all three required flows, composing the real Step 16/17 endpoints with the real `resolveSaveConflict`; Step 18 rewrote its fork fixture to a genuine elevator-vs-warehouse fork since a one-axis superset now resolves silently), 7 for `save-conflict-resolution` (Step 18 — the step's own two-device test: a real `409` is resolved by §7 deterministically, a strict-superset save is adopted or re-uploaded without loss, equal progress adopts the server revision, a genuine fork destroys neither save, and a same-day-review regression proves an offline-gold claim on the behind device forces a fork instead of a silent adopt), and 18 for `recovery-code` (Step 14 — the full round trip restoring the identical `user.id` including the no-email pure-anonymous case, a code accepted with or without its display dashes, the stored row holding only a 64-character hex digest, a code redeeming exactly once, regeneration invalidating the prior code, wrong/malformed codes refused, direct PostgREST access still denied, the concurrent-redemption race resolving to exactly one winner, and throttling after enough repeated attempts — a 2026-09-12 review finding, confirmed live: the local gateway (Kong) always supplies its own trusted `X-Forwarded-For` hop whether or not the client sends one, so every request in this file shares one real address bucket rather than the file's old per-call synthetic addresses, and the throttle test loops with a generous bound instead of asserting an exact attempt count for that reason — plus, from a 2026-09-13 follow-up review: the test-reset route's own auth behavior and that it actually clears a throttled bucket; a genuine concurrent `generate`/`generate` race proving exactly one active, redeemable code survives either legitimate outcome; a forced insert-half `code_hash` collision proving `rotate_recovery_code` rolls its revoke back; and both branches of `revert_recovery_code_redemption` — clearing `redeemed_at` when the code is the account's only row, and safely no-opping once a fresher code has already taken over; and, from an optional-hardening pass the same day, that neither RPC is callable through PostgREST's `/rest/v1/rpc/...` endpoint by an authenticated non-service-role caller, `403` rather than an RLS-empty result). A `beforeAll`/`afterAll` around the whole `recovery-code` file now resets the shared rate-limit bucket via that same test-reset route, confirmed by running the file five consecutive times with no stack restart between runs. Assumes `supabase start` and `supabase db reset` already ran, with `supabase/functions/.env` setting `TELEGRAM_BOT_TOKEN`/`RECOVERY_CODE_PEPPER`/`RECOVERY_CODE_TEST_RESET_TOKEN` to the fixture values `tests/server-integration/telegramInitDataFixture.ts`/the local dev pepper/`tests/server-integration/recovery-code.integration.test.ts`'s own fixture constant sign, hash, and match with respectively. Step 20 added 3 more for `adopt-existing-save` (a pre-milestone version-1 document is stored and returned byte-for-byte, its progress survives with the added counter as the only difference, and the server itself migrates a raw version-1 upload).
+- `npm run test:server-e2e` (`playwright.server-e2e.config.ts`, port 4176): 8 Chromium tests pass against the live local stack (Steps 8, 20, 21, and 22) — a fresh browser boots playable and holds a real anonymous session with a UUID `user.id`; every `**/auth/v1/**` request aborted still boots the game and a forced `visibilitychange` flush still reaches IndexedDB across a reload; two fresh browser contexts receive distinct `user.id`s whose access tokens each answer only for themselves through the live `whoami-check` function. Assumes `supabase start` and `supabase db reset` already ran and needs `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` pointed at that stack.
+- `npm run test:e2e`: all 52 Chromium tests pass, including the fixed five-icon bottom navigation and every click target, explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios. Step 19's test — "the full existing client E2E suite passes offline, unchanged" — was run both ways on 2026-09-13: fully green with the configured local Supabase stack running *and* with `.env.local` removed entirely, so the cloud replica is provably a no-op with no backend. The configured run also caught and fixed a real "Illegal invocation" defect: the replica stored the browser's `setTimeout`/`clearTimeout` detached, so the first scheduled cadence call threw; they are now bound to `globalThis`. Producing a false `409` on a returning player's first save was likewise caught here and fixed with §11 arming.
 - `npm run test:perf`: the repeated ten-minute benchmark passes with all fifteen floors unlocked — 60.000 FPS, 16.67 ms mean, 17.6 ms p95, 17.8 ms maximum, zero of 36,139 frames beyond the 18.34 ms threshold, +229,928 bytes post-GC live-heap growth at +188 B/s, 665 Phaser objects and 371 DOM nodes constant across twenty samples, and 81.9 ms scroll p95 against a 100 ms budget. It presented at 60 Hz, so mean frame time equals the vsync interval and carries no headroom information. This is Pixel 5 emulation under 4× CPU throttling in desktop Chrome and is not physical Android-device evidence.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 - `npm run test:prod`: builds the optimized bundle, serves it with `vite preview`
@@ -788,7 +1084,19 @@ If a database is introduced, replace this statement with the complete authoritat
   `supabase status --output json`. `--with-bundle-scan` additionally passes
   the production build and secret scan. Requires Docker. Its final pass/fail
   line reads "npm run verify:server" rather than the Step-4-era "Step 4
-  validation."
+  validation." Re-verified 2026-09-11 after Step 12 (Telegram sign-in) with
+  the same clean-cycle discipline — 48 Deno unit tests, three committed
+  migrations, 20 integration tests (7 of them new, against the real deployed
+  `telegram-sign-in` function), and the unchanged 3-test `test:server-e2e`
+  suite all pass; the client gate (438 unit tests, 51 E2E, build, secret
+  scan, 10 production smoke) re-run alongside it. Re-verified again
+  2026-09-12 after the critical F13 fix (`[auth.email] enable_signup = false`)
+  and its three smaller companions, from another completely clean
+  `supabase stop`/`start`/`db reset` cycle: 49 Deno unit tests, 21
+  integration tests (the new F13 attack-reproduction test included), and
+  the unchanged `test:server-e2e` suite all pass; the client gate (442 unit
+  tests, 51 E2E, build, secret scan, 10 production smoke) re-run alongside
+  it.
 - `npm run verify:all`: `verify` then `verify:server` in sequence, added at Step
   5 as the sibling command its own test named; `.github/workflows/ci.yml` runs
   the same two checks as separate CI jobs rather than one sequential command, so
@@ -877,3 +1185,257 @@ save of roughly 3–4 KB. Cloud failures reuse `createSaveDiagnosticBanner` with
 `cloud-sync-*` codes, and only terminal failures reach it — the banner never
 withdraws a notice, so a retryable network error must show nothing while a retry
 is still pending.
+
+Server-milestone Step 19 implemented the client half of that contract. The
+active-save repository is now a composition of three modules:
+`ReplicatingActiveSaveRepository` (local primary, cloud replica),
+`cloudSaveReplica` (pure §9 cadence, backoff, and §7 `409` policy), and
+`cloudSaveUpload` (the one `PUT /v1/save` `fetch`). Its timing constants live
+in `src/persistence/cloudSaveReplica.ts`: `CLOUD_UPLOAD_MIN_INTERVAL_MS =
+60_000` (the local `DEFAULT_SAVE_DEBOUNCE_MS = 500` is untouched),
+`CLOUD_UPLOAD_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000]`,
+`CLOUD_UPLOAD_MAX_RETRIES = 5` (five retries after the initial request, so the
+16 s step is reached), and
+`CLOUD_UPLOAD_MAX_CONFLICT_RESOLUTIONS = 5`. Uploads are held until
+`CloudSaveReplica.arm(revision)` is called from the boot reconcile's new
+`onServerRevision` hook, so the first upload of a returning player updates the
+revision the server already holds instead of earning a false `409`. The
+replica's `setTimeout`/`clearTimeout` are bound to `globalThis`, because the
+browser throws "Illegal invocation" on a detached timer call — a real defect
+the configured E2E run caught. `src/core` is enforced, not merely described,
+as server-free: `eslint.config.mjs` bans `fetch`, `XMLHttpRequest`,
+`WebSocket`, and `EventSource` under `src/core/**`, with a matching
+`tests/unit/architecture.test.ts` probe.
+
+A 2026-09-14 review added: an upload `409` fork now calls `stop()` (the client
+holds the server revision, so a later save would otherwise replace the unshown
+remote branch); `describeCloudSaveNotice` maps each §4 failure code to its
+namespaced `cloud-sync-*` banner copy (reported from `src/main.ts`'s replica
+`onEvent` on `sync-stopped`/`document-dropped`); a rejected
+`save_invalid`/`save_rejected` save is remembered by the structural shape of
+its state (`stateShapeSignature`) and not retried by the routine cadence, so
+the loop survives neither an identical resend nor a fresh timestamp; a forced
+trigger bypasses that guard and a successful upload clears it, so sync stays
+genuinely live and a transient rejection can recover (R1, pass 3); local saves
+are suspended
+(`localSavesSuspended` + `cancelScheduledSave`) while a mid-session remote is
+adopted and reloaded; the `local-dominates` re-upload preserves a newer queued
+document; `#attempt` resets per trigger; the upload `Content-Type` is
+`application/json; charset=utf-8`; and an unparseable `receivedAt` on a `409`
+is a terminal `malformed_request`. `save-sync` now rejects only a schema
+version newer than the server's, migrating older ones through the shared
+chain.
+
+Server-milestone Step 20 added `adoptExistingLocalSave` in
+`src/platform/web/cloudSaveReconcile.ts`: it reads the local document, runs it
+through `validateSaveDocument` (which migrates version 1 to version 2 via
+`migrateSaveDocument`, expanding a legacy four-floor payload and defaulting
+`warehouse.totalOfflineGoldClaimed` to `"0"`), and calls the Step 19 replica's
+`forceCloudUpload`. `src/main.ts`'s boot-reconcile trigger uses it on
+`no-cloud-save`/`kept-local`, so a pre-milestone player's version-1 IndexedDB
+save becomes the account's cloud save on first sign-in, and publishes a DEV
+`localSaveAdoption` diagnostic. It never throws, with three distinct non-upload
+outcomes: absent → `no-local-save`, unreadable/corrupt → `unreadable`, and a
+throwing `forceUpload` → `upload-failed`. The server-e2e spec seeds a
+version-1 `SaveDocument` in IndexedDB to prove the browser path (comparing the
+cloud copy against the captured flushed local document, so a later heartbeat
+write cannot make the assertion race §9's cadence); the integration suite proves
+the server stores and returns the migrated document byte-for-byte.
+
+A 2026-09-14 review of Step 20 fixed: the flaky final e2e poll (M1, now compares
+against a captured constant); the `upload-failed` conflation (L2); the missing
+DEV adoption diagnostic (L3); the legacy four-floor evidence gap and a
+zero-progress unit fixture (L4); and an overstated `activeContext.md` claim that
+Step 20 changed behaviour rather than extracting and evidencing Step 19's (L5).
+
+Server-milestone Step 21 added: `isNewSession` on `ensureGuestSession` (reused
+vs minted, the only "this device's save was evicted" signal); the pure
+`shouldExplainMissingLocalSave` and `local-save-missing` notice
+(`src/platform/web/localSaveRestore.ts`, reported by `src/main.ts`); the
+`requestPersistentStorage` helper (`src/platform/web/persistentStorage.ts`,
+DEV `data-persistent-storage`); and the `onServerRevision` move in
+`reconcileCloudSaveAtBoot` so a dominating remote is never preceded by arming
+the replica (which could overwrite the cloud save being restored).
+
+**Step 21 measurement — `navigator.storage` (measured 2026-09-14).** Recorded,
+not assumed. Environment: Playwright-bundled headless Chromium (desktop
+emulation), development server, no user engagement. Result from the DEV
+`data-persistent-storage` diagnostic, captured by
+`tests/e2e/persistent-storage.spec.ts`:
+`{"supported":true,"persisted":false,"quotaBytes":9663676416,"usageBytes":0}` —
+so `persist()` is present but **denied** (no engagement signal), the origin
+quota is about 9 GiB, and usage is effectively zero. A denied `persist()` is the
+expected headless result and is not evidence about a real browser profile where
+the site has engagement.
+
+**Step 21 measurement — iOS Safari seven-day deletion: OUTSTANDING.** The
+specification says Safari removes script-writable storage after seven days
+without first-party interaction, and it is unknown here whether a granted
+`navigator.storage.persist()` exempts the data. This cannot be measured from
+this repository's environment: it needs a real iOS device and a seven-day
+wall-clock observation (threat-model finding F8; moving the device date forward
+is not a validated shortcut). The observation is to be started when a deployed
+HTTPS origin exists, checking at day 7+ whether the IndexedDB save and the
+Supabase session survive, whether `persisted()` reports a grant, and whether a
+grant changed the outcome. The measurement date and result must be recorded here
+when it completes; no result is claimed until then.
+
+A 2026-09-14 review of Step 21 fixed: **M1** — `loadResult.source === 'fresh'`
+conflates "no record" with "corrupt record", so a returning player's corrupt
+save was misreported as missing and the false notice replaced the accurate
+`corrupt-save` warning; the decision now keys on a three-way `LocalSaveState`
+(`saved`/`missing`/`unreadable`) and only `missing` fires the notice. **L2** —
+the Telegram `sessionIsNew = true` assignment was inert and rested on a false
+premise; it is removed and the notice is documented as guest-path-only.
+**L3** — `architecture.md`'s Save Diagnostic Surface now documents all four
+notice sources and the replace-on-different-code behaviour. **L4** — the
+shared-promise join could never settle if the font await rejected; it is now a
+three-way mutable join with no permanent pending await. **L5** — the
+no-cloud-copy e2e stubs the whole save-sync surface, so a forced upload cannot
+409 into an adopt reload that clears the banner.
+
+Server-milestone Step 22 moved offline settlement to the server. New pure
+`calculateOfflineGrant` (`src/core/offline-income/calculateOfflineGrant.ts`)
+computes the reward from two opaque timestamps; `calculateOfflineIncome` (the
+client projection) and `save-sync`'s `GET /v1/save` both call it, so the
+7,200,000 ms cap and 0.5 efficiency cannot drift (F4). The download response
+carries `offlineGrant` computed from the stored `received_at` to the server's
+`Date.now()`. The client parses it in `downloadCloudSaveViaFetch`, receives it
+via `reconcileCloudSaveAtBoot`'s `onOfflineGrant` for `kept-local`/
+`same-progress`, and credits it as the authoritative reward. `playwright.config.ts`
+pins the client E2E dev server's Supabase env blank so that suite stays
+backend-free and deterministic; the production smoke pins the save-sync surface
+to "no cloud save" for the same reason. `calculateOfflineGrant` was added to the
+Step 6 server-core bundle, so the server runs the identical formula.
+
+A 2026-09-15 review of Step 22 fixed: **H1** — a failed download fell back to the
+client's clock-derived projection, reopening the device-clock cheat (an attacker
+drops one request and jumps the clock); the fallback is now allowed only where
+no server figure can exist (unconfigured, no session, or `no-cloud-save`), and a
+failed download credits nothing, settling on the next boot that reaches the
+server. **H2** — the server grant includes the cadence window since the last
+upload, so it over-credited open-tab time; `chooseOfflineReward` now credits
+`min(serverGrant, localProjection)`, which preserves "only a closed interval"
+and is cheat-safe (a manipulated clock can only reduce the credit). **M1** — the
+reward waited on an unbounded download; `downloadCloudSaveViaFetch` now carries
+a 10 s `AbortSignal.timeout`. **L1** — the applied-receipt guard was burned when
+the grant arrived; it is now marked only when the claim is persisted. **L2** —
+protocol §10.2 documents a `200` carrying `offlineGrant: null`. **L3** — the
+server-e2e seed no longer races the app (the account is fresh and uploads
+nothing). **L4** — the four ordering flags are now the pure, unit-tested
+`chooseOfflineReward`.
+
+A follow-up 2026-09-15 review fixed three more: **H2-R** — the `min` bound only
+engaged on a *positive* projection, but the exact H2 scenario (a tab flushed at
+reload, or lagging uploads) produces a zero projection, so the cap was credited
+unbounded; a null or zero projection is now treated as a zero closed interval
+and credits nothing. **H1-R** — `sign-in-failed` against a configured backend
+was passed as a fallback alongside `unconfigured`, reopening the clock cheat by
+clearing the auth entry and blocking the network; the fallback now requires
+`unconfigured` (or `no-cloud-save`), and the recorded cost is that a configured
+build whose sign-in keeps failing earns no offline reward until a sign-in lands.
+**L5** — `productContext.md` now states the "no reward this session, settled
+next boot" behaviour instead of claiming the player always sees the reward
+immediately.
+
+Server-milestone Step 23 added the upload upper bound. New pure
+`evaluateProgressBound` (`src/core/anti-cheat/progressBound.ts`, exported from
+`src/core/index.ts` and therefore in the Step 6 server-core bundle) bounds an
+uploaded document against the last accepted one: each unlocked floor's
+`totalExtracted`/`totalTransported` (transport capped by the shared elevator's
+throughput), `warehouse.totalGoldDelivered`, `warehouse.totalOfflineGoldClaimed`,
+and the total upgrade/unlock spend (`state.upgradeSpend`). It uses the shared
+core's `calculateMineProductionRates` and batch-cost functions on the candidate's
+final configuration held for the whole interval in `O(floors)` — no ticks
+simulated, since the interval can exceed `MAX_CATCH_UP_MS` and an `O(elapsed)`
+walk would blow the §7.1 latency budget. Each counter also carries the material
+in the pipeline at the interval's open (in-flight cycle, floor queue, elevator
+load, warehouse input) so a warm mine over a short interval is accepted (F1); the
+spend allowance is one earning term, not two (F5). `PROGRESS_BOUND_TOLERANCE = 0.05`
+absorbs the fixed-step-vs-continuous-rate remainder and is pinned from both sides
+by `tests/unit/progress-bound.test.ts` (9 tests). `save-sync`'s
+`handleSaveUpload` runs `findProgressBoundViolation` after the `baseRevision`
+check and before the write, returning `422 save_rejected` with
+`detail: { counter, claimed, maximum }` and leaving the row and revision
+unchanged; a first upload is exempt and a stored row whose document or
+`received_at` is unreadable skips the check rather than rejecting (F4). When the
+tight bound fails and the row's one-generation ancestor exists, the check is
+retried against that ancestor over the full interval, so a §7 `409` re-upload of
+a branch that diverged from it commits (F2). The client already handles
+`save_rejected` (Step 19): `describeCloudSaveNotice` maps it to the
+`cloud-sync-*` banner and the document is dropped by shape.
+`supabase/functions/save-sync/index.test.ts` gained the server unit tests,
+including the F2 ancestor anchor and F4 skip, and
+`tests/server-integration/save-rejection.integration.test.ts` proves the live
+rejection plus honest-accept. `tests/server-integration/saveAgeFixture.ts`
+ages a stored row's `received_at` through the service-role client for a fixture
+document that stands for linear offline play (never to fake a divergent branch
+into the linear bound). The `profiles-rls` suite's profile-`created_at`
+assertion gained a `CLOCK_SKEW_TOLERANCE_MS` bound on both sides, because it
+compares the Postgres container's clock with the test process's.
+
+A 2026-09-14 review of Step 23 fixed: **F1 (HIGH)** — a warm mine was rejected
+over short intervals (no term for in-flight material); **F2 (HIGH)** — a §7
+conflict resolution could never be uploaded (elapsed measured only from the
+stored row); **F3 (MEDIUM)** — the tests began cold and the fixtures masked
+F1/F2; new warm-interval and ancestor-anchor regressions were added; **F4
+(LOW)** — an unparseable `received_at` collapsed to a zero-second bound; **F5
+(LOW)** — the spend allowance summed two earning terms; **F6 (LOW)** —
+`architecture.md`'s file-responsibility row now names the module. **N1 (MEDIUM)
+remains open and is a stated limit:** the ancestor anchor is one generation
+deep, so a fork older than ~2 minutes against an actively-syncing peer is still
+rejected; the sound fix (retain fork points) was not taken up by Step 24 and is
+not scheduled. See `architecture.md`'s Step 23 section and `progress.md`'s known
+risks.
+
+Server-milestone Step 24 (rejection handling). The `save_audit` table already
+exists in the Step 5 migration with no RLS policy for any client role; Step 24 is
+its writer. `save-sync`'s `handleSaveUpload` records one row per authenticated
+`PUT /v1/save` attempt through the new `writeSaveAudit` dep
+(`writeSaveAuditViaServiceRole`, the second and last service-role use in the
+function): `outcome`, `error_code`, `base_revision`, `resulting_revision`,
+`document_bytes`, `client_reported_at` (the document's own `savedAtTimestampMs`,
+recorded and never trusted), and a `detail` with the server-authored reason (a
+Step 23 bound violation's `{counter, claimed, maximum}`, a validation `reason`, a
+conflict's `serverRevision`, and so on). Accepted attempts are recorded too; the
+write is best-effort (logged, never fatal); an unauthenticated request writes
+nothing. The `server-stack.test.ts` service-role pin now also asserts
+`admin.from('save_audit').insert(`. Evidence: 8 new Deno unit tests,
+`tests/server-integration/save-audit.integration.test.ts` (6 live tests including
+RLS invisibility/unwritability to a client token and an unrepresentable client
+clock still writing its row), and `tests/server-e2e/save-rejection.spec.ts`
+proving the player keeps their local save, keeps playing, and sees the
+`cloud-sync-save-rejected` notice.
+
+A 2026-09-14 review of Step 24 fixed: **H1 (HIGH)** — `readClientClock` now
+bounds `savedAtTimestampMs` to the range a `timestamptz` round-trips through
+`Date#toISOString` (years 0001–9999) and records the raw out-of-range value in
+`detail.clientReportedAtOutOfRangeMs`; previously a year-10000+ value formatted
+as an extended-year string Postgres refused, so the insert threw, the
+best-effort writer swallowed it, and the attempt left no row — erasing the
+evidence of the clock attack the column exists to expose. **M1 (MEDIUM)** — an
+unexpected collaborator failure (`readCurrentSave`/`writeSaveRow` throwing, or
+the non-`SaveDocumentError` rethrow in validation) is now caught and recorded as
+a `rejected`/`server_error` row before the 500, so a repeated crash is visible
+instead of a silent unaudited 500. **L1 (LOW)** — the Content-Length rejection
+path adds `declaredBytes` to `detail`, marking that `document_bytes` there is
+the client's own header, not a measurement. **L2 (LOW)** — every rejection costs
+a service-role round trip on the response path; bounding that is Step 25's job
+and is carried there. A follow-up pass found **H2 (HIGH)**: `baseRevision` was
+written to the audit's `bigint` column unvalidated, so a fractional (`1.5`) or
+out-of-int8 (`1e300`) value aborted the insert and the attempt left no row —
+including M1's own `server_error` row. It is now validated against §5 before
+`auditContext.baseRevision` is assigned (null or a positive safe integer;
+anything else is a recorded `400 malformed_request`), and
+`writeSaveAuditViaServiceRole` coerces non-safe-integer revisions to null and
+clamps `document_bytes` defensively. **L3 (LOW)** — `request.text()` on an
+aborted body and building a `409` from a corrupted stored row are now also
+caught and recorded as `server_error` rows. Evidence rose to 112 Deno server
+unit tests and 91 integration tests.
+
+## Closed incident reports
+
+Four base-game defect reports (marketplace popup, navigation hit-target,
+upgrade CTA press, marketplace hardening and close-race) previously appeared
+verbatim in this file and six others. They are now in
+`archive/incident-log.md`, one canonical copy.

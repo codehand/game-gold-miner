@@ -27,11 +27,11 @@ The player claims offline gold, inspects the mine, upgrades the slowest stage, o
 
 ## UX Principles
 
-Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it.
+Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback and keeps future features discoverable without pretending their screens already exist.
 
 ## Base-Game Delivery Boundary
 
-The current implementation milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English, the logical viewport is 360×640, and no inactive bottom navigation is shown. Managers, boosts, gift drops, shops, tasks, social systems, Telegram integration, backend services, monetization, audio, and final production assets remain deferred until the base-game acceptance checks in `memory-bank/implementation-plan.md` pass.
+The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation shell now reserves the bottom 58 logical pixels for five clickable, individually illustrated controls (Rewards, Shop, Boost, Managers, Map); each complete visible tile is scaled to 60% while the thumb-safe hit region stays unchanged. These controls provide press feedback only. Their screens and all manager, boost, gift, shop, task, social, Telegram, monetization, audio, and final-art systems remain deferred.
 
 The user-review revision completed on 2026-09-08 reduces the fixed HUD to 52 logical pixels and defines its centre number as the authoritative warehouse input queue (`warehouse.inputQueue`), not gold still travelling inside the elevator cabin. A warehouse icon makes that ownership explicit. The tower hopper, gold pour, loaded cats, and filled surface carts now all empty with that queue; elevator cargo remains visually in transit until surface delivery. The elevator preserves top-down priority by returning whenever a visited floor still has gold, and the surface delivery crew shares one straight baseline.
 
@@ -74,3 +74,146 @@ game still boots, plays, and saves entirely offline. The player-facing
 promises of this milestone — a save that survives a new device, cleared
 storage, or a lost
 browser — start at Phase 2 and are only kept from Phase 3.
+
+
+Server-milestone Steps 8 through 17 and 13 landed between 2026-09-09 and
+2026-09-12 and change what is true about accounts and saves, even though — no
+production UI existing yet for any of it — a player cannot see or reach any
+of this in the shipped game today. An account now exists: every player gets
+a real anonymous session at boot, and can attach Google or Telegram to it
+(Apple was cut) while keeping the same identity and progress. A save can now
+genuinely leave the device: `saves` denies every client write, but the
+`save-sync` Edge Function accepts an upload and serves it back down, with a
+player who has no local progress on a new device silently restored from
+whatever their account already holds, and a player who *does* have local
+progress on a device that turns out to hold a genuinely different account
+save left completely untouched rather than either being silently merged or
+silently asked to lose one. Every path into this — Google/Telegram sign-in,
+the account-linking collision, the cloud upload/download — is reachable only
+through `import.meta.env.DEV`-only diagnostics and hooks today, the same
+"land the mechanism, defer the real entry point" pattern every identity step
+since Step 8 has followed; the player-facing promise this paragraph is
+building toward — a save that survives a new device, cleared storage, or a
+lost browser — is still not something any real player benefits from yet.
+That remains true until a production UI exists and, for an unlinked guest
+specifically, until Step 14's recovery code lands: script-writable storage
+(the session token included) is deleted by iOS Safari after seven days
+regardless of any of this milestone's work.
+
+Server-milestone Step 18 (2026-09-13) settles what happens when the same
+account's saves diverge across two devices. In player-facing terms: if one save
+is ahead of the other in every way that only ever moves forward — more floors
+opened, deeper shafts, more material extracted and transported, a higher
+elevator or warehouse, more gold ever delivered, more gold ever claimed
+offline — the game keeps the ahead save without asking, because keeping it
+loses nothing. If neither save is ahead in every way, each holds something the
+other lacks, so both are shown and the player chooses; the game never picks one
+on the player's behalf in that case and never destroys the save they did not
+choose. The rule lives in `src/persistence/saveConflictPolicy.ts`; only a
+genuine fork reaches the player as a prompt. Making "keeps the ahead save loses
+nothing" true required counting *every* gold source, so an offline reward now
+also increments a new monotonic `warehouse.totalOfflineGoldClaimed` counter
+(save schema version 2, migrated from version 1 by defaulting it to zero) that
+the conflict rule compares. Like the rest of this milestone,
+no production UI surfaces it yet: the candidate saves are retained for the
+session through a DEV-only hook, and the chooser screen plus the upload path
+that produces a conflicting write are later steps. This changes nothing a
+current player can see or do.
+
+Server-milestone Step 19 (2026-09-13) makes the cloud save a real replica of
+the local one without changing how the game plays. IndexedDB is still the
+store the game boots from and writes to; a separate background cadence — at
+most one upload per 60 seconds, plus an immediate one when the tab is hidden
+or closed, when an offline reward is claimed, or right after the boot
+comparison — sends the newest save to the account's cloud copy. Nothing about
+this delays a frame or a local save, and if the network is slow or absent the
+game is exactly as playable as before; a failed upload is retried silently in
+the background and, once retries are exhausted, simply stops for that session
+while the local save carries on. If the cloud copy has turned out to be ahead
+of the local one, the game adopts it rather than overwriting it, through the
+same dominance rule described above. As with the rest of this milestone no
+production surface exposes any of it yet; the player-facing promise — a save
+that survives a new device, cleared storage, or a lost browser — still waits
+on Step 21 (surviving storage eviction) and on a production sign-in UI.
+
+Server-milestone Step 20 (2026-09-14) makes sure an existing player is not
+reset by the cloud. A player who has been playing the client-only build already
+holds their save on their device as a version-1 document. On the first sign-in
+that device makes, the game quietly adopts that save as the account's cloud
+save — migrating it to the current format losslessly — instead of letting a
+fresh, empty cloud save take its place. The player sees nothing; their
+progress is simply the same progress they already had, now also recoverable
+from their account.
+
+Server-milestone Step 21 (2026-09-14) handles the case where the device's copy
+disappears — a browser clearing site data, storage pressure, or iOS Safari's
+seven-day sweep. When the account's session is still there but the local save is
+gone, the game restores the account's cloud save if it has one; if the account
+has no cloud save, the player is told plainly that their saved game could not be
+found rather than silently handed a fresh mine. The game also asks the browser
+to keep its storage persistent, and it saves to the cloud early in a session, so
+a player who plays once and never returns still has something to restore. This
+reduces the loss the seven-day cap causes but does not remove it: an unlinked
+guest whose session and save are swept in the same event still needs the
+recovery code to get back in, and the real seven-day iOS behaviour is being
+measured rather than assumed.
+
+Server-milestone Step 22 (2026-09-14; tightened 2026-09-15) makes the offline
+reward the server's. When the player returns to an account with a cloud save,
+the amount credited for their absence is computed by the server from its own
+record of when it last saw the save, not from the device clock — so changing the
+device clock, whether forward, backward, or mid-session, no longer changes what
+they earn. The figure cannot exceed the time they were actually away: the server
+grant is bounded by the game's own local estimate of the away interval, so an
+upload that lagged behind their last play cannot hand back time the open game
+already produced. The reward appears once that source is known (the download is
+bounded by a short timeout rather than left open), and offline play is
+unchanged; only when the game has no server figure to use at all — a brand-new
+account with nothing in the cloud, or no backend configured — does it fall back
+to its own local estimate. If the download or sign-in fails against a configured
+backend, the player is shown no offline reward for that session rather than a
+device-clock figure; the award is simply made on the next launch that reaches
+the server. The reward formula, the two-hour cap, and the 50% efficiency are
+unchanged; only the clock that decides the elapsed time is now the server's.
+
+Server-milestone Step 23 (2026-09-14) is the other half of that promise: the
+server now checks that an uploaded save claims only progress the elapsed time
+could have produced. It re-derives the maximum from the player's last accepted
+save and rejects a document claiming more, bounding the counters that only ever
+rise — material extracted and transported, gold ever delivered, offline gold ever
+claimed, and the gold the levels and unlocks cost — not the current gold balance,
+which is *supposed* to fall when a player spends. The check is deliberately
+generous: it assumes the player was at their best production for the whole gap
+and allows for whatever their mine already had in progress at the moment the gap
+began, so an honest save is never rejected over a rounding difference or over
+work that was simply already underway, and it only rejects a claim that is
+impossible by a clear margin. A player who legitimately did a lot while away
+still sees it kept, and a player who reconciled two devices normally keeps the
+branch they chose — with **one known limit**: if the other device kept syncing
+during the last couple of minutes of the absence, the chosen branch can be
+refused and the cloud copy stays on the other one. Play and the local save are
+unaffected in that case; only the cloud backup lags, and the fix is tracked as an
+open item for Step 24. A tampered save is not uploaded. This
+does not yet decide what the player is *told* when a save is refused — that
+notice and the audit record are Step 24 — so today a refused upload simply leaves
+the cloud copy unchanged while local play continues.
+
+Server-milestone Step 24 (2026-09-14) delivers that notice and the record. A save
+the server refuses never costs the player anything: their local save is written
+first and is untouched, the game keeps running, and they see one plain sentence —
+"Your progress could not be verified and was not uploaded. Your game on this
+device is unchanged." The game also quietly retries later, so a refusal that was
+a false alarm (or a now-irrelevant document) does not permanently stop cloud
+sync. Every upload attempt, accepted or refused, is written to a server-side audit
+log the client can neither read nor write, recording the server's decision, the
+body size, the reason, and the device's own claimed clock alongside the server's
+— enough to tell a bug from cheating after the fact without ever trusting the
+player's clock. This is groundwork for the later alerting step, not a
+player-facing feature.
+
+## Closed incident reports
+
+Four base-game defect reports (marketplace popup, navigation hit-target,
+upgrade CTA press, marketplace hardening and close-race) previously appeared
+verbatim in this file and six others. They are now in
+`archive/incident-log.md`, one canonical copy.

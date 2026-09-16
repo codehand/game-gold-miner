@@ -15,7 +15,7 @@ import {
   deserializeSaveDocument,
   migrateSaveDocument,
   validateSaveDocument,
-  type SaveDocumentV1,
+  type SaveDocumentV2,
 } from '../../src/persistence';
 
 const TIMESTAMP_MS = 1_788_000_000_000;
@@ -136,6 +136,33 @@ describe('versioned save schema', () => {
     ).toBe(true);
   });
 
+  it('upgrades a version-1 document by defaulting the offline-claim counter to zero (Step 18)', () => {
+    const current = createValidDocument();
+    const warehouseWithoutCounter: Record<string, unknown> = {
+      ...current.state.warehouse,
+    };
+    delete warehouseWithoutCounter.totalOfflineGoldClaimed;
+    const versionOne = {
+      ...current,
+      schemaVersion: 1,
+      state: {
+        ...current.state,
+        warehouse: warehouseWithoutCounter,
+      },
+    };
+
+    const migrated = validateSaveDocument(versionOne, BASE_GAME_BALANCE);
+
+    expect(migrated.schemaVersion).toBe(CURRENT_SAVE_SCHEMA_VERSION);
+    expect(migrated.state.warehouse.totalOfflineGoldClaimed).toBe('0');
+    // Every other value survives the upgrade exactly.
+    expect(migrated.state.gold).toBe(current.state.gold);
+    expect(migrated.state.warehouse.totalGoldDelivered).toBe(
+      current.state.warehouse.totalGoldDelivered,
+    );
+    expect(migrated.state.floors).toEqual(current.state.floors);
+  });
+
   it('rejects missing and unsupported schema versions', () => {
     const document = createValidDocument();
     const missingVersion = {
@@ -150,20 +177,20 @@ describe('versioned save schema', () => {
     );
     expect(() => migrateSaveDocument({
       ...document,
-      schemaVersion: 2,
-    })).toThrow(/Unsupported save schema version 2/);
+      schemaVersion: 3,
+    })).toThrow(/Unsupported save schema version 3/);
   });
 
   it.each([
-    ['rate snapshot', (document: SaveDocumentV1) => ({
+    ['rate snapshot', (document: SaveDocumentV2) => ({
       ...document,
       effectiveProductionRatePerSecond: 'not-a-number',
     })],
-    ['gold', (document: SaveDocumentV1) => ({
+    ['gold', (document: SaveDocumentV2) => ({
       ...document,
       state: { ...document.state, gold: 'Infinity' },
     })],
-    ['numeric gold instead of a string', (document: SaveDocumentV1) => ({
+    ['numeric gold instead of a string', (document: SaveDocumentV2) => ({
       ...document,
       state: { ...document.state, gold: 100 },
     })],
@@ -219,7 +246,7 @@ describe('versioned save schema', () => {
   });
 
   it.each([
-    ['floor material', (document: SaveDocumentV1) => ({
+    ['floor material', (document: SaveDocumentV2) => ({
       ...document,
       state: {
         ...document.state,
@@ -228,14 +255,14 @@ describe('versioned save schema', () => {
         }),
       },
     })],
-    ['elevator carried material', (document: SaveDocumentV1) => ({
+    ['elevator carried material', (document: SaveDocumentV2) => ({
       ...document,
       state: {
         ...document.state,
         elevator: { ...document.state.elevator, carriedMaterial: '-1' },
       },
     })],
-    ['warehouse input', (document: SaveDocumentV1) => ({
+    ['warehouse input', (document: SaveDocumentV2) => ({
       ...document,
       state: {
         ...document.state,
@@ -405,7 +432,7 @@ describe('versioned save schema', () => {
   });
 });
 
-function createValidDocument(): SaveDocumentV1 {
+function createValidDocument(): SaveDocumentV2 {
   const state = createProducingState();
 
   return createSaveDocument(

@@ -66,6 +66,7 @@ describe('ensureGuestSession', () => {
       status: 'signed-in',
       accessToken: 'token-b',
       user: { id: SESSION_B.user.id, isAnonymous: true },
+      isNewSession: false,
     });
     expect(auth.signInAnonymously).not.toHaveBeenCalled();
   });
@@ -79,6 +80,7 @@ describe('ensureGuestSession', () => {
       status: 'signed-in',
       accessToken: 'token-a',
       user: { id: SESSION_A.user.id, isAnonymous: true },
+      isNewSession: true,
     });
     expect(auth.signInAnonymously).toHaveBeenCalledTimes(1);
   });
@@ -143,6 +145,7 @@ describe('ensureGuestSession', () => {
       status: 'signed-in',
       accessToken: 'token-linked',
       user: { id: linkedSession.user.id, isAnonymous: false },
+      isNewSession: false,
     });
     expect(auth.signInAnonymously).not.toHaveBeenCalled();
   });
@@ -162,6 +165,7 @@ describe('ensureGuestSession', () => {
       status: 'signed-in',
       accessToken: 'token-no-flag',
       user: { id: sessionWithoutFlag.user.id, isAnonymous: false },
+      isNewSession: false,
     });
   });
 });

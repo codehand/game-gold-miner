@@ -45,6 +45,7 @@ export function createInitialGameState(
       inputQueue: zero(),
       conversionProgress: 0,
       totalGoldDelivered: zero(),
+      totalOfflineGoldClaimed: zero(),
     },
   };
 }

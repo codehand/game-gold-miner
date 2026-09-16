@@ -2,7 +2,7 @@
 
 ## Current Status
 
-All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game; it is the map any post-milestone work starts from. Save-document and IndexedDB schema versions remain 1; there is no relational or server database.
+All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game; it is the map any post-milestone work starts from. The IndexedDB database schema version remains 1; the save-document schema is version 2; there is no relational or server database.
 
 ## Implemented Foundation
 
@@ -12,7 +12,7 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/game/layout/mineLayout.ts`, `src/game/layout/palette.ts`, `src/game/layout/index.ts` | Pure Phaser-free portrait geometry and palette: logical viewport constants, HUD/surface/mine regions, scrollable mine content height, floor-slot regions, diagnostic region serialization, and the `#rrggbb` colors both the scene and the browser pixel probes read. |
 | `src/game/view-model/mineViewModel.ts`, `src/game/view-model/mineShaftUpgradeModal.ts`, `src/game/view-model/hudViewModel.ts`, `src/game/view-model/purchaseControl.ts`, `src/game/view-model/formatAmount.ts`, `src/game/view-model/stageAnimation.ts`, `src/game/view-model/index.ts` | Pure Phaser-free presentation logic. The snapshot view model derives per-floor heading, level, visibility, lock status, progress ratio and label, queued-amount label, discrete pile height and backlog state, plus each shared stage's level, capacity, held amount, queue blocks, running/backed-up status, and cycle progress, and carries both HUD and open-floor detail models. The floor-modal module derives output/cycle, cycle time, waiting material, next output, and x1/x5/MAX batch choices from authoritative state and core quotes. The HUD module derives icon-led spendable gold, the authoritative warehouse input queue from `warehouse.inputQueue`, and income values from authoritative state and the core's effective production rate, with empty duplicate captions. The purchase-control module derives each priced control's action caption, price, enabled state, command target, and stable key, plus the lifetime of a press result; it covers shared-stage upgrades, floor selection badges, and floor unlocks. The format module is the single abbreviated-amount formatter every displayed quantity goes through. The animation module holds the cosmetic clock maths and workforce rules. |
 | `src/game/runtime/MineSimulationDriver.ts`, `src/game/runtime/index.ts` | Phaser-free live bridge between the core and the screen: holds authoritative state and the balance data prices and the HUD estimate are derived from, advances state to an injected wall clock on each pull, memoizes the derived snapshot, routes upgrade presses to the matching core command, and accepts state replaced by a command. |
-| `src/game/entities/HudView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar: its background, divider, three resource icons, and five text objects. `PurchaseControlView` is the one pressable button, shared by the floor panels — where an upgrade and an unlock instance share one slot — and both shared stages. |
+| `src/game/entities/HudView.ts`, `src/game/entities/BottomNavigationView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar. `BottomNavigationView` owns the fixed icon-only five-button shell, thumb-safe hit regions, and press animation; activation is presentation-only and changes no authoritative state. `PurchaseControlView` is the one pressable purchase button shared by floor panels and both shared stages. |
 | `src/game/assets/placeholderAssets.ts` | Semantic Phaser texture keys, public paths, and native shaft-texture dimensions for the original Step 32 family plus the Step 32A floor, filled/empty elevator-tower, warehouse, and supervisor pack loaded by `BootScene.preload`. |
 | `src/game/assets/backlogTextures.ts` | Generates the solid backlog-colour silhouette once at boot from the source sprite, so the cue survives a Canvas fallback that would drop a WebGL-only tint. |
 | `src/game/entities/setTextColor.ts` | The shared guard that compares a Phaser text colour before writing it, because `Text.setColor` re-rasterizes and re-uploads the caption texture on every call. |
@@ -47,8 +47,11 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/persistence/DexieActiveSaveRepository.ts` | Dexie 4.4.5 adapter for the version-1 `cat-mine-idle` IndexedDB database and fixed `active` record. |
 | `src/persistence/SavePersistenceCoordinator.ts` | Debounced writes, forced flushing, retry retention, and non-throwing load/save diagnostics. |
 | `src/persistence/loadActiveGame.ts` | Valid-save restoration plus typed malformed/incompatible-save recovery into a fresh state with a safe diagnostic payload snapshot. |
-| `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document and forces a flush when supported. |
+| `src/platform/web/bindSaveLifecycle.ts` | Browser `visibilitychange` and `pagehide` binding that queues the current document, forces a flush, and (Step 19) fires the optional best-effort `onForceSave` callback so a lifecycle flush is one of §9's forced cloud-upload triggers. |
 | `src/platform/web/WebLifecycleSaveJournal.ts` | Validated synchronous pagehide journal plus an active-save repository decorator that selects a newer valid lifecycle snapshot and clears it after IndexedDB catches up. |
+| `src/persistence/ReplicatingActiveSaveRepository.ts` | Server-milestone Step 19: composes the local repository with a cloud replica behind `ActiveSaveRepository`. Reads local only; writes local first and awaits it before offering the same document to the replica; `forceCloudUpload` is the §9 forced-trigger entry point. |
+| `src/persistence/cloudSaveReplica.ts` | Server-milestone Step 19: pure, injected upload policy — §9's 60 s interval, coalescing, forced bypass, bounded retry backoff, and §7's `409` handling through `resolveSaveConflict`. Holds no `fetch`, no DOM type, and no storage. |
+| `src/platform/web/cloudSaveUpload.ts` | Server-milestone Step 19: the single network call (`PUT /v1/save`), mapping every §4 status to `CloudSaveUploadResult` and refreshing the session once on `unauthenticated`. Never throws. |
 | `src/platform/web/supabaseClient.ts` | Server-milestone Step 8: builds the browser's Supabase client from `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, or returns `null` without attempting any network call when either is unset. |
 | `src/platform/web/guestSession.ts` | Server-milestone Step 8: `ensureGuestSession` reuses an existing session or signs in anonymously through an injected `GuestAuthClient` collaborator, never throwing — every failure resolves to a typed `sign-in-failed`/`unconfigured` result instead. |
 | `src/ui/OfflineRewardModal.ts`, `src/ui/MineShaftUpgradeModal.ts` | Accessible DOM overlays: offline reward claim/save/retry, and the live mine-floor detail with attributes plus x1/x5/MAX CTAs. The floor overlay blocks background Phaser input until dismissed and rebinds after each purchase. |
@@ -75,14 +78,14 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 
 | Path | Responsibility |
 |---|---|
-| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, and pending-reward claim transitions. |
+| `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, pending-reward claim transitions, and the server-side progress bound on an uploaded save (`src/core/anti-cheat/progressBound.ts`). |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration, semantic placeholder-asset manifest, pure portrait geometry, pure presentation models and cosmetic animation maths, live simulation driver, reusable HUD/floor/shared-stage/purchase views, generated-sprite presentation, interactive controls, scroll input, and the single scene that pulls snapshots into them. |
 | `src/ui/` | Owns the offline-reward modal, live mine-floor upgrade modal, and save-diagnostic notice. The HUD remains a Phaser view. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding and, since server-milestone Step 8, the Supabase client factory and anonymous guest-session bootstrap — the first `src/` code that makes a network call, never awaited before boot and never throwing. Broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Runtime original placeholder sprites, art-direction brief, and provenance manifest. Generated source and processor outputs live in `art-source/placeholder/` so production builds ship only the semantic runtime files. |
-| `tests/unit/` | Deterministic core, economy, save, migration, and offline-income tests. |
+| `tests/unit/` | Deterministic core, economy, save, migration, offline-income, and anti-cheat progress-bound tests. |
 | `tests/e2e/` | Browser-level player journeys, responsive layout, persistence, and production-bundle smoke tests. |
 
 ## Dependency Boundaries
@@ -158,15 +161,15 @@ The newest debounced save must equal the policy-derived authoritative document e
 
 ## Lifecycle Persistence Contract
 
-Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-1 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
+Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-2 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
 
-## Save Document Schema — Version 1
+## Save Document Schema — Version 2
 
-Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation.
+Version 2 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation. Version 2 added `state.warehouse.totalOfflineGoldClaimed` (Server-milestone Step 18); a version-1 document is upgraded by defaulting that counter to `"0"`, which is exact because no version-1 save recorded an offline claim in it.
 
 | Path | JSON type | Constraints / relationship |
 |---|---|---|
-| `schemaVersion` | integer | Required; exactly `1`. Missing and unsupported versions fail through the migration dispatcher. |
+| `schemaVersion` | integer | Required; exactly `2`. A version-`1` document is upgraded by the migration dispatcher. Missing and unsupported versions fail. |
 | `savedAtTimestampMs` | number | Non-negative safe integer; cannot precede `state.lastUpdateTimestampMs`. |
 | `effectiveProductionRatePerSecond` | string | Finite non-negative serialized `GameNumber`; authoritative rate snapshot used by offline-income calculation. |
 | `state` | object | Exact serialized authoritative state described below. |
@@ -175,7 +178,7 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 | `state.simulationTick` | integer | Non-negative safe integer. |
 | `state.simulationRemainderMs` | number | Finite value in `[0, 100)`. |
 | `state.gold` | string | Finite non-negative serialized `GameNumber`. |
-| `state.floors` | array | Exactly fifteen entries in configured order with the exact configured identifiers and floor numbers. Legacy four-floor version-1 payloads are expanded before validation. |
+| `state.floors` | array | Exactly fifteen entries in configured order with the exact configured identifiers and floor numbers. Legacy four-floor payloads (version 1 or 2) are expanded before validation. |
 | `state.floors[].id` | string | Must equal the configured identifier at that array position. |
 | `state.floors[].floorNumber` | integer | Must equal the configured sequential floor number. |
 | `state.floors[].isUnlocked` | boolean | Floor one must be unlocked; unlocked floors must be sequential and satisfy the preceding configured level gate. |
@@ -193,9 +196,10 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 | `state.warehouse.capacity` | string | Positive serialized `GameNumber`; must equal the configured level effect. |
 | `state.warehouse.inputQueue` | string | Finite non-negative serialized `GameNumber`. |
 | `state.warehouse.conversionProgress` | number | Finite value in `[0, 1)`; zero when input is zero. |
-| `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`. |
+| `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`; lifetime warehouse deliveries. |
+| `state.warehouse.totalOfflineGoldClaimed` | string | Finite non-negative serialized `GameNumber`; lifetime `claimOfflineReward` grants. Monotonic, and part of the save-conflict progress vector. Defaults to `"0"` when a version-1 document is migrated. |
 
-`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point, `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
+`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point (upgrading a version-1 document by defaulting `state.warehouse.totalOfflineGoldClaimed` to `"0"` and stamping version 2), `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
 
 ## Save Recovery Contract
 
@@ -203,27 +207,30 @@ Version 1 is a strict plain-JSON document. Unknown properties are rejected. Runt
 
 ## Offline Income Contract
 
-Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. `calculateOfflineIncome` computes non-negative elapsed time from the validated save timestamp to an injected current timestamp, clamps credited time to the cap, and returns `savedEffectiveRate × creditedSeconds × efficiency` as a `GameNumber`. A future save timestamp produces zero elapsed time and zero reward. The calculation never changes spendable gold or other production state; it immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
+Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. One pure function, `calculateOfflineGrant(receivedAtTimestampMs, currentTimestampMs, rate, config)`, computes the reward from two opaque timestamps; `calculateOfflineIncome` (the client's local projection) and `save-sync`'s download handler (the server's authoritative grant) both call it, so the formula, the cap, and the efficiency cannot drift between them (finding F4). The two timestamps are not symmetric in authority: the client projection passes the document's own `savedAtTimestampMs` and `Date.now()`, while the server passes the stored `received_at` and its own `now()`, which is what makes a manipulated device clock irrelevant to the credited amount (Step 22).
 
-The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The version-1 save and IndexedDB schemas remain unchanged because only the post-claim authoritative gold snapshot is stored.
+`calculateOfflineIncome` clamps credited time to the cap, returns `rate × creditedSeconds × efficiency` as a `GameNumber`, awards zero for a receipt at or after the current time, and immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
+
+The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The version-2 save schema and the version-1 IndexedDB schema are unchanged by a claim beyond the two counters it legitimately moves: only the post-claim authoritative snapshot is stored.
 
 ## Portrait Layout Contract
 
 The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inset-*)` as padding so the `#game-viewport` Phaser parent is already the safe box when the scale manager measures it; `index.html` opts in with `viewport-fit=cover`. The scale manager uses `FIT` with `CENTER_BOTH`, which preserves aspect ratio and letterboxes rather than cropping, so no required control can leave the host viewport at any size.
 
-`calculateMineLayout(width, height)` is pure and Phaser-free. It tiles three full-width regions top to bottom with no gaps, overlaps, or reserved bottom navigation:
+`calculateMineLayout(width, height)` is pure and Phaser-free. It tiles four full-width regions top to bottom with no gaps or overlaps:
 
 | Region | Logical rect (360×640) | Role |
 |---|---|---|
 | `hud` | `0,0,360,52` | Compact fixed top HUD; icon-plus-value pairs without duplicate captions. |
 | `surface` | `0,52,360,164` | Shared elevator and warehouse panels. |
-| `mine` | `0,216,360,424` | Clipped viewport the mine content scrolls behind; runs to the bottom edge. |
+| `mine` | `0,216,360,366` | Clipped viewport the mine content scrolls behind; ends above fixed navigation. |
+| `bottomNavigation` | `0,582,360,58` | Compact fixed five-icon navigation shell at the bottom safe edge. |
 
-The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT` (416). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 424-pixel mine region scrolls by 256. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
+The complete visible navigation controls — chrome and icon together — render at 60% of their authored size inside unchanged 48×44 standard and 62×50 Boost hit regions. The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT` (474). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 366-pixel mine region scrolls by 314. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
 
 `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects any smaller interactive region. The visible shared-stage cards are replaced by art, so their live level/upgrade controls are compact 30×34 badges inside 44×50 hit regions: the elevator region is `(106,48,44,50)` relative to the surface and sits immediately right of and no lower than the discharge tray; the warehouse region is `(263,0,44,50)` and places its chrome above the roof. The hidden `SharedStageView` controls remain read-back models only. The surface strip remains 164 pixels tall.
 
-Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD and surface never scroll and the scroll gesture drives only the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
+Clipping uses a dedicated Phaser camera whose viewport equals the mine region, because Phaser 4 removed WebGL geometry masks. The main camera ignores the mine content layer and the mine camera ignores the fixed layers, so the HUD, surface, and bottom navigation never scroll and the scroll gesture drives only the mine camera's `scrollY`. Both halves of that cross-ignore are covered by browser pixel probes, because dataset diagnostics report only intended geometry and stay green when the cameras are misconfigured. The scene publishes `data-layout-viewport`, `data-layout-hud`, `data-layout-surface`, `data-layout-mine`, `data-layout-mine-content-height`, and `data-layout-bottom-navigation` on the canvas for browser assertions. Floor slots are layout placeholders replaced by bound floor views in Step 26.
 
 ## Mine Scroll and Input Contract
 
@@ -260,11 +267,14 @@ Queue fullness is still derived as four discrete `materialPileSteps` measured ag
 ## Save-Sync Protocol Contract
 
 Designed in server-milestone Step 2 and specified in full in
-`memory-bank/server-save-sync-protocol.md`. No code implements it yet.
+`memory-bank/server-save-sync-protocol.md`. Steps 15–19 implement it: the
+local-write-denied `saves` table (15), `PUT /v1/save` (16), `GET /v1/save`
+plus the boot reconcile (17), the §7 conflict policy (18), and the client
+remote repository with §9's upload cadence and §7's `409` half (19).
 
 `GET /v1/save` and `PUT /v1/save` on a Supabase Edge Function are the only save
 path; `saves` denies client writes entirely, so PostgREST is never used for a
-save. A `SaveDocumentV1` crosses the wire byte-for-byte — the protocol adds no
+save. A `SaveDocumentV2` crosses the wire byte-for-byte — the protocol adds no
 field to it and rewrites none of it. A server-owned monotonic `revision`
 provides optimistic concurrency: an upload carries the `baseRevision` it started
 from, and a stale one is refused with the server's current revision and
@@ -277,14 +287,19 @@ never a server input.
 
 Divergent devices resolve by dominance over the monotonic progress vector —
 per-floor `isUnlocked`, `mineShaftLevel`, `totalExtracted`, `totalTransported`,
-plus `elevator.level`, `warehouse.level`, and `warehouse.totalGoldDelivered`.
+plus `elevator.level`, `warehouse.level`, `warehouse.totalGoldDelivered`, and
+`warehouse.totalOfflineGoldClaimed`.
 One document dominating the other is adopted silently because it loses nothing;
 only a genuine fork asks the player. `gold` and every queue, progress, and
 cursor value are excluded because they legitimately fall, which is the same
-distinction Step 23 makes. The predicate is pure, operates on two
-`SaveDocumentV1` values, and belongs in `src/persistence` — `src/core` must not
+distinction Step 23 makes. Excluding `gold` is sound only because every gold
+*source* is vectored: Step 18 added `warehouse.totalOfflineGoldClaimed` so an
+offline reward can no longer move `gold` without moving the vector (see the
+Step 18 section below). The predicate is pure, operates on two
+`SaveDocumentV2` values, and belongs in `src/persistence` — `src/core` must not
 learn that saves exist. It holds only while those fields are monotonic, so a
-prestige or reset mechanic would have to revise it in the same change.
+prestige or reset mechanic would have to revise it in the same change, and a new
+gold source would have to join the vector.
 
 Local persistence keeps its 500 ms debounce; cloud upload is a separate cadence
 of at most one per 60 seconds, forced on lifecycle flush, on a claimed offline
@@ -526,6 +541,1196 @@ Step 16 or 17's save download/upload, not Step 8's sign-in, which goes
 through the Auth client SDK rather than a function here — must add an
 explicit CORS policy as part of its own instructions.
 
+### Google sign-in (Step 10)
+
+`supabase/config.toml` gains `[auth] enable_manual_linking = true` (was
+`false`) and a new `[auth.external.google]` block —
+`client_id = "env(GOOGLE_CLIENT_ID)"`, `secret = "env(GOOGLE_CLIENT_SECRET)"`.
+Manual linking is load-bearing, not cosmetic: Supabase refuses
+`linkIdentity()` outright with "Manual linking is disabled" while it is
+`false`, and `linkIdentity()` is the one call that satisfies the step's
+requirement — attach Google to the guest session Step 8 already established
+while keeping the same `auth.users` id, rather than `signInWithOAuth()`
+minting a second one. `src/platform/web/googleSignIn.ts`'s
+`beginGoogleSignIn` chooses between the two by whether a session already
+exists (`getSession()`), the same collaborator-injection, never-throws shape
+`guestSession.ts` established, faked by `tests/unit/google-sign-in.test.ts`
+rather than mocking the SDK. `signOutOfSession` is the matching thin
+`signOut()` wrapper. `beginGoogleSignIn`'s own return value only ever
+describes the *pre-redirect* outcome — whether GoTrue's initial
+"issue me an authorize URL" request succeeded — never whether the Google
+identity the player goes on to pick already belongs to a different
+`auth.users` row. That conflict cannot be known yet at that point: GoTrue
+only discovers it after the player has chosen an account on Google's own
+page and the browser returns with `error_code=identity_already_exists` on
+the *return* URL, a fresh page load the client's own session-detection
+parses — long after `beginGoogleSignIn`'s promise already resolved
+`redirecting`. Nothing in `src/` reads those return-URL parameters yet; that
+read (or an `onAuthStateChange` subscription) is what Step 13's collision
+handling requires, not this function. Confirmed live during this step's own
+verification below: attempting to re-link an already-linked identity
+produced no consent screen at all, only an immediate redirect back carrying
+`error_code=identity_already_exists`, with the existing session and account
+untouched.
+
+`config.toml`'s `env(...)` substitution is read by the Supabase CLI itself
+and only auto-loads a file literally named `.env` at the project root — not
+`.env.local`, which is what the rest of this repository's tooling
+(Vite, Node scripts) uses, and `supabase start`/`stop`/`reset` have no flag to
+point it elsewhere. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` therefore live in
+a second, separate git-ignored `.env` file (`.gitignore` already covers both
+`.env` and `.env.*`, excepting only `.env.example`), documented in
+`.env.example` alongside the exact Google Cloud Console setup: a Web
+application OAuth client with `http://127.0.0.1:54321/auth/v1/callback` (the
+fixed local GoTrue callback) as its authorized redirect URI — no domain
+needed, since Google permits `localhost`/`127.0.0.1` redirects in
+development, unlike Step 11's Apple.
+
+No production UI exists for this yet. `HudView.ts`'s fixed HUD already draws
+gold at the left edge, the warehouse queue centered, and income anchored to
+the right edge across the full 360×640 canvas, and the surface strip, mine,
+and bottom navigation account for the rest — there is no free region to place
+a DOM overlay without either visually colliding with existing HUD content or
+sitting on top of an existing canvas click target. A real entry point is a
+Phaser-rendered control akin to the bottom-nav tiles, left for a later polish
+step. Until then, `import.meta.env.DEV` gates a `window.catMineIdleAccount`
+hook in `src/main.ts` exposing `beginGoogleSignIn()`/`signOut()` bound to the
+resolved Supabase client — the same `app.dataset.guestSession`-style
+diagnostic pattern Step 8 established, not new production surface.
+
+**What nothing local can prove.** A real human completing Google's own
+consent screen is the one thing no test double, local mock, or CI runner can
+substitute for — unlike Steps 8–9's live-GoTrue proofs, which only needed
+*this* stack. The step's own test ("keeps the same user id and progress;
+signing out and back in with Google returns the same account") was therefore
+validated once, by hand, with a real Google Cloud OAuth client and a real
+Google account, using the `chrome-devtools` MCP tools — not part of
+`npm run verify:server`. It passed: linking preserved the same `user.id`
+and `profiles` row while flipping `isAnonymous` to `false` and adding one
+`google` identity, and a sign-out followed by a fresh sign-in-with-Google
+(no consent screen reappearing, since Google had already authorized the app)
+returned the identical account. Everything short of that live redirect (the
+link-vs-sign-in decision, error surfacing, the config invariants) is unit-
+and static-source-tested with no Docker, the same split Step 11 (Apple,
+membership/domain) and Step 12 (Telegram, bot host) already record for their
+own unautomatable prerequisites.
+
+A 2026-09-10 review found four issues, all fixed: (1) the `DEV`-only
+`window.catMineIdleAccount` bootstrap in `src/main.ts` was a second,
+independent consumer of `supabaseClientPromise`, and the guest-session
+chain's own `.catch` settles only *that* chain's derived promise — a
+rejected client promise (the same flaky dynamic-`import()` case Step 8's own
+review already fixed once) reached an unhandled rejection a second time;
+fixed with its own `.catch(() => {})`, mutation-proven by removing it and
+watching the new static-source test fail by name. (2) `scan-bundle-secrets.mjs`
+only ever read `.env.local` for its exact-value check, so `GOOGLE_CLIENT_SECRET`
+— deliberately placed in the separate `.env` file above — had no value-level
+guard, only the (weaker) name-level one; fixed by reading `.env` alongside
+`.env.local` and merging both into the same forbidden-value set,
+mutation-proven the same way. (3) the claim that "identity already linked to
+another user" surfaces as a typed `error` result here was wrong, corrected
+above and empirically disproven live rather than merely reasoned about — the
+prior wording is what this document, `techContext.md`,
+`server-milestone-plan.md`, and `README.md` all said before this pass; all
+four are corrected. (4) four smaller cleanups: `describeError` was
+duplicated verbatim between `guestSession.ts` and `googleSignIn.ts`, now
+shared as `src/platform/web/describeError.ts`; `GoogleAuthClient`'s session
+type carried an unread `user` field, narrowed to `unknown` since only its
+nullness is ever read; the `declare global` block in `main.ts` sat between
+two import statements, moved after all of them; and neither OAuth call
+passed `redirectTo`, so GoTrue's default (`site_url`) could silently bounce
+a player who opened the game at `localhost:5173` — a redirect URI
+`.env.example` itself tells them to authorize — back to `127.0.0.1:5173`
+mid-flow, stranding their pre-link session in the origin they actually
+started from; fixed by passing `window.location.origin` in from `main.ts`
+(not read inside `googleSignIn.ts` itself, which stays importable under
+Node). All fixes re-verified against the full client gate (422 unit tests,
+51 E2E, build, secret scan, 10 production smoke) and against the live stack
+a second time: the same account from the first live pass, reloaded, still
+held its session, and a repeated `beginGoogleSignIn()` on an
+already-Google-linked account produced exactly finding (3)'s corrected
+behaviour rather than a typed error.
+
+A follow-up review found a fifth issue, inside finding (4)'s own test:
+`beginGoogleSignIn` built `{ provider: 'google', options: undefined }` — the
+`options` key present with an undefined value — while the accompanying
+test's title claimed the code omitted the key entirely, and
+`toHaveBeenCalledExactlyOnceWith` is itself undefined-tolerant, so the
+assertion passed under either shape and proved neither claim. Confirmed
+with a standalone Vitest probe before changing anything: a call of
+`{ provider: 'google' }` alone satisfies an expectation of
+`{ provider: 'google', options: undefined }`. Fixed on both sides — the
+credentials object now genuinely omits `options` when no `redirectTo` is
+given, and the test reads `Object.keys()` off the real mock call, which
+does distinguish "absent" from "present but undefined" — and mutation-proven
+in both directions. The full gate (422 unit tests, unchanged) passes.
+
+### Telegram sign-in (Step 12)
+
+Step 11 (Apple) was cut on 2026-09-11 rather than implemented — see the
+`server-milestone-plan.md` status table and `server-threat-model.md`
+finding F7's exercised contingency. Step 12 is Telegram sign-in, and unlike
+Steps 10–11 it needs no real external account, domain, or paid membership
+to satisfy its own test: `initData` verification is self-contained
+HMAC-SHA256 signature checking that never contacts Telegram at all, so
+every one of the step's test assertions — valid `initData` produces a
+session; tampered, stale, and wrong-bot-token payloads are each rejected
+with none issued; the bot token never leaks — is proven against the real
+local Supabase stack using hand-signed test vectors under a fixture bot
+token, no real bot or Mini App host required.
+
+**Verification algorithm**, implemented in
+`supabase/functions/telegram-sign-in/index.ts`'s `verifyTelegramInitData`,
+matching Telegram's own documentation exactly: every field except `hash`
+(and `signature`, a separate Ed25519 third-party scheme this function does
+not use), as `key=value` pairs sorted alphabetically and joined by `\n`, is
+the data-check-string; `secret_key = HMAC_SHA256(key="WebAppData",
+data=botToken)`; `computed = hex(HMAC_SHA256(key=secret_key,
+data=dataCheckString))` must equal `hash`, compared in constant time.
+`auth_date` freshness has no Telegram-mandated window —
+`MAX_INIT_DATA_AGE_SECONDS = 86400` (24 h) is a deliberate, documented
+default (the `@telegram-apps/init-data-node` ecosystem convention), not an
+unstated one. Everything runs on `crypto.subtle` (Web Crypto), not
+`node:crypto`, so it executes unmodified on Deno's edge runtime.
+
+**Minting a session.** Supabase Auth has no first-class "trust this
+server-verified identity" admin API. The confirmed community/official
+pattern this function uses: `admin.generateLink({ type: 'magiclink', email })`
+— which creates the `auth.users` row if it doesn't already exist — returns
+`properties.hashed_token`; the client then calls
+`auth.verifyOtp({ token_hash: hashedToken, type: 'email' })` (not
+`type: 'magiclink'`, deprecated for `verifyOtp`) to establish a real,
+GoTrue-tracked session with working refresh. No email is ever sent — the
+token is generated server-side and handed to the client directly in the
+function's own JSON response.
+
+**No schema change.** A Telegram user maps to
+`auth.users.email = telegram-<telegramUserId>@telegram.invalid` —
+`.invalid` is the RFC 2606-reserved TLD for exactly this, a never-delivered,
+never-resolvable placeholder (`telegramPlaceholderEmail`). `generateLink`
+finds-or-creates by that deterministic email, so no `profiles` column or
+migration was needed, matching how Steps 8 and 10 also shipped with zero
+schema changes — identity linking lives entirely in `auth.users`.
+**This mechanism is only safe because `[auth.email] enable_signup = false`
+(`supabase/config.toml`).** A 2026-09-12 review found and this repository
+confirmed live: with public email signup open, an attacker who knows a
+Telegram id can `POST /auth/v1/signup` with that exact placeholder email
+and a password of their own choosing *before* the real user ever signs in
+— `enable_confirmations = false` lets it complete immediately, since
+nothing needs to be delivered to the unreachable address — and
+`generateLink` then hands the real Telegram user a session into the
+attacker's own, password-protected account. See finding **F13** in
+`server-threat-model.md` for the full reproduction and fix.
+
+**CORS**, the first function `src/` ever calls directly with `fetch()` —
+finding F11's trigger — and what proving it live found — finding F12, both
+in `server-threat-model.md` — plus the resulting shared
+`_shared/http.ts` policy and its `server-save-sync-protocol.md §14` record,
+are documented there rather than duplicated here.
+
+**Client side**, `src/platform/telegram/telegramSignIn.ts`: `readTelegramInitData()`
+reads `window.Telegram.WebApp.initData` — the raw, still-signed string,
+never `initDataUnsafe`, the SDK's own unverified convenience parse — and
+resolves `null` for every player today, since no Telegram Web App
+`<script>` tag was added to `index.html` (that is the still-unbuilt Mini App
+host, finding F1, deliberately separate work). `signInWithTelegram` POSTs
+the raw `initData` to the function and completes `verifyOtp` on success;
+same never-throws, typed-result shape as `guestSession.ts`/`googleSignIn.ts`.
+`src/main.ts` computes `readTelegramInitData()` once at boot, before either
+identity chain runs: a non-null result calls `signInWithTelegram` **instead
+of** `ensureGuestSession` — "Inside Telegram this replaces the guest path
+entirely," the step's own words, not a linking flow the way Google's is —
+so today, with the detector always `null`, the guest bootstrap is the only
+chain that ever runs; `supabaseClientPromise` now has three independent
+consumers (Telegram, guest, and the Step 10 DEV hook), and the Telegram
+chain carries its own `.catch`, the same lesson Step 10's own review
+already applied to the DEV hook.
+
+`describeError` moved out of `src/platform/web/` to
+`src/platform/describeError.ts`, shared by `web/` and the new `telegram/`
+sibling rather than reached across directories.
+
+`tests/server-integration/telegramInitDataFixture.ts` independently
+re-implements the signing algorithm with `node:crypto` (not Web Crypto),
+deliberately — a real, deployed `telegram-sign-in` function accepting a
+vector signed this way is proof two independent implementations of the same
+published algorithm agree, not proof one merely matches itself, the same
+principle `authFixture.ts` already established for bearer tokens.
+
+**A 2026-09-12 review found and fixed one critical and three smaller
+issues**, all mutation-proven and reproduced live rather than only reasoned
+about. **Critical (finding F13):** the placeholder-email mechanism above
+was pre-account-stealable through public email signup — fixed with
+`[auth.email] enable_signup = false`, and
+`tests/server-integration/telegram-sign-in.integration.test.ts` gained a
+test that attempts the exact attack directly against the live stack
+(signup refused, legitimate Telegram sign-in for that same id still
+succeeds) rather than only asserting the config line; a static assertion
+in `tests/unit/server-stack.test.ts` pins the flag too, scoped to the
+`[auth.email]` section specifically after an initial version of that
+assertion was found to pass vacuously against a mutated flag — its lazy
+regex crossed into the unrelated, already-`false` `[auth.sms]` section
+further down the same file. **Medium:** `scan-bundle-secrets.mjs` had been
+widened for `.env` (Step 10) but not for `supabase/functions/.env` — the
+most sensitive of the three env files, since `TELEGRAM_BOT_TOKEN` is the
+HMAC key that signs `initData` for every Telegram user — so a hardcoded
+literal token would have passed the exact-value check; fixed by merging
+that third file into the same check. **Minor:** `MintSessionResult`'s
+`error` variant carried a `reason` string nothing ever read
+(`handleTelegramSignIn` only branches on `status`, and the real
+implementation already logs separately) — removed, strengthening the
+existing no-leak test structurally rather than just by convention; and
+`verifyTelegramInitData`'s freshness check compared `now - authDate` in one
+direction only, so a validly-signed but *future*-dated payload was never
+flagged stale — fixed with `Math.abs`, low-severity since exploiting it
+still needs the real bot token. **Deliberately not changed:** a wrong
+method answers `400 malformed_request`, not `405` with an `Allow` header —
+`save-sync/index.ts`'s own header comment already made this the
+deliberate, documented choice for every function reusing the save-sync
+protocol's error vocabulary ("that vocabulary has no ... `method_not_allowed`,
+so a request for ... a method the contract does not define is a client bug
+and is answered `malformed_request` / 400"), which `server-save-sync-protocol.md`
+§1 states identity endpoints reuse; introducing a code that vocabulary
+deliberately omits would itself be the inconsistency.
+
+### Save storage, upload, and download (Steps 15–17)
+
+`saves` (Step 5 migration) already carried `saves_select_own` (select, own
+row) and no insert/update/delete policy of any kind, so RLS's own
+default-deny already satisfied Step 15's "permits no client write at all"
+before any code in this section existed; Step 15 only added the live-stack
+evidence (`tests/server-integration/saves-rls.integration.test.ts`).
+
+`supabase/functions/save-sync/index.ts` implements `PUT`/`GET /v1/save`
+(§10.2–10.3 of `memory-bank/server-save-sync-protocol.md`) alongside the
+existing `GET /v1/health`, sharing `resolveFunctionRoute` and the
+`_shared/http.ts` envelope/CORS helpers. `handleRequest` now takes an
+optional `SaveSyncDeps` (`resolveCaller`, `readCurrentSave`, `writeSaveRow`)
+— real collaborators by default, faked in `index.test.ts` — the same split
+`whoami-check`/`telegram-sign-in` already established.
+
+- **Auth**: `resolveCallerViaSupabaseAuth` — an anon-key client scoped to the
+  caller's own bearer token, `auth.getUser()` — identical in shape to
+  `whoami-check`'s collaborator.
+- **Read** (`readCurrentSaveRow`): the same anon-scoped client selecting
+  `revision, document_json, received_at` from `saves` — no elevated
+  privilege needed, since `saves_select_own` already permits it.
+- **Write** (`writeSaveRowViaServiceRole`): a service-role client is the
+  *only* thing in this function (or, before it, anywhere in `src/`) that
+  writes `saves` at all — `saves`'s RLS permanently denies every client
+  write, by design. `tests/unit/server-stack.test.ts`'s blanket
+  "no function reads the service-role key" check names `save-sync` as its
+  second exception (`telegram-sign-in` is the first), with its own positive
+  assertion pinning the read to `writeSaveRowViaServiceRole`'s
+  `insert`/`update` — not an `upsert`, per the concurrency fix immediately
+  below.
+- **Concurrency** (§5, decision D2): `PUT` accepts when the request's
+  `baseRevision` strictly equals the stored `revision` (`null` on both sides
+  for a first write); otherwise `409 revision_conflict` with the server's
+  own `serverRevision`/`receivedAt`/`document` attached, and the stored row
+  untouched. On accept, the current row's `revision`/`document_json`/
+  `received_at` shift into `previous_revision`/`previous_document_json`/
+  `previous_received_at` (the one-generation-of-rollback shape Step 3
+  designed) before the new values are written. **The write itself is a
+  compare-and-swap, not a blind `upsert`** — a 2026-09-12 review found the
+  original `upsert` let two overlapping uploads both read the same
+  `revision`, both pass the `baseRevision` check, and both write, silently
+  discarding one and breaking §5's "one monotonic revision" guarantee (not
+  player-reachable before Step 19's client upload cadence exists, but the
+  endpoint was already live). `writeSaveRowViaServiceRole` now branches on
+  `row.previousRevision === null` (no row existed at read time): a first
+  write is a plain `insert`, where the `user_id` primary key turns a
+  concurrent racer's insert into a `23505` unique violation rather than a
+  silent second winner; a subsequent write is
+  `update ... where user_id = ? and revision = ?` — atomic in Postgres —
+  with `.select()`'s returned row count telling the caller whether it
+  actually applied. `handleSaveUpload` turns a lost race (`applied === false`)
+  into the same `409 revision_conflict` a stale `baseRevision` gets, after
+  re-reading the row so the conflict carries the actual winner's document
+  rather than the snapshot this request lost against.
+- **Validation**: `migrateSaveDocument`/`validateSaveDocument` are imported
+  from `supabase/functions/_shared/generated/core-bundle.js` — the same Step
+  6 bundle, never reimplemented for Deno. A thrown `SaveDocumentError` maps
+  to `422 save_invalid`; a `schemaVersion` other than
+  `CURRENT_SAVE_SCHEMA_VERSION` maps to `422 schema_unsupported` before
+  validation even runs. The body is capped at 64 KB: a `Content-Length`
+  pre-check refuses an oversized body before it is even buffered (a
+  2026-09-12 review finding — the post-read check alone contradicted its own
+  "refuse cheaply" comment, since `request.text()` had already read the
+  whole body into memory by the time it ran), and the same post-read check
+  still runs afterward as the authoritative one for a chunked body with no
+  `Content-Length` header, or one that understates it.
+- **Upper-bound validation (Step 23)**: after the `baseRevision` concurrency
+  check and before any write, `handleSaveUpload` calls
+  `findProgressBoundViolation` (`src/core/anti-cheat/progressBound.ts`'s
+  `evaluateProgressBound`). It re-derives, from the last accepted document over
+  the server-measured elapsed time, the most the mine could have produced, and
+  returns `422 save_rejected` with `detail: { counter, claimed, maximum }` for a
+  document that claims more; the stored row and revision are unchanged. **A
+  first upload (`current === null`) is exempt**, and a stored row whose document
+  or `received_at` cannot be read also skips the check (logged), so the server
+  never rejects an honest save over its own unreadable row. When the tight bound
+  fails but the row's one-generation ancestor exists, the check is retried
+  against that ancestor over the full interval — a §7 branch re-upload diverged
+  from it, not from the stored row (review finding F2). The modelling rule, the
+  carried terms, and the tolerance are in the Step 23 section below; every
+  authenticated attempt also writes one `save_audit` row (Step 24 section below).
+- **Download** (`GET`): `200 {revision, receivedAt, document}` when a row
+  exists, `204` with no body otherwise — "the normal first-sign-in path, not
+  an error."
+
+`src/persistence/saveConflictPolicy.ts` is Step 18's implementation of §7's
+conflict policy — the single adjudicator both the boot reconcile and (from
+Step 19) the upload `409` path call:
+
+- `compareProgress(left, right)` — the §7.1 dominance comparison over the
+  "progress vector" `M`: per floor (all fifteen) `isUnlocked`,
+  `mineShaftLevel`, `totalExtracted`, `totalTransported`; `elevator.level`;
+  `warehouse.level`, `warehouse.totalGoldDelivered`,
+  `warehouse.totalOfflineGoldClaimed`. Returns `'equal'`, `'left-dominates'`,
+  `'right-dominates'`, or `'fork'`. Deliberately excludes `gold`, every queue,
+  `carriedMaterial`, every `*Progress` fraction, `roundRobinCursor`,
+  `simulationTick`, and all timestamps — idle play alone moves those from the
+  very first tick, so including any of them would report a fork on a device
+  that had merely bought an upgrade. Pure, no network or renderer, beside
+  `saveSchema.ts` and never in `src/core`. It also returns `'fork'` rather than
+  throwing when the two floor arrays differ in length, so a caller that hands a
+  `409` body straight in (as Step 19 will) cannot make it throw a raw
+  `TypeError`.
+- `resolveSaveConflict(local, remote)` — applies §7: `remote === null` (the
+  account has no cloud save) keeps local; otherwise `equal` → `'same-progress'`,
+  dominance → the dominating side, and neither-dominates → `'fork'` carrying
+  both §7.3 candidates. Step 17 shipped a narrower "does each side have any
+  progress at all" placeholder, deliberately; Step 18 replaces it, so a
+  strict-superset save is now adopted silently instead of asking.
+  **`gold` needs no special-casing because the vector completes its sources.**
+  `gold = startingGold + totalGoldDelivered + totalOfflineGoldClaimed − spent`,
+  and `spent` is a deterministic function of the levels and unlocks already in
+  `M`, so equal `M` implies equal `gold` and a dominating side has earned at
+  least as much cumulatively. A 2026-09-13 review found the earlier state — an
+  offline reward moving `gold` while touching no vector field — let a
+  strict-subset save be silently bankrupted by a dominating one; two heuristic
+  fixes (a `gold`-size comparison, then a lifetime-cumulative bound) were both
+  wrong (the first forked ordinary purchases and the new-device restore path,
+  the second was dead after any spending because `gold` falls while the bound
+  grows). The structural fix completed the vector by crediting
+  `warehouse.totalOfflineGoldClaimed` in `claimOfflineIncome.ts` and adding it
+  to `M`, so `resolveSaveConflict` carries no gold logic and needs no balance
+  config at all.
+- `describeSaveConflictCandidate(document, lastPlayedMs)` — §7.3's display
+  fields: `gold` and `totalGoldDelivered` as `GameNumber` (formatted by the
+  display layer through `formatAmount`, which is why this module stays free
+  of `src/game`), `floorsOpen` (count of `isUnlocked`), and
+  `deepestShaftLevel` (max `mineShaftLevel` across unlocked floors), plus
+  the candidate document itself so a choice can be applied verbatim. The
+  local candidate's `lastPlayedMs` is `savedAtTimestampMs`; the server
+  candidate's is the upload's `receivedAt`.
+
+`src/platform/web/cloudSaveReconcile.ts`'s `reconcileCloudSaveAtBoot` is the
+boot-order half (§11): downloads via `downloadCloudSaveViaFetch`, reads the
+local document via the injected repository (treating no local record at all
+— a genuinely new device — as the same fresh baseline `createInitialGameState`
+produces, not as "nothing to compare"), runs the downloaded document through
+`validateSaveDocument` before using it at all — a 2026-09-12 review found the
+original code cast `body.document` straight to an unvalidated document type with no
+migration, harmless only by luck until a schema 2 exists to skip past — and
+applies `resolveSaveConflict`. `'remote-dominates'` writes the cloud document
+into local storage and reloads the page; `'local-dominates'` and
+`'same-progress'` are no-ops (the local document already holds at least the
+server's monotonic progress — adopting the remote over `'same-progress'` would
+only discard local gold or queues for no progress gain). A `'fork'` writes
+nothing at all and is returned as
+`{ kind: 'deferred-conflict', local, remote }`, carrying both §7.3 candidates
+so the save the player did not choose is retained for the session. §7's
+requirement is absolute: no accepted branch may destroy progress the player was
+not shown, and a fork is the only branch a silent resolution cannot cover.
+`src/main.ts`'s `triggerCloudSaveReconcile` stores that outcome in
+`pendingSaveConflict`, exposed through the DEV account hook, and publishes a
+compact candidate summary (never two whole documents) as
+`app.dataset.cloudSaveReconcile`.
+
+`src/main.ts` calls `triggerCloudSaveReconcile()` from the tail of both the
+guest and Telegram boot chains, once each resolves `signed-in` — a fourth
+independent consumer of `supabaseClientPromise`, with its own `.catch`,
+never on the boot-blocking path — passing the *lifecycle-safe*
+`repository` (`LifecycleSafeActiveSaveRepository`), not the raw
+`indexedRepository` it wraps: the same 2026-09-12 review found that passing
+the raw Dexie repository let the running `SavePersistenceCoordinator`'s own
+debounced flush land between this reconcile's `storeActiveSave` and
+`reload()` and silently revert the adopt — two writers racing one record,
+now both going through the wrapper the coordinator itself uses.
+
+`_shared/http.ts`'s `ALLOWED_ORIGINS` gained this repository's own Playwright
+preview ports (`4173` E2E, `4175` production smoke, `4176` server-e2e)
+alongside the existing `5173` dev-server pair: the reconcile's `fetch()` is
+the first call from outside `5173` this milestone makes, and
+`production-smoke.spec.ts`'s "no request fails" assertion caught both that
+gap and the test's own need to exclude this one documented, best-effort,
+sometimes-cancelled-by-teardown request from its otherwise-unchanged check.
+
+### Client remote repository (Step 19)
+
+The plan's own words — "IndexedDB stays the primary store and the cloud is a
+replica. Network work belongs in `src/persistence` and `src/platform`;
+`src/core` must not learn that a server exists" — split across three new
+modules plus two small additions to existing ones.
+
+`src/persistence/ReplicatingActiveSaveRepository.ts` implements
+`ActiveSaveRepository` by composing the existing
+`LifecycleSafeActiveSaveRepository` (Dexie plus the lifecycle journal) with a
+`CloudSaveReplica`:
+
+- `loadActiveSave` reads local only. §11 forbids a network call on the boot
+  path, and the download half is the separate boot reconcile.
+- `storeActiveSave` awaits `primary.storeActiveSave(document)` and only then
+  calls `replica.enqueue(document)`, un-awaited. A failed local write still
+  rejects, so `SavePersistenceCoordinator` reports its `save-failed`
+  diagnostic exactly as before; the replica can never turn a successful local
+  save into a failure.
+- `forceCloudUpload(document?)` is the §9 forced-trigger entry point and uses
+  the most recently stored document when none is passed.
+
+`src/persistence/cloudSaveReplica.ts` is the pure policy half. Every
+collaborator is injected — the upload call, `now`, and the timer functions —
+so Node tests drive the cadence and backoff with fake timers, and the module
+holds no `fetch`, no DOM type, and no storage:
+
+- **§9 cadence**: at most one upload per 60 s; coalescing keeps only the
+  newest queued document; `enqueue(..., { force: true })` bypasses the
+  interval but not an in-flight upload.
+- **§9 backoff**: a retryable failure schedules 1/2/4/8/16 s, at most five
+  retries (six requests including the initial one), then stops cloud sync for
+  the session. Retries never block a
+  frame or a local save, and a failure that is terminal per §4
+  (`forbidden`/`malformed_request`/`payload_too_large`/`schema_unsupported`)
+  stops sync immediately, while `save_invalid`/`save_rejected` drop only that
+  document and keep syncing — the dropped document is remembered by
+  serialization, so the coordinator's next identical re-offer is not retried.
+- **§7 on `409`**: the `409` body is validated first, so the pure predicate
+  never indexes into an unvalidated document — exactly the caller Step 18's
+  own comment said must exist. `resolveSaveConflict` then decides:
+  `same-progress` adopts the server revision silently (the lost-response
+  retry); `local-dominates` re-uploads against the server revision; the
+  caller's `onRemoteDominates` adopts a dominating remote; and a `fork` is
+  emitted with both §7.3 candidates so the caller can retain them. A
+  conflict-resolution cap of five turns an adversarial ping-pong into a
+  stopped session rather than a request flood.
+- **Arming**: `arm(revision)` is idempotent and gates all uploads until the
+  boot download settles. Without it, a returning player's first routine save
+  carries a null `baseRevision` — "this client has never synced" — against a
+  row the server already holds and earns a real, avoidable `409`.
+
+`src/platform/web/cloudSaveUpload.ts` is the one network call,
+`uploadCloudSaveViaFetch` (`PUT /v1/save`), mirroring
+`downloadCloudSaveViaFetch`. It maps every §4 status to the typed
+`CloudSaveUploadResult`, refreshes the session once on `unauthenticated` and
+retries, and turns a rejected `fetch` into `retryable` rather than throwing.
+
+`reconcileCloudSaveAtBoot` gained two things: `CloudSaveDownload` now carries
+the server `revision`, and a new optional `onServerRevision` dep is called as
+soon as the cloud document is in hand. `src/main.ts` uses it to arm the
+replica with the real revision, then forces the §9 triggers — lifecycle flush
+(via `bindSaveLifecycle`'s new best-effort `onForceSave`), claimed offline
+reward, and once after boot reconcile when the outcome is `kept-local` or
+`no-cloud-save`. A `fork` stops the replica rather than re-uploading a
+document the policy just refused; a dominating remote is adopted through the
+same unbind-and-clear journal store-and-reload path as the boot reconcile;
+and an upload fork's candidates land in the same `pendingSaveConflict`
+session hook Step 18 established.
+
+The boundary is enforced, not just documented: `eslint.config.mjs` now bans
+`fetch`, `XMLHttpRequest`, `WebSocket`, and `EventSource` inside
+`src/core/**`, and `tests/unit/architecture.test.ts` probes all four.
+
+A 2026-09-14 review fixed eleven issues here. **The upload `409` fork now calls
+`stop()`**, exactly like the boot fork: the client holds the server's revision
+after the conflict, so without stopping, one later routine save would be
+accepted and silently replace the remote branch the player was never shown
+(§7 preamble and §7.3). Terminal cloud failures also reach the player:
+`describeCloudSaveNotice(code)` maps every §4 failure code to its exact copy
+under a namespaced `cloud-sync-*` code, and `src/main.ts`'s replica `onEvent`
+reports it through the existing `SaveDiagnosticBanner` on
+`sync-stopped`/`document-dropped`; retryable failures still show nothing while
+a retry is pending. A `save_invalid`/`save_rejected` save is remembered by the
+*shape* of its authoritative state (stable across moving values, so the loop
+does not survive a fresh timestamp) and is not retried by the routine cadence;
+a **forced** trigger still bypasses that guard, and a successful one clears it,
+so sync is genuinely live (`isStopped` stays false) and a transient
+server-side rejection can recover without a reload (R1, pass 3). The
+mid-session `remote-dominates` adopt sets `localSavesSuspended` and cancels the
+coordinator's scheduled save before storing and reloading, and the
+purchase/heartbeat/claim paths honour it. `local-dominates` preserves a newer
+queued document; the retry budget is five retries after the initial request
+(so the 16 s step is reached); an unparseable `receivedAt` on a `409` is a
+terminal `malformed_request`. The one real network adapter sends
+`application/json; charset=utf-8`. On the server, `save-sync` now refuses only
+a schema version newer than its own and passes older ones to the shared
+`migrateSaveDocument` instead of rejecting them.
+
+### Adopting an existing local save (Step 20)
+
+A player who has been playing the client-only build holds a version-1
+`SaveDocument` in IndexedDB, and the milestone must adopt it as the account's
+cloud save on first sign-in rather than let a fresh one replace it.
+
+`src/platform/web/cloudSaveReconcile.ts`'s `adoptExistingLocalSave` is the
+named operation. It reads whichever document the lifecycle-safe repository
+would load, runs it through the shared `validateSaveDocument` — which migrates
+version 1 to version 2, expanding a legacy four-floor payload and defaulting
+`warehouse.totalOfflineGoldClaimed` to `"0"` — and hands the migrated document
+to the Step 19 replica's `forceCloudUpload`. It never throws: a missing local
+record resolves `no-local-save`, a corrupt or unreadable one `unreadable`, and a
+forced-upload collaborator that breaks its non-throwing contract `upload-failed`
+(distinct from `unreadable`, because the save read and migrated fine).
+
+`src/main.ts`'s boot-reconcile trigger (`forceCloudUploadLatestLocalDocument`)
+delegates to it on `no-cloud-save` and `kept-local`. `no-cloud-save` is the
+first-sign-in path: the account has no cloud save, so the local save becomes
+the cloud save. The adopted document is therefore the **migrated** version-2
+document, not the original version-1 bytes — the plan's Step 18 interaction
+note records that, and the tests compare against the migrated document rather
+than pretending the v1 bytes come back. The upload path already carries the
+server's migration too (Step 19's `save-sync` change), so a raw version-1
+payload is never refused.
+
+Evidence: unit tests for `adoptExistingLocalSave` (a progressed migrated upload,
+a legacy four-floor save expanded to fifteen floors, no local save, corrupt
+document, a rejecting repository, and a throwing `forceUpload` reported
+`upload-failed`); a live integration suite that uploads a pre-milestone document
+and asserts the downloaded document is byte-for-byte the migrated one, with the
+counter the only difference; and a server-e2e spec that seeds a real version-1
+IndexedDB save, boots the browser, and requires the cloud copy to be
+byte-for-byte the adopted local document.
+
+### Surviving local storage eviction (Step 21)
+
+Script-writable storage can vanish — the seven-day iOS Safari sweep, a
+user clear, or a storage-pressure quota eviction. The milestone's promise is
+that a player does not silently lose everything to it.
+
+**Detecting a returning player.** `src/platform/web/guestSession.ts`'s
+`ensureGuestSession` now reports `isNewSession`: `false` when it reused a
+session already in storage, `true` when it minted one this boot. A reused
+session with no local save is a state a first-time player can never be in, so
+it is the one detectable "this device's save was evicted" signal. It is exposed
+in the DEV `data-guest-session` diagnostic (a boolean, never the token).
+
+**Restore, or tell the truth.** `reconcileCloudSaveAtBoot` already restores a
+cloud save over a fresh local baseline (`remote-dominates`, Steps 17/18); Step
+21 adds no new restore path. What it adds is the honest case: the pure
+`shouldExplainMissingLocalSave` (`src/platform/web/localSaveRestore.ts`) is
+`true` only for a reused session + **no local record at all** (`'missing'`) + a
+`no-cloud-save` outcome, and `src/main.ts` reports the `local-save-missing`
+notice through the save banner. A corrupt-but-present save is `'unreadable'`,
+not `'missing'`: it already produced the accurate `corrupt-save` /
+`incompatible-save` warning, and the notice must never overwrite it. The
+decision is a three-way join (local-save state, `isNewSession`, reconcile
+outcome) whose last-arriving member reports, so `loadActiveGame` finishing after
+the reconcile's round trip cannot strand it.
+
+**Guest path only.** The reused-session signal exists only for the anonymous
+guest path (`ensureGuestSession`); Telegram sign-in mints a session from signed
+`initData` with no reused-session signal, so `sessionIsNew` stays unset there and
+the notice cannot fire. A returning Telegram player is restored from the cloud
+by the reconcile like any other sign-in. This is deliberate, not an omission:
+there is no honest way to tell a new Telegram player from a returning one whose
+device lost its save, so the game does not pretend there is.
+
+**Restore integrity.** The same change moved `reconcileCloudSaveAtBoot`'s
+`onServerRevision` call to fire only on `kept-local`/`same-progress`. Arming the
+replica before an `adopted-remote` outcome would pump a pending local document
+— including the fresh one an evicted device just started — against the server
+revision, and the accepted upload would overwrite the cloud save the adopt is
+restoring. `src/main.ts` now stops the replica on `adopted-remote` as well as
+`deferred-conflict`.
+
+**Reducing the chance of eviction.** `src/platform/web/persistentStorage.ts`'s
+`requestPersistentStorage` calls `navigator.storage.persist()` once, early,
+feature-detected and non-blocking, then re-reads `persisted()` and
+`estimate()`. It never throws and never treats a grant as a guarantee. The
+browser's real answer is published as the DEV `data-persistent-storage`
+diagnostic.
+
+**The measurement.** The seven-day deletion behaviour is measured, not assumed;
+the `persist()` half is recorded in `techContext.md` with its date and
+environment. The deletion half needs a real iOS device and a seven-day
+wall-clock observation (finding F8), and is recorded there as outstanding rather
+than asserted.
+
+**Early first sync.** Step 19's forced upload after boot reconcile
+(`no-cloud-save`/`kept-local`) already ensures a player who never returns has a
+cloud copy to restore; Step 21 relies on it rather than adding a second cadence.
+
+### The server clock is the only clock (Step 22)
+
+Offline settlement moved server-side. `save-sync`'s `GET /v1/save` computes an
+`offlineGrant` from the stored `received_at` to the function's own `now()` and
+returns it alongside the document; the device clock is never an input, so a
+client reporting hours ahead, hours behind, or moving backwards receives the
+same grant for the same real absence, and never more than the two-hour cap
+(F4's economy preserved by sharing `calculateOfflineGrant` with the client).
+
+On the client, `downloadCloudSaveViaFetch` parses the grant into
+`CloudSaveDownload.offlineGrant`, and `reconcileCloudSaveAtBoot` reports it
+through `onOfflineGrant` only for the outcomes that keep the page running
+(`kept-local`, `same-progress`) — an `adopted-remote` outcome reloads, and the
+next boot's download returns the same grant because no upload advanced
+`received_at`. `src/main.ts` credits the server's grant as the authoritative
+offline reward. The client's own projection is credited alone only where no
+server figure can exist — an unconfigured build, or an account with no cloud
+save (`204`); a failed download and a failed sign-in against a configured
+backend both credit nothing and settle on the next boot that reaches the server.
+Exactly one reward is presented, once the driver exists, because the download
+can finish before or after the IndexedDB load.
+
+`src/platform/web/appliedOfflineGrant.ts` records the `receivedAt` of the last
+credited grant in script-writable storage, so a reload between crediting a grant
+and uploading the credited state cannot credit the same server receipt twice.
+That double-credit window is the only one: once the upload advances
+`received_at`, the next grant covers only the new interval.
+
+**Open-tab/closed-tab asymmetry is preserved.** A backgrounded-but-alive tab is
+still advanced by `catchUpSimulation` at full pipeline rate; only a closed
+interval reaches the server grant, credited at the 0.5 efficiency. The grant is
+bounded by the client's own projection (`min`), because `received_at` is the
+last successful upload rather than the moment play stopped, so crediting it
+unbounded would hand back a cadence window — or hours, when sync lagged — of
+time the open tab already produced at full rate. **A null or zero projection is
+a zero bound, not an absent one**: a zero projection means the local save is at
+least as recent as the grant's receipt (the tab flushed before reloading), so
+nothing may be credited. `min` is cheat-safe: a manipulated clock can only make
+the projection larger (the server grant wins) or smaller (the player
+under-credits themselves), never more than either source.
+
+**The reward is decided once, and bounded.** `chooseOfflineReward`
+(`src/platform/web/chooseOfflineReward.ts`) is pure and unit-tested; it picks
+the server grant when one is positive, bounds it by the local projection, and
+credits the local projection alone only where no server figure can exist. The
+download carries a 10 s timeout, so a stalled socket cannot hold the reward
+indefinitely: on expiry the reconcile resolves `error`, which is deliberately
+*not* a local-projection case — the server figure exists and was merely not
+reached, so nothing is credited this session and the interval settles on the
+next boot that reaches the server. A failed sign-in against a configured
+backend is the same case one step earlier and is likewise not a fallback.
+Without those rules, dropping one request, or clearing the auth entry, would
+hand the device-clock cheat back.
+
+**The client E2E gate is backend-free by configuration.** `playwright.config.ts`
+pins `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` blank for the dev server, so
+that suite exercises the client-only projection deterministically — the
+behaviour those specs were written to pin (Step 19's "passes offline,
+unchanged"). The production smoke pins the save-sync surface to "no cloud save"
+for the same reason. The server-verified path is covered by the server
+integration and server-e2e suites.
+
+### Upper-bound re-simulation (Step 23)
+
+`src/core/anti-cheat/progressBound.ts`'s pure `evaluateProgressBound` decides
+whether an uploaded document claims more than the last accepted one could have
+produced over the server-measured elapsed time. `save-sync` calls it on every
+non-first `PUT /v1/save`; a violation becomes `422 save_rejected` with
+`detail: { counter, claimed, maximum }`, and the stored row and revision are
+untouched (§10.3).
+
+**The modelling rule, stated rather than implied (finding F3).** Between two
+uploads the server does not know which upgrades the player bought or when, so it
+cannot compute a tight bound. It uses the shared core's own rate and cost
+functions on the **candidate's final configuration**:
+
+- A cumulative counter may not exceed its previous value plus the candidate's
+  own production rate held for the whole interval, times the tolerance, **plus
+  whatever material was already in the pipeline when the interval opened**. A
+  proportional rate term alone is near-zero over a short interval, while one
+  completed extraction cycle and one drained queue are fixed amounts, so
+  without the carried terms a warm mine that simply kept playing is rejected
+  (review finding **F1**). The carried terms are each unlocked floor's in-flight
+  cycle yield (valued at the candidate's level, the largest it can complete at)
+  and, for `totalTransported`/`totalGoldDelivered`, the material already sitting
+  in floor queues, the elevator's load, and the warehouse's input queue. The
+  counters bounded are each unlocked floor's `totalExtracted` and
+  `totalTransported` (transport further capped by the shared elevator's
+  throughput), `warehouse.totalGoldDelivered`, and
+  `warehouse.totalOfflineGoldClaimed` (which carries no in-flight material — an
+  offline claim is produced by an absence).
+- The total gold the upgrades and floor unlocks between the two documents
+  required (`state.upgradeSpend`, computed with the core's own batch-cost
+  functions) may not exceed the previous balance plus **one** maximum-earning
+  term. The interval was either played (deliveries) or spent away (a capped
+  offline claim), never both at full rate, so the delivery and offline
+  allowances are not added together (review finding **F5**).
+
+**No ticks are simulated.** The interval can exceed `MAX_CATCH_UP_MS` (two
+hours), so an `O(elapsed)` walk would blow the §7.1 upload latency budget, while
+the shared rate model gives the same (looser) upper bound in `O(floors)`.
+
+**Two anchors, because §7 makes forks first-class (finding F2).** The tight
+bound measures from the stored row's own receipt. A device that resolves a `409`
+re-uploads *its own* branch seconds after the branch that became the stored row,
+and that branch diverged from an older common ancestor — measuring its whole
+divergence against a few seconds rejects a legitimate merge and pins the
+account to the inferior branch. The row keeps one generation of rollback
+(`previous_document_json`/`previous_received_at`), so when the tight bound fails
+and an ancestor exists, `save-sync` retries against that ancestor over the full
+interval between its receipt and now. A candidate is accepted if either anchor
+allows it. The accepted cost is that a strict-superset claim gains the wider
+ancestor window; that is the same accept-biased direction as the tolerance.
+
+**The ancestor anchor is one generation deep — a stated known limit (N1).** The
+row keeps exactly one generation of rollback, so a fork is accepted only when
+its divergence point is the stored row or its immediate predecessor. §9 allows a
+peer one new generation per 60 s, so a fork older than roughly two minutes
+against an actively-syncing peer — a tablet left open while the player plays on
+their phone offline, which then dominates on return — has both anchors too
+recent and its honest branch is rejected (reproduced: the peer uploading at
+−60 s and now while the other device was away three hours rejects
+`state.warehouse.totalGoldDelivered` against both anchors). This is the residual
+of the F2 fix, **not** a claim that the fork case is closed. The sound full fix
+is to retain fork points (a history/`saves`-schema change) or to have the client
+supply a verifiable fork revision — a design decision that overlaps Step 24, not
+a patch. A server-side "accept any strict superset" exemption was considered and
+rejected: supersets are exactly what an inflating cheat submits, so it would gut
+the bound. Until the fix lands, the player's local save and play are intact;
+only the cloud copy lags, and Step 21's eviction restore would return that
+branch, which is why the limit is tracked as an open risk in `progress.md`.
+
+**Never current `gold`, and the same exclusion §7 makes.** `gold` legitimately
+falls when the player spends, so it is bounded only indirectly, through spend;
+this is exactly the reason `compareProgress`'s progress vector `M` omits `gold`
+(§7.1). The economy is not changed: this only decides whether to reject a
+document the client already produced.
+
+**The tolerance, and its size.** `PROGRESS_BOUND_TOLERANCE = 0.05` absorbs the
+remaining differences between the client's fixed-step simulation and the
+continuous rate — sub-tick remainders, fractional yields, and the rounding in
+each `GameNumber` update — without letting a materially larger claim through.
+The rate model already over-estimates by holding the final configuration for the
+entire interval and the carried terms already settle all in-flight material; the
+5% covers only the residual. `tests/unit/progress-bound.test.ts` pins it from
+**both sides** (over an interval long enough that the rate term dominates the
+fixed carried amount), so widening it silently fails. The direction is
+deliberate: per the threat model's §1 ranking, a player's own progress outranks
+leaderboard integrity, so the bound prefers accepting a slightly generous save to
+rejecting an honest one.
+
+**First uploads and unreadable rows are exempt.** `findProgressBoundViolation`
+returns `null` (accept) when the account has no stored row: there is no last
+accepted document to bound against, and it is how a brand-new account seeds its
+cloud save and how Step 20 adopts a save the player earned before the account
+existed. A stored row whose document cannot be deserialized skips the check, and
+so does a stored `received_at` that cannot be parsed — an unreadable row is the
+server's own state being unreadable, not evidence against the document, and must
+not collapse to a zero-second bound that rejects every claim (review finding
+**F4**). The server therefore never rejects an honest save because its own row is
+unreadable.
+
+Evidence: 9 core unit tests (`tests/unit/progress-bound.test.ts`) covering honest
+accept (including a warm mine over a short interval — the F1 regression), each
+inflated counter, and both sides of the tolerance; server unit tests in
+`save-sync/index.test.ts` (including the F2 ancestor-anchor and F4 skip); a live
+integration suite (`tests/server-integration/save-rejection.integration.test.ts`)
+plus the conflict/collision suites, whose `409` re-upload now commits through the
+ancestor anchor with no extra `ageStoredSave`. `saveAgeFixture.ts`'s
+`ageStoredSave` is used only where the fixture's document is a *linear*
+descendant that stands for offline play, never to fake a divergent branch into
+the linear bound.
+
+### Rejection handling (Step 24)
+
+**What a rejected save does to the player.** Nothing is lost. The local save is
+written first and independently of the network (Step 19), so a refused upload
+never touches it; the session keeps running; and the refusal reaches the player
+as one banner notice through `describeCloudSaveNotice`. A `save_rejected` is
+terminal-but-keep-syncing (§4): the replica drops *that document*, records its
+state shape so routine saves of the same shape are not retried, and keeps
+syncing. The player's next real play changes the shape, and a forced lifecycle
+trigger bypasses the suppression and clears it on success, so a false positive
+recovers without a reload. The exact copy is
+"Your progress could not be verified and was not uploaded. Your game on this
+device is unchanged."
+
+**One `save_audit` row per authenticated attempt.** The table was designed at
+Step 3 and already exists; Step 24 is its writer. `handleSaveUpload` records via
+the new `writeSaveAudit` dep (`writeSaveAuditViaServiceRole` — the second and
+last service-role use in this function, because `save_audit` grants no client
+role any access at all):
+
+- `outcome` (`accepted`/`rejected`), `error_code` (present exactly when
+  rejected), `base_revision` (what the client claimed), `resulting_revision`
+  (present exactly when accepted), and `document_bytes`.
+- `client_reported_at` — the document's own `savedAtTimestampMs`, recorded
+  verbatim and **never trusted**, so a device-clock attack shows up as
+  divergence from the server's `occurred_at`. It is bounded to the range a
+  `timestamptz` column round-trips through `Date#toISOString` (years 0001–9999);
+  a value past that — which JS formats in the extended-year form Postgres
+  refuses — is recorded as `null` with the raw claim kept in
+  `detail.clientReportedAtOutOfRangeMs`. Without that bound the insert would
+  throw, the best-effort writer would swallow it, and the attempt would leave no
+  row at all — the field meant to expose a clock attack would erase its own
+  evidence (review finding **H1**).
+- `detail` — the server-authored reason: a Step 23 bound violation's
+  `{counter, claimed, maximum}`, a validation `reason`, a conflict's
+  `serverRevision`, the size cap and the client's declared length for a
+  `payload_too_large`, or a malformed-body reason. This is what makes a bug
+  distinguishable from an attack after the fact.
+
+Accepted attempts are recorded too, not only rejections — the table was designed
+for both, and its partial index on rejections exists because rejections are the
+rare minority Step 35 will watch. The write is **best-effort**: a failure is
+logged and must never turn an accepted save into a rejected one or lose the
+player's game. An unauthenticated request writes nothing, because
+`save_audit.user_id` is `not null` and there is no resolved caller. An
+**unexpected collaborator failure** — a database error in the `readCurrentSave`
+or `writeSaveRow` call, the `request.text()` read of an aborted body, building a
+`409` response from a corrupted stored row, or the non-`SaveDocumentError`
+rethrow in validation — is caught after the caller resolves and recorded as a
+`rejected`/`server_error` row before the `500`, so a repeated crash (or a
+deliberate hunt for one) is visible rather than a silent 500 with no trace
+(review findings **M1**, **L3**).
+
+**No client-controlled field may reach a typed audit column unvalidated.** Two
+did, and each aborted the insert (the best-effort writer then swallowed it, so
+the attempt left no row): the client clock (fixed by bounding it, **H1**) and
+`baseRevision` (fixed by validating it against §5, **H2**). `baseRevision` must
+now be `null` or a positive safe integer — a fractional or out-of-int8 value is
+recorded as `400 malformed_request` *before* `auditContext.baseRevision` is
+assigned, so the rejection writes a clean row. That is also a §5 conformance fix
+in its own right ("a monotonic integer… or null"). `writeSaveAuditViaServiceRole`
+additionally coerces any non-safe-integer revision to `null` (`normalizeAuditRevision`)
+and clamps `document_bytes`, so a future typed column added to this table cannot
+reopen the hole a third time.
+
+Evidence: 8 Deno unit tests in `save-sync/index.test.ts` (accepted row carrying
+the client clock, bound-violation row, validation row, no row without a caller,
+an out-of-range client clock still writing one row with the raw value in
+`detail`, a throwing collaborator writing a `server_error` row, a non-integer
+`baseRevision` refused with one `malformed_request` row, and the
+`normalizeAuditRevision` coercion);
+`tests/unit/server-stack.test.ts` pins the `admin.from('save_audit').insert(`
+line alongside the `saves` writes;
+`tests/server-integration/save-audit.integration.test.ts` (6 live tests —
+accepted row, `save_rejected` row, `revision_conflict` row, an unrepresentable
+client clock still writing the row, invalid `baseRevision` values each writing
+their own row, and RLS proving the log is invisible and unwritable to any client
+token); and `tests/server-e2e/save-rejection.spec.ts` proves the player-facing
+half in a real browser against a stubbed `422 save_rejected`.
+
+### Guest linking and the identity collision (Step 13)
+
+Three of the step's required flows fall out of what Steps 10/12/17 already
+do: a fresh identity link keeps the same `auth.users` id (Steps 10/12), and
+"no progress, never asked" plus the silent no-conflict cases are exactly
+`resolveSaveConflict`'s existing behaviour (Steps 17/18). What Step 13 adds is
+the missing piece — detecting and resolving the one collision Google's
+`linkIdentity` can produce that `resolveSaveConflict` alone cannot get the
+caller into:
+
+- `detectGoogleIdentityCollision` (`src/platform/web/googleSignIn.ts`) calls
+  `client.auth.initialize()` — the SDK's own memoized boot-URL parser,
+  already triggered once by `ensureGuestSession`'s `getSession()`, so a
+  second call is free and returns the cached result — and reads
+  `error.details?.code === 'identity_already_exists'`, mirrored from the
+  SDK's own internal check (`GoTrueClient._initialize`) since no
+  higher-level named constant exists for it.
+- `beginGoogleAccountSwitch` always calls `signInWithOAuth`, never
+  `linkIdentity`, regardless of whether a guest session already exists:
+  GoTrue never reveals *which* account a colliding identity belongs to, so
+  there is no way to become that account except a second, full Google
+  consent round trip. The still-present local IndexedDB save is untouched by
+  the session switch — `DexieActiveSaveRepository` keys one fixed record,
+  not per-user — so it remains exactly what the next boot's
+  `reconcileCloudSaveAtBoot` compares against the newly-authenticated
+  account's cloud save.
+- Telegram needs neither addition: it never attempts `linkIdentity` at all
+  (`src/main.ts` calls `signInWithTelegram` *instead of* the guest
+  bootstrap), so every Telegram sign-in already runs through Step 17's
+  reconcile unconditionally.
+
+No production UI exists yet, matching Steps 8/10/12: `main.ts`'s existing
+`DEV`-only `window.catMineIdleAccount` hook gained `beginGoogleAccountSwitch`
+alongside `beginGoogleSignIn`, and a `data-google-identity-collision`
+diagnostic published from `detectGoogleIdentityCollision`.
+
+### Recovery code (Step 14)
+
+`recovery_codes` (Step 3/5 schema — one policy-free table, an HMAC-SHA-256
+`code_hash` under a pepper never stored in the database, a partial unique
+index permitting only one active code per user) is unchanged by this step;
+`supabase/functions/recovery-code/index.ts` is the first code to touch it,
+under two routes (`/functions/v1/recovery-code/v1/generate`,
+`.../v1/redeem`) reusing `_shared/http.ts`'s envelope/CORS helpers.
+
+- **Code**: 16 random bytes (128-bit entropy), hex-encoded and grouped for
+  display (`xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx`). The canonical form
+  that gets hashed strips every non-hex character and lowercases, so a
+  player can paste the code with or without its dashes.
+- **Rotation** (`rotateRecoveryCodeViaServiceRole`): revokes whatever is
+  currently active (`update ... where user_id = ? and redeemed_at is null
+  and revoked_at is null`) before inserting the new row — the partial
+  unique index would otherwise reject a second active row outright.
+- **Redemption** (`redeemRecoveryCodeViaServiceRole`) is a single atomic
+  `update ... where code_hash = ? and redeemed_at is null and revoked_at is
+  null returning user_id` — proactively applying the compare-and-swap
+  lesson the Step 16 review taught for `save-sync`'s upload endpoint,
+  rather than shipping a read-then-write and waiting for a review to find
+  the same race. Mutation-proven: temporarily reverting to read-then-write
+  let two concurrent redemptions of the same code both succeed in 2 of 3
+  live runs.
+- **Minting a session for the resolved `user_id`** adapts
+  `telegram-sign-in`'s `admin.generateLink`/client-`verifyOtp` pattern for
+  an id-keyed rather than email-keyed lookup: `generateLink` finds-**or
+  creates** by email, so calling it blind for a pure anonymous guest (no
+  email at all) would silently mint a new, wrong account.
+  `mintSessionForUserViaGenerateLink` resolves the caller's existing email
+  first (Google-linked, or a Telegram placeholder) and only assigns a
+  deterministic `recovery-<user_id>@recovery.invalid` (via
+  `admin.updateUserById(..., {email_confirm: true})`, no confirmation email
+  sent) when the account has none — guaranteeing `generateLink` *finds* the
+  correct row. Confirmed live for exactly the pure-anonymous case.
+- **Hashing stays out of the pure handler.** `handleGenerate`/`handleRedeem`
+  never call `Deno.env.get` themselves — `RotateRecoveryCode`/
+  `RedeemRecoveryCode` take the *canonical code*, not a pre-computed hash,
+  and the real service-role implementations hash internally. This is what
+  keeps the handler testable under `deno test`'s zero-`--allow-*` harness:
+  a design that hashed inline in the handler would need `--allow-env` just
+  to run its own unit tests.
+- **Rate limiting is a deliberate interim seam, not Step 25 itself.** Step
+  25 is the plan's own named owner of a persistent, distributed per-user/
+  per-address limiter across every endpoint in this milestone; the Step 3
+  schema deliberately carries no per-code failed-attempt counter. This
+  ships a minimal in-memory, address-keyed fixed-window limiter
+  (`checkRedemptionRateLimitInMemory`) — not safe across multiple worker
+  instances or a restart, documented as such — sufficient for this step's
+  own "wrong codes are... throttled" test.
+- `src/platform/web/recoveryCode.ts` (`generateRecoveryCode`/
+  `redeemRecoveryCode`) mirrors `telegramSignIn.ts`'s shape exactly,
+  completing the session with `auth.verifyOtp({token_hash, type:'email'})`.
+  `main.ts`'s existing DEV-only hook gained both; `redeemRecoveryCode`
+  triggers the same `triggerCloudSaveReconcile()` every other sign-in path
+  already runs once redemption succeeds — "redemption... must reuse the
+  Step 13 collision flow" needed no new merge logic, since the redeeming
+  device's local save is untouched by the session swap.
+
+**2026-09-12 review of Step 14.** Five findings, all fixed and re-verified
+against the live stack:
+
+1. **HIGH — a failed mint permanently destroyed the account.**
+   `redeemRecoveryCodeViaServiceRole` marks the row redeemed *before*
+   `mintSessionForUserViaGenerateLink` runs; if minting then failed, the code
+   was already spent with no session ever delivered — unrecoverable.
+   `handleRedeem` now calls a new `revertRecoveryCodeRedemption` collaborator
+   (best-effort, its own failure only logged) to clear `redeemed_at` before
+   answering `500`, so the same code stays usable. Mutation-proven live: with
+   the revert removed and minting forced to fail, the row stayed
+   `redeemed_at`-set forever; with the revert restored, the same forced
+   failure left `redeemed_at` null.
+2. **MEDIUM — the CORS preflight blocked every real browser call.**
+   `corsPreflightResponse` (`_shared/http.ts`) answered
+   `access-control-allow-headers: content-type` only, so a real browser's
+   preflight for `recoveryCode.ts`'s or `cloudSaveReconcile.ts`'s
+   `Authorization`-bearing cross-origin request would have been refused
+   before it left — invisible locally only because Kong's own CORS handling
+   (finding F12) overrides every function's response regardless. Fixed to
+   `content-type, authorization`.
+3. **MEDIUM — the rate limiter's own doc comment misdescribed its failure
+   mode, and (once fixed) the address it read was proven to always be
+   populated locally by the platform gateway.** `extractCallerAddress` now
+   reads the *last* `X-Forwarded-For` hop — the one the gateway (Kong
+   locally, Supabase's edge network in production) appends and a client
+   cannot forge — instead of the first, client-suppliable one, closing the
+   "attacker rotates the header every request" exploit the review named
+   (which the integration suite's own old per-call random address
+   inadvertently demonstrated). Confirmed live that the gateway supplies this
+   trusted hop unconditionally, whether or not the client sends the header
+   at all — the `null`/"no address" branch in
+   `checkRedemptionRateLimitInMemory` is a defensive default for a caller
+   that bypasses the gateway entirely, a path no deployment here allows
+   today, not a case this project's own traffic exercises. Given that every
+   real caller is now bucketed by an address it cannot spoof, the threshold
+   was raised from 10 to 30 attempts/minute — free against a real attacker
+   (128-bit code entropy is the actual backstop, not this counter) while
+   comfortably absorbing a real user's own retry bursts or many distinct
+   users behind one shared address (an office NAT).
+4. **MEDIUM — unbounded map growth.** `redemptionAttemptsByAddress` never
+   dropped a key once its window emptied, so a caller who never reused an
+   address grew the map forever. `pruneExpiredRateLimitEntries` now sweeps
+   every key each check, deleting any whose live-attempt window is empty.
+5. **MEDIUM — rotation revoked before it knew the insert succeeded.**
+   `rotateRecoveryCodeViaServiceRole` was a separate `.update()` (revoke)
+   then `.insert()` — two independent, non-transactional PostgREST
+   statements. An insert failure after a successful revoke stranded the
+   user with no active code at all. Fixed with a single Postgres function,
+   `rotate_recovery_code` (migration
+   `20260913090000_recovery_code_rotation_rpc.sql`, DDL in the schema
+   section below), called through `admin.rpc(...)` — both statements now run
+   in one transaction. Mutation-proven live: forcing the insert to fail via
+   a global `code_hash` collision left the RPC-based rotation's original
+   code still active (rolled back), while reproducing the old two-statement
+   sequence by hand against the same collision left the user with zero
+   active codes (revoked, insert failed, nothing rolled back).
+
+**2026-09-13 review of Step 14.** Five more findings, all fixed and
+re-verified against the live stack:
+
+1. **The migration's own comment overstated what atomicity guarantees.**
+   `20260913090000_recovery_code_rotation_rpc.sql` originally credited
+   Postgres with "serializing concurrent callers on the same `user_id`" —
+   it doesn't: two concurrent rotations can both clear the same revoke
+   predicate before either commits, and both then race their own `insert`.
+   What actually makes that race safe is
+   `recovery_codes_one_active_per_user_idx` — whichever insert commits first
+   wins outright, the loser's insert raises `23505` against that same
+   index, and because the revoke and insert now share one transaction, that
+   failure rolls the loser's revoke back too, rather than leaving a
+   committed revoke with no matching insert. The migration's comment and
+   this document's own §5 entry above are corrected to say so.
+2. **Fix #5 had no committed behavioral test.** `server-stack.test.ts`'s
+   assertions were string greps against the source and the migration —
+   both would pass against an RPC that did the wrong thing. Added two live
+   integration tests: a forced global `code_hash` collision on the insert
+   half, proving the rollback directly (the RPC leaves the pre-existing
+   code untouched; a hand-reproduced version of the old two-statement
+   sequence against the identical collision leaves zero active codes); and
+   a genuine concurrent `generate`/`generate` race (`Promise.all`), proving
+   the account ends up with exactly one active, redeemable code regardless
+   of which of the two legitimate outcomes the real network timing
+   produces (both succeed, the second silently superseding the first; or
+   one succeeds and the other's insert genuinely collides).
+3. **`revertRecoveryCodeRedemptionViaServiceRole` could itself collide with
+   the one-active-code index.** If a `POST /v1/generate` landed in the
+   narrow window between a failed mint and this revert, the plain `update
+   ... where revoked_at is null` it used would try to revive the
+   just-spent code as a *second* active row, alongside the fresh one the
+   concurrent `generate` had just rotated in — rejected by
+   `recovery_codes_one_active_per_user_idx`, caught and logged by
+   `handleRedeem`'s own try/catch, but a real avoidable error rather than a
+   deliberate decision. Not account-corrupting (the fresh code from that
+   concurrent `generate` remains the sole way back in either way), but a
+   narrow path where the fix silently degraded to pre-fix behavior for the
+   specific code being reverted. Fixed with a second Postgres function,
+   `revert_recovery_code_redemption` (migration
+   `20260913090100_recovery_code_revert_rpc.sql`, DDL below), which only
+   clears `redeemed_at` when the account holds no other active code —
+   otherwise a silent no-op, not a constraint violation. Two live
+   integration tests prove both branches directly against the RPC.
+4. **The rate-limit sweep ran on every request, not just when needed.**
+   `pruneExpiredRateLimitEntries` swept the *entire* map on every single
+   `checkRedemptionRateLimitInMemory` call — under the exact rotated-address
+   attack it exists to bound, nothing has expired yet at the moment each new
+   address is added, so this was O(n) per request, i.e. O(n²) total: memory
+   exhaustion traded for quadratic CPU. Fixed by gating the sweep on map
+   size (`RATE_LIMIT_PRUNE_SIZE_THRESHOLD`, 1,000) rather than running it
+   unconditionally — amortized O(1) per request once the map is below
+   threshold, with one real sweep once it isn't.
+5. **The integration suite shared one real rate-limit bucket with no way to
+   reset it, undocumented.** Once `extractCallerAddress` reads the platform
+   gateway's own trusted hop (finding 3 from the prior round), every request
+   the whole integration file makes shares one real, gateway-observed
+   bucket — confirmed live that the local Kong gateway supplies this hop
+   unconditionally, whether or not the client sets `X-Forwarded-For` at
+   all, so there is no client-side way to get a fresh one. Left as-is, a
+   re-run of the suite inside the 60-second window failed unrelated tests
+   (the basic round-trip, the concurrent-redemption race) with `429`
+   instead of their real expectations — an undocumented cooldown nobody
+   would expect to hit. Fixed with a new route,
+   `POST /v1/test-only-reset-rate-limit`, gated behind
+   `RECOVERY_CODE_TEST_RESET_TOKEN` — unset (and therefore inert) in any
+   real deployment, and answering an unauthorized caller the identical
+   response an unknown route gets, so its existence is not discoverable
+   without already knowing the token. The integration suite calls it in a
+   `beforeAll`/`afterAll` around the whole file. Proven live: the suite now
+   passes cleanly five consecutive runs back to back with no stack restart
+   between them, where it previously failed on the second run.
+
+A same-review pass also recorded F13's mandated re-derivation for the
+`recovery.invalid` placeholder-email namespace in `server-threat-model.md`
+(passes — see that document) and corrected `server-save-sync-protocol.md`'s
+CORS-header documentation, which had drifted out of sync with finding 2's
+fix above. All five re-verified: `npm run verify:server` (98 Deno unit
+tests, 69 integration tests, 3 server-e2e) and the full client gate (502
+unit tests, 51 E2E, build, secret scan, 10 production smoke) both re-pass
+end to end from a clean cycle.
+
+**Follow-up pass on the same 2026-09-13 review (one LOW residual on the
+Step 17 fix, three consistency notes, one optional hardening).**
+
+- **LOW, verified live — the unbind fix removes the `pagehide` write but not
+  a journal entry already there.** `storeActiveSave(remoteDocument)` calls
+  `journal.clearThrough(remoteDocument.savedAtTimestampMs)`, which only
+  discards an entry *at or below* that timestamp. The adopted document
+  carries the other device's clock, so a journal entry written earlier in
+  this session — a `visibilitychange`→hidden while the player backgrounds
+  the tab during boot, before the reconcile ever runs — reads as newer and
+  survives, then wins on the next boot, reverting the adopt (though not
+  looping: the next boot's own debounced save clears the journal and the
+  second adopt sticks). Confirmed with a scratch test against the real
+  `WebLifecycleSaveJournal`/`LifecycleSafeActiveSaveRepository` classes.
+  Restamping the adopted document to `Date.now()` before storing it was
+  considered and rejected: `savedAtTimestampMs` is not cosmetic — `loadActiveGame`
+  anchors offline-income settlement to it directly
+  (`calculateOfflineIncome(state, loadedSave.savedAtTimestampMs, ...)`), so
+  restamping would silently zero the offline income a cloud-adopt is
+  supposed to credit for time elapsed since the *other* device's last save.
+  Fixed instead with a new `WebLifecycleSaveJournal.clear()` — unconditional,
+  unlike `clearThrough`, and deliberately *not* used by the routine
+  debounced-flush path (`storeActiveSave` keeps its existing conditional
+  clear there, since a routine flush must not clobber a genuinely newer
+  entry a concurrent `pagehide` wrote while that flush was still in
+  flight) — called through a new `CloudSaveReconcileDeps.clearLifecycleJournal`
+  right before `reload()`, safe specifically because the reload's own
+  unbind means no further local write can race it. Mutation-proven:
+  removing the call fails a new unit test by name.
+- **The `main.ts` comment asserted a safety it didn't establish.** It
+  claimed a reconcile resolving before `startApplication()` reaches the
+  `unbindSaveLifecycle` assignment means "there is no race to guard against
+  in that ordering either." The real risk in that ordering isn't a failed
+  unbind — it's `bindSaveLifecycle` registering *after* the unbind ran and
+  before the document actually unloads, since `reload()` doesn't stop
+  script execution. That needs the network round trip this reconcile makes
+  to outrace `startApplication()`'s own font loading and `loadActiveGame`,
+  which is improbable, not impossible. Comment corrected to say so rather
+  than claim otherwise.
+- **`checkTestResetAuthorizationViaEnv` compared the token with `===`.**
+  This codebase constant-time-compares the Telegram HMAC
+  (`timingSafeEqualHex`); the reset route is local-only so the practical
+  risk was nil, but for consistency `recovery-code/index.ts` gained its own
+  `timingSafeEqual` (the identical XOR-diff algorithm, generalized past hex
+  since a token is an opaque string) and now uses it here.
+- **`revert_recovery_code_redemption`'s "silent no-op, not an error" isn't
+  unconditional.** Its own `not exists` check and its `update` are not
+  atomic with each other, so a `generate` whose transaction commits in that
+  gap can still make the `update` raise the identical `23505` a plain
+  `update` would have — which is exactly why `handleRedeem`'s try/catch
+  around this call has to stay; the outcome is safe either way (the fresh
+  code wins, the reverted one just stays spent). Documented with a clause
+  in the migration's own comment and in the calling function's doc comment,
+  rather than left implicit.
+- **Optional hardening, applied: RPC execute grants, belt-and-braces over
+  RLS.** Both RPCs were `security invoker` with Postgres's default execute
+  grant to `public`; `recovery_codes`' own RLS (no policy at all, confirmed
+  via `pg_policies`) already makes them inert for `anon`/`authenticated`,
+  but a new migration
+  (`20260913090200_recovery_code_rpc_grants.sql`) closes it at the grant
+  layer too. Non-trivial in practice: Supabase's own bootstrap grants
+  `execute` to `anon`/`authenticated`/`service_role` *individually* when a
+  function is created (not merely through `public`), confirmed live by
+  inspecting `pg_proc.proacl` right after `rotate_recovery_code` was first
+  created — `revoke ... from public` alone left `anon`/`authenticated`
+  untouched, and each had to be named explicitly. `service_role` is not a
+  Postgres superuser locally (`rolbypassrls` only, confirmed via
+  `pg_roles`), so it needed its own explicit re-grant — verified live that
+  omitting it breaks the Edge Function's own `admin.rpc(...)` calls with a
+  permission-denied error, not merely a no-op. A new live integration test
+  calls both RPCs directly through PostgREST's `/rest/v1/rpc/...` endpoint
+  as an authenticated (non-service-role) caller and asserts `403`;
+  mutation-proven by manually re-granting `execute` to `anon`/`authenticated`
+  and watching that same test fail, then restoring via a clean
+  `supabase db reset`.
+
+All re-verified: `npm run verify:server` (98 Deno unit tests, 70 integration
+tests, 3 server-e2e) and the full client gate (506 unit tests, 51 E2E,
+build, secret scan, 10 production smoke) both re-pass end to end from a
+clean cycle.
+
 ## Cat Role Asset Catalog Contract
 
 `art-source/cat-role-catalog/` is the source-of-truth workspace for role-based
@@ -610,15 +1815,18 @@ The smoke suite asserts what only the served bundle can show:
 - **Real rendering.** Pixel probes read the HUD background and a floor panel out of the canvas backing store, because layout diagnostics report intended geometry and stay green when nothing was painted.
 - **Save behavior.** With `Date.now` routed through `window.name` by an init script — the hashed entry cannot be rewritten the way the dev-server tests rewrite `/src/main.ts` — a controlled 40-second session is flushed at a `visibilitychange` boundary and must equal the document derived in the test process. A reload at the same instant credits no offline time and must re-settle the identical document, and a further 20 seconds must continue from the deserialized saved state rather than a fresh one.
 - **Error handling.** A corrupt payload and an unsupported schema version are each seeded into IndexedDB during a navigation whose bundle is blocked, so nothing boots to overwrite them. The reload must show the matching recovery notice, stay playable, replace the rejected payload with a valid fresh document, and raise no uncaught error. A browser whose `indexedDB.open` throws must still boot, show the load-failure and then the save-failure notice, and keep rendering.
-- **Responsive layout.** The canvas and all three logical regions stay inside narrow-phone, tall-phone, tablet-portrait, and desktop viewports at the preserved 360:640 ratio, with no bottom navigation.
+- **Responsive layout.** The canvas and all four logical regions stay inside narrow-phone, tall-phone, tablet-portrait, and desktop viewports at the preserved 360:640 ratio. The bottom navigation remains fixed while the mine camera scrolls only in its reduced middle viewport.
 
 ## Save Diagnostic Surface
 
-`createSaveDiagnosticBanner(parent)` renders one non-blocking DOM notice for both recoverable persistence problems: the loader's `SaveRecoveryWarning` and the coordinator's `PersistenceDiagnostic`, whose shapes both satisfy `SaveDiagnosticNotice`. `src/main.ts` passes it as `loadActiveGame`'s `onWarning` and the coordinator's `onDiagnostic`.
+`createSaveDiagnosticBanner(parent)` renders one non-blocking DOM notice for every recoverable problem this milestone can surface. Four sources feed it, all shaped as `SaveDiagnosticNotice` (`{code, message}`):
 
-Steps 21 and 22 specified a visible diagnostic, and the core produced one, but the application never passed either callback — a player whose save was rejected simply found themselves at the start of a fresh game with no explanation. Step 36 found that only against the served bundle, where the recovery path is what a real corrupt record actually reaches.
+- `loadActiveGame`'s `SaveRecoveryWarning` (`corrupt-save`, `incompatible-save`), passed as `onWarning`.
+- `SavePersistenceCoordinator`'s `PersistenceDiagnostic` (`load-failed`, `save-failed`), passed as `onDiagnostic`.
+- Server-milestone Step 19: terminal cloud-sync failures, `describeCloudSaveNotice`'s namespaced `cloud-sync-*` codes, from the replica's `onEvent` on `sync-stopped`/`document-dropped`. Retryable failures show nothing until retries are exhausted.
+- Server-milestone Step 21: the `local-save-missing` notice, when a reused session has no local record at all and the account has no cloud save to restore.
 
-The notice never takes focus and overlays only the non-interactive HUD strip, because the session always continues: a corrupt save has already been replaced and a failed write is still retried. A code that is already showing is ignored rather than re-rendered, since a broken storage backend reports a failed write on every debounce, and a dismissed code stays dismissed until a different problem occurs. It is not withdrawn when a later write succeeds — the coordinator reports failures, not recoveries, and leaving a stale notice the player can dismiss is safer than silently retracting the news that progress may not be stored.
+The notice never takes focus and overlays only the non-interactive HUD strip, because the session always continues: a corrupt save has already been replaced and a failed write is still retried. A code that is already showing is ignored rather than re-rendered, since a broken storage backend reports a failed write on every debounce, and a dismissed code stays dismissed until a different problem occurs. A *different* code **replaces** the shown one — so the sources are ordered by what the player most needs to know, and Step 21's notice fires only when there is no local record at all, never when a corrupt-but-present save already produced the accurate `corrupt-save` warning. The notice is not withdrawn when a later write succeeds — the coordinator reports failures, not recoveries, and leaving a stale notice the player can dismiss is safer than silently retracting the news that progress may not be stored.
 
 ## Complete Database Schema
 
@@ -646,7 +1854,7 @@ Three rules, and they differ by location.
 
 1. **Inside a save document, nothing changes.** `GameNumber` values stay
    serialized decimal/scientific strings inside the document text, exactly as
-   the version-1 save schema already defines them. The server neither reformats
+   the version-2 save schema already defines them. The server neither reformats
    nor re-serializes them.
 2. **Anywhere SQL must sort or rank a `GameNumber`, store two columns.**
    `*_exact text` holds the canonical serialized form and is the only value ever
@@ -707,6 +1915,26 @@ create table public.profiles (
 create trigger profiles_set_updated_at
   before update on public.profiles
   for each row execute function public.set_updated_at();
+
+-- Server-milestone Step 9: creates the row `profiles` has no insert policy
+-- for. `security definer` lets it run as the function's owner (`postgres`,
+-- which owns `profiles` and so bypasses its RLS) rather than as
+-- `supabase_auth_admin`, the role that actually performs the `auth.users`
+-- insert and holds no privilege on `public.profiles` at all.
+create function public.handle_new_user() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id) values (new.id);
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
 
 -- ------------------------------------------------------------------- saves --
 create table public.saves (
@@ -785,6 +2013,91 @@ create unique index recovery_codes_one_active_per_user_idx
   on public.recovery_codes (user_id)
   where redeemed_at is null and revoked_at is null;
 
+-- Server-milestone Step 14 review finding (2026-09-12): rotating a code was
+-- a revoke `update` followed by a separate `insert` — two independent,
+-- non-transactional PostgREST requests. An insert failure after a
+-- successful revoke stranded a user with no active code. Wrapping both
+-- statements in one `plpgsql` function makes them one transaction.
+--
+-- This does not mean Postgres serializes two concurrent `generate` calls
+-- for the same user into a well-ordered queue (a 2026-09-13 correction —
+-- the migration's own comment originally overstated this): both
+-- transactions' revokes can still clear the same predicate before either
+-- commits, and both then race their own insert. `recovery_codes_one_active_per_user_idx`
+-- is what makes that race safe — the loser's insert raises `23505`, and
+-- because the revoke and insert share one transaction, that failure rolls
+-- the loser's revoke back too.
+create function public.rotate_recovery_code(p_user_id uuid, p_code_hash text) returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  update public.recovery_codes
+  set revoked_at = now()
+  where user_id = p_user_id
+    and redeemed_at is null
+    and revoked_at is null;
+
+  insert into public.recovery_codes (user_id, code_hash) values (p_user_id, p_code_hash);
+end;
+$$;
+
+-- Server-milestone Step 14 review finding (2026-09-13): a `generate` landing
+-- in the narrow window between a failed session mint and
+-- `revertRecoveryCodeRedemption` running could leave the account holding a
+-- fresh active code by the time the revert executes — a plain `update`
+-- would then try to revive the just-spent code as a *second* active row,
+-- colliding with `recovery_codes_one_active_per_user_idx`. This function
+-- checks for that fresher code first and no-ops instead of raising an
+-- avoidable constraint violation in the common case — though the check and
+-- the write are not atomic with each other, so a `generate` committing in
+-- the narrow gap between them can still make the `update` itself raise the
+-- identical `23505`; `handleRedeem`'s own try/catch around this call stays
+-- for exactly that reason, and the outcome is safe either way.
+create function public.revert_recovery_code_redemption(p_code_hash text) returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_user_id uuid;
+begin
+  select user_id into v_user_id from public.recovery_codes where code_hash = p_code_hash;
+
+  if v_user_id is null then
+    return;
+  end if;
+
+  update public.recovery_codes
+  set redeemed_at = null
+  where code_hash = p_code_hash
+    and revoked_at is null
+    and not exists (
+      select 1
+      from public.recovery_codes existing
+      where existing.user_id = v_user_id
+        and existing.redeemed_at is null
+        and existing.revoked_at is null
+    );
+end;
+$$;
+
+-- Server-milestone Step 14 review finding (2026-09-13, optional hardening):
+-- both RPCs above are `security invoker` with Postgres's default execute
+-- grant to `public`. `recovery_codes` RLS (no policy at all) already makes
+-- them inert for `anon`/`authenticated`; this closes it at the grant layer
+-- too. `revoke ... from public` alone is not enough — Supabase's own
+-- bootstrap grants execute to `anon`/`authenticated`/`service_role`
+-- individually when a function is created, not merely through `public` —
+-- and `service_role` is not a superuser locally, so it needs its own
+-- explicit re-grant.
+revoke execute on function public.rotate_recovery_code(uuid, text) from public, anon, authenticated;
+grant execute on function public.rotate_recovery_code(uuid, text) to service_role;
+
+revoke execute on function public.revert_recovery_code_redemption(text) from public, anon, authenticated;
+grant execute on function public.revert_recovery_code_redemption(text) to service_role;
+
 -- ------------------------------------------------------ leaderboard_entries --
 create table public.leaderboard_entries (
   board_key       text             not null,
@@ -843,7 +2156,7 @@ create table public.entitlements (
 | `saves` | `user_id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade; one row per user |
 | `saves` | `revision` | bigint | no | — | `> 0`; monotonic, `+1` per accepted upload; the D2 concurrency token |
 | `saves` | `schema_version` | integer | no | — | `> 0`; denormalized from the document for migration sweeps |
-| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV1` |
+| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV2` |
 | `saves` | `received_at` | timestamptz | no | `now()` | server clock; the D3 anchor for every elapsed-time calculation |
 | `saves` | `previous_revision` | bigint | yes | — | `< revision`; null-together with the other two `previous_*` columns |
 | `saves` | `previous_document_json` | text | yes | — | ≤ 65536 bytes; one generation of rollback |
@@ -901,7 +2214,7 @@ schema.
 
 | Table | select | insert | update | delete |
 |---|---|---|---|---|
-| `profiles` | own row | none — created by the Step 9 sign-up trigger | own row | none |
+| `profiles` | own row | none — created by the `on_auth_user_created` sign-up trigger (Step 9) | own row | none |
 | `saves` | own row | **none** | **none** | **none** |
 | `save_audit` | none | none | none | none |
 | `recovery_codes` | none | none | none | none |
@@ -984,14 +2297,21 @@ Throttling belongs per caller and per address, in Step 25.
 | Object store | Field | Type | Required / nullable | Key / constraint |
 |---|---|---|---|---|
 | `saves` | `id` | string | Required, non-null | Primary key via key path `id`; application writes only the literal `active`. |
-| `saves` | `document` | structured-clone-compatible `SaveDocumentV1` object | Required, non-null | Must pass version-1 migration and validation before runtime deserialization. |
+| `saves` | `document` | structured-clone-compatible `SaveDocumentV2` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
 
-The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, legacy version-1 saves containing the former four-floor prefix are expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults; the document and database versions remain `1`.
+The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, a legacy version-1 save (including the former four-floor prefix, expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults) is migrated to version 2 by defaulting `warehouse.totalOfflineGoldClaimed` to `"0"`; the IndexedDB database version remains `1`.
 
 **Synchronous lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1`.
 
 | Key | Value | Lifetime / relationship |
 |---|---|---|
-| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV1` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV2` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
 
 The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
+
+## Closed incident reports
+
+Four base-game defect reports (marketplace popup, navigation hit-target,
+upgrade CTA press, marketplace hardening and close-race) previously appeared
+verbatim in this file and six others. They are now in
+`archive/incident-log.md`, one canonical copy.

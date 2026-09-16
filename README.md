@@ -12,8 +12,12 @@ required on any path; it boots, plays, and saves entirely in IndexedDB even with
 no network at all. A separate server milestone is under way in
 `memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
 `supabase/`, holds all six designed tables with row-level security, and its
-save-sync Edge Function currently serves nothing but a health check — nothing
-in `src/` reads or writes any of those tables yet. The one exception, since
+`save-sync` Edge Function now accepts a real upload and download
+(`PUT`/`GET /v1/save`), on top of its original health check — but nothing in
+this reaches a real player yet: every identity and cloud-save path (guest,
+Google, Telegram, the account-linking collision, the boot-time reconcile) is
+wired only through `import.meta.env.DEV`-only diagnostics and hooks, with no
+production UI. The one behavior every player already gets, since
 server-milestone Step 8, is a single non-blocking anonymous-auth call at boot
 (`src/platform/web/guestSession.ts`) that gives a first-time player a real
 session with no prompt and no wait; it is never awaited before the first
@@ -183,22 +187,28 @@ npm run supabase:stop
 Ports are the Supabase CLI defaults — API 54321, database 54322, Studio 54323,
 mail 54324 — and do not collide with the client's 5173, 4173, 4174, 4175, or 4176.
 
-`supabase/migrations/` holds two forward-only migrations: a bootstrap file that
-creates nothing (it only asserts the PostgreSQL 13+ premise the schema relies on
-for `gen_random_uuid()`), and one that lands all six designed tables —
+`supabase/migrations/` holds three forward-only migrations: a bootstrap file
+that creates nothing (it only asserts the PostgreSQL 13+ premise the schema
+relies on for `gen_random_uuid()`), one that lands all six designed tables —
 `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`,
 `entitlements` — with row-level security enabled and exactly the policies
-`memory-bank/architecture.md`'s RLS matrix names. `supabase/seed.sql` inserts
+`memory-bank/architecture.md`'s RLS matrix names, and one that adds the
+sign-up trigger that creates every `profiles` row. `supabase/seed.sql` inserts
 one local-only fixture guest (`auth.users` row plus its `profiles` row) after
 every `supabase db reset`, never applied to a deployed database.
 `.github/workflows/ci.yml` runs `npm run verify` and `npm run verify:server` as
 two required jobs on every push and pull request.
 
-The one save-sync endpoint that exists:
+The save-sync endpoints that exist — `/v1/health`, and `/v1/save` accepting a
+bearer token from a real signed-in session:
 
 ```bash
 curl http://127.0.0.1:54321/functions/v1/save-sync/v1/health
 # {"status":"ok","serverTime":"..."}
+
+curl http://127.0.0.1:54321/functions/v1/save-sync/v1/save \
+  -H "Authorization: Bearer <access token>"
+# 200 {"revision":1,"receivedAt":"...","document":{...}} or 204 with no body
 ```
 
 `src/core`, `src/config`, and `src/persistence/saveSchema.ts` run unmodified
@@ -252,6 +262,96 @@ kept out of the Docker-free `npm run test:e2e` and run as part of
 npm run supabase:start && npm run supabase:reset
 npm run test:server-e2e   # needs the live stack; a fresh anonymous session per browser
 ```
+
+**Google sign-in.** Server-milestone Step 10 lets a signed-in guest attach a
+Google identity to the account they already have — `linkIdentity` when a
+session exists, `signInWithOAuth` when none does — rather than minting a
+second `auth.users` row; `src/platform/web/googleSignIn.ts` mirrors
+`guestSession.ts`'s injected-collaborator, never-throws shape. It requires a
+real Google Cloud OAuth Client ID/Secret; no domain is needed, since Google
+permits `http://127.0.0.1:54321/auth/v1/callback` as a redirect URI in
+development. Unlike `enable_anonymous_sign_ins`, `supabase/config.toml`'s
+`[auth.external.google]` block reads `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`
+through `env(...)` substitution, which the Supabase CLI only auto-loads from a
+project-root **`.env`** file — a second, separate git-ignored file from
+`.env.local` — see `.env.example` for the exact Cloud Console setup. There is
+no production UI for this yet (`HudView.ts`'s fixed HUD already covers the
+canvas edge-to-edge, and a real entry point belongs with a later
+Phaser-rendered control); in development, `window.catMineIdleAccount`
+exposes `beginGoogleSignIn()`/`signOut()` for manual and scripted use. A real
+human completing Google's own consent screen is the one thing nothing local
+can substitute for, so this step's "same user id, same account after
+sign-out/in" proof is a guided manual verification, not part of
+`npm run verify:server`.
+
+**Apple sign-in (Step 11) is cut.** Unlike Google, Sign in with Apple on the
+web needs a paid Apple Developer Program membership, a verified real domain,
+and a deployed HTTPS return URL, with no `localhost` redirect option at all.
+None of that exists, and the user chose not to acquire it — no code, config,
+or test exists for this step. Identity in this milestone is anonymous guest,
+Google, and Telegram.
+
+**Telegram sign-in.** Server-milestone Step 12, and unlike Steps 10–11, it
+needs no real external account, domain, or paid membership to satisfy its own
+test: a Telegram Mini App's `initData` is HMAC-SHA256-signed, and verifying
+it never contacts Telegram's servers at all. `supabase/functions/telegram-sign-in/index.ts`'s
+`verifyTelegramInitData` implements Telegram's documented algorithm exactly,
+entirely on `crypto.subtle`; on success it mints a real session via the
+confirmed community pattern for a provider Supabase Auth has no first-class
+API for — `admin.generateLink({type: 'magiclink', email})` returns a
+`hashed_token`, and the client completes `auth.verifyOtp({token_hash,
+type: 'email'})`. No schema change: a Telegram user maps to the deterministic
+placeholder email `telegram-<id>@telegram.invalid` (RFC 2606's reserved
+`.invalid` TLD), so `generateLink` finds-or-creates the same `auth.users` row
+every time. **This mapping is only safe with `[auth.email] enable_signup =
+false`** (`supabase/config.toml`) — with public signup open, an attacker who
+knows a Telegram id could otherwise claim that placeholder email by
+password before the real user ever signs in; see finding F13 in
+`memory-bank/server-threat-model.md` for the full reproduction. `src/platform/telegram/telegramSignIn.ts`'s
+`readTelegramInitData()` reads `window.Telegram.WebApp.initData` (never
+`initDataUnsafe`) and resolves `null` for every player today — no Telegram
+Web App `<script>` tag was added to `index.html`, since that is the still-
+unbuilt Mini App host, a separate and later piece of work; when it does exist,
+`src/main.ts` calls `signInWithTelegram` **instead of** the guest bootstrap,
+"replacing the guest path entirely" rather than linking to it. This is the
+first function called directly from the browser with `fetch()`, so
+`supabase/functions/_shared/http.ts` gained a shared CORS policy — and
+proving it against the real stack found that the local Kong gateway
+unconditionally overwrites every function's `Access-Control-Allow-Origin`
+with `*` regardless, documented in `memory-bank/server-threat-model.md`
+finding F12. `TELEGRAM_BOT_TOKEN` lives in a **third**, separate git-ignored
+env file, `supabase/functions/.env` — auto-loaded by `supabase start`,
+distinct from both the project-root `.env` and `.env.local` — see
+`.env.example`. Because verification is self-contained, this step's full test
+(valid `initData` mints a session; tampered/stale/wrong-bot-token payloads
+are each rejected with none issued; the token never leaks) is proven with
+hand-signed fixture vectors against the real local stack in
+`npm run test:server-integration`, with no live Telegram account needed.
+
+**Recovery code.** Server-milestone Step 14 is the only mechanism in the
+milestone that survives storage loss for an unlinked guest — the session
+token and the local save both live in script-writable storage and die
+together in the same iOS Safari seven-day sweep, so a cloud save alone
+cannot rescue that guest: they would come back with no save *and* no
+credential proving which account was theirs.
+`supabase/functions/recovery-code/index.ts` issues a 128-bit code
+(`POST /v1/generate`, authenticated) and redeems one
+(`POST /v1/redeem`, unauthenticated — recovering access without a session
+is the entire point), hashing it with HMAC-SHA-256 under
+`RECOVERY_CODE_PEPPER` and storing only the digest; both rotation and
+redemption are atomic compare-and-swap operations rather than a
+read-then-write, so two concurrent redemptions of the same code cannot
+both succeed. Minting a session for the resolved account reuses
+`telegram-sign-in`'s `generateLink`/`verifyOtp` pattern, adapted so a pure
+anonymous guest with no email at all gets a deterministic placeholder
+assigned first — otherwise `generateLink`'s find-or-create-by-email
+behavior would silently mint a second, wrong account instead of finding
+the real one. Redeeming reuses the exact same guest-upgrade reconcile Step
+13 already established (`triggerCloudSaveReconcile()` on the client),
+needing no separate merge logic for "don't overwrite either save when the
+redeeming device already holds progress." `RECOVERY_CODE_PEPPER` lives in
+the same third env file as `TELEGRAM_BOT_TOKEN`,
+`supabase/functions/.env`.
 
 **Secrets.** `.env.local` is git-ignored; `.env.example` is the committed
 template. The `VITE_` prefix is the boundary: Vite inlines exactly those

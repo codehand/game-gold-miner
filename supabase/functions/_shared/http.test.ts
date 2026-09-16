@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { errorResponse, jsonResponse } from './http.ts';
+import { corsHeaders, corsPreflightResponse, errorResponse, jsonResponse } from './http.ts';
 
 Deno.test('jsonResponse serializes the body under the JSON envelope headers', async () => {
   const response = jsonResponse(200, { ok: true });
@@ -41,4 +41,66 @@ Deno.test('errorResponse sets Retry-After when given', async () => {
   });
 
   assert.equal(response.headers.get('retry-after'), '5');
+});
+
+// Server-milestone Step 12 (finding F11): the first function called directly
+// from a browser needs a CORS policy, defined once here rather than per
+// function.
+Deno.test('corsHeaders is empty for a null origin', () => {
+  assert.deepEqual(corsHeaders(null), {});
+});
+
+Deno.test('corsHeaders is empty for an origin not on the allow-list', () => {
+  assert.deepEqual(corsHeaders('https://evil.example'), {});
+});
+
+Deno.test('corsHeaders reflects an allow-listed dev origin', () => {
+  assert.deepEqual(corsHeaders('http://127.0.0.1:5173'), {
+    'access-control-allow-origin': 'http://127.0.0.1:5173',
+    vary: 'Origin',
+  });
+});
+
+Deno.test('jsonResponse carries no CORS header by default', () => {
+  const response = jsonResponse(200, { ok: true });
+  assert.equal(response.headers.get('access-control-allow-origin'), null);
+});
+
+Deno.test('jsonResponse reflects an allow-listed origin when given one', () => {
+  const response = jsonResponse(200, { ok: true }, 'http://localhost:5173');
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+});
+
+Deno.test('errorResponse reflects an allow-listed origin when given one', () => {
+  const response = errorResponse(400, 'malformed_request', 'Bad request.', {
+    origin: 'http://127.0.0.1:5173',
+  });
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://127.0.0.1:5173');
+});
+
+Deno.test('corsPreflightResponse answers 204 with the allowed methods and headers', async () => {
+  const request = new Request('http://example/fn', {
+    method: 'OPTIONS',
+    headers: { origin: 'http://127.0.0.1:5173' },
+  });
+  const response = corsPreflightResponse(request, 'POST, OPTIONS');
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://127.0.0.1:5173');
+  assert.equal(response.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
+  // A 2026-09-12 review finding: `authorization` must be allowed too, or a
+  // real browser's preflight refuses the cross-origin requests
+  // `recoveryCode.ts`/`cloudSaveReconcile.ts` actually send.
+  assert.equal(response.headers.get('access-control-allow-headers'), 'content-type, authorization');
+  assert.equal(await response.text(), '');
+});
+
+Deno.test('corsPreflightResponse carries no Allow-Origin for a disallowed origin', () => {
+  const request = new Request('http://example/fn', {
+    method: 'OPTIONS',
+    headers: { origin: 'https://evil.example' },
+  });
+  const response = corsPreflightResponse(request, 'POST, OPTIONS');
+
+  assert.equal(response.headers.get('access-control-allow-origin'), null);
 });

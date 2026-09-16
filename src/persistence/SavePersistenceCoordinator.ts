@@ -1,5 +1,5 @@
 import type { ActiveSaveRepository } from './ActiveSaveRepository';
-import type { SaveDocumentV1 } from './saveSchema';
+import type { SaveDocumentV2 } from './saveSchema';
 
 export const DEFAULT_SAVE_DEBOUNCE_MS = 500;
 export const SAVE_FAILURE_MESSAGE =
@@ -24,7 +24,7 @@ export class SavePersistenceCoordinator {
   readonly #repository: ActiveSaveRepository;
   readonly #debounceMs: number;
   readonly #onDiagnostic: ((diagnostic: PersistenceDiagnostic) => void) | null;
-  #pendingDocument: SaveDocumentV1 | null = null;
+  #pendingDocument: SaveDocumentV2 | null = null;
   #scheduledSave: ReturnType<typeof setTimeout> | null = null;
   #flushPromise: Promise<boolean> | null = null;
   #lastDiagnostic: PersistenceDiagnostic | null = null;
@@ -46,7 +46,7 @@ export class SavePersistenceCoordinator {
     return this.#lastDiagnostic;
   }
 
-  public queueSave(document: SaveDocumentV1): void {
+  public queueSave(document: SaveDocumentV2): void {
     this.#pendingDocument = document;
     this.#clearScheduledSave();
     this.#scheduledSave = setTimeout(() => {
@@ -112,7 +112,7 @@ export class SavePersistenceCoordinator {
     this.#pendingDocument = null;
   }
 
-  async #store(document: SaveDocumentV1): Promise<boolean> {
+  async #store(document: SaveDocumentV2): Promise<boolean> {
     try {
       await this.#repository.storeActiveSave(document);
       return true;

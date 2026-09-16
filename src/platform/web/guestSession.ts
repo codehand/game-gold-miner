@@ -17,6 +17,8 @@
  * mode resolves to `sign-in-failed` or `unconfigured` instead of rejecting.
  */
 
+import { describeError } from '../describeError';
+
 export interface GuestSessionUser {
   readonly id: string;
   readonly isAnonymous: boolean;
@@ -25,6 +27,14 @@ export interface GuestSessionUser {
 export interface GuestSessionToken {
   readonly accessToken: string;
   readonly user: GuestSessionUser;
+  /**
+   * Server-milestone Step 21: `true` when this boot minted a brand-new
+   * anonymous session, `false` when it reused one already in storage. A reused
+   * session with no local save is the only detectable "this device's save was
+   * evicted" signal — a brand-new session looks identical to a genuinely new
+   * player, so it must never be treated as a returning one.
+   */
+  readonly isNewSession: boolean;
 }
 
 /** The narrow slice of `SupabaseClient['auth']` this module depends on. */
@@ -47,11 +57,12 @@ export type GuestSessionResult =
 function toSignedIn(session: {
   access_token: string;
   user: { id: string; is_anonymous?: boolean };
-}): GuestSessionResult {
+}, isNewSession: boolean): GuestSessionResult {
   return {
     status: 'signed-in',
     accessToken: session.access_token,
     user: { id: session.user.id, isAnonymous: session.user.is_anonymous ?? false },
+    isNewSession,
   };
 }
 
@@ -75,7 +86,7 @@ export async function ensureGuestSession(
       return { status: 'sign-in-failed', reason: describeError(getSessionError) };
     }
     if (existing.session !== null) {
-      return toSignedIn(existing.session);
+      return toSignedIn(existing.session, false);
     }
 
     const { data: minted, error: signInError } = await auth.signInAnonymously();
@@ -87,18 +98,8 @@ export async function ensureGuestSession(
       };
     }
 
-    return toSignedIn(minted.session);
+    return toSignedIn(minted.session, true);
   } catch (error) {
     return { status: 'sign-in-failed', reason: describeError(error) };
   }
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    return String((error as { message: unknown }).message);
-  }
-  return String(error);
 }

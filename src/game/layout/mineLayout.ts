@@ -20,6 +20,8 @@ export const HUD_HEIGHT = 52;
  * control is the last `MIN_TOUCH_TARGET_PX` of that panel.
  */
 export const SURFACE_HEIGHT = 164;
+/** Fixed icon-only navigation anchored to the bottom edge. */
+export const BOTTOM_NAVIGATION_HEIGHT = 58;
 /** Smallest usable scrollable mine viewport. */
 export const MINE_MIN_HEIGHT = 200;
 
@@ -118,6 +120,8 @@ export interface MineLayout {
   readonly surface: LayoutRegion;
   /** Clipped viewport the mine content scrolls behind. */
   readonly mine: LayoutRegion;
+  /** Fixed icon navigation at the bottom edge. */
+  readonly bottomNavigation: LayoutRegion;
 }
 
 export function calculateMineLayout(
@@ -127,7 +131,8 @@ export function calculateMineLayout(
   assertPositiveDimension(width, 'width');
   assertPositiveDimension(height, 'height');
 
-  const minimumHeight = HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT;
+  const minimumHeight =
+    HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT;
 
   if (height < minimumHeight) {
     throw new Error(
@@ -144,8 +149,14 @@ export function calculateMineLayout(
       x: 0,
       y: HUD_HEIGHT + SURFACE_HEIGHT,
       width,
-      // No bottom navigation is reserved: the mine runs to the bottom edge.
-      height: height - HUD_HEIGHT - SURFACE_HEIGHT,
+      height:
+        height - HUD_HEIGHT - SURFACE_HEIGHT - BOTTOM_NAVIGATION_HEIGHT,
+    },
+    bottomNavigation: {
+      x: 0,
+      y: height - BOTTOM_NAVIGATION_HEIGHT,
+      width,
+      height: BOTTOM_NAVIGATION_HEIGHT,
     },
   };
 }

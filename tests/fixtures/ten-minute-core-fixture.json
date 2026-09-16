@@ -180,7 +180,7 @@
     }
   },
   "expectedOutputDocument": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "savedAtTimestampMs": 1735690200000,
     "effectiveProductionRatePerSecond": "5",
     "state": {
@@ -353,7 +353,8 @@
         "capacity": "60",
         "inputQueue": "10",
         "conversionProgress": 0.41666666666666663,
-        "totalGoldDelivered": "2980"
+        "totalGoldDelivered": "2980",
+        "totalOfflineGoldClaimed": "0"
       }
     }
   }

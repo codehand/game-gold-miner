@@ -6,6 +6,7 @@ import {
 } from '../../src/config';
 import {
   GameNumber,
+  calculateOfflineGrant,
   calculateOfflineIncome,
   claimOfflineReward,
   createPendingOfflineReward,
@@ -199,5 +200,77 @@ describe('pending offline reward claims', () => {
     expect(formatCreditedDuration(3_660_000)).toBe('1h 1m');
     expect(formatCreditedDuration(7_200_000)).toBe('2h');
     expect(() => formatCreditedDuration(-1)).toThrow(/duration/);
+  });
+});
+
+describe('calculateOfflineGrant (Step 22)', () => {
+  it('shares one formula with the client projection, so the two cannot drift (F4)', () => {
+    const state = createInitialGameState(BASE_GAME_BALANCE, SAVED_AT_MS);
+    const rate = GameNumber.from(12.5);
+    const income = calculateOfflineIncome(
+      state,
+      SAVED_AT_MS,
+      SAVED_AT_MS + 3_600_000,
+      rate,
+      BASE_GAME_BALANCE.offlineIncome,
+    );
+    const grant = calculateOfflineGrant(
+      SAVED_AT_MS,
+      SAVED_AT_MS + 3_600_000,
+      rate,
+      BASE_GAME_BALANCE.offlineIncome,
+    );
+
+    expect(grant.elapsedDurationMs).toBe(income.elapsedDurationMs);
+    expect(grant.creditedDurationMs).toBe(income.creditedDurationMs);
+    expect(grant.reward.serialize()).toBe(income.reward.serialize());
+  });
+
+  it('preserves the 7,200,000 ms cap and 0.5 efficiency exactly', () => {
+    const grant = calculateOfflineGrant(
+      SAVED_AT_MS,
+      SAVED_AT_MS + 10 * 60 * 60 * 1_000,
+      GameNumber.from(10),
+      BASE_GAME_BALANCE.offlineIncome,
+    );
+
+    expect(grant.creditedDurationMs).toBe(BASE_GAME_BALANCE.offlineIncome.capDurationMs);
+    expect(grant.creditedDurationMs).toBe(7_200_000);
+    // 10 × 7,200 s × 0.5.
+    expect(grant.reward.serialize()).toBe('36000');
+  });
+
+  it('awards zero for a receipt after the current time, never a negative reward', () => {
+    const grant = calculateOfflineGrant(
+      SAVED_AT_MS,
+      SAVED_AT_MS - 60_000,
+      GameNumber.from(10),
+      BASE_GAME_BALANCE.offlineIncome,
+    );
+
+    expect(grant.elapsedDurationMs).toBe(0);
+    expect(grant.creditedDurationMs).toBe(0);
+    expect(grant.reward.equals(0)).toBe(true);
+  });
+
+  it('rejects the same invalid inputs the income projection rejects', () => {
+    const config = BASE_GAME_BALANCE.offlineIncome;
+    const rate = GameNumber.from(10);
+
+    expect(() => calculateOfflineGrant(-1, SAVED_AT_MS, rate, config)).toThrow(/Saved timestamp/);
+    expect(() => calculateOfflineGrant(SAVED_AT_MS, -1, rate, config)).toThrow(/Current timestamp/);
+    expect(() => calculateOfflineGrant(SAVED_AT_MS, SAVED_AT_MS, GameNumber.from(-1), config)).toThrow(/production rate/);
+    expect(() => calculateOfflineGrant(
+      SAVED_AT_MS,
+      SAVED_AT_MS,
+      rate,
+      { ...config, capDurationMs: 0 },
+    )).toThrow(/cap/);
+    expect(() => calculateOfflineGrant(
+      SAVED_AT_MS,
+      SAVED_AT_MS,
+      rate,
+      { ...config, efficiency: 2 as OfflineIncomeConfig['efficiency'] },
+    )).toThrow(/efficiency/);
   });
 });

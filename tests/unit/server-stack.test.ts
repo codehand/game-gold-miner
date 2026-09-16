@@ -61,6 +61,26 @@ const parseEnvNames = (contents: string): string[] =>
     .filter((line) => line !== '' && !line.startsWith('#') && line.includes('='))
     .map((line) => line.slice(0, line.indexOf('=')).trim());
 
+/**
+ * Extracts one `[section]`'s own text from a TOML file, stopping at the
+ * next `[section]` header rather than the next occurrence of `endMarker`
+ * anywhere later in the file. A lazy regex like
+ * `/\[auth\.email\][\s\S]*?\nfoo = false\b/` would happily cross into a
+ * *later*, unrelated section (e.g. `[auth.sms]`) if that section also
+ * contains a line matching the tail pattern — which is exactly how an
+ * earlier version of the `enable_signup` test below passed vacuously
+ * against a mutated `[auth.email]` block, because `[auth.sms]` further
+ * down the file happens to default `enable_signup` to `false` too.
+ */
+function extractTomlSection(toml: string, sectionHeader: string): string {
+  const start = toml.indexOf(sectionHeader);
+  if (start === -1) {
+    throw new Error(`extractTomlSection: section not found: ${sectionHeader}`);
+  }
+  const nextSection = toml.indexOf('\n[', start + sectionHeader.length);
+  return nextSection === -1 ? toml.slice(start) : toml.slice(start, nextSection);
+}
+
 describe('local Supabase stack configuration', () => {
   const config = readProjectFile('supabase/config.toml');
 
@@ -102,6 +122,38 @@ describe('local Supabase stack configuration', () => {
       );
     },
   );
+
+  it('enables manual linking, without which Step 10 linkIdentity() is refused', () => {
+    // `linkIdentity()` is how a signed-in guest attaches Google while keeping
+    // the same `auth.users` id (`src/platform/web/googleSignIn.ts`); Supabase
+    // refuses it outright with "Manual linking is disabled" unless this flag
+    // is on.
+    expect(config).toMatch(/\nenable_manual_linking = true\b/);
+  });
+
+  it('configures the Google OAuth provider from environment substitution, never a literal secret', () => {
+    expect(config).toMatch(
+      /\[auth\.external\.google\]\nenabled = true\nclient_id = "env\(GOOGLE_CLIENT_ID\)"\nsecret = "env\(GOOGLE_CLIENT_SECRET\)"/,
+    );
+  });
+
+  it('disables public email signup, closing the Telegram placeholder-email pre-account-takeover', () => {
+    // Critical finding, server-milestone Step 12: `telegram-sign-in` maps a
+    // Telegram user to the deterministic `telegram-<id>@telegram.invalid`
+    // and relies on `admin.generateLink` to find-or-create that
+    // `auth.users` row. With public email signup open, an attacker who
+    // knows a Telegram id could `POST /auth/v1/signup` with that exact
+    // email and a password of their own choosing before the real user ever
+    // signs in — `enable_confirmations = false` lets it complete
+    // immediately, no delivery to the unreachable `.invalid` address
+    // required — and `generateLink` would then hand the real Telegram user
+    // a session into the attacker's own, password-protected account.
+    // Reproduced live against the local stack and fixed by this flag;
+    // nothing in this codebase uses `signUp`/`signInWithPassword`, so
+    // closing it costs nothing, and `admin.generateLink`/`verifyOtp` are
+    // admin/OTP paths this flag does not gate.
+    expect(extractTomlSection(config, '[auth.email]')).toMatch(/\nenable_signup = false\b/);
+  });
 
   it('holds at least one migration, every one named by ordering timestamp', () => {
     // Forward-only migrations apply in filename order, so the name is the
@@ -157,6 +209,11 @@ describe('secret handling', () => {
     expect(names).toContain('VITE_SUPABASE_URL');
     expect(names).toContain('VITE_SUPABASE_ANON_KEY');
     expect(names).toContain('SUPABASE_SERVICE_ROLE_KEY');
+    expect(names).toContain('GOOGLE_CLIENT_ID');
+    expect(names).toContain('GOOGLE_CLIENT_SECRET');
+    expect(names).toContain('TELEGRAM_BOT_TOKEN');
+    expect(names).toContain('RECOVERY_CODE_PEPPER');
+    expect(names).toContain('RECOVERY_CODE_TEST_RESET_TOKEN');
   });
 
   it('holds placeholders rather than credentials', () => {
@@ -214,17 +271,151 @@ describe('every Edge Function', () => {
     expect(functionNames.length).toBeGreaterThan(1);
   });
 
-  it.each(functionNames)('%s never reads the service-role key', (name) => {
-    // True of all three functions today: the health and portability routes
-    // answer unauthenticated callers, and whoami-check verifies identity
-    // through the caller's own token. None needs the credential that bypasses
-    // row-level security and is, from Step 15, the only writer of `saves`.
-    // Step 16's save upload will be the first function that legitimately
-    // needs it — that step must add its own exception here, not find this
-    // check silently no longer covering it.
-    const source = readProjectFile(`supabase/functions/${name}/index.ts`);
-    expect(source).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
-    expect(source).not.toContain('SECRET_KEY');
+  // `telegram-sign-in` (Step 12) is the first function that legitimately
+  // needs the service-role key: minting a session for a caller who isn't
+  // signed in yet requires `admin.generateLink`, which only the service
+  // role can call. `save-sync` (Step 16) is the second: `saves` denies every
+  // client write (Step 15), so accepting an upload needs it too.
+  // `recovery-code` (Step 14) is the third: `recovery_codes` carries no
+  // policy at all, and minting a session for a redeemed code's owner needs
+  // `admin.getUserById`/`updateUserById`/`generateLink`. All three are
+  // excluded from the blanket check below and given their own positive
+  // assertion instead, exactly as this test's own prior comment
+  // anticipated — a future function needing it must add its own exception
+  // here too, not find this check silently no longer covering it.
+  const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = ['telegram-sign-in', 'save-sync', 'recovery-code'];
+
+  it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(
+    '%s never reads the service-role key',
+    (name) => {
+      // True of every other function today: the health and portability
+      // routes answer unauthenticated callers, and whoami-check verifies
+      // identity through the caller's own token. None needs the credential
+      // that bypasses row-level security.
+      const source = readProjectFile(`supabase/functions/${name}/index.ts`);
+      expect(source).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
+      expect(source).not.toContain('SECRET_KEY');
+    },
+  );
+
+  it('telegram-sign-in does read the service-role key, and only for admin.generateLink', () => {
+    const source = readProjectFile('supabase/functions/telegram-sign-in/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    expect(source).toContain('admin.generateLink');
+  });
+
+  it('save-sync does read the service-role key, and only to write saves through a compare-and-swap and append one audit row', () => {
+    const source = readProjectFile('supabase/functions/save-sync/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    // A 2026-09-12 review found a blind `upsert` here let two concurrent
+    // uploads both win, silently discarding one and breaking §5's monotonic
+    // revision guarantee — fixed with an atomic insert (first write) or a
+    // conditional `update ... where revision = ?` (subsequent write),
+    // neither of which is a plain `upsert` any more.
+    expect(source).not.toContain('.upsert(');
+    expect(source).toContain("admin.from('saves').insert(");
+    expect(source).toMatch(/admin\s*\.from\('saves'\)\s*\.update\(/);
+    // Step 24: the service-role key is also the only way to append to
+    // `save_audit`, which carries no RLS policy for any client role.
+    expect(source).toContain("admin.from('save_audit').insert(");
+  });
+
+  it('recovery-code does read the service-role key, and only to rotate/redeem codes and mint a session', () => {
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    // Redemption is an atomic compare-and-swap, the same lesson save-sync's
+    // own review just taught: never a read-then-write.
+    expect(source).toMatch(/admin\s*\.from\('recovery_codes'\)\s*\.update\(/);
+    expect(source).toContain('admin.auth.admin.generateLink');
+    expect(source).toContain('admin.auth.admin.getUserById');
+    expect(source).toContain('admin.auth.admin.updateUserById');
+  });
+
+  it('recovery-code rotates a code through a single RPC, not two separate non-transactional statements', () => {
+    // A 2026-09-12 review found rotation was a separate `.update()` (revoke)
+    // then `.insert()` (new code) — two independent PostgREST requests, so
+    // an insert failure after a successful revoke could strand a user with
+    // no active code, and two concurrent rotations for the same user could
+    // both pass the revoke before racing the insert. `rotate_recovery_code`
+    // (`supabase/migrations/20260913090000_recovery_code_rotation_rpc.sql`)
+    // wraps both statements in one Postgres function/transaction.
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain("admin.rpc('rotate_recovery_code'");
+    expect(source).not.toContain("admin.from('recovery_codes').insert(");
+
+    const migration = readProjectFile('supabase/migrations/20260913090000_recovery_code_rotation_rpc.sql');
+    expect(migration).toContain('create function public.rotate_recovery_code(p_user_id uuid, p_code_hash text)');
+    expect(migration).toContain('insert into public.recovery_codes (user_id, code_hash)');
+  });
+
+  it('recovery-code reverts a redemption rather than burning the code when session minting fails', () => {
+    // A 2026-09-12 review found a failed mint after a successful redemption
+    // permanently destroyed the account: the code was already spent and no
+    // session was ever delivered. `revertRecoveryCodeRedemption` clears
+    // `redeemed_at` so the same code stays usable. A follow-up 2026-09-13
+    // finding (1c) moved that clear into its own RPC, since a `generate`
+    // landing in the narrow window before this runs could otherwise collide
+    // with the one-active-code-per-user index.
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain('revertRecoveryCodeRedemption');
+    expect(source).toContain("admin.rpc('revert_recovery_code_redemption'");
+
+    const migration = readProjectFile('supabase/migrations/20260913090100_recovery_code_revert_rpc.sql');
+    expect(migration).toContain('create function public.revert_recovery_code_redemption(p_code_hash text)');
+    expect(migration).toContain('set redeemed_at = null');
+  });
+
+  it('recovery-code RPCs are execute-restricted to service_role at the grant layer, belt-and-braces over RLS', () => {
+    // A 2026-09-13 review finding (optional hardening): `recovery_codes`
+    // RLS already makes both RPCs inert for anon/authenticated, but
+    // Supabase's own bootstrap grants `execute` to anon/authenticated
+    // individually (not merely through `public`) when a function is
+    // created, so both need revoking by name, not just `from public`.
+    const migration = readProjectFile('supabase/migrations/20260913090200_recovery_code_rpc_grants.sql');
+    expect(migration).toMatch(
+      /revoke execute on function public\.rotate_recovery_code\(uuid, text\) from public, anon, authenticated;/,
+    );
+    expect(migration).toContain('grant execute on function public.rotate_recovery_code(uuid, text) to service_role;');
+    expect(migration).toMatch(
+      /revoke execute on function public\.revert_recovery_code_redemption\(text\) from public, anon, authenticated;/,
+    );
+    expect(migration).toContain(
+      'grant execute on function public.revert_recovery_code_redemption(text) to service_role;',
+    );
+  });
+
+  it("recovery-code's rate limiter never buckets a caller with no X-Forwarded-For into a shared address", () => {
+    // A 2026-09-12 review found the prior fallback ('unknown' for every
+    // header-less caller) was a global-denial footgun, not a safety margin —
+    // one such caller could throttle every other one. `null` now means "let
+    // this request through," not "share a bucket."
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).not.toContain("'unknown'");
+    expect(source).toContain('address: string | null');
+  });
+
+  it("recovery-code's rate-limit sweep is gated by map size, not run on every request", () => {
+    // A 2026-09-13 review finding: sweeping the whole map on every request
+    // is O(n) per request under the exact rotated-address attack it exists
+    // to bound, trading unbounded memory for unbounded (quadratic) CPU.
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain('RATE_LIMIT_PRUNE_SIZE_THRESHOLD');
+    expect(source).toMatch(/redemptionAttemptsByAddress\.size > RATE_LIMIT_PRUNE_SIZE_THRESHOLD/);
+  });
+
+  it('recovery-code gates its test-only rate-limit reset route behind a token unset in any real deployment', () => {
+    // A 2026-09-13 review finding: the integration suite shares one
+    // real, gateway-observed rate-limit bucket across its whole run once
+    // the limiter reads the trusted last hop, so a re-run inside the
+    // 60-second window fails unrelated tests with 429 unless something can
+    // reset that shared state between runs.
+    const source = readProjectFile('supabase/functions/recovery-code/index.ts');
+    expect(source).toContain('test-only-reset-rate-limit');
+    expect(source).toContain("Deno.env.get('RECOVERY_CODE_TEST_RESET_TOKEN')");
+    expect(source).toContain('redemptionAttemptsByAddress.clear()');
+
+    const envExample = readProjectFile('.env.example');
+    expect(envExample).toContain('RECOVERY_CODE_TEST_RESET_TOKEN');
   });
 });
 
@@ -345,6 +536,25 @@ describe('the Step 4 verification script', () => {
   });
 });
 
+/**
+ * Extracts one top-level boot block from `src/main.ts` by a pair of unique
+ * anchor strings, rather than by counting `void supabaseClientPromise`
+ * occurrences — Step 12 added a third independent consumer of that promise
+ * before the two existing ones, so an order-based index would silently pick
+ * up the wrong block instead of failing loudly.
+ */
+function extractMainBlock(source: string, startMarker: string, endMarker: string): string {
+  const start = source.indexOf(startMarker);
+  if (start === -1) {
+    throw new Error(`extractMainBlock: start marker not found: ${startMarker}`);
+  }
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  if (end === -1) {
+    throw new Error(`extractMainBlock: end marker not found after start: ${endMarker}`);
+  }
+  return source.slice(start, end);
+}
+
 describe('the guest-session bootstrap in src/main.ts', () => {
   // A static-source assertion, deliberately, and for the reason this file
   // already applies the pattern to `save-sync`/`whoami-check`: the contract
@@ -354,8 +564,11 @@ describe('the guest-session bootstrap in src/main.ts', () => {
   // solely against a *configured* build. CI has no `.env.local`, so that build
   // eliminates the SDK entirely and the spec skips. This runs on every push.
   const mainSource = readProjectFile('src/main.ts');
-  const chain = mainSource.slice(mainSource.indexOf('void supabaseClientPromise'));
-  const bootstrap = chain.slice(0, chain.indexOf('\n\nconst indexedRepository'));
+  // Step 12: this is now the `else` branch of "Telegram replaces the guest
+  // path entirely" — it still runs unconditionally in every test/build today,
+  // since `readTelegramInitData()` always resolves `null` with no Mini App
+  // host in existence.
+  const bootstrap = extractMainBlock(mainSource, '} else {', "\n/**\n * Server-milestone Step 10");
 
   it('is never awaited before the game boots', () => {
     // `void`, not `await`: identity resolution must not delay the first frame.
@@ -383,6 +596,245 @@ describe('the guest-session bootstrap in src/main.ts', () => {
     // storage did not already provide.
     expect(bootstrap).toContain('toPublicGuestSessionDiagnostic');
     expect(mainSource).not.toMatch(/dataset\.guestSession\s*=\s*JSON\.stringify\(result\)/);
+  });
+});
+
+describe('the Telegram sign-in bootstrap in src/main.ts (Step 12)', () => {
+  const mainSource = readProjectFile('src/main.ts');
+  const bootstrap = extractMainBlock(mainSource, 'if (telegramInitData !== null) {', '} else {');
+
+  it('is never awaited before the game boots', () => {
+    expect(bootstrap).toContain('void supabaseClientPromise');
+    expect(bootstrap).not.toContain('await supabaseClientPromise');
+  });
+
+  it('is a third, independent consumer of supabaseClientPromise, and catches its own rejection', () => {
+    // Same class of bug Step 10's own DEV hook review already found once:
+    // a `.catch` on one chain does not settle another chain derived from
+    // the same promise.
+    expect(bootstrap).toContain('.catch(');
+    expect(bootstrap.indexOf('.catch(')).toBeLessThan(bootstrap.lastIndexOf('.then('));
+  });
+
+  it('runs signInWithTelegram, not ensureGuestSession — Telegram replaces the guest path entirely', () => {
+    expect(bootstrap).toContain('signInWithTelegram(');
+    expect(bootstrap).not.toContain('ensureGuestSession(');
+  });
+
+  it('is gated on readTelegramInitData computed before either boot chain', () => {
+    const telegramCheck = mainSource.indexOf('if (telegramInitData !== null) {');
+    const computed = mainSource.indexOf('const telegramInitData = readTelegramInitData();');
+    expect(computed).toBeGreaterThan(-1);
+    expect(computed).toBeLessThan(telegramCheck);
+  });
+});
+
+describe('the Step 10 DEV account hook in src/main.ts', () => {
+  // `supabaseClientPromise` now has three independent consumers — the guest
+  // and Telegram boot chains above, and this one — and a `.catch` on one
+  // chain does not settle another's derived promise. A review of the first
+  // implementation found exactly that: this chain rejected with no handler
+  // of its own, reintroducing the same class of unhandled rejection Step 8
+  // had already fixed once, DEV-only.
+  const mainSource = readProjectFile('src/main.ts');
+  const hookBootstrap = extractMainBlock(
+    mainSource,
+    'if (import.meta.env.DEV) {',
+    "\n/**\n * Drops the live access token",
+  );
+
+  it('catches a rejected client promise instead of leaving it unhandled', () => {
+    expect(hookBootstrap).toContain('.catch(');
+    expect(hookBootstrap.indexOf('.catch(')).toBeGreaterThan(
+      hookBootstrap.indexOf('.then('),
+    );
+  });
+
+  it('passes the calling origin as redirectTo, so the OAuth return trip lands back where it started', () => {
+    // Without this, GoTrue falls back to `site_url`, silently bouncing a
+    // player who opened `localhost:5173` (an origin `.env.example` tells them
+    // to authorize) to `127.0.0.1:5173` mid-flow, stranding their pre-link
+    // session in the first origin's storage.
+    expect(hookBootstrap).toContain('window.location.origin');
+  });
+});
+
+describe('the Step 13 Google identity-collision hook in src/main.ts', () => {
+  // Same DEV-only-hook block Step 10 established, extended rather than
+  // duplicated: `beginGoogleAccountSwitch` and the collision diagnostic are
+  // both set from the same `client` already in scope there.
+  const mainSource = readProjectFile('src/main.ts');
+  const hookBootstrap = extractMainBlock(
+    mainSource,
+    'if (import.meta.env.DEV) {',
+    "\n/**\n * Drops the live access token",
+  );
+
+  it('exposes beginGoogleAccountSwitch alongside beginGoogleSignIn', () => {
+    expect(hookBootstrap).toContain('beginGoogleAccountSwitch: () =>');
+    expect(hookBootstrap).toContain('beginGoogleAccountSwitch(client?.auth ?? null, window.location.origin)');
+  });
+
+  it('publishes the collision diagnostic from detectGoogleIdentityCollision', () => {
+    expect(hookBootstrap).toContain('app.dataset.googleIdentityCollision');
+    expect(hookBootstrap).toContain('detectGoogleIdentityCollision(client?.auth ?? null)');
+  });
+});
+
+describe('the Step 14 recovery-code hooks in src/main.ts', () => {
+  const mainSource = readProjectFile('src/main.ts');
+  const hookBootstrap = extractMainBlock(
+    mainSource,
+    'if (import.meta.env.DEV) {',
+    "\n/**\n * Drops the live access token",
+  );
+
+  it('exposes generateRecoveryCode and redeemRecoveryCode alongside the Google hooks', () => {
+    expect(hookBootstrap).toContain('generateRecoveryCode: () =>');
+    expect(hookBootstrap).toContain('redeemRecoveryCode: async (code: string) =>');
+  });
+
+  it('reconciles the redeeming device only when redemption actually succeeded', () => {
+    const redeemHook = hookBootstrap.slice(hookBootstrap.indexOf('redeemRecoveryCode: async (code: string) =>'));
+    const redeemHookBody = redeemHook.slice(0, redeemHook.indexOf('\n      };'));
+
+    expect(redeemHookBody).toContain("result.status === 'redeemed'");
+    expect(redeemHookBody).toContain('triggerCloudSaveReconcile();');
+  });
+});
+
+describe('the Step 17 cloud-save reconcile trigger in src/main.ts', () => {
+  const mainSource = readProjectFile('src/main.ts');
+
+  it('is triggered from both sign-in chains, only once each resolves signed-in', () => {
+    const telegramBootstrap = extractMainBlock(mainSource, 'if (telegramInitData !== null) {', '} else {');
+    const guestBootstrap = extractMainBlock(mainSource, '} else {', "\n/**\n * Server-milestone Step 10");
+
+    // Step 21 records `sessionIsNew` between the `signed-in` check and the
+    // trigger, so the two are no longer adjacent.
+    expect(telegramBootstrap).toMatch(/status === 'signed-in'\)\s*\{[\s\S]*triggerCloudSaveReconcile\(\);/);
+    expect(guestBootstrap).toMatch(/status === 'signed-in'\)\s*\{[\s\S]*triggerCloudSaveReconcile\(\);/);
+  });
+
+  it('catches a rejected reconcile instead of leaving it unhandled', () => {
+    const trigger = mainSource.slice(mainSource.indexOf('function triggerCloudSaveReconcile'));
+    const body = trigger.slice(0, trigger.indexOf('\n}\n') + 3);
+
+    expect(body).toContain('.catch(');
+    expect(body).toContain('void runCloudSaveReconcile()');
+  });
+
+  it('unbinds the save lifecycle before reloading, so pagehide cannot journal the stale pre-adoption document (2026-09-13 review)', () => {
+    const runFn = mainSource.slice(mainSource.indexOf('async function runCloudSaveReconcile'));
+    const body = runFn.slice(0, runFn.indexOf('\n}\n') + 3);
+    const reloadCallback = body.slice(body.indexOf('reload: () => {'), body.indexOf('},', body.indexOf('reload: () => {')));
+
+    expect(reloadCallback).toMatch(/unbindSaveLifecycle\?\.\(\)/);
+    expect(reloadCallback.indexOf('unbindSaveLifecycle?.()')).toBeLessThan(reloadCallback.indexOf('window.location.reload()'));
+  });
+});
+
+describe('the Step 18 conflict policy in src/', () => {
+  const reconcileSource = readProjectFile('src/platform/web/cloudSaveReconcile.ts');
+  const policySource = readProjectFile('src/persistence/saveConflictPolicy.ts');
+
+  it('applies the single §7 dominance policy rather than keeping a second, narrower one', () => {
+    // Step 17 shipped a placeholder ("does each side have any progress at
+    // all") and Step 18 replaces it. Both callers must share the one predicate
+    // so an upload `409` and a boot reconcile can never disagree.
+    expect(reconcileSource).toContain('resolveSaveConflict');
+    expect(reconcileSource).not.toContain('reconcileGuestUpgrade');
+    expect(policySource).toContain('export function compareProgress');
+    expect(policySource).toContain('export function resolveSaveConflict');
+  });
+
+  it('is pure save code beside saveSchema.ts, with no network or renderer reachable from it', () => {
+    expect(policySource).toContain("from './saveSchema'");
+    expect(policySource).not.toContain('fetch(');
+    expect(policySource).not.toContain('phaser');
+  });
+
+  it('retains both fork candidates for the session in src/main.ts (§7.3)', () => {
+    const mainSource = readProjectFile('src/main.ts');
+
+    expect(mainSource).toContain('pendingSaveConflict');
+    expect(mainSource).toMatch(/outcome\.kind === 'deferred-conflict'/);
+    expect(mainSource).toContain('pendingSaveConflict: () => pendingSaveConflict');
+  });
+});
+
+describe('the Step 19 client remote repository in src/', () => {
+  const mainSource = readProjectFile('src/main.ts');
+  const replicaSource = readProjectFile('src/persistence/cloudSaveReplica.ts');
+  const compositionSource = readProjectFile('src/persistence/ReplicatingActiveSaveRepository.ts');
+  const uploadSource = readProjectFile('src/platform/web/cloudSaveUpload.ts');
+  const eslintConfig = readProjectFile('eslint.config.mjs');
+
+  it('composes the Dexie repository with a cloud replica, local first', () => {
+    expect(mainSource).toContain('new ReplicatingActiveSaveRepository(localRepository, cloudReplica)');
+    expect(compositionSource).toContain("await this.#primary.storeActiveSave(document)");
+    expect(compositionSource).toContain('this.#replica.enqueue(document)');
+    // The replica is offered only after the local write succeeds, so a failed
+    // local save still rejects and the coordinator still reports it.
+    expect(compositionSource.indexOf('await this.#primary.storeActiveSave(document)'))
+      .toBeLessThan(compositionSource.indexOf('this.#replica.enqueue(document)'));
+  });
+
+  it('keeps the conflict policy pure — the replica reuses it rather than reimplementing §7', () => {
+    expect(replicaSource).toContain('resolveSaveConflict');
+    expect(replicaSource).not.toContain('fetch(');
+    expect(replicaSource).not.toContain('phaser');
+    expect(compositionSource).not.toContain('fetch(');
+  });
+
+  it('puts the one network call in src/platform, never in src/persistence or src/core', () => {
+    expect(uploadSource).toContain('export async function uploadCloudSaveViaFetch');
+    expect(uploadSource).toContain('method: \'PUT\'');
+    expect(eslintConfig).toContain("name: 'fetch'");
+    expect(eslintConfig).toContain('Core modules must not depend on the network.');
+  });
+
+  it('forces the three §9 triggers: lifecycle flush, claimed reward, post-reconcile', () => {
+    expect(mainSource).toContain('onForceSave: (document) => repository.forceCloudUpload(document)');
+    expect(mainSource).toContain("outcome.kind === 'kept-local' || outcome.kind === 'no-cloud-save'");
+    expect(mainSource).toContain('forceCloudUploadLatestLocalDocument');
+    expect(mainSource).toContain('repository.forceCloudUpload(claimedDocument)');
+  });
+
+  it('retains an upload fork’s candidates through the same session hook as a boot fork', () => {
+    expect(mainSource).toMatch(/onFork: \(local, remote\) => \{[\s\S]*pendingSaveConflict = \{ kind: 'deferred-conflict', local, remote \}/);
+    expect(mainSource).toContain('toPublicCloudUploadEvent');
+  });
+
+  it('stops cloud sync on an upload fork, so the unshown remote branch cannot be replaced', () => {
+    // §7.3: with no chooser, a fork must stop. The client holds the server's
+    // revision after the conflict, so one more routine save would be accepted
+    // and would silently replace the branch the player never saw.
+    expect(replicaSource).toMatch(/case 'fork':[\s\S]*this\.stop\(\)/);
+  });
+
+  it('surfaces a terminal cloud failure through the §4 banner copy', () => {
+    // §4 fixes the exact player-facing copy; it must reach the banner, not
+    // only a DEV diagnostic.
+    expect(mainSource).toContain('describeCloudSaveNotice');
+    expect(mainSource).toMatch(/'sync-stopped' \|\| event\.kind === 'document-dropped'/);
+    expect(mainSource).toContain('saveDiagnostics.report(describeCloudSaveNotice(event.code))');
+  });
+
+  it('suspends local saves while a mid-session remote save is adopted and reloaded', () => {
+    // 2026-09-13 follow-up: `reload()` keeps running the current script, so the
+    // driver's purchase/heartbeat paths could overwrite the just-adopted
+    // document with a stale one. The flag, the cancel, and both guards are the
+    // fix.
+    expect(mainSource).toContain('suspendLocalSavesForCloudAdopt');
+    expect(mainSource).toContain('localSavesSuspended = true');
+    expect(mainSource).toContain('persistence.cancelScheduledSave()');
+    expect(mainSource).toMatch(/if \(localSavesSuspended\) \{\s*return;/);
+    const adoptFn = mainSource.slice(mainSource.indexOf('async function adoptRemoteDocumentFromUpload'));
+    const adoptBody = adoptFn.slice(0, adoptFn.indexOf('\n}\n') + 3);
+    expect(adoptBody.indexOf('suspendLocalSavesForCloudAdopt()')).toBeLessThan(
+      adoptBody.indexOf('await localRepository.storeActiveSave(document)'),
+    );
   });
 });
 

@@ -126,11 +126,52 @@ All gold, material, yields, and costs go through `GameNumber` (`src/core/numbers
 
 Any change to the save shape must bump the schema version and add a migration plus tests.
 
+## Code navigation (codebase-memory graph)
+
+This repo is indexed in `codebase-memory-mcp` under the project name
+**`Users-mofy-apps-codex-game-demo`** — pass that exact string as `project` to
+every `mcp__codebase-memory-mcp__*` call. The index auto-refreshes in the
+background; re-run `index_repository` only after a large external change (branch
+switch with heavy churn, bulk generated files).
+
+**Use the graph before grep for anything structural.** It answers in one call
+what would otherwise cost a dozen file reads:
+
+- `search_graph(query: 'offline income settle')` — find symbols by
+  natural-language/BM25 (camelCase is split, so `claimOfflineReward` matches
+  "claim offline reward"). `name_pattern` for regex, `semantic_query: [...]` to
+  bridge vocabulary.
+- `trace_path(function_name: '...', direction: 'inbound')` — callers / impact
+  radius before changing a signature. `direction: 'outbound'` for dependencies.
+- `get_code_snippet(qualified_name: '...')` — exact source of one symbol, after
+  `search_graph` gives you the qualified name.
+- `get_architecture(aspects: ['layers','boundaries','clusters'])` — orientation,
+  and a fast sanity check that the one-directional layering above still holds.
+- `detect_changes(base_branch: 'master')` — blast radius of the working diff;
+  run it before `npm run verify` on a wide refactor.
+- `query_graph` — Cypher for multi-hop questions and the complexity properties
+  (`transitive_loop_depth`, `linear_scan_in_loop`) when hunting hot paths in
+  `advanceSimulation`.
+
+**Still use grep/Read for**: string literals, `src/config/balance.ts` numbers,
+SQL migrations, `supabase/config.toml`, Markdown, and any final verification —
+graph coverage is best-effort, not proof. Call `check_index_coverage` for files
+you cite, and note that five `supabase/migrations/*.sql` files are
+`parse_partial` (SQL parsing gaps) — read those directly.
+
+The graph indexes **code**; it does not replace `memory-bank/`. Intent, step
+gates, and design decisions still come from `memory-bank/INDEX.md` and the
+documents it points at, under the section-reading rules below.
+
+For a broad sweep you do not want in your own context, delegate to the
+`codebase-memory` subagent (or `codebase-memory-scout` for a quick provisional
+lookup, `codebase-memory-auditor` for a bounded full-graph audit).
+
 ## Working rules from AGENTS.md
 
 Read `AGENTS.md` — its rules are binding. The key ones:
 
-- **Memory Bank first.** Read every Markdown file in `memory-bank/` before planning or editing. `game-design-document.md`, `tech-stack.md`, and `implementation-plan.md` are the sources of truth for scope; `architecture.md`, `techContext.md`, `productContext.md`, `activeContext.md`, `progress.md`, and `systemPatterns.md` are living context.
+- **`memory-bank/INDEX.md` first.** It maps every document to its sections; open only the files and sections the task needs — never the whole Memory Bank (~126k tokens live). `activeContext.md` and `progress.md` are short and always worth reading. `architecture.md` and `techContext.md` must be read by section (`grep -n '^## \|^### '`, then `sed -n`); a `PreToolUse` hook blocks whole-file reads over 20,000 bytes. Do not read `memory-bank/archive/` by default — it is closed history, not contract. `game-design-document.md`, `tech-stack.md`, and `implementation-plan.md` remain the sources of truth for scope.
 - **Update the Memory Bank in the same change** as any major feature or milestone (at minimum `architecture.md`, `techContext.md`, `productContext.md`, `activeContext.md`, `progress.md`).
 - **Step gates.** `memory-bank/implementation-plan.md` is a 37-step ordered sequence. Each step ends at a stop gate: implement, run its validation, then wait for explicit user authorization before starting the next step. `activeContext.md` records the current step and gate state.
 - Bug fixes ship with a regression test. Unit tests are `tests/unit/*.test.ts` (Vitest, node env, `fake-indexeddb` for storage); browser flows are `tests/e2e/*.spec.ts` (Playwright).

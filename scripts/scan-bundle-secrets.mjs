@@ -12,9 +12,14 @@
  * 1. Structural. Any JWT in the output whose payload declares
  *    `"role": "service_role"`, and any `sb_secret_*` key, regardless of where
  *    it came from. This catches a key pasted into source by hand.
- * 2. Exact value. Every non-`VITE_` value in `.env.local`, plus the live
- *    service-role key of a running local stack. This catches a variable that
- *    was given a `VITE_` prefix, or read through `import.meta.env` and inlined.
+ * 2. Exact value. Every non-`VITE_` value across all three local env files —
+ *    `.env.local` (Vite/Node), `.env` (the file `env(...)` substitution in
+ *    `supabase/config.toml` reads, e.g. Step 10's `GOOGLE_CLIENT_SECRET`),
+ *    and `supabase/functions/.env` (what Edge Functions read at runtime
+ *    locally, e.g. Step 12's `TELEGRAM_BOT_TOKEN`) — plus the live
+ *    service-role key of a running local stack. This catches a variable
+ *    that was given a `VITE_` prefix, or read through `import.meta.env` and
+ *    inlined.
  * 3. Variable name. Every non-`VITE_` name in `.env.example`. Vite only inlines
  *    `VITE_`-prefixed names, so a server-only name appearing in the bundle
  *    means client code is reaching for a credential it must not have.
@@ -183,6 +188,22 @@ export function scanBuildOutputForSecrets(buildDirectory, projectRoot) {
 
   const exampleEntries = parseEnvFile(join(root, '.env.example')) ?? new Map();
   const localEntries = parseEnvFile(join(root, '.env.local'));
+  // Server-milestone Step 10: `GOOGLE_CLIENT_SECRET` lives here, not in
+  // `.env.local` — the Supabase CLI's `env(...)` substitution only reads a
+  // file literally named `.env` (see `.env.example`). A real credential in
+  // this file is exactly as forbidden from the bundle as one in `.env.local`,
+  // so it needs the same exact-value check, not a separate weaker one.
+  const envEntries = parseEnvFile(join(root, '.env'));
+  // Server-milestone Step 12: `TELEGRAM_BOT_TOKEN` lives in a *third* file,
+  // `supabase/functions/.env` — the one Edge Functions actually read at
+  // runtime locally (see `.env.example`) — and is the most sensitive of the
+  // three env files this scanner covers: it is the HMAC key that signs
+  // Telegram `initData`, so a leak lets an attacker forge a session for any
+  // Telegram user id. A 2026-09-12 review found this file was still missing
+  // from the exact-value check even after `.env` was added for Step 10 —
+  // the structural (JWT/`sb_secret_`) and name checks below still covered
+  // it, but a hardcoded literal token would have passed both.
+  const functionsEnvEntries = parseEnvFile(join(root, 'supabase', 'functions', '.env'));
 
   const forbiddenNames = [...exampleEntries.keys()].filter((name) => !name.startsWith('VITE_'));
 
@@ -195,13 +216,19 @@ export function scanBuildOutputForSecrets(buildDirectory, projectRoot) {
   // value — deliberately, rather than matching any published value. Exempting
   // by value alone would let a real secret exempt itself simply by being
   // mirrored under some unrelated VITE_ name, which is the leak, not a licence.
+  // `VITE_` names only ever live in `.env.local` (`.env` is Supabase-CLI-only
+  // configuration and Vite never reads it), so the twin lookup stays anchored
+  // to `localEntries` regardless of which file the candidate secret came from.
   const isPublishedTwin = (name, value) =>
     localEntries?.get(`VITE_${name}`) === value;
 
   const forbiddenValues = new Set();
   const uncheckableNames = [];
-  if (localEntries) {
-    for (const [name, value] of localEntries) {
+  for (const entries of [localEntries, envEntries, functionsEnvEntries]) {
+    if (!entries) {
+      continue;
+    }
+    for (const [name, value] of entries) {
       if (name.startsWith('VITE_') || value === '' || isPublishedTwin(name, value)) {
         continue;
       }
@@ -264,11 +291,16 @@ export function scanBuildOutputForSecrets(buildDirectory, projectRoot) {
     );
   }
   if (!localEntries) {
-    warnings.push('no .env.local, so no exact environment value was checked');
+    // `.env` is normal to be missing entirely — most steps need nothing in
+    // it, so no equivalent warning fires for it — but `.env.local` is the
+    // primary channel every `import.meta.env` read comes from, so its
+    // absence is worth flagging even though a present `.env` may still have
+    // contributed values above.
+    warnings.push('no .env.local, so no exact value from it was checked');
   }
   if (uncheckableNames.length > 0) {
     warnings.push(
-      `${uncheckableNames.length} .env.local value(s) are still placeholders or too short to grep for, ` +
+      `${uncheckableNames.length} environment value(s) are still placeholders or too short to grep for, ` +
         `so they were NOT checked: ${uncheckableNames.join(', ')}`,
     );
   }

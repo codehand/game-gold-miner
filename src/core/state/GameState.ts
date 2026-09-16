@@ -25,6 +25,14 @@ export interface WarehouseState {
   readonly inputQueue: GameNumber;
   readonly conversionProgress: number;
   readonly totalGoldDelivered: GameNumber;
+  /**
+   * Server-milestone Step 18: lifetime gold credited by `claimOfflineReward`.
+   * Monotonic, and part of the save-conflict progress vector, because offline
+   * rewards add `gold` without passing through `totalGoldDelivered` — without
+   * this counter a save could be a strict subset of another on every vector
+   * field while still holding offline gold the vector could not see.
+   */
+  readonly totalOfflineGoldClaimed: GameNumber;
 }
 
 export interface GameState {

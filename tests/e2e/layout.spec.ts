@@ -4,6 +4,7 @@ import {
   HUD_BACKGROUND,
   MINE_BACKGROUND,
   MINE_SHAFT_INSET_X,
+  NAVIGATION_BACKGROUND,
 } from '../../src/game/layout';
 
 interface Rect {
@@ -50,6 +51,7 @@ const HUD_PROBE: readonly [number, number] = [180, 30];
 const SURFACE_PROBE: readonly [number, number] = [190, 85];
 const MINE_GUTTER_PROBE: readonly [number, number] = [MINE_SHAFT_INSET_X / 2, 254];
 const MINE_PANEL_PROBE: readonly [number, number] = [180, 254];
+const NAVIGATION_PROBE: readonly [number, number] = [2, 630];
 
 test.beforeEach(async ({ page }) => {
   // Phaser disables preserveDrawingBuffer for performance, which makes the
@@ -130,15 +132,21 @@ for (const viewport of VIEWPORTS) {
     const logicalHud = await readLogicalRegion(page, 'layoutHud');
     const logicalSurface = await readLogicalRegion(page, 'layoutSurface');
     const logicalMine = await readLogicalRegion(page, 'layoutMine');
+    const logicalBottomNavigation = await readLogicalRegion(
+      page,
+      'layoutBottomNavigation',
+    );
 
     const hud = toScreen(logicalHud, canvasBox);
     const surface = toScreen(logicalSurface, canvasBox);
     const mine = toScreen(logicalMine, canvasBox);
+    const bottomNavigation = toScreen(logicalBottomNavigation, canvasBox);
 
     for (const [name, region] of [
       ['HUD', hud],
       ['surface', surface],
       ['mine', mine],
+      ['bottom navigation', bottomNavigation],
     ] as const) {
       expect(region.height, `${name} must be visible`).toBeGreaterThan(0);
       expect(region.x, `${name} left edge`).toBeGreaterThanOrEqual(-TOLERANCE);
@@ -151,18 +159,28 @@ for (const viewport of VIEWPORTS) {
       );
     }
 
-    // The HUD is pinned to the top and the mine area runs to the bottom edge.
+    // The HUD and navigation stay fixed while the mine occupies the space
+    // between the surface strip and the bottom bar.
     expect(hud.y).toBeCloseTo(canvasBox.y, 0);
     expect(surface.y).toBeCloseTo(hud.y + hud.height, 0);
     expect(mine.y).toBeCloseTo(surface.y + surface.height, 0);
-    expect(mine.y + mine.height).toBeCloseTo(
+    expect(mine.y + mine.height).toBeCloseTo(bottomNavigation.y, 0);
+    expect(bottomNavigation.y + bottomNavigation.height).toBeCloseTo(
       canvasBox.y + canvasBox.height,
       0,
     );
 
-    // No bottom navigation is reserved or rendered for deferred features.
-    await expect(canvas).toHaveAttribute('data-layout-bottom-navigation', 'none');
-    await expect(page.locator('nav')).toHaveCount(0);
+    await expect(canvas).toHaveAttribute(
+      'data-layout-bottom-navigation',
+      '0,582,360,58',
+    );
+    // Scoped to a direct child of the Phaser parent, not `nav` anywhere in the
+    // document: the marketplace dialog (also mounted there) renders its own
+    // `<nav class="market-tabs">` for its Buy/Rent/My-listings tabs, which is
+    // unrelated to this canvas-rendered bottom navigation and must not make
+    // this assertion pass or fail on whether the marketplace happens to be
+    // open.
+    await expect(page.locator('#game-viewport > nav')).toHaveCount(0);
 
     // The mine content overflows its own region, so the area must scroll.
     const contentHeight = Number(
@@ -175,12 +193,13 @@ for (const viewport of VIEWPORTS) {
     // layers, and the fixed layers are not repeated inside the mine. The
     // dataset diagnostics above cannot show either, because they only report
     // the geometry the scene intended.
-    const [hudPixel, surfacePixel, mineGutterPixel, minePanelPixel] =
+    const [hudPixel, surfacePixel, mineGutterPixel, minePanelPixel, navigationPixel] =
       await readLogicalPixels(page, [
         HUD_PROBE,
         SURFACE_PROBE,
         MINE_GUTTER_PROBE,
         MINE_PANEL_PROBE,
+        NAVIGATION_PROBE,
       ]);
     expect(hudPixel, 'HUD background must not be overdrawn').toBe(HUD_BACKGROUND);
     const surfaceChannels = surfacePixel
@@ -203,10 +222,76 @@ for (const viewport of VIEWPORTS) {
     expect(minePanelPixel, 'floor slots must actually render').not.toBe(
       MINE_BACKGROUND,
     );
+    expect(navigationPixel, 'bottom navigation background must render').toBe(
+      NAVIGATION_BACKGROUND,
+    );
 
     expect(browserErrors).toEqual([]);
   });
 }
+
+test('renders five icon buttons and acknowledges every click', async ({ page }) => {
+  await page.goto('/');
+
+  const canvas = page.locator(CANVAS_SELECTOR);
+  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
+  const canvasBox = await requireBoundingBox(canvas);
+  const items = JSON.parse(
+    (await canvas.getAttribute('data-bottom-navigation-items')) ?? '[]',
+  ) as Array<{ key: string; bounds: Rect }>;
+  let closes = 0;
+
+  expect(items.map(({ key }) => key)).toEqual([
+    'rewards',
+    'shop',
+    'boost',
+    'managers',
+    'map',
+  ]);
+  expect(
+    items
+      .filter(({ key }) => key !== 'boost')
+      .every(({ bounds }) => bounds.width === 48 && bounds.height === 44),
+  ).toBe(true);
+  expect(items.find(({ key }) => key === 'boost')?.bounds).toMatchObject({
+    width: 62,
+    height: 50,
+  });
+
+  for (const [index, item] of items.entries()) {
+    expect(item.bounds.width).toBeGreaterThanOrEqual(44);
+    expect(item.bounds.height).toBeGreaterThanOrEqual(44);
+    const screenBounds = toScreen(item.bounds, canvasBox);
+
+    await page.mouse.click(
+      screenBounds.x + screenBounds.width / 2,
+      screenBounds.y + screenBounds.height / 2,
+    );
+    await expect(canvas).toHaveAttribute(
+      'data-bottom-navigation-last-pressed',
+      item.key,
+    );
+    await expect(canvas).toHaveAttribute(
+      'data-bottom-navigation-press-count',
+      String(index + 1),
+    );
+    if (item.key === 'shop') {
+      await page.getByRole('button', { name: 'Close marketplace' }).click();
+      // `dialog.close()` queues its `close` event as a task, and
+      // `MarketplaceModal`'s `#onClose()` callback — which re-enables
+      // `this.input`, see `BootScene.ts` — only runs once that fires.
+      // Clicking the canvas again before then lands on disabled input and
+      // the press is silently dropped. The close-count diagnostic is bumped
+      // inside that same callback, after input is re-enabled, so waiting on
+      // it (rather than on dialog invisibility, or nothing at all) is
+      // causal, not a timing guess.
+      await expect(canvas).toHaveAttribute(
+        'data-marketplace-close-count',
+        String(++closes),
+      );
+    }
+  }
+});
 
 async function requireBoundingBox(
   locator: ReturnType<Page['locator']>,

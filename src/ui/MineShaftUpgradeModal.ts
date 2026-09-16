@@ -34,7 +34,11 @@ export class MineShaftUpgradeModal {
   readonly #level: HTMLParagraphElement;
   readonly #attributes: HTMLDListElement;
   readonly #feedback: HTMLParagraphElement;
-  readonly #buttons: readonly HTMLButtonElement[];
+  readonly #buttons: readonly {
+    readonly button: HTMLButtonElement;
+    readonly label: HTMLSpanElement;
+    readonly cost: HTMLSpanElement;
+  }[];
   readonly #onUpgrade: MineShaftUpgradeModalOptions['onUpgrade'];
   readonly #onClose: () => void;
   #model: MineShaftUpgradeModalViewModel | null = null;
@@ -79,13 +83,22 @@ export class MineShaftUpgradeModal {
     actions.className = 'mine-upgrade-actions';
     this.#buttons = ['x1', 'x5', 'max'].map((id) => {
       const button = document.createElement('button');
+      const label = createActionLine('mine-upgrade-action-label', '');
+      const cost = createActionLine('mine-upgrade-action-cost', '');
       button.className = 'mine-upgrade-action';
       button.dataset.testid = `mine-upgrade-${id}`;
       button.type = 'button';
+      // `click` requires the release to land on the button, so sliding off a
+      // mis-pressed CTA cancels the purchase, and it is the one activation
+      // that also fires for the keyboard. It survives a live snapshot
+      // arriving mid-press because `#render` now rewrites these two spans
+      // instead of replacing them: a replaced press target is what cancels
+      // the synthesized click.
       button.addEventListener('click', () => this.#handleUpgrade(id));
+      button.append(label, cost);
       actions.append(button);
 
-      return button;
+      return { button, label, cost };
     });
 
     this.#dialog.append(heading, this.#attributes, this.#feedback, actions);
@@ -102,7 +115,7 @@ export class MineShaftUpgradeModal {
     this.#feedback.textContent = '';
     this.#backdrop.hidden = false;
     this.#render();
-    this.#buttons.find((button) => !button.disabled)?.focus();
+    this.#buttons.find(({ button }) => !button.disabled)?.button.focus();
   }
 
   public applySnapshot(model: MineShaftUpgradeModalViewModel): void {
@@ -180,13 +193,11 @@ export class MineShaftUpgradeModal {
 
       return [term, value];
     }));
-    this.#buttons.forEach((button, index) => {
+    this.#buttons.forEach(({ button, label, cost }, index) => {
       const option = model.options[index];
       button.disabled = !option.isEnabled;
-      button.replaceChildren(
-        createActionLine('mine-upgrade-action-label', option.label),
-        createActionLine('mine-upgrade-action-cost', option.costLabel),
-      );
+      label.textContent = option.label;
+      cost.textContent = option.costLabel;
     });
     document.addEventListener('keydown', this.#handleKeyDown);
   }

@@ -21,6 +21,16 @@ export {
   type SerializedGameNumber,
 } from './numbers/GameNumber';
 export {
+  calculateOfflineGrant,
+  type OfflineGrant,
+} from './offline-income/calculateOfflineGrant';
+export {
+  PROGRESS_BOUND_TOLERANCE,
+  evaluateProgressBound,
+  type ProgressBoundInput,
+  type ProgressBoundViolation,
+} from './anti-cheat/progressBound';
+export {
   calculateOfflineIncome,
   type OfflineIncomeCalculation,
 } from './offline-income/calculateOfflineIncome';

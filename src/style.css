@@ -172,6 +172,8 @@ body {
   cursor: pointer;
   font: inherit;
   font-weight: 700;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .mine-upgrade-action:focus-visible,
@@ -328,4 +330,378 @@ body {
 .save-diagnostic-dismiss:focus-visible {
   outline: 3px solid #f9fafb;
   outline-offset: 2px;
+}
+
+/* Marketplace is a native modal: background input and keyboard focus stay isolated. */
+.marketplace {
+  width: min(480px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  padding: 0;
+  border: 2px solid #dcb864;
+  border-radius: 22px;
+  background: #101f32;
+  color: #f1f5fa;
+  box-shadow: 0 24px 90px #000a;
+  overscroll-behavior: contain;
+}
+
+.marketplace::backdrop {
+  background: #030d1de0;
+}
+
+.marketplace button,
+.marketplace input,
+.marketplace select {
+  font: inherit;
+}
+
+.marketplace button,
+.marketplace select,
+.marketplace input {
+  min-height: 44px;
+  border: 1px solid #3c5771;
+  border-radius: 10px;
+  background: #1b334c;
+  color: #edf5ff;
+  padding: 8px 10px;
+}
+
+.marketplace button {
+  cursor: pointer;
+}
+
+.marketplace button:hover {
+  filter: brightness(1.15);
+}
+
+.marketplace :focus-visible {
+  outline: 3px solid #8ee5e3;
+  outline-offset: 2px;
+}
+
+.marketplace button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.market-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 18px;
+  background: #12253b;
+  border-bottom: 1px solid #34516b;
+}
+
+.market-eyebrow {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #a9c4db;
+}
+
+.market-header h1 {
+  margin: 4px 0 0;
+  font-size: 25px;
+  letter-spacing: -0.5px;
+}
+
+.market-preview {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 6px;
+  vertical-align: middle;
+  font-size: 10px;
+  letter-spacing: 0;
+  color: #f9d781;
+  background: #56452a;
+  border-radius: 5px;
+}
+
+.marketplace .market-close {
+  min-width: 44px;
+  font-size: 26px;
+  padding: 0;
+}
+
+.market-content {
+  padding: 0 18px 20px;
+}
+
+.market-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 125px;
+  margin-top: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: radial-gradient(ellipse at right, #356665, #1b3b4c 70%);
+  overflow: hidden;
+}
+
+.market-intro span {
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.market-intro strong {
+  color: #f8d77c;
+}
+
+.market-intro img {
+  width: 105px;
+  height: 125px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 8px #071627);
+}
+
+.market-note {
+  color: #aac0d4;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.market-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 16px 0;
+  border-radius: 12px;
+  background: #091626;
+}
+
+.market-tabs button {
+  flex: 1;
+  border-color: transparent;
+  background: transparent;
+  font-size: 14px;
+}
+
+.market-tabs button[aria-pressed=true] {
+  color: #182337;
+  background: #f4ca6a;
+  box-shadow: 0 2px 0 #a37c2e;
+}
+
+.market-search input {
+  width: 100%;
+  background: #0b192a;
+}
+
+.market-filters {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.market-filters select {
+  min-width: 0;
+  flex: 1;
+  font-size: 11px;
+  padding: 6px;
+}
+
+.market-results {
+  color: #abc1d5;
+  font-size: 12px;
+  margin: 16px 0 10px;
+}
+
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.market-card {
+  overflow: hidden;
+  border: 1px solid #425a77;
+  border-radius: 14px;
+  background: #192b41;
+}
+
+.market-portrait {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 136px;
+  background: radial-gradient(ellipse at bottom, #446aa3, #1b2d49);
+}
+
+.market-card.ssr .market-portrait {
+  background: radial-gradient(ellipse at bottom, #7d579e, #302c4d);
+}
+
+.market-portrait img {
+  width: 115px;
+  height: 125px;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 6px #0006);
+}
+
+.market-rarity {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 10px;
+  padding: 3px 6px;
+  border: 1px solid #bba0ed;
+  background: #342d57;
+  border-radius: 5px;
+  color: #e1c6ff;
+}
+
+.sr .market-rarity {
+  color: #abddff;
+  border-color: #529bc9;
+  background: #1a4261;
+}
+
+.market-card-info {
+  padding: 10px 12px;
+}
+
+.market-card h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.market-card p {
+  margin: 3px 0 10px;
+  font-size: 12px;
+  color: #aac0d4;
+}
+
+.market-price {
+  color: #f7d478;
+  font-size: 16px;
+}
+
+.market-price small {
+  font-size: 11px;
+  color: #a7bed1;
+}
+
+.market-card button {
+  width: calc(100% - 20px);
+  margin: 0 10px 10px;
+  background: #294f67;
+  border-color: #4e839b;
+  font-size: 13px;
+}
+
+.marketplace .market-primary {
+  width: 100%;
+  background: #f3c765;
+  border-color: #fce1a6;
+  color: #1b2b3d;
+}
+
+.market-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 32px 12px;
+  color: #bccfdd;
+}
+
+.market-empty span {
+  display: block;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.market-empty button {
+  display: block;
+  margin: 16px auto 0;
+}
+
+.market-detail {
+  text-align: center;
+}
+
+.market-detail img {
+  display: block;
+  width: 190px;
+  height: 190px;
+  object-fit: contain;
+  margin: 12px auto;
+  background: radial-gradient(ellipse, #645288, transparent 70%);
+}
+
+.market-detail h2 {
+  font-size: 30px;
+  margin: 6px;
+}
+
+.market-detail p {
+  color: #aec6d9;
+}
+
+.market-content > button:first-child {
+  margin-top: 14px;
+}
+
+.market-duration {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.market-total {
+  padding: 18px;
+  border: 1px solid #5b655d;
+  border-radius: 10px;
+  color: #f7d478;
+  background: #273537;
+}
+
+.market-form {
+  display: grid;
+  gap: 18px;
+}
+
+.market-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.market-form label span {
+  color: #aac0d4;
+  font-size: 12px;
+}
+
+.market-draft {
+  border-bottom: 1px solid #3c5771;
+  padding: 12px 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+@media (max-width: 360px) {
+  .market-content {
+    padding-inline: 12px;
+  }
+
+  .market-header {
+    padding: 12px;
+  }
+
+  .market-header h1 {
+    font-size: 22px;
+  }
+
+  .market-intro span {
+    font-size: 18px;
+  }
 }
