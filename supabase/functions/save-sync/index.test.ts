@@ -903,27 +903,40 @@ Deno.test('handleSaveDownload derives the offlineGrant from the server receipt, 
         (base.state.lastUpdateTimestampMs as number) + 10 * 24 * 60 * 60 * 1_000,
     },
   };
-  const receivedAt = new Date(Date.now() - 60_000).toISOString();
+  // `computeOfflineGrant` reads `Date.now()` once per request, so two uploads
+  // that straddle a millisecond boundary legitimately differ by 1 ms — and the
+  // `deepEqual` below would then fail for a reason this test is not about.
+  // Pin the clock for the pair so both grants are computed at one instant.
+  const frozenNowMs = Date.now();
+  const receivedAt = new Date(frozenNowMs - 60_000).toISOString();
+  const realDateNow = Date.now;
+  Date.now = () => frozenNowMs;
 
   const grants: unknown[] = [];
-  for (const document of [base, movedClock]) {
-    const response = await handleRequest(
-      getSaveRequest(),
-      noopDeps({
-        resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
-        readCurrentSave: async () => ({
-          revision: 4,
-          documentJson: JSON.stringify(document),
-          receivedAt,
-          previousDocumentJson: null,
-          previousReceivedAt: null,
+  try {
+    for (const document of [base, movedClock]) {
+      const response = await handleRequest(
+        getSaveRequest(),
+        noopDeps({
+          resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+          readCurrentSave: async () => ({
+            revision: 4,
+            documentJson: JSON.stringify(document),
+            receivedAt,
+            previousDocumentJson: null,
+            previousReceivedAt: null,
+          }),
         }),
-      }),
-    );
-    grants.push((await response.json()).offlineGrant);
+      );
+      grants.push((await response.json()).offlineGrant);
+    }
+  } finally {
+    Date.now = realDateNow;
   }
 
   assert.deepEqual(grants[0], grants[1]);
   const grant = grants[0] as { creditedDurationMs: number };
-  assert.equal(grant.creditedDurationMs >= 59_000 && grant.creditedDurationMs <= 61_000, true);
+  // The receipt is exactly 60 s old at the pinned instant, so the grant is
+  // exact — a moved document clock would show up here as 10 days, not ±1 s.
+  assert.equal(grant.creditedDurationMs, 60_000);
 });
