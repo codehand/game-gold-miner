@@ -84,9 +84,10 @@ to live phase status.
   the unrepresentable-clock case); and a new server-e2e spec
   `tests/server-e2e/save-rejection.spec.ts` (a stubbed `422 save_rejected`
   leaves the session producing gold, the local save a valid schema-2 document,
-  one comprehensible notice, and no uncaught error). After the review's
-  additions, the final counts are 110 Deno server unit tests and 90 integration
-  tests; `npm run lint`, 637 unit tests, 9 server-e2e tests,
+  one comprehensible notice, and no uncaught error). After that review's
+  additions the counts were 110 Deno server unit tests and 90 integration
+  tests; the follow-up pass above raised them to the 112 and 91 re-verified
+  there; `npm run lint`, 637 unit tests, 9 server-e2e tests,
   52 Chromium E2E, build, secret scan, 10 production smoke, and
   `npm run verify:server` all pass. Step 25 must not begin until the user
   validates Step 24.
