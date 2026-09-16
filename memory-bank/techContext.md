@@ -1400,8 +1400,8 @@ Step 23 bound violation's `{counter, claimed, maximum}`, a validation `reason`, 
 conflict's `serverRevision`, and so on). Accepted attempts are recorded too; the
 write is best-effort (logged, never fatal); an unauthenticated request writes
 nothing. The `server-stack.test.ts` service-role pin now also asserts
-`admin.from('save_audit').insert(`. Evidence: 6 new Deno unit tests,
-`tests/server-integration/save-audit.integration.test.ts` (5 live tests including
+`admin.from('save_audit').insert(`. Evidence: 8 new Deno unit tests,
+`tests/server-integration/save-audit.integration.test.ts` (6 live tests including
 RLS invisibility/unwritability to a client token and an unrepresentable client
 clock still writing its row), and `tests/server-e2e/save-rejection.spec.ts`
 proving the player keeps their local save, keeps playing, and sees the

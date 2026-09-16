@@ -240,11 +240,16 @@ false positive recovers without a reload. N1 remains the known limit (an old
 honest fork can be refused), and Step 24's no-loss guarantee is what makes that
 limit survivable: the player keeps playing and keeps their local save either way.
 
-Evidence: 4 new Deno unit tests (accepted row + client clock, bound-violation
-row, validation row, no row without a caller); `server-stack.test.ts` pins the
+Evidence: 8 new Deno unit tests (accepted row + client clock, bound-violation
+row, validation row, no row without a caller, an out-of-range client clock still
+writing one row, a throwing collaborator writing a `server_error` row, a
+non-integer `baseRevision` refused with one `malformed_request` row, and the
+`normalizeAuditRevision` coercion); `server-stack.test.ts` pins the
 `save_audit` insert; `tests/server-integration/save-audit.integration.test.ts`
-(4 live tests: accepted row, bound rejection row, conflict row, and RLS proving
-the log is invisible and unwritable to a client token); and
+(6 live tests: accepted row, bound rejection row, conflict row, an
+unrepresentable client clock still writing its row, invalid `baseRevision`
+values each writing their own row, and RLS proving the log is invisible and
+unwritable to a client token); and
 `tests/server-e2e/save-rejection.spec.ts` (a stubbed `422 save_rejected` leaves
 the session producing gold, the local save intact, one comprehensible notice,
 and no uncaught error).
