@@ -1572,6 +1572,38 @@ back into the closed window. `cloudSaveUpload.ts` parses `Retry-After`
 malformed header leaves the ladder in sole charge rather than turning the
 throttle into a stopped sync.
 
+**Step 25's rework also repaired a pre-existing client-E2E flake.**
+`tests/e2e/player-journey.spec.ts` aimed every press at coordinates read from
+`BootScene`'s rendered-state read-back, which is republished at most once every
+`VIEW_DIAGNOSTIC_INTERVAL_MS` (100 ms) while the mine camera is moved the instant
+a wheel is applied. A snapshot read just after a scroll could therefore still
+describe where the control *was*: the press landed on empty space, the upgrade
+modal never opened, and the journey failed with a message that said nothing about
+the cause. Reproduced at `f573d5d` and — this is the point — identically with the
+Step 25 `src/` change reverted in place, so it is not a Step 25 defect. Two more
+harness bugs sat behind it: the scroll step wheeled a whole viewport height,
+overshooting a control that was only just out of view, and it awaited
+`expect.poll(isPressable)`, which a *stale* republish satisfied before the scroll
+had landed. `readSettledPurchaseControl` now reads until two consecutive
+snapshots agree on placement (`screenBounds` + `isPressable`), the scroll travels
+exactly the distance needed to centre the control, and a press is re-established
+and re-aimed up to `PRESS_ATTEMPTS` times. A press also now pins the opened
+modal's own `target` from `data-floor-upgrade-modal` instead of mere visibility,
+so a mis-aimed press can never buy from a floor the journey did not mean to open
+— the assertion is strictly stronger than the one it replaced. Verified 3/3 in
+isolation and 2/2 full-suite `npm run test:e2e`, where the spec had failed before
+and continues to fail on pristine `origin/master`.
+
+`production-stages.spec.ts:368` ("the filled cart eases from the chute toward the
+warehouse") is a **separate, pre-existing, load-dependent flake** and is *not*
+fixed here: the cart eases correctly (112 → 128.03) but the poll demands
+> 132 within a fixed 6.5 s real-time budget. It fails on pristine
+`origin/master` in this sandbox too (2/2 full-suite runs) and was already
+recorded by the first Step 25 iteration as flaking with a varying failing test
+(`368`/`449`/`449`); it passed in the reviewing human's own run. Re-tuning that
+budget is explicitly out of scope for this task (AC18, "Re-tuning unrelated test
+budgets").
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

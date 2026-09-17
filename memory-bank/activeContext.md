@@ -400,7 +400,13 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 1. **Wait for the user to validate Step 25.** This is the gate; nothing below
    starts before it. Step 25 is implemented and awaiting validation; **Step 26
-   is blocked** on that validation.
+   is blocked** on that validation. The validating review's `playwright` failure
+   (`tests/e2e/player-journey.spec.ts`, the upgrade modal never opening) was a
+   pre-existing harness bug — a press aimed from the throttled rendered-state
+   read-back while the mine camera had already scrolled — reproduced with the
+   Step 25 `src/` change reverted in place, and is fixed in that spec; see
+   `techContext.md`'s Step 25 section. `production-stages.spec.ts:368` remains a
+   separate, pre-existing, load-dependent flake, out of scope here.
 2. Step 26 onward — the adversarial suite, then Steps 27–37. **Step 24's L2 is
    closed by Step 25:** a `429` is refused before any `save_audit` row exists on
    the path, and an oversized body writes none either, so the

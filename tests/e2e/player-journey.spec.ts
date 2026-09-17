@@ -35,6 +35,7 @@ import {
 import {
   formatCreditedDuration,
   formatOfflineRewardAmount,
+  type RenderedMineShaftUpgradeModalState,
 } from '../../src/ui';
 
 const CANVAS_SELECTOR = '#game-viewport canvas';
@@ -44,6 +45,17 @@ const JOURNEY_START = new Date('2026-09-02T01:00:00.000Z');
 const JOURNEY_START_MS = JOURNEY_START.getTime();
 const OFFLINE_DURATION_MS = 60 * 60 * 1_000;
 const STORE_SETTLE_TIMEOUT_MS = 5_000;
+
+// `BootScene` republishes its rendered-state read-back at most once every
+// `VIEW_DIAGNOSTIC_INTERVAL_MS` (100 ms), while the mine camera is moved the
+// instant a wheel or drag is applied. This separation is enough for two reads
+// to straddle a publish, so agreement between them proves no publish is
+// pending. See `readSettledPurchaseControl`.
+const VIEW_DIAGNOSTIC_SETTLE_MS = 120;
+const VIEW_DIAGNOSTIC_SETTLE_READS = 3;
+const MODAL_OPEN_TIMEOUT_MS = 5_000;
+const PRESS_ATTEMPTS = 3;
+const MINE_SCROLL_ATTEMPTS = 4;
 
 // Two full clean-profile runs intentionally cross the default 30-second test
 // budget because every real purchase waits for the 500 ms persistence debounce.
@@ -464,16 +476,9 @@ async function waitForBootedScene(page: Page): Promise<void> {
 async function ensureControlIsPressable(
   page: Page,
   key: string,
-): Promise<void> {
-  const current = await readPurchaseControl(page, key);
-
-  if (current.isPressable) {
-    return;
-  }
-
+): Promise<PublishedPurchaseControl> {
   const mine = calculateMineLayout().mine;
-  const targetY = current.screenBounds.y + current.screenBounds.height / 2;
-  const direction = targetY >= mine.y + mine.height ? 1 : -1;
+  const mineCenterY = mine.y + mine.height / 2;
   const canvas = page.locator(CANVAS_SELECTOR);
   const box = await boundingBox(canvas);
   const scaleX = box.width / LOGICAL_VIEWPORT_WIDTH;
@@ -481,47 +486,205 @@ async function ensureControlIsPressable(
 
   await page.mouse.move(
     box.x + (mine.x + mine.width / 2) * scaleX,
-    box.y + (mine.y + mine.height / 2) * scaleY,
+    box.y + mineCenterY * scaleY,
   );
-  await page.mouse.wheel(0, direction * mine.height * scaleY);
-  await expect
-    .poll(async () => (await readPurchaseControl(page, key)).isPressable, {
-      message: `${key} scrolls into the mine viewport`,
-    })
-    .toBe(true);
 
-  // The diagnostic and camera clamp can update in the same tick. Wait for the
-  // newly reachable control to be presented before asking Phaser to hit-test
-  // it, especially now that the bottom navigation makes the mine viewport
-  // shorter and the journey scrolls more often.
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  for (let attempt = 0; attempt < MINE_SCROLL_ATTEMPTS; attempt += 1) {
+    // Settled first, every time. A wheel reaches the camera a frame or more
+    // after it is dispatched and the read-back is published on its own
+    // throttle, so a snapshot read too soon still describes the position
+    // *before* the scroll landed. Deciding from that snapshot scrolls a mine
+    // that has already moved — which is what walks a control out of the
+    // viewport it was scrolled into.
+    const control = await readSettledPurchaseControl(page, key);
+
+    if (control.isPressable) {
+      // The camera clamp and the read-back can update in the same tick. Wait
+      // for the newly reachable control to be presented before asking Phaser
+      // to hit-test it, especially now that the bottom navigation makes the
+      // mine viewport shorter and the journey scrolls more often.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      );
+
+      return control;
+    }
+
+    // Exactly the distance the control must travel to reach the middle of the
+    // viewport. Scrolling by a whole viewport height instead — as this did —
+    // overshoots a control that was only just out of view, carrying it out
+    // past the opposite edge and leaving a later press aimed at nothing.
+    await page.mouse.wheel(
+      0,
+      control.screenBounds.y + control.screenBounds.height / 2 - mineCenterY,
+    );
+  }
+
+  throw new Error(
+    `Purchase control "${key}" could not be scrolled into the mine viewport.`,
   );
 }
 
 async function pressPurchaseControl(page: Page, key: string): Promise<void> {
   const canvas = page.locator(CANVAS_SELECTOR);
-  const control = await readPurchaseControl(page, key);
-  const box = await boundingBox(canvas);
-  const scaleX = box.width / LOGICAL_VIEWPORT_WIDTH;
-  const scaleY = box.height / LOGICAL_VIEWPORT_HEIGHT;
+  const expectsModal = expectedModalTarget(key) !== null;
 
-  if (!control.isPressable) {
-    throw new Error(`Purchase control "${key}" is not pressable.`);
+  for (let attempt = 1; attempt <= PRESS_ATTEMPTS; attempt += 1) {
+    // Re-established per attempt rather than read once: a press that missed
+    // tells us nothing about whether the mine has since settled somewhere the
+    // control is reachable from.
+    const control = await ensureControlIsPressable(page, key);
+    const box = await boundingBox(canvas);
+    const scaleX = box.width / LOGICAL_VIEWPORT_WIDTH;
+    const scaleY = box.height / LOGICAL_VIEWPORT_HEIGHT;
+
+    await page.mouse.click(
+      box.x + (control.screenBounds.x + control.screenBounds.width / 2) * scaleX,
+      box.y + (control.screenBounds.y + control.screenBounds.height / 2) * scaleY,
+    );
+
+    if (!expectsModal) {
+      return;
+    }
+
+    if (await upgradeModalIsOpenFor(page, key)) {
+      await expect(page.getByTestId('mine-upgrade-modal')).toBeVisible();
+      await page.getByTestId('mine-upgrade-x1').click();
+      await page.getByTestId('mine-upgrade-close').click();
+      return;
+    }
+
+    // Either the press was aimed with a snapshot the camera has since moved
+    // under, or it opened another floor's modal. Closing what is open keeps the
+    // save untouched — only the correct modal's x1 CTA buys anything — and the
+    // next attempt aims with a snapshot that has since settled.
+    await closeUpgradeModalIfOpen(page);
   }
 
-  await page.mouse.click(
-    box.x + (control.screenBounds.x + control.screenBounds.width / 2) * scaleX,
-    box.y + (control.screenBounds.y + control.screenBounds.height / 2) * scaleY,
+  throw new Error(
+    `The upgrade modal for "${key}" did not open after ${PRESS_ATTEMPTS} presses.`,
   );
+}
 
-  if (
-    key.startsWith('mine-shaft:') ||
-    key === 'elevator' ||
-    key === 'warehouse'
-  ) {
-    await expect(page.getByTestId('mine-upgrade-modal')).toBeVisible();
-    await page.getByTestId('mine-upgrade-x1').click();
+/**
+ * The rendered-state read-back is throttled to `VIEW_DIAGNOSTIC_INTERVAL_MS`
+ * while the mine camera moves the moment input is applied, so a snapshot read
+ * just after a wheel can still describe where a control *was*. A press aimed
+ * from that snapshot lands on empty space, the modal never opens, and the
+ * journey fails with an error that says nothing about the real cause. Reading
+ * until two consecutive snapshots agree on placement proves no publish is
+ * pending, so the press is aimed where the control is now.
+ */
+async function readSettledPurchaseControl(
+  page: Page,
+  key: string,
+): Promise<PublishedPurchaseControl> {
+  let placement = controlPlacement(await readPurchaseControl(page, key));
+
+  for (let read = 0; read < VIEW_DIAGNOSTIC_SETTLE_READS; read += 1) {
+    await page.waitForTimeout(VIEW_DIAGNOSTIC_SETTLE_MS);
+    const control = await readPurchaseControl(page, key);
+    const next = controlPlacement(control);
+
+    if (next === placement) {
+      return control;
+    }
+
+    placement = next;
+  }
+
+  return readPurchaseControl(page, key);
+}
+
+/**
+ * Only the fields a press depends on. Labels and affordability tick with the
+ * simulation, so comparing whole controls would never settle.
+ */
+function controlPlacement(control: PublishedPurchaseControl): string {
+  return JSON.stringify({
+    screenBounds: control.screenBounds,
+    isPressable: control.isPressable,
+  });
+}
+
+interface UpgradeModalTarget {
+  readonly type: string;
+  readonly floorId?: string;
+}
+
+/**
+ * The modal a control is expected to open, or `null` for the controls that
+ * need no modal: a floor unlock buys directly.
+ */
+function expectedModalTarget(key: string): UpgradeModalTarget | null {
+  if (key.startsWith('mine-shaft:')) {
+    return { type: 'mine-shaft', floorId: key.slice('mine-shaft:'.length) };
+  }
+
+  if (key === 'elevator' || key === 'warehouse') {
+    return { type: key };
+  }
+
+  return null;
+}
+
+function targetsMatch(actual: unknown, expected: UpgradeModalTarget): boolean {
+  if (typeof actual !== 'object' || actual === null) {
+    return false;
+  }
+
+  const target = actual as { readonly type?: unknown; readonly floorId?: unknown };
+
+  return (
+    target.type === expected.type &&
+    (expected.floorId === undefined || target.floorId === expected.floorId)
+  );
+}
+
+/**
+ * True once the modal on screen is the one `key` opens. A press aimed with a
+ * stale snapshot can open a *different* floor's modal, so the target is checked
+ * rather than mere visibility: the caller must never press the x1 CTA of a
+ * floor it did not mean to buy.
+ */
+async function upgradeModalIsOpenFor(page: Page, key: string): Promise<boolean> {
+  const expected = expectedModalTarget(key);
+
+  if (expected === null) {
+    return false;
+  }
+
+  const deadline = Date.now() + MODAL_OPEN_TIMEOUT_MS;
+
+  for (;;) {
+    const rendered =
+      await readJsonAttribute<RenderedMineShaftUpgradeModalState | null>(
+        page,
+        'data-floor-upgrade-modal',
+      );
+
+    if (rendered?.isVisible === true && targetsMatch(rendered.target, expected)) {
+      return true;
+    }
+
+    if (Date.now() >= deadline) {
+      return false;
+    }
+
+    await page.waitForTimeout(50);
+  }
+}
+
+/** Dismisses whatever modal a missed press opened, without buying from it. */
+async function closeUpgradeModalIfOpen(page: Page): Promise<void> {
+  const rendered =
+    await readJsonAttribute<RenderedMineShaftUpgradeModalState | null>(
+      page,
+      'data-floor-upgrade-modal',
+    );
+
+  if (rendered?.isVisible === true) {
     await page.getByTestId('mine-upgrade-close').click();
   }
 }
