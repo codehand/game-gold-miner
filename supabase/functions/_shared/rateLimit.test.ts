@@ -50,7 +50,7 @@ function harness(limit: number, windowMs: number, pruneSizeThreshold?: number): 
 }
 
 Deno.test('admits exactly up to the limit inside one window, then refuses with Retry-After', async () => {
-  const { limiter, clock } = harness(3, 60_000);
+  const { limiter } = harness(3, 60_000);
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const decision = await limiter.check('user:a');

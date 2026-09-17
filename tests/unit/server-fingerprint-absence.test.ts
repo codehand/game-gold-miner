@@ -173,7 +173,15 @@ describe('no server code path reads a device or browser fingerprint', () => {
     const planted = "const agent = request.headers.get('user-agent');\n";
     const lowered = planted.toLowerCase();
 
-    expect(BANNED_SIGNALS.some((signal) => lowered.includes(signal))).toBe(true);
-    expect(BANNED_SIGNALS.some((signal) => lowered.includes('webgl'))).toBe(false);
+    // Caught, and caught by *exactly* the one signal the plant names. A bare
+    // "is it caught?" check would also pass for a matcher that flagged every
+    // line, which would be useless in practice; pinning the match set proves
+    // the list discriminates rather than merely fires.
+    expect(BANNED_SIGNALS.filter((banned) => lowered.includes(banned))).toEqual(['user-agent']);
+
+    // And the list is not so broad that ordinary server code trips it — the
+    // other way this detector could be useless while still "detecting".
+    const ordinary = 'const save = await readCurrentSave(caller.userId);';
+    expect(BANNED_SIGNALS.filter((banned) => ordinary.toLowerCase().includes(banned))).toEqual([]);
   });
 });
