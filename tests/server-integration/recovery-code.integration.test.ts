@@ -9,6 +9,7 @@ import {
 } from '../../scripts/warm-edge-functions.mjs';
 import { LOCAL_ANON_KEY } from './authFixture';
 import { createServiceRoleClient } from './serviceRoleFixture';
+import { fetchToleratingStall } from './transientFetchFixture';
 
 /** A fresh 64-hex-char value per call — `code_hash` is globally unique, so a fixed literal would collide with a prior run's leftover row instead of only with the row this test inserts. */
 function randomHexHash(): string {
@@ -117,13 +118,36 @@ function generateCode(accessToken: string): Promise<Response> {
  * volume; only the dedicated throttle test below deliberately drives the
  * shared bucket past it.
  */
-function redeemCode(code: string): Promise<Response> {
-  return fetch(REDEEM_URL, {
+function redeemRequestInit(code: string): RequestInit {
+  return {
     method: 'POST',
     headers: { apikey: LOCAL_ANON_KEY, 'content-type': 'application/json' },
     body: JSON.stringify({ code }),
+  };
+}
+
+/** The single-budget read every ordinary assertion in this file makes. */
+function redeemCode(code: string): Promise<Response> {
+  return fetch(REDEEM_URL, {
+    ...redeemRequestInit(code),
     signal: AbortSignal.timeout(20_000),
   });
+}
+
+/**
+ * One attempt inside a burst loop: the identical request, but a stall that
+ * never answers resolves `null` instead of throwing, after one retry.
+ *
+ * A 2026-09-16 CI finding pinned the run's only failure to this file's last
+ * test: 20171 ms, one request spending the whole 20 s budget, on a worker that
+ * had already served the rest of the file. The burst loops exist to observe
+ * that repeated attempts eventually answer `429`, and a stalled request is not
+ * a product result — see `transientFetchFixture.ts`. The budget stays 20 s;
+ * only the missing retry was added, and `null` is deliberately *not* folded
+ * into `statuses`, so a timeout can never be read as a rate-limited response.
+ */
+function redeemAttempt(code: string): Promise<Response | null> {
+  return fetchToleratingStall(REDEEM_URL, redeemRequestInit(code));
 }
 
 async function fetchRecoveryCodeRow(userId: string): Promise<
@@ -188,7 +212,14 @@ describe('recovery-code (server-milestone Step 14)', () => {
   it('the test-reset route clears the shared bucket so a throttled address redeems again', async () => {
     let sawRateLimited = false;
     for (let attempt = 0; attempt < 45 && !sawRateLimited; attempt += 1) {
-      const response = await redeemCode('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      const response = await redeemAttempt('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      if (response === null) {
+        // Never answered, even after its retry. Not a rate-limit observation,
+        // and not a product failure either — the loop's own 45-attempt bound
+        // absorbs it, exactly as it absorbs the shared bucket's ambient
+        // consumption.
+        continue;
+      }
       if (response.status === 429) {
         sawRateLimited = true;
       }
@@ -495,11 +526,20 @@ describe('recovery-code (server-milestone Step 14)', () => {
     // of the file's normal traffic left in the 60-second window. A generous
     // upper bound, rather than an exact attempt count, tolerates that
     // ambient consumption instead of assuming this test starts from zero.
+    //
+    // This is the test that failed CI on 2026-09-16, on its first iteration:
+    // one request stalled for the whole 20 s budget. Each attempt now retries
+    // a stall once (`redeemAttempt`), and an attempt that still never answered
+    // is skipped rather than recorded — so `sawRateLimited` can only ever be
+    // set by a real `429`, never by a timeout.
     const statuses: number[] = [];
     let sawRateLimited = false;
 
     for (let attempt = 0; attempt < 45 && !sawRateLimited; attempt += 1) {
-      const response = await redeemCode('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      const response = await redeemAttempt('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      if (response === null) {
+        continue;
+      }
       statuses.push(response.status);
       if (response.status === 429) {
         sawRateLimited = true;

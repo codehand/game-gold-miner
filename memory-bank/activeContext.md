@@ -287,6 +287,41 @@ clamps `document_bytes`, so the next typed column cannot reopen the hole.
 body, and building a `409` from an out-of-band-corrupted stored row) are now
 caught and recorded too. Counts rose to 112 Deno unit and 91 integration tests.
 
+**A 2026-09-16 CI hardening pass (not a milestone step).** The `server` job's
+`npm run verify:server` failed on work that passes locally, with undici's
+`TimeoutError: The operation was aborted due to timeout`. The cause was
+cold-start speed rather than configuration: four functions import
+`npm:@supabase/supabase-js@2.116.0`, a runner resolves it from an empty module
+cache on each function's first request, and four timing-sensitive calls
+carried a hard budget with no retry against that one slow response. The CI log
+then indicted exactly one of them and contradicted the cold-start hypothesis for
+it: the job's only red test was `recovery-code.integration.test.ts`'s throttle
+test, which died on its first iteration — 20171 ms, one request spending the
+whole 20 s budget — after that file had already served roughly ninety requests.
+A warm worker stalling is contention (16 parallel Vitest files against one edge
+runtime on 4 vCPU), not a cold start; the cold-start reading survives only for
+the rate-limit reset hook and the `hookTimeout` default.
+`scripts/warm-edge-functions.mjs` now warms every function once — its list read
+from `supabase/functions/`, `_shared` excluded — before any suite runs, so the
+class is removed in one place instead of patched caller by caller. Its probe is
+a refused `DELETE` on an unrouted path, not the CORS preflight F11 describes:
+the local Kong gateway answers `OPTIONS` itself and never boots a worker. The
+two server-e2e cloud-save reads now share
+`tests/server-e2e/cloudSaveFixture.ts`'s retrying, null-returning helper rather
+than a bare 5 s timeout inside a 20 s `expect.poll` (Playwright evaluates a
+poll's callback outside its own try/catch, so a thrown `TimeoutError` killed
+the test while its budget was untouched), and
+`vitest.server-integration.config.ts` sets `hookTimeout` above the 20 s its own
+requests declare, and `tests/server-integration/transientFetchFixture.ts` gives
+the two burst loops an attempt that tolerates a transient stall — retrying once
+when nothing answered at all, and treating a never-answered attempt as `null`
+rather than a status, so `sawRateLimited` can only ever be set by a real `429`.
+**The Step 24 gate is unchanged: this pass touches no `src/`,
+protocol, schema, migration or `supabase/config.toml` file, and Step 25 still
+begins only on the user's validation of Step 24.** Evidence: 659 unit tests,
+112 Deno unit tests, 9 server-e2e specs, and a full `npm run verify:server`
+run — recorded in `techContext.md`.
+
 ## Active Decisions
 
 Decisions that still constrain code not yet written. Settled base-game decisions
