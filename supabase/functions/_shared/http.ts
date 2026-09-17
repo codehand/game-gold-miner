@@ -26,6 +26,39 @@ export const JSON_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The pre-parse body cap, shared by every function that reads a body
+ * (server-milestone Step 25).
+ *
+ * The number comes from `memory-bank/server-save-sync-protocol.md` §3: 64 KB,
+ * "capped before parsing, not to constrain a real save (~3–4 KB) but to refuse
+ * an oversized body cheaply". Step 16 enforced it in `save-sync` alone; Step 25
+ * extends the identical cap to `telegram-sign-in` and `recovery-code`, which
+ * had none — a body-taking endpoint without a cap buffers whatever it is sent
+ * before it can decide anything about it.
+ *
+ * It lives here, next to the envelope, for the same reason the envelope does:
+ * a per-function copy is a number that can drift, and a cap that differs per
+ * endpoint is a cap nobody can reason about. 64 KB is also comfortably above
+ * every legitimate body this milestone sends — a Telegram `initData` string is
+ * a few KB at most, a recovery code is 39 characters, and a save document is
+ * ~3–4 KB.
+ */
+export const MAX_REQUEST_BODY_BYTES = 65_536;
+
+/**
+ * The body size `Content-Length` declares, or `null` when the header is
+ * absent or unparseable. Only ever a *claim*: chunked transfer encoding omits
+ * the header entirely and nothing stops a client lying about it, which is why
+ * every caller must still measure the body it actually read. Useful because
+ * it is the only check that can refuse an oversized body before buffering it
+ * at all.
+ */
+export function declaredBodyBytes(request: Request): number | null {
+  const declared = Number(request.headers.get('content-length'));
+  return Number.isFinite(declared) ? declared : null;
+}
+
+/**
  * Origins the game itself is ever served from today. No deployed origin
  * exists yet (`memory-bank/server-threat-model.md` §7.5) — add the real one
  * here when it does, rather than widening this to a wildcard, which would

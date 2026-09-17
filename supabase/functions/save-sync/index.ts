@@ -52,14 +52,132 @@ import {
   SaveDocumentError,
   validateSaveDocument,
 } from '../_shared/generated/core-bundle.js';
-import { corsHeaders, corsPreflightResponse, errorResponse, jsonResponse } from '../_shared/http.ts';
+import {
+  corsHeaders,
+  corsPreflightResponse,
+  declaredBodyBytes,
+  errorResponse,
+  jsonResponse,
+  MAX_REQUEST_BODY_BYTES,
+} from '../_shared/http.ts';
+import {
+  addressRateLimitKey,
+  createFixedWindowRateLimiter,
+  createInMemoryRateLimitStore,
+  extractCallerAddress,
+  rateLimitedResponse,
+  userRateLimitKey,
+  type RateLimiter,
+} from '../_shared/rateLimit.ts';
 
 const FUNCTION_ROUTE_PREFIX = '/save-sync';
 const PLATFORM_ROUTE_PREFIX = '/functions/v1';
 const HEALTH_ROUTE = '/v1/health';
 const SAVE_ROUTE = '/v1/save';
-/** §3 of the protocol: capped before parsing, not to constrain a real save (~3–4 KB) but to refuse an oversized body cheaply. */
-const MAX_SAVE_BODY_BYTES = 65_536;
+/**
+ * §3 of the protocol: capped before parsing, not to constrain a real save
+ * (~3–4 KB) but to refuse an oversized body cheaply. Step 25 moved the number
+ * itself to `../_shared/http.ts` (`MAX_REQUEST_BODY_BYTES`) so `save-sync`,
+ * `telegram-sign-in` and `recovery-code` carry the identical cap instead of
+ * three copies that could drift; this name stays because it is what §10.3 and
+ * the tests here call it.
+ */
+const MAX_SAVE_BODY_BYTES = MAX_REQUEST_BODY_BYTES;
+
+/**
+ * Step 25's upload limits, derived from §9's own cadence rather than chosen.
+ *
+ * §9 (decision D5) fixes the honest upload traffic a session may produce:
+ * at most **one routine upload per 60 seconds**, plus **forced uploads that
+ * ignore the interval** (a `pagehide`/`visibilitychange` lifecycle flush, a
+ * claimed offline reward, and once after boot reconcile when local is ahead of
+ * cloud), plus a **1/2/4/8/16 s retry ladder of at most five retries per
+ * trigger** — six requests including the initial one.
+ *
+ * Worst case a single session can therefore produce inside one 60-second
+ * window, counted from §9 alone:
+ *
+ *   3 forced triggers × 6 requests (initial + five retries)   = 18
+ *   + 1 routine upload that came due                          =  1
+ *                                                             ----
+ *                                                              19
+ *
+ * 60 admits that burst with more than 3× headroom — so a player who
+ * backgrounds the tab repeatedly, claims an offline reward and reloads is
+ * never throttled — while still capping one session at one request per second.
+ * A limit tighter than ~19 would refuse an honest player, which design
+ * constraint 2 calls a defect rather than a policy choice.
+ * `index.test.ts`'s §9 cadence test replays the 19-request burst against this
+ * exact number and pins the next request as refused, so it cannot drift
+ * silently in either direction.
+ */
+export const SAVE_UPLOAD_MAX_PER_USER = 60;
+/**
+ * The coarse backstop behind the per-user limit, and deliberately much
+ * looser (10× the per-user budget). Two things make it so: a shared address
+ * legitimately carries many real players (an office NAT, a household), and the
+ * local stack's own integration suite is observed as **one** address for its
+ * whole run — TASK-002 recorded that consequence, and a tight per-address
+ * limit here would fail unrelated suites with `429`. Its job is the case the
+ * per-user limit cannot see: unauthenticated floods and one machine minting
+ * many guest accounts in a row (threat model §4.6). See
+ * `memory-bank/architecture.md`'s Step 25 section for the honesty note about
+ * what an in-memory, per-worker limit can and cannot promise.
+ */
+export const SAVE_UPLOAD_MAX_PER_ADDRESS = 600;
+/**
+ * The download half of §9's cadence. A boot reconcile downloads exactly once,
+ * and a player reloading a handful of times must not be throttled; 60/min per
+ * user matches the upload budget while being far above the ~1/min a real
+ * client produces. A download is one indexed read through the caller's own
+ * RLS policy (`saves_select_own`) and costs no service-role round trip, so the
+ * address backstop does less work here and stays loose for the same
+ * shared-address reason.
+ */
+export const SAVE_DOWNLOAD_MAX_PER_USER = 60;
+export const SAVE_DOWNLOAD_MAX_PER_ADDRESS = 600;
+/** One window for all four limiters: §9's cadence is expressed per minute, and `Retry-After` on a refusal is therefore at most 60. */
+export const SAVE_RATE_LIMIT_WINDOW_MS = 60_000;
+
+/**
+ * The four limiters the two save routes consult. Grouped rather than added as
+ * four flat deps so a test can substitute one seeded limiter without
+ * restating the other three, and built by a factory so `index.test.ts` can
+ * drive the *real* configuration with an injected clock (Step 25's AC4/AC7)
+ * instead of re-declaring the numbers.
+ *
+ * Each limiter owns its own store. Two limiters sharing one store would also
+ * share a bucket for any key they have in common — an `address:` key is
+ * literally the same string on the upload and download paths — so separate
+ * stores are what makes "upload budget" and "download budget" independent
+ * rather than one budget spent twice.
+ */
+export interface SaveSyncRateLimiters {
+  readonly uploadByAddress: RateLimiter;
+  readonly uploadByUser: RateLimiter;
+  readonly downloadByAddress: RateLimiter;
+  readonly downloadByUser: RateLimiter;
+}
+
+export function createSaveSyncRateLimiters(
+  options: { readonly clockMs?: () => number } = {},
+): SaveSyncRateLimiters {
+  const clockMs = options.clockMs ?? Date.now;
+  const limiter = (limit: number): RateLimiter =>
+    createFixedWindowRateLimiter({
+      limit,
+      windowMs: SAVE_RATE_LIMIT_WINDOW_MS,
+      clockMs,
+      store: createInMemoryRateLimitStore(),
+    });
+
+  return {
+    uploadByAddress: limiter(SAVE_UPLOAD_MAX_PER_ADDRESS),
+    uploadByUser: limiter(SAVE_UPLOAD_MAX_PER_USER),
+    downloadByAddress: limiter(SAVE_DOWNLOAD_MAX_PER_ADDRESS),
+    downloadByUser: limiter(SAVE_DOWNLOAD_MAX_PER_USER),
+  };
+}
 
 /** A liveness probe must not hang a request behind an unreachable database. */
 const DATABASE_PROBE_TIMEOUT_MS = 2_000;
@@ -227,11 +345,25 @@ export interface SaveAuditEntry {
  */
 export type WriteSaveAudit = (entry: SaveAuditEntry) => Promise<void>;
 
+/**
+ * Step 25 (AC5): reading and parsing the body are collaborators, not inline
+ * `request.text()`/`JSON.parse` calls, so a unit test can prove that an
+ * oversized body is refused **before** either runs — by asserting an injected
+ * parse collaborator was never called, rather than by reading the source order
+ * and trusting it. `index.test.ts` injects a parser that throws if reached.
+ */
+export type ReadSaveBody = (request: Request) => Promise<string>;
+export type ParseSaveBody = (rawBody: string) => unknown;
+
 export interface SaveSyncDeps {
   readonly resolveCaller: ResolveCaller;
   readonly readCurrentSave: ReadCurrentSave;
   readonly writeSaveRow: WriteSaveRow;
   readonly writeSaveAudit: WriteSaveAudit;
+  /** Step 25: the per-address/per-user limits both save routes consult — see `createSaveSyncRateLimiters`. */
+  readonly rateLimit: SaveSyncRateLimiters;
+  readonly readSaveBody: ReadSaveBody;
+  readonly parseSaveBody: ParseSaveBody;
 }
 
 /**
@@ -240,6 +372,37 @@ export interface SaveSyncDeps {
  * and §10.3 — this function invents none of it.
  */
 async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: string | null): Promise<Response> {
+  // Step 25 (design constraint 2): the request path refuses in one documented
+  // order — CORS preflight (answered by the router before this function, per
+  // F11) → declared-size refusal → rate-limit refusal → authentication → body
+  // read → parse → validate → Step 23 bound → write. A guard that runs after
+  // the work it exists to prevent is not a guard, so each refusal below is
+  // placed above everything it is meant to spare.
+  //
+  // Cheap first: a truthful `Content-Length` refuses an oversized body before
+  // buffering it at all, and — because it now precedes authentication — before
+  // any `save_audit` row can exist for the attempt. That is the same bound on
+  // Step 24's L2 amplification the rate-limit refusals add: an oversized
+  // request costs one header read and nothing else. Not authoritative on its
+  // own (chunked transfer encoding omits the header entirely, and nothing
+  // stops a client lying about it), so the post-read check below still runs
+  // regardless of what this one finds.
+  const declaredLength = declaredBodyBytes(request);
+  if (declaredLength !== null && declaredLength > MAX_SAVE_BODY_BYTES) {
+    return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_SAVE_BODY_BYTES} bytes.`, { origin });
+  }
+
+  // Per-address before authentication, because a caller that never
+  // authenticates still costs this function work and has no user id to bucket
+  // by. §10.2's 429 shape, never surfaced to the player (§4: "Never surfaced —
+  // it is self-healing").
+  const addressDecision = await deps.rateLimit.uploadByAddress.check(
+    addressRateLimitKey(extractCallerAddress(request)),
+  );
+  if (!addressDecision.allowed) {
+    return rateLimitedResponse(origin, addressDecision.retryAfterSeconds);
+  }
+
   const token = extractBearerToken(request.headers.get('authorization'));
   if (token === null) {
     return errorResponse(401, 'unauthenticated', 'Missing bearer token.', { origin });
@@ -248,6 +411,17 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   const caller = await deps.resolveCaller(token);
   if (caller === null) {
     return errorResponse(401, 'unauthenticated', 'Invalid or expired token.', { origin });
+  }
+
+  // Per-user after authentication — it needs the id the token resolves to —
+  // and deliberately **before** any audit write. A `429` therefore records no
+  // `save_audit` row, which is what bounds Step 24's L2
+  // (1 request → 1 service-role audit write): a flood is refused here instead
+  // of growing the table without bound. Stated in
+  // `memory-bank/architecture.md`'s Step 25 section as well.
+  const userDecision = await deps.rateLimit.uploadByUser.check(userRateLimitKey(caller.userId));
+  if (!userDecision.allowed) {
+    return rateLimitedResponse(origin, userDecision.retryAfterSeconds);
   }
 
   // Step 24: every outcome past authentication writes exactly one `save_audit`
@@ -297,29 +471,18 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     );
   };
 
-  // Cheap first: a truthful `Content-Length` refuses an oversized body
-  // before buffering it at all. Not authoritative on its own — chunked
-  // transfer encoding omits the header entirely, and nothing stops a client
-  // from lying about it — so the post-read check below still runs
-  // regardless of what this one finds.
-  const declaredLength = Number(request.headers.get('content-length'));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_SAVE_BODY_BYTES) {
-    auditContext.documentBytes = clampDocumentBytes(declaredLength);
-    return await reject(
-      errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_SAVE_BODY_BYTES} bytes.`, { origin }),
-      'payload_too_large',
-      { limitBytes: MAX_SAVE_BODY_BYTES, declaredBytes: clampDocumentBytes(declaredLength) },
-    );
-  }
-
   let rawBody: string;
   try {
-    rawBody = await request.text();
+    rawBody = await deps.readSaveBody(request);
   } catch (error) {
     // Step 24 (review finding L3): a client that aborts mid-body must still be
     // recorded rather than escaping as an unaudited 500.
     return await serverError(error);
   }
+  // The authoritative size check, and still before any parse: `Content-Length`
+  // can be omitted (chunked) or simply lied about, so the bytes actually
+  // received are what decide. Step 25's AC5 asserts this ordering with an
+  // injected parse collaborator that is never called for an oversized body.
   const bodyBytes = new TextEncoder().encode(rawBody).length;
   auditContext.documentBytes = bodyBytes;
   if (bodyBytes > MAX_SAVE_BODY_BYTES) {
@@ -332,7 +495,7 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
 
   let parsedBody: unknown;
   try {
-    parsedBody = JSON.parse(rawBody);
+    parsedBody = deps.parseSaveBody(rawBody);
   } catch {
     return await reject(
       errorResponse(400, 'malformed_request', 'Body is not valid JSON.', { origin }),
@@ -713,6 +876,16 @@ function revisionConflictResponse(current: StoredSaveRow | null, origin: string 
  * F4.
  */
 async function handleSaveDownload(request: Request, deps: SaveSyncDeps, origin: string | null): Promise<Response> {
+  // Step 25: the same order design constraint 2 fixes for the upload path —
+  // address limit (no body exists on a GET, so there is no size refusal to
+  // precede it) → authentication → user limit → the read.
+  const addressDecision = await deps.rateLimit.downloadByAddress.check(
+    addressRateLimitKey(extractCallerAddress(request)),
+  );
+  if (!addressDecision.allowed) {
+    return rateLimitedResponse(origin, addressDecision.retryAfterSeconds);
+  }
+
   const token = extractBearerToken(request.headers.get('authorization'));
   if (token === null) {
     return errorResponse(401, 'unauthenticated', 'Missing bearer token.', { origin });
@@ -721,6 +894,11 @@ async function handleSaveDownload(request: Request, deps: SaveSyncDeps, origin: 
   const caller = await deps.resolveCaller(token);
   if (caller === null) {
     return errorResponse(401, 'unauthenticated', 'Invalid or expired token.', { origin });
+  }
+
+  const userDecision = await deps.rateLimit.downloadByUser.check(userRateLimitKey(caller.userId));
+  if (!userDecision.allowed) {
+    return rateLimitedResponse(origin, userDecision.retryAfterSeconds);
   }
 
   const current = await deps.readCurrentSave(caller.userId, token);
@@ -971,11 +1149,34 @@ async function writeSaveAuditViaServiceRole(entry: SaveAuditEntry): Promise<void
   }
 }
 
+/** The real body reader — `deps.readSaveBody` exists so a test can prove it is never reached for a body the declared-size check already refused (AC5), not because a second implementation was ever wanted. */
+async function readSaveBodyFromRequest(request: Request): Promise<string> {
+  return await request.text();
+}
+
+function parseSaveBodyJson(rawBody: string): unknown {
+  return JSON.parse(rawBody);
+}
+
+/**
+ * Real collaborators by default — `Deno.serve` below never passes an override.
+ *
+ * `createSaveSyncRateLimiters()` runs once at module scope, so the limiters'
+ * stores live for as long as this worker does. That is the honest scope
+ * recorded in `memory-bank/architecture.md`'s Step 25 section: the limits are
+ * per worker, best-effort, and an attacker with parallelism (or one who waits
+ * for a recycled worker) sees a higher effective ceiling — the position
+ * threat model §4.6 already takes. `Date.now` is the default clock here and
+ * nowhere else in the limiters.
+ */
 const defaultSaveSyncDeps: SaveSyncDeps = {
   resolveCaller: resolveCallerViaSupabaseAuth,
   readCurrentSave: readCurrentSaveRow,
   writeSaveRow: writeSaveRowViaServiceRole,
   writeSaveAudit: writeSaveAuditViaServiceRole,
+  rateLimit: createSaveSyncRateLimiters(),
+  readSaveBody: readSaveBodyFromRequest,
+  parseSaveBody: parseSaveBodyJson,
 };
 
 export async function handleRequest(
