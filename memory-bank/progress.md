@@ -21,6 +21,27 @@ Full history is archived, not deleted:
 - Per-step packages, tests, and review findings → `archive/step-implementation-map.md`
 - The prose account of how each phase unfolded → `archive/phase-narrative.md`
 
+**2026-09-16 — server-gate CI hardening (not a milestone step).** The GitHub
+Actions `server` job failed with undici's `TimeoutError: The operation was
+aborted due to timeout` on work that passes locally: every function's first
+request boots a worker against an empty Deno/npm module cache on a 4-vCPU
+runner, while a developer's container is warm from earlier runs, and four
+timing-sensitive calls carried a hard budget with no retry against that one
+slow response. Fixed by warming every Edge Function once before any suite runs
+(`scripts/warm-edge-functions.mjs`, called from `scripts/verify-server-stack.mjs`),
+by replacing the two server-e2e cloud-save reads' bare 5 s timeout with a
+retrying shared helper (`tests/server-e2e/cloudSaveFixture.ts`), by setting the
+integration suite's `hookTimeout` above the 20 s per-request budget its own
+`fetch` calls declare, and by giving `recovery-code`'s two burst loops an
+attempt that tolerates a transient stall
+(`tests/server-integration/transientFetchFixture.ts`). That last one is the call
+the CI log actually indicted: the job's only red test died on its first
+iteration after ninety-odd successful requests, so the cause was contention
+(16 parallel Vitest files against one edge runtime on 4 vCPU), not a cold
+start — the cold-start reading holds only for the rate-limit reset hook and the
+`hookTimeout` default. No step's state changed and the Step 24 gate is
+untouched; the details are in `techContext.md`'s 2026-09-16 finding.
+
 ## Phase Status
 
 | | |

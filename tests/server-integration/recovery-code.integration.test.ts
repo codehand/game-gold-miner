@@ -2,8 +2,14 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import {
+  WARMUP_MAX_ATTEMPTS,
+  WARMUP_WORST_CASE_MS,
+  warmEdgeFunction,
+} from '../../scripts/warm-edge-functions.mjs';
 import { LOCAL_ANON_KEY } from './authFixture';
 import { createServiceRoleClient } from './serviceRoleFixture';
+import { fetchToleratingStall } from './transientFetchFixture';
 
 /** A fresh 64-hex-char value per call — `code_hash` is globally unique, so a fixed literal would collide with a prior run's leftover row instead of only with the row this test inserts. */
 function randomHexHash(): string {
@@ -26,6 +32,7 @@ function randomHexHash(): string {
  * depends on another test having run first.
  */
 const API_URL = 'http://127.0.0.1:54321';
+const FUNCTIONS_BASE_URL = `${API_URL}/functions/v1`;
 const GENERATE_URL = `${API_URL}/functions/v1/recovery-code/v1/generate`;
 const REDEEM_URL = `${API_URL}/functions/v1/recovery-code/v1/redeem`;
 const TEST_RESET_RATE_LIMIT_URL = `${API_URL}/functions/v1/recovery-code/v1/test-only-reset-rate-limit`;
@@ -39,6 +46,15 @@ const CODE_HASH_PATTERN = /^[0-9a-f]{64}$/;
  * protecting player data.
  */
 const RECOVERY_CODE_TEST_RESET_TOKEN = 'b5f1ce2061989404035108f8895075b893eaa4a3f56eeca2d0bc3a2aef8f9f66';
+
+/**
+ * Comfortably above `WARMUP_WORST_CASE_MS`, the retry loop's own worst case —
+ * the same relationship (and the same explicit per-hook timeout)
+ * `whoami.integration.test.ts`'s warm-up already establishes, for the reason
+ * `vitest.server-integration.config.ts` records: a hook that inherits a
+ * timeout smaller than the request it is waiting on is killed first.
+ */
+const WARMUP_HOOK_TIMEOUT_MS = WARMUP_WORST_CASE_MS + 10_000;
 
 /**
  * A 2026-09-13 review finding: once `extractCallerAddress` reads the
@@ -102,13 +118,36 @@ function generateCode(accessToken: string): Promise<Response> {
  * volume; only the dedicated throttle test below deliberately drives the
  * shared bucket past it.
  */
-function redeemCode(code: string): Promise<Response> {
-  return fetch(REDEEM_URL, {
+function redeemRequestInit(code: string): RequestInit {
+  return {
     method: 'POST',
     headers: { apikey: LOCAL_ANON_KEY, 'content-type': 'application/json' },
     body: JSON.stringify({ code }),
+  };
+}
+
+/** The single-budget read every ordinary assertion in this file makes. */
+function redeemCode(code: string): Promise<Response> {
+  return fetch(REDEEM_URL, {
+    ...redeemRequestInit(code),
     signal: AbortSignal.timeout(20_000),
   });
+}
+
+/**
+ * One attempt inside a burst loop: the identical request, but a stall that
+ * never answers resolves `null` instead of throwing, after one retry.
+ *
+ * A 2026-09-16 CI finding pinned the run's only failure to this file's last
+ * test: 20171 ms, one request spending the whole 20 s budget, on a worker that
+ * had already served the rest of the file. The burst loops exist to observe
+ * that repeated attempts eventually answer `429`, and a stalled request is not
+ * a product result — see `transientFetchFixture.ts`. The budget stays 20 s;
+ * only the missing retry was added, and `null` is deliberately *not* folded
+ * into `statuses`, so a timeout can never be read as a rate-limited response.
+ */
+function redeemAttempt(code: string): Promise<Response | null> {
+  return fetchToleratingStall(REDEEM_URL, redeemRequestInit(code));
 }
 
 async function fetchRecoveryCodeRow(userId: string): Promise<
@@ -127,6 +166,28 @@ async function fetchRecoveryCodeRow(userId: string): Promise<
 }
 
 describe('recovery-code (server-milestone Step 14)', () => {
+  // 2026-09-16 CI cold-start finding: every other function this suite touches
+  // is warmed before its first assertion — `whoami-check` and
+  // `telegram-sign-in` by their own hooks, `save-sync` and
+  // `core-portability-check` by `scripts/verify-server-stack.mjs`'s retrying
+  // checks. `recovery-code` was the one function whose first request of the
+  // run was `resetRateLimitBucket`'s own one-shot `beforeAll` POST: a single
+  // 20 s budget, no retry, against a worker on a loaded runner that had to
+  // resolve `npm:@supabase/supabase-js` from an empty module cache. Warming it
+  // here costs one refused request and keeps this file runnable on its own,
+  // without `verify-server-stack.mjs`.
+  beforeAll(async () => {
+    const result = await warmEdgeFunction('recovery-code', { functionsBaseUrl: FUNCTIONS_BASE_URL });
+    if (!result.responded) {
+      // Not fatal: the tests below fail with their own specific errors if the
+      // function never came up. Logged so that failure is not misread as an
+      // unrelated one when it is really "the warm-up never got a response."
+      console.warn(
+        `recovery-code warm-up: no response after ${WARMUP_MAX_ATTEMPTS} attempts.`,
+      );
+    }
+  }, WARMUP_HOOK_TIMEOUT_MS);
+
   beforeAll(resetRateLimitBucket);
   afterAll(resetRateLimitBucket);
 
@@ -151,7 +212,14 @@ describe('recovery-code (server-milestone Step 14)', () => {
   it('the test-reset route clears the shared bucket so a throttled address redeems again', async () => {
     let sawRateLimited = false;
     for (let attempt = 0; attempt < 45 && !sawRateLimited; attempt += 1) {
-      const response = await redeemCode('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      const response = await redeemAttempt('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      if (response === null) {
+        // Never answered, even after its retry. Not a rate-limit observation,
+        // and not a product failure either — the loop's own 45-attempt bound
+        // absorbs it, exactly as it absorbs the shared bucket's ambient
+        // consumption.
+        continue;
+      }
       if (response.status === 429) {
         sawRateLimited = true;
       }
@@ -458,11 +526,20 @@ describe('recovery-code (server-milestone Step 14)', () => {
     // of the file's normal traffic left in the 60-second window. A generous
     // upper bound, rather than an exact attempt count, tolerates that
     // ambient consumption instead of assuming this test starts from zero.
+    //
+    // This is the test that failed CI on 2026-09-16, on its first iteration:
+    // one request stalled for the whole 20 s budget. Each attempt now retries
+    // a stall once (`redeemAttempt`), and an attempt that still never answered
+    // is skipped rather than recorded — so `sawRateLimited` can only ever be
+    // set by a real `429`, never by a timeout.
     const statuses: number[] = [];
     let sawRateLimited = false;
 
     for (let attempt = 0; attempt < 45 && !sawRateLimited; attempt += 1) {
-      const response = await redeemCode('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      const response = await redeemAttempt('ffff-ffff-ffff-ffff-ffff-ffff-ffff-ffff');
+      if (response === null) {
+        continue;
+      }
       statuses.push(response.status);
       if (response.status === 429) {
         sawRateLimited = true;

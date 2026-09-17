@@ -537,6 +537,93 @@ describe('the Step 4 verification script', () => {
 });
 
 /**
+ * Every per-request budget the integration suite declares as a literal, e.g.
+ * `signal: AbortSignal.timeout(20_000)`. Non-literal budgets — the warm-up
+ * hooks' own, deliberately much shorter, per-attempt constants — are not part
+ * of this maximum, because they are not what a hook or a test waits on.
+ */
+function integrationPerRequestBudgets(): number[] {
+  const directory = join(PROJECT_ROOT, 'tests', 'server-integration');
+  return readdirSync(directory)
+    .filter((entry) => entry.endsWith('.ts'))
+    .flatMap((entry) => [
+      ...readFileSync(join(directory, entry), 'utf8').matchAll(
+        /AbortSignal\.timeout\((\d[\d_]*)\)/g,
+      ),
+    ])
+    .map((match) => Number(match[1].replace(/_/g, '')));
+}
+
+describe("the server-integration suite's own timeouts", () => {
+  // A 2026-09-16 CI finding: the config set only `testTimeout`, which leaves
+  // `hookTimeout` at Vitest's own 10 s default — below the 20 s per-request
+  // budget the suite's `fetch` calls declare, and below the same bug the
+  // config's own comment already records for `testTimeout` (found
+  // 2026-09-12). A hook is killed 10 s in, before the request it is waiting on
+  // has had the room its own code asked for.
+  const config = readProjectFile('vitest.server-integration.config.ts');
+
+  const declaredHookTimeoutMs = (): number => {
+    const match = config.match(/hookTimeout:\s*([\d_]+)/);
+    return match === null ? Number.NaN : Number(match[1].replace(/_/g, ''));
+  };
+
+  it('sets hookTimeout at all, rather than inheriting Vitest s 10 s default', () => {
+    expect(declaredHookTimeoutMs()).not.toBeNaN();
+  });
+
+  it('sets hookTimeout at or above every per-request budget the suite declares', () => {
+    const budgets = integrationPerRequestBudgets();
+
+    // Anti-vacuity: an empty scan would make the comparison below pass while
+    // checking nothing — the same guard this file already applies to its
+    // read-from-disk lists.
+    expect(budgets.length).toBeGreaterThan(0);
+    // The suite's documented per-request budget, named by the AC this pins.
+    expect(Math.max(...budgets)).toBeGreaterThanOrEqual(20_000);
+    expect(declaredHookTimeoutMs()).toBeGreaterThanOrEqual(Math.max(...budgets));
+  });
+});
+
+describe('the Edge Function warm-up pass (2026-09-16 CI cold-start fix)', () => {
+  it('runs after the health and portability checks and before the suites', () => {
+    // The order is the point: a cold worker must have answered once before
+    // anything with a budget of its own starts asking it to be fast.
+    const verify = readProjectFile('scripts/verify-server-stack.mjs');
+    const portability = verify.indexOf('await checkCorePortability()');
+    const warmup = verify.indexOf('await warmFunctionsBeforeSuites()');
+    const integration = verify.indexOf("'test:server-integration'");
+
+    expect(portability).toBeGreaterThan(-1);
+    expect(warmup).toBeGreaterThan(portability);
+    expect(integration).toBeGreaterThan(warmup);
+  });
+
+  it('reads the function list from disk rather than a hand-kept list', () => {
+    const helper = readProjectFile('scripts/warm-edge-functions.mjs');
+
+    expect(helper).toContain('function readEdgeFunctionNames(');
+    expect(helper).toContain('readdirSync(functionsDirectory');
+    expect(helper).toContain("entry.name !== '_shared'");
+  });
+
+  it('warms recovery-code before the rate-limit reset that was its first request', () => {
+    // `recovery-code` was the one function no warm-up covered, so
+    // `beforeAll(resetRateLimitBucket)` — one shot, a 20 s budget, no retry —
+    // was the run's first request to it. The warm-up must precede it, and must
+    // not itself touch the shared bucket: it goes through the same refused
+    // probe every other function gets.
+    const source = readProjectFile('tests/server-integration/recovery-code.integration.test.ts');
+
+    expect(source).toMatch(/beforeAll\(async \(\) => \{[\s\S]*warmEdgeFunction\('recovery-code'/);
+    expect(source).toContain('WARMUP_HOOK_TIMEOUT_MS');
+    expect(source.indexOf("warmEdgeFunction('recovery-code'")).toBeLessThan(
+      source.indexOf('beforeAll(resetRateLimitBucket)'),
+    );
+  });
+});
+
+/**
  * Extracts one top-level boot block from `src/main.ts` by a pair of unique
  * anchor strings, rather than by counting `void supabaseClientPromise`
  * occurrences — Step 12 added a third independent consumer of that promise

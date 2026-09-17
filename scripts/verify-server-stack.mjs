@@ -60,6 +60,17 @@
  * from the fixture constants the tests already commit and refuses to overwrite
  * an existing one, so a development machine's real configuration is untouched.
  *
+ * Also runs a 2026-09-16 CI cold-start fix: after the health and portability
+ * checks confirm the stack is live and before any suite runs, every function
+ * under `supabase/functions/` (read from disk, `_shared` excluded) is warmed by
+ * one refused request with its own retry budget. That was the failing `server`
+ * job — undici's `TimeoutError` on the first, cold, request to a function whose
+ * worker had to resolve `npm:@supabase/supabase-js` against an empty module
+ * cache — and warming every function once in one place removes the class
+ * rather than inflating each caller's budget. See
+ * `scripts/warm-edge-functions.mjs` for the probe's design and for why a CORS
+ * preflight cannot be used on this local stack.
+ *
  * Run with `npm run verify:server`. It requires Docker; the stack runs entirely
  * offline once the CLI images are cached.
  *
@@ -76,8 +87,12 @@ import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
+import { warmEdgeFunctions } from './warm-edge-functions.mjs';
+
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MIGRATIONS_DIRECTORY = join(PROJECT_ROOT, 'supabase', 'migrations');
+const FUNCTIONS_DIRECTORY = join(PROJECT_ROOT, 'supabase', 'functions');
+const FUNCTIONS_BASE_URL = 'http://127.0.0.1:54321/functions/v1';
 const HEALTH_URL = 'http://127.0.0.1:54321/functions/v1/save-sync/v1/health';
 const CORE_PORTABILITY_URL =
   'http://127.0.0.1:54321/functions/v1/core-portability-check';
@@ -253,6 +268,39 @@ async function checkCorePortability() {
   );
 }
 
+/**
+ * Warms every Edge Function's worker once, after the stack is confirmed live
+ * and before any suite runs.
+ *
+ * A 2026-09-16 finding: the `server` job failed with undici's
+ * `TimeoutError: The operation was aborted due to timeout` on work that
+ * passes locally. Every timing-sensitive call in the stack carried a hard
+ * budget and no retry, and a CI runner boots each function's worker against an
+ * empty Deno/npm module cache while a developer machine has it warm — so the
+ * first request to a function is the one that pays for `npm:@supabase/
+ * supabase-js`, on the one machine least able to spare the time (4 vCPU shared
+ * by the stack, 16 Vitest files and 2 Playwright workers). Paying that cost
+ * here, once, with a retry budget of its own, removes the class rather than
+ * patching each caller's budget. See `scripts/warm-edge-functions.mjs` for why
+ * the probe is a refused `DELETE` rather than the CORS preflight F11 describes
+ * — the local Kong gateway answers `OPTIONS` itself and never boots a worker.
+ */
+async function warmFunctionsBeforeSuites() {
+  const results = await warmEdgeFunctions({
+    functionsDirectory: FUNCTIONS_DIRECTORY,
+    functionsBaseUrl: FUNCTIONS_BASE_URL,
+  });
+  const silent = results.filter((result) => !result.responded);
+
+  report(
+    results.length > 0 && silent.length === 0,
+    'Every Edge Function answered a first request before the suites run',
+    silent.length === 0
+      ? `${results.length} functions, ${results.map((result) => `${result.name}(${result.status})`).join(' ')}`
+      : `no response at all from ${silent.map((result) => result.name).join(', ')}`,
+  );
+}
+
 async function main() {
   console.log('Step 4 — Supabase project and local stack\n');
 
@@ -374,6 +422,9 @@ async function main() {
 
   console.log('\n> core portability check (Step 6)');
   await checkCorePortability();
+
+  console.log('\n> Edge Function warm-up pass (2026-09-16 CI cold-start finding)');
+  await warmFunctionsBeforeSuites();
 
   console.log('\n> npm run test:server-integration (Step 7)');
   report(
