@@ -2,15 +2,60 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 24 validation gate.** Step 24 (rejection
-handling) was implemented on 2026-09-14, on the user's explicit instruction: a
-rejected save leaves the local save intact and the session playable, surfaces a
-comprehensible notice, and writes one `save_audit` row per authenticated
-`PUT /v1/save` attempt. Step 25 must not begin until the user validates it.
+**Server milestone, at the Step 25 validation gate — Step 25 implemented
+2026-09-17, awaiting user validation; Step 26 is blocked until the user
+validates it.**
 
-Steps 9, 10, and 12–24 are implemented but unvalidated as one batch, because the
+Step 25 (abuse limits) was implemented on 2026-09-17, on the user's explicit
+instruction to proceed past the Step 24 gate: uploads, downloads, Telegram
+sign-ins and recovery-code redemption are now throttled per user **and** per
+address by one shared limiter
+(`supabase/functions/_shared/rateLimit.ts`, injected clock and store), every
+body-taking function caps document size **before** parsing, and a
+proof-of-absence test asserts no server code path derives identity or
+save-write authority from a client-supplied device or browser characteristic.
+It also closes Step 24's L2: a `429` is refused before any `save_audit` row
+exists on the path, so a flood cannot grow the table per refused request. The
+limits are derived from protocol §9's worst-case honest cadence and set several
+times looser, and a `429` is self-healing with no player-facing notice.
+
+Step 24 (rejection handling) was implemented on 2026-09-14: a rejected save
+leaves the local save intact and the session playable, surfaces a
+comprehensible notice, and writes one `save_audit` row per authenticated
+`PUT /v1/save` attempt.
+
+Steps 9, 10, and 12–25 are implemented but unvalidated as one batch, because the
 user directed work past several gates rather than pausing at each. Step 11
 (Apple sign-in) is cut.
+
+What Step 25 added, in one line each:
+
+- `_shared/rateLimit.ts` — the one fixed-window limiter: `createFixedWindowRateLimiter`
+  with an injected clock and store, `extractCallerAddress` (the gateway-appended
+  **last** `X-Forwarded-For` hop, never a client-supplied one), per-user and
+  per-address key builders, `rateLimitedResponse` (§10.2's `429` exactly), and
+  the prune past a size threshold that bounds the map.
+- `_shared/http.ts` — `MAX_REQUEST_BODY_BYTES = 65_536` now lives here rather
+  than privately in `save-sync`, and `discardRequestBody` drains a bounded
+  prefix of a body already refused by its declared size, so the client can
+  actually read the `413` instead of hanging on a response the gateway has not
+  relayed. The bytes are never buffered or parsed.
+- `save-sync` — `PUT` and `GET` each gain a per-address check (before
+  authentication) and a per-user check; `telegram-sign-in` gains a per-address
+  limit; `recovery-code` keeps its Step 14 per-address budget and gains a
+  per-user one on **generate** (redemption cannot have one — there is no caller
+  identity until the code has already matched).
+- `supabase/config.toml` — `[auth.rate_limit]` reviewed and deliberately left
+  unchanged; `anonymous_users` (30/hour/IP) is the only bound on guest-account
+  minting, which never passes through an Edge Function.
+- `tests/unit/server-fingerprint-absence.test.ts` — the proof of absence, with
+  its own anti-vacuity self-check.
+- `src/platform/web/cloudSaveUpload.ts` + `src/persistence/cloudSaveReplica.ts`
+  — the Step 19 replica honoured `rate_limited` with §9's ladder alone, so its
+  first retry came 1 s after a refusal that asked for up to 60 and re-entered
+  the closed window. The transport now parses `Retry-After` into `retryAfterMs`
+  and `#scheduleRetry` waits `max(ladderStep, retryAfterMs)` — a floor, never a
+  shortcut, and a malformed header leaves the ladder in charge.
 
 What Step 19 added, in one line each:
 
@@ -353,13 +398,14 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 24.** This is the gate; nothing below
-   starts before it.
-2. Step 25 onward — abuse limits (rate limits per user/address, a size cap before
-   parsing, no fingerprint-derived authority) and Step 26's adversarial suite.
-   **Carry-in from Step 24's L2:** every rejection now costs a service-role
-   round trip on the response path, and any authenticated caller gets a
-   1-request-to-1-audit-write amplification; Step 25's limits should bound both.
+1. **Wait for the user to validate Step 25.** This is the gate; nothing below
+   starts before it. Step 25 is implemented and awaiting validation; **Step 26
+   is blocked** on that validation.
+2. Step 26 onward — the adversarial suite, then Steps 27–37. **Step 24's L2 is
+   closed by Step 25:** a `429` is refused before any `save_audit` row exists on
+   the path, and an oversized body writes none either, so the
+   1-request-to-1-audit-write amplification no longer grows the table per
+   refused request.
 3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
    shipped only a DEV hook; it remains the one protocol requirement with no
    player-facing implementation.

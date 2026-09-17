@@ -370,6 +370,26 @@ unchanged by Step 21 and is the reason the recovery code ships before it.
 
 ## 9. Cadence and retry — decision D5, resolving F6
 
+**The server's limit must be looser than this cadence (Step 25).** Everything
+below describes what an honest *client* does; Step 25 added the server-side
+limits that bound abuse of the same endpoints, and the rule it was built to is
+that a limit tighter than the worst case these rules permit is a defect rather
+than a policy choice. Counting the worst case inside one 60-second window —
+three forced triggers (lifecycle flush, claimed offline reward, boot reconcile)
+each spending the full 1/2/4/8/16 s retry ladder, plus one routine upload — gives
+**19 requests**. `save-sync` therefore admits 60 uploads per minute per user
+(`SAVE_UPLOAD_MAX_PER_USER`), more than 3× headroom, and `GET /v1/save` the same
+figure. `recovery-code` keeps its Step 14 budget (30 redemptions per minute per
+address) and adds 30 generations per minute per user; `telegram-sign-in` admits
+60 sign-ins per minute per address. A `429` is §4's `rate_limited` — self-healing,
+never surfaced, retried after `Retry-After` — so none of these limits is ever
+visible to a player. "Retried after `Retry-After`" is now literal on the client
+too: Step 19's replica previously used the ladder below alone, so its first
+retry came one second after a refusal that asked for up to sixty and landed in
+the same closed window. `cloudSaveUpload.ts` parses the header into
+`retryAfterMs` and `#scheduleRetry` waits `max(ladderStep, retryAfterMs)` — the
+header can only lengthen the wait, never shorten it below §9's ladder.
+
 **Local persistence is unchanged.** `SavePersistenceCoordinator` keeps its
 `DEFAULT_SAVE_DEBOUNCE_MS = 500`. Nothing in this milestone slows the local save
 down.
@@ -639,8 +659,9 @@ running; §4 decides what, if anything, is shown.
 | D4 dominance conflict policy | Threat model §6 (no unseen loss) and §1 (progress outranks all) |
 | D5 cadence | Finding **F6**, now resolved |
 | Banner reuse and the mostly-blank "player sees" column | `src/ui/SaveDiagnosticBanner.ts`'s recorded no-retraction contract |
-| 64 KB cap | Threat model §4.4; enforced in Step 25 |
-| `save_rejected` | Step 23 (`evaluateProgressBound`), biased toward acceptance per threat model §1 |
+| 64 KB cap | Threat model §4.4; enforced in `save-sync` since Step 16, extended to every body-taking function and pinned *before* the parse in Step 25 |
+| `rate_limited` / 429 | Threat model §4.4 and §4.6; Step 25's per-user and per-address limits (`supabase/functions/_shared/rateLimit.ts`) |
+| No fingerprint-derived signal | Threat model §7.2's GDPR default; enforced by `tests/unit/server-fingerprint-absence.test.ts` (Step 25) |
 
 ## 14. CORS policy — added by Step 12, resolving finding F11
 

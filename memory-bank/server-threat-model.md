@@ -167,6 +167,20 @@ direct client write to `saves`; Step 25's rate limits and pre-parse size cap;
 Step 26's adversarial suite, which must fail if any single server-side guard is
 removed.
 
+**Step 25's refusal order, and what it bounds.** Every body-taking endpoint
+refuses in one documented sequence — CORS preflight → declared-size refusal →
+rate-limit refusal → authentication → body read → parse → validate → Step 23
+bound → write — so a guard never runs after the work it exists to prevent.
+Two consequences worth recording here: an oversized body is refused before it is
+buffered, and a `429` is refused before any `save_audit` row exists on the path,
+which is what bounds Step 24's L2 finding (one authenticated request → one
+service-role audit write) instead of letting a flood grow the table without
+bound. The limits themselves are in-process, per-worker fixed-window counters
+(`supabase/functions/_shared/rateLimit.ts`); they are best-effort, not a
+security boundary — an attacker with parallelism or one who waits out a recycled
+worker sees a higher effective ceiling. That is stated in code and in
+`architecture.md`'s Step 25 section rather than implied away.
+
 **Not defended.** A player who simply never uploads. They keep a local game;
 nothing is lost that was ever the server's.
 
@@ -182,7 +196,14 @@ asset in §1.
 
 **Defended by.** Step 14's recovery-code rotation, which invalidates a prior
 code; Step 32's audit log, which makes a takeover visible after the fact;
-Step 25's throttling of redemption attempts.
+Step 25's throttling of redemption attempts (30 per minute per address, as
+Step 14 set) and of code *generation* (30 per minute per user, the per-user half
+Step 25 added — generating rotates the account's only active code through the
+service role, so it needs its own bound). Redemption cannot have a per-user half
+before it resolves: the point of the endpoint is that there is no caller
+identity until the code has already been matched, and a post-match limit would
+run after the compare-and-swap it exists to bound. The code's 128-bit entropy
+remains the real backstop.
 
 **Not defended — recorded as finding F5.** An XSS flaw in our own bundle defeats
 this completely, and the plan contains no step for a Content Security Policy,
@@ -198,8 +219,16 @@ dependency-integrity halves of F5 remain unaddressed.
 
 **Worth.** Leaderboard stuffing, row growth, and cost.
 
-**Defended by.** Step 25, weakly, through per-address rate limits, and
-optionally through fingerprint-derived signals used *only* as one weak input.
+**Defended by.** Step 25, weakly, through per-address and per-user rate limits —
+and **not** through fingerprint-derived signals, which were considered and
+deliberately not collected, per §7.2's recorded default. Anonymous sign-in
+itself is bounded only by GoTrue's own `anonymous_users` (30 per hour per IP) in
+`supabase/config.toml`: `ensureGuestSession` calls `auth.signInAnonymously`
+directly, so guest-account minting never passes through an Edge Function. Step
+25 reviewed that value and kept it. The Edge Function bounds are 60 sign-ins per
+minute per address (`telegram-sign-in`), 60 uploads per minute per user and 600
+per address (`save-sync`). All of them are in-process, per-worker, best-effort
+counters — see §4.4 for the honesty note.
 
 **Not defended.** A determined attacker with many addresses. Accepted at the
 scale recorded in §7.1.
@@ -273,9 +302,16 @@ from the EU and **treat GDPR as applying**. Vietnam's PDPD (Decree 13/2023) is
 assumed to apply to the primary audience.
 **Consequence:** Step 25 collects **no** fingerprint-derived signals by default,
 relying on address and behavioural rate limits only — this avoids the consent
-question entirely and is the cheaper path. Step 33 implements deletion to the
-stricter standard. Step 3 stores the minimum personal data that identity
-requires.
+question entirely and is the cheaper path. **Implemented 2026-09-17:** the plan's
+optional weak fingerprint input was explicitly not taken, and the deliverable is
+the proof of absence rather than a collector —
+`tests/unit/server-fingerprint-absence.test.ts` fails if any server source names
+a client-supplied device or browser characteristic (User-Agent, `Sec-CH-UA-*`,
+`Accept-Language`, canvas/WebGL, screen dimensions, timezone, and the rest), and
+`supabase/functions/save-sync/index.test.ts` drives requests differing only in
+those headers to prove they change neither account selection nor save-write
+authorization. Step 33 implements deletion to the stricter standard. Step 3
+stores the minimum personal data that identity requires.
 **If wrong:** A confirmed non-EU-only audience would permit the fingerprint
 signal in Step 25 and relax Step 33's scope. Neither is on any critical path.
 **Not legal advice.** The operator (§7.6) must confirm the legal position before
