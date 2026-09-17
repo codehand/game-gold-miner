@@ -1414,6 +1414,141 @@ their own row, and RLS proving the log is invisible and unwritable to any client
 token); and `tests/server-e2e/save-rejection.spec.ts` proves the player-facing
 half in a real browser against a stubbed `422 save_rejected`.
 
+### Abuse limits (Step 25)
+
+One shared limiter module — `supabase/functions/_shared/rateLimit.ts` — and the
+three body- or identity-taking functions wired to it. Step 25's instruction is
+to rate-limit **uploads, authentication, and recovery-code redemption per user
+and per address**, cap document size **before parsing**, and prove no code path
+lets a fingerprint select an account or authorize a write.
+
+**The mechanism, and its honest scope.** `createFixedWindowRateLimiter` is a
+fixed-window counter: one `(windowStartMs, count)` pair per key in a `Map`,
+admitting up to `limit` attempts until `windowMs` elapses, then rolling. The
+clock and the store are both injected, which is what lets
+`_shared/rateLimit.test.ts` drive window rolls and prune pressure under
+`deno test` with no permission flags, no Docker and no waiting. A fixed window
+has a known boundary-burst weakness (up to 2×`limit` across a boundary) and it
+is accepted deliberately: a sliding window needs one timestamp per attempt per
+key, which is the unbounded, attacker-growable state the prune exists to bound.
+`recovery-code`'s Step 14 limiter was sliding; the observable contract — 30
+attempts a minute, then `429` — is unchanged and pinned from both sides.
+
+**Durability is stated, not implied (design constraint 1).** The stores are
+module-scoped in each function's `index.ts`, so they live for one worker's
+lifetime. Edge workers are multi-instance and recycled: an attacker with
+parallelism, or one who waits for a recycled worker, sees an effective ceiling
+up to `workers × limit`, and this module does not claim otherwise. Threat model
+§4.6 already accepts "a determined attacker with many addresses"; the real
+backstop behind recovery-code redemption is the code's 128-bit entropy, and
+behind an upload flood Step 23's progress bound plus the per-account row. What
+this limiter buys is that the *cheap* abuses cost bounded work — and that
+Step 24's L2 amplification (1 request → 1 service-role audit write) is bounded,
+because a `429` is refused before any audit write exists on the path.
+
+**The order every endpoint now refuses in (design constraint 2).** CORS
+preflight (answered by the router, per F11) → **declared-size refusal** →
+**rate-limit refusal** → **authentication** → body read → parse → validate →
+Step 23 bound → write. A guard that runs after the work it exists to prevent is
+not a guard, so each refusal sits above everything it is meant to spare. Two
+consequences are new at Step 25 and worth naming: the per-address check runs
+*before* authentication (a caller that never authenticates still costs work and
+has no user id to bucket by), and the declared-size check now also precedes
+authentication — so an oversized request writes no `save_audit` row either.
+
+**The limits, each derived rather than chosen (design constraint 4).**
+
+| Endpoint | Key | Limit | Derivation |
+|---|---|---|---|
+| `PUT /v1/save` | user | 60/min | §9's worst-case honest burst is 19 (3 forced triggers × the 6-request retry ladder, plus the routine upload); 60 is >3× headroom |
+| `PUT /v1/save` | address | 600/min | 10 sessions at the full per-user budget; a shared NAT, and the local integration suite's one observed address, must never be what this refuses |
+| `GET /v1/save` | user / address | 60 / 600/min | one boot download plus reloads; same address reasoning |
+| `telegram-sign-in` | address | 60/min | one sign-in per cold start plus retries, against one service-role `generateLink` per accepted call; looser than GoTrue's own `sign_in_sign_ups = 30`/5 min so the tighter one always wins |
+| `recovery-code /v1/redeem` | address | 30/min | Step 14's value, unchanged |
+| `recovery-code /v1/generate` | user | 30/min | each generate rotates the account's only active code through the service role |
+| guest sign-in (`ensureGuestSession`) | address | — | bounded only by GoTrue's `anonymous_users = 30/hour/IP`, reviewed and kept by Step 25 |
+
+**The per-user half of recovery-code, and where it can run.** Redemption cannot
+have one: the endpoint exists precisely because there is no caller identity
+until the code has already been matched, and a post-match limit would run after
+the compare-and-swap it exists to bound. Generation is authenticated, so that is
+where the per-user limit lives.
+
+**Pre-parse size cap.** `MAX_REQUEST_BODY_BYTES = 65_536` moved to
+`_shared/http.ts` (from `save-sync`'s own constant, whose 64 KB is §3's) and is
+now enforced by `telegram-sign-in` and `recovery-code` too, neither of which had
+any cap. Each function checks a truthful `Content-Length` first and the bytes
+actually received second, because a chunked body carries no header to check.
+AC5's proof is behavioural, not a code reading: `readBody`/`parseBody` are
+injected collaborators, and the tests assert the parse is never called for an
+oversized body.
+
+**No fingerprint signal is collected (design constraint, AC6/AC15).** Threat
+model §7.2 records the default — audience Vietnam/SEA, Supabase region
+Singapore, public website, so GDPR is assumed to apply — and Step 25 therefore
+takes the plan's *alternative*: address and behavioural limits only. The
+deliverable is the proof of absence, not a collector.
+`tests/unit/server-fingerprint-absence.test.ts` scans every server source
+(comments included; the generated bundle and test files excluded) for the
+client-supplied characteristics that decision forbids reading — `User-Agent`,
+`Sec-CH-UA-*`, `Accept-Language`, `X-Device-Id`, canvas/WebGL, screen
+dimensions, timezone, `deviceMemory`, `hardwareConcurrency`, `navigator.*` — and
+fails naming the file, line and signal. Its behavioural half in
+`save-sync/index.test.ts` drives two requests that differ *only* in a full set of
+those headers and asserts the resolved token, the resolved user id, the written
+user id and the resulting revision are identical, for both the upload and
+download routes. The scan was deliberately broken during development (a
+`user-agent` read planted in `save-sync/index.ts`) and observed to go red before
+being reverted.
+
+**Address derivation is not client-supplied.** `extractCallerAddress` reads the
+**last** hop of `X-Forwarded-For` — the one the platform gateway (Kong locally,
+Supabase's edge network in production) appends and a client cannot forge —
+never the first. Reading the first would let any caller mint unlimited fresh
+buckets by prepending a random address per request, which is the attack a
+per-address limit exists to blunt. A caller with no address at all is never
+throttled rather than bucketed into one shared key, which would let a single
+header-less caller deny every other.
+
+**The `429` is §10.2's, unchanged (§4).** `rateLimitedResponse` emits code
+`rate_limited`, a `Retry-After` header, and the same number in
+`detail.retryAfterSeconds` — computed from the actual remaining window rather
+than Step 14's fixed 60 — with no player-facing notice, because §4's "player
+sees" column for this row is empty: it is self-healing.
+
+**The client honours `Retry-After`, which it did not before Step 25.** Step 19's
+replica already treated `rate_limited` as retryable, but it backed off on §9's
+1/2/4/8/16 s ladder alone — so from attempt 1 it retried **one second** after the
+server had asked for up to sixty, walking straight back into the window that was
+still closed and burning the five-retry budget on requests the server was
+already committed to refusing. `cloudSaveUpload.ts` now parses the header
+(delta-seconds only; an HTTP-date, a zero, a negative, a fractional or a
+non-numeric value is treated as absent) into `retryAfterMs`, and
+`#scheduleRetry` waits `max(ladderStep, retryAfterMs)`. The header is a **floor,
+never a shortcut**: it can lengthen §9's wait, never shorten it, so a server
+answering a short `Retry-After` cannot make the client poll faster than the
+protocol already permits. An unreadable header leaves the ladder in sole charge
+and the failure stays retryable — a malformed header never turns a throttle into
+a stopped sync.
+
+Evidence: `_shared/rateLimit.test.ts` (9 Deno tests — admit-to-the-limit, a
+counting-down `Retry-After` that never rounds to 0, admit-again-after-the-roll,
+per-user/per-address key independence, `null` keys never throttled, prune
+bounding a 200-key rotation, last-hop extraction, and the exact §10.2 body);
+`save-sync/index.test.ts` (the §9 19-request honest burst admitted against the
+real exported constants with the next request refused, the address limit
+refusing before `resolveCaller` is reached, the per-user limit writing no
+`save_audit` row, the warm-up probe consuming no bucket, the pre-parse
+assertions, and the two fingerprint-behaviour tests);
+`telegram-sign-in/index.test.ts` and `recovery-code/index.test.ts` (the same
+pre-parse and `429` shapes, the per-user generate budget, and the Step 14 budget
+plus reset-route clearing); `tests/unit/server-fingerprint-absence.test.ts`;
+and `tests/server-integration/rate-limit.integration.test.ts` (a real flood
+answered `429` with `Retry-After`, an honest client in the same run never
+throttled, `413` for an oversized body, and `save_audit` not growing by one row
+per refused request). `supabase/config.toml`'s `[auth.rate_limit]` was reviewed
+and deliberately left unchanged, with the reasoning recorded there.
+
 ### Guest linking and the identity collision (Step 13)
 
 Three of the step's required flows fall out of what Steps 10/12/17 already

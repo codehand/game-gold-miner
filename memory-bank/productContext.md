@@ -211,6 +211,24 @@ body size, the reason, and the device's own claimed clock alongside the server's
 player's clock. This is groundwork for the later alerting step, not a
 player-facing feature.
 
+Server-milestone Step 25 (2026-09-17) adds abuse limits, and its player-facing
+requirement is that **an honest player never notices them**. The server now
+throttles uploads, downloads, Telegram sign-ins and recovery-code redemption per
+account and per address, and caps every request body before reading it, so a
+flood cannot make the service do unbounded work or grow the audit log without
+bound. The budget is derived from the worst case the sync protocol already
+permits — a routine upload a minute, plus the forced saves a player triggers by
+leaving the tab, claiming an offline reward or returning to a stale device,
+plus the retry ladder — and is set several times looser than that, so a player
+playing normally is never slowed. When a limit does fire, the server answers
+`429 rate_limited` with a `Retry-After`, and the client treats it as retryable
+and self-healing: there is deliberately **no** player-facing notice, exactly as
+the protocol's error table specifies, because a throttle is a signal to the
+software rather than something the player must act on. The one deliberate
+privacy decision is also a player-facing one: the server collects **no**
+browser- or device-fingerprint signal at all, relying on address and behaviour
+alone, so nothing about a player's hardware is stored to make this work.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

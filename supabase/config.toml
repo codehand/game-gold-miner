@@ -202,6 +202,29 @@ password_requirements = ""
 # rp_id = "localhost"
 # rp_origins = ["http://127.0.0.1:3000"]
 
+# Server-milestone Step 25 reviewed the GoTrue-level limits below and decided
+# they STAND unchanged. This is the one file in Step 25 whose edit is
+# intentional rather than forbidden, and the decision recorded here is
+# "no change", not an oversight.
+#
+# Why these matter to Step 25 at all: they are the limits an Edge Function
+# never sees. `ensureGuestSession` (`src/platform/web/guestSession.ts`) calls
+# `auth.signInAnonymously` directly, so a guest-account flood never passes
+# through `telegram-sign-in`, `save-sync` or `recovery-code` and is bounded
+# only here — `anonymous_users` is threat model §4.6's actual per-address
+# defence against one browser minting guest identities in bulk, and
+# `sign_in_sign_ups`/`token_verifications` bound the sign-in flows around the
+# two functions that do have their own limiters.
+#
+# Why no change: each value is already at or below the corresponding limit
+# Step 25 adds in code (save-sync 60 uploads/min/user, telegram-sign-in 60
+# sign-ins/min/address, recovery-code 30 redemptions/min/address), so the
+# tighter of the two always wins and lowering these would only make a
+# legitimate first frame fail. `supabase/config.toml` is also a *local
+# development* stack's configuration; a real deployment's Auth limits are
+# project settings, not this file, so tuning them here would change what the
+# integration suite sees without changing production. Step 25 therefore
+# records the review and leaves the numbers alone.
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
 email_sent = 2

@@ -55,32 +55,41 @@
  * email is ever sent) when the account has none — guaranteeing
  * `generateLink` *finds* the correct row rather than creating a second one.
  *
- * **Rate limiting is a deliberate interim seam, honestly labeled as
- * best-effort.** Step 25 is the plan's own named owner of "rate-limit
- * uploads, authentication, and recovery-code redemption per user and per
- * address" as a cross-cutting concern, and the Step 3 schema design
- * deliberately carries no per-code failed-attempt counter ("counting per
- * code would miss the attack"). This ships a minimal in-memory,
- * module-scoped fixed-window limiter keyed by caller address, injected the
- * same way every other collaborator here is, so Step 25 can swap in a
- * persistent, distributed implementation without touching `handleRedeem`
- * itself. A 2026-09-12 review finding: `extractCallerAddress` reads the
- * *last* `X-Forwarded-For` hop — the one this platform's gateway appends and
- * a client cannot forge — rather than the first, client-suppliable one, so
- * rotating a fake header no longer buys a fresh bucket. Confirmed against
- * the local stack: the gateway (Kong locally, Supabase's own edge network in
- * production) always supplies this trusted hop, whether or not the client
- * sent the header at all, so in practice every real caller does get bucketed
- * — the `null`/"no address" case below only guards a caller that somehow
- * reaches this handler without passing through that gateway at all, which no
- * deployment path in this project allows today; it is a defensive default,
- * not a case this project's own traffic exercises. This limiter remains a
- * speed bump for casual abuse, not a security boundary — the real backstop
- * against brute force is the code's own 128-bit entropy — which is also why
- * the threshold is generous (30 per minute) rather than tight: it costs
- * nothing extra against a real attacker while comfortably absorbing a real
- * user's own retry bursts, or many distinct real users who happen to share
- * one observed address (an office NAT, for instance).
+ * **Rate limiting is best-effort, and now genuinely per user and per
+ * address.** Step 14 shipped a minimal in-memory, module-scoped limiter keyed
+ * by caller address as an explicit interim seam; Step 25 cashed the seam in.
+ * The mechanism now lives in `../_shared/rateLimit.ts`, shared with
+ * `save-sync` and `telegram-sign-in`, and this function consults **two** of
+ * its limiters: `redemptionByAddress` on the unauthenticated `/v1/redeem`
+ * (unchanged budget — 30 per minute) and `generateByUser` on the
+ * authenticated `/v1/generate` (Step 25's per-user half; see
+ * `RATE_LIMIT_MAX_GENERATES_PER_USER` for why redemption cannot have one
+ * before it resolves). `handleRedeem`'s and `handleGenerate`'s own bodies did
+ * not have to change for this, which was the seam's whole point.
+ *
+ * A 2026-09-12 review finding carried over unchanged: `extractCallerAddress`
+ * (now shared) reads the *last* `X-Forwarded-For` hop — the one this
+ * platform's gateway appends and a client cannot forge — rather than the
+ * first, client-suppliable one, so rotating a fake header no longer buys a
+ * fresh bucket. Confirmed against the local stack: the gateway (Kong locally,
+ * Supabase's own edge network in production) always supplies this trusted
+ * hop, whether or not the client sent the header at all, so in practice every
+ * real caller does get bucketed — the `null`/"no address" case only guards a
+ * caller that somehow reaches this handler without passing through that
+ * gateway at all, which no deployment path in this project allows today; it
+ * is a defensive default, not a case this project's own traffic exercises.
+ * The limiter remains a speed bump for casual abuse, not a security boundary
+ * — the real backstop against brute force is the code's own 128-bit entropy
+ * — which is also why the threshold is generous (30 per minute) rather than
+ * tight: it costs nothing extra against a real attacker while comfortably
+ * absorbing a real user's own retry bursts, or many distinct real users who
+ * happen to share one observed address (an office NAT, for instance).
+ *
+ * **A `429` follows §10.2 exactly.** `rateLimitedResponse` (shared) emits
+ * code `rate_limited`, a `Retry-After` header, and the same number inside
+ * `detail.retryAfterSeconds` — the actual remaining window rather than Step
+ * 14's fixed 60 — with no player-facing notice (§4's "player sees" column for
+ * this row is empty).
  *
  * **A failed mint reverts the redemption rather than burning the code.**
  * `redeemRecoveryCodeViaServiceRole` marks the row redeemed *before*
@@ -102,7 +111,24 @@
  */
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0';
 
-import { corsPreflightResponse, errorResponse, jsonResponse } from '../_shared/http.ts';
+import {
+  corsPreflightResponse,
+  declaredBodyBytes,
+  discardRequestBody,
+  errorResponse,
+  jsonResponse,
+  MAX_REQUEST_BODY_BYTES,
+} from '../_shared/http.ts';
+import {
+  addressRateLimitKey,
+  createFixedWindowRateLimiter,
+  createInMemoryRateLimitStore,
+  extractCallerAddress,
+  rateLimitedResponse,
+  userRateLimitKey,
+  type RateLimitDecision,
+  type RateLimiter,
+} from '../_shared/rateLimit.ts';
 
 const FUNCTION_ROUTE_PREFIX = '/recovery-code';
 const PLATFORM_ROUTE_PREFIX = '/functions/v1';
@@ -133,7 +159,13 @@ const CODE_BYTE_LENGTH = 16;
 const CODE_GROUP_SIZE = 4;
 const RECOVERY_EMAIL_DOMAIN = 'recovery.invalid';
 
-const RATE_LIMIT_WINDOW_MS = 60_000;
+/**
+ * Step 25 moved the mechanism into `../_shared/rateLimit.ts` — one
+ * implementation shared with `save-sync` and `telegram-sign-in` instead of
+ * three. The numbers and the window below are `recovery-code`'s own and are
+ * unchanged from Step 14; what is new in Step 25 is the **per-user** half.
+ */
+export const RATE_LIMIT_WINDOW_MS = 60_000;
 /**
  * A 2026-09-12 review finding, confirmed against the live local stack: the
  * platform gateway in front of this function (Kong locally, Supabase's own
@@ -145,9 +177,28 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
  * 30 gives comfortable headroom for a real user's own retry bursts (mistyped
  * codes, copy/paste errors) without weakening the actual security backstop,
  * which is the code's 128-bit entropy, not this counter.
+ *
+ * The window's 60 seconds is also the maximum `Retry-After` this limiter can
+ * report, which is the constant Step 14 answered with unconditionally; the
+ * fixed-window limiter now reports the actual remainder instead.
  */
-const RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS = 30;
-const RATE_LIMIT_RETRY_AFTER_SECONDS = 60;
+export const RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS = 30;
+/**
+ * Step 25's per-user half. A `/v1/generate` call is authenticated and each
+ * accepted one rotates the account's only active code through the
+ * `rotate_recovery_code` RPC — a revoke plus an insert in one transaction,
+ * under the service role. A real player generates a code once and might
+ * re-generate after losing the screenshot; 30/minute matches the redemption
+ * budget and is far above any plausible legitimate retry pattern while still
+ * bounding that write amplification.
+ *
+ * Redemption cannot have a per-user half *before* it resolves: the whole
+ * point of `POST /v1/redeem` is that there is no caller identity to verify
+ * until the code has already been matched, and a post-match limit would run
+ * after the compare-and-swap it exists to bound. Its per-address half is the
+ * meaningful one, and 128-bit entropy remains the real backstop.
+ */
+export const RATE_LIMIT_MAX_GENERATES_PER_USER = 30;
 
 export function resolveFunctionRoute(requestUrl: string): string {
   let path = new URL(requestUrl).pathname;
@@ -173,23 +224,10 @@ function extractBearerToken(authorizationHeader: string | null): string | null {
   return match === null ? null : match[1];
 }
 
-/**
- * The *last* hop in `X-Forwarded-For` — the one this platform's own gateway
- * appended, and therefore the one entry in the list a client cannot forge by
- * prepending fake addresses of its own — or `null` when the header is
- * absent entirely. `null` means "no address to bucket by," not "one shared
- * address for every such caller": see the rate-limiter doc comment above for
- * why bucketing it instead would be a global-denial footgun, not a safety
- * margin.
- */
-function extractCallerAddress(request: Request): string | null {
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (!forwardedFor) {
-    return null;
-  }
-  const hops = forwardedFor.split(',');
-  return hops[hops.length - 1].trim();
-}
+// `extractCallerAddress` moved to `../_shared/rateLimit.ts` at Step 25 so all
+// three limited functions read the trusted last `X-Forwarded-For` hop through
+// one implementation. Its behaviour — and the reason a client-supplied first
+// hop is never authority — is documented there.
 
 async function hmacSha256(keyBytes: BufferSource, message: string): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, [
@@ -296,11 +334,23 @@ export type MintSessionForUser = (userId: string) => Promise<MintSessionResult>;
 export type RevertRecoveryCodeRedemption = (canonicalCode: string) => Promise<void>;
 
 /**
- * Resolves `true` when the caller may proceed, `false` when throttled.
- * `address` is `null` when the caller sent no `X-Forwarded-For` at all —
- * see `extractCallerAddress`'s doc comment for why that must never throttle.
+ * Records one attempt and reports whether the caller may proceed, plus the
+ * `Retry-After` to answer with when not. `address` is `null` when the caller
+ * sent no `X-Forwarded-For` at all — see `extractCallerAddress`'s doc comment
+ * in `../_shared/rateLimit.ts` for why that must never throttle.
+ *
+ * Step 25 changed this from a bare `boolean` to the shared
+ * `RateLimitDecision`, which is what lets the `429` carry the *actual*
+ * remaining window rather than Step 14's fixed 60.
  */
-export type CheckRedemptionRateLimit = (address: string | null) => Promise<boolean>;
+export type CheckRedemptionRateLimit = (address: string | null) => Promise<RateLimitDecision>;
+
+/** Step 25: the per-user half, on the authenticated `POST /v1/generate` route. See `RATE_LIMIT_MAX_GENERATES_PER_USER`. */
+export type CheckGenerateRateLimit = (userId: string) => Promise<RateLimitDecision>;
+
+/** Step 25 (AC5): injected so a test can prove the pre-parse size cap refuses before the body is read or parsed. */
+export type ReadRedeemBody = (request: Request) => Promise<string>;
+export type ParseRedeemBody = (rawBody: string) => unknown;
 
 /**
  * Resolves `true` only when `providedToken` matches a configured reset
@@ -319,6 +369,9 @@ export interface RecoveryCodeDeps {
   readonly revertRecoveryCodeRedemption: RevertRecoveryCodeRedemption;
   readonly mintSessionForUser: MintSessionForUser;
   readonly checkRedemptionRateLimit: CheckRedemptionRateLimit;
+  readonly checkGenerateRateLimit: CheckGenerateRateLimit;
+  readonly readRedeemBody: ReadRedeemBody;
+  readonly parseRedeemBody: ParseRedeemBody;
   readonly checkTestResetAuthorization: CheckTestResetAuthorization;
   readonly resetRateLimitState: ResetRateLimitState;
 }
@@ -338,6 +391,13 @@ async function handleGenerate(
     return errorResponse(401, 'unauthenticated', 'Invalid or expired token.', { origin });
   }
 
+  // Step 25's per-user half, and the only place it can run: this route has a
+  // verified caller, while redeem does not until the code is already matched.
+  const userDecision = await deps.checkGenerateRateLimit(caller.userId);
+  if (!userDecision.allowed) {
+    return rateLimitedResponse(origin, userDecision.retryAfterSeconds);
+  }
+
   const plaintext = generateRecoveryCodePlaintext();
 
   await deps.rotateRecoveryCode(caller.userId, canonicalizeRecoveryCode(plaintext));
@@ -350,17 +410,39 @@ async function handleRedeem(
   deps: RecoveryCodeDeps,
   origin: string | null,
 ): Promise<Response> {
-  const allowed = await deps.checkRedemptionRateLimit(extractCallerAddress(request));
-  if (!allowed) {
-    return errorResponse(429, 'rate_limited', 'Too many recovery-code attempts.', {
-      origin,
-      retryAfterSeconds: RATE_LIMIT_RETRY_AFTER_SECONDS,
-    });
+  // Step 25 (design constraint 2): declared-size refusal, then the rate-limit
+  // refusal, both before the body is read at all — let alone parsed, HMAC'd
+  // or compared against the stored hash. §10.2's exact 429 shape comes from
+  // the shared helper.
+  const declaredLength = declaredBodyBytes(request);
+  if (declaredLength !== null && declaredLength > MAX_REQUEST_BODY_BYTES) {
+    // Discard what the client has already sent before answering, so it can actually
+    // read this refusal — see `discardRequestBody`. Still never buffered, never parsed.
+    await discardRequestBody(request);
+    return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_REQUEST_BODY_BYTES} bytes.`, { origin });
+  }
+
+  const addressDecision = await deps.checkRedemptionRateLimit(extractCallerAddress(request));
+  if (!addressDecision.allowed) {
+    return rateLimitedResponse(origin, addressDecision.retryAfterSeconds);
+  }
+
+  let rawBody: string;
+  try {
+    rawBody = await deps.readRedeemBody(request);
+  } catch {
+    return errorResponse(400, 'malformed_request', 'Body could not be read.', { origin });
+  }
+
+  // The authoritative check, still before any parse: a chunked body carries no
+  // `Content-Length` for the refusal above to catch.
+  if (new TextEncoder().encode(rawBody).length > MAX_REQUEST_BODY_BYTES) {
+    return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_REQUEST_BODY_BYTES} bytes.`, { origin });
   }
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = deps.parseRedeemBody(rawBody);
   } catch {
     return errorResponse(400, 'malformed_request', 'Body is not valid JSON.', { origin });
   }
@@ -623,76 +705,74 @@ async function mintSessionForUserViaGenerateLink(userId: string): Promise<MintSe
 }
 
 /**
- * A fixed, in-memory, module-scoped limiter — a deliberate interim seam.
- * Step 25 owns a persistent, distributed per-user/per-address limiter across
- * every endpoint this milestone has; this is enough for this step's own
- * test ("wrong codes are... throttled") without inventing infrastructure a
- * later step owns. Not safe across multiple worker instances or a restart —
- * documented, not hidden.
- */
-const redemptionAttemptsByAddress = new Map<string, number[]>();
-
-/**
- * Sweeps every key, not just the one about to be checked — a determined
- * caller who never reuses an address (this function's own integration test
- * does exactly that on purpose) would otherwise grow this map by one entry
- * per request forever. Dropping a key once its filtered window is empty
- * bounds the map to addresses with a *live* attempt in the last window,
- * which is a small, self-limiting set regardless of how many distinct
- * addresses have ever been seen.
+ * Step 25: the mechanism moved to `../_shared/rateLimit.ts` — one fixed-window
+ * limiter shared with `save-sync` and `telegram-sign-in` instead of three
+ * hand-rolled counters. What used to be `redemptionAttemptsByAddress` is now
+ * the shared in-memory store behind `redemptionByAddress` below, with the same
+ * 30-per-minute budget, the same "no address → never throttle" rule, and the
+ * same size-gated sweep (`pruneSizeThreshold`; see
+ * `createFixedWindowRateLimiter` for why sweeping on every request under a
+ * rotated-address attack is O(n²) rather than a safety margin).
  *
- * Only called once the map has grown past `RATE_LIMIT_PRUNE_SIZE_THRESHOLD`
- * (below), not on every request — a 2026-09-13 review finding: under the
- * exact rotated-address attack this exists to bound, nothing in the map is
- * ever expired *yet* at the moment each new address is added, so sweeping
- * on every request was O(n) per request, i.e. O(n²) total, trading the
- * unbounded-memory problem for an unbounded-CPU one. Gating on size instead
- * makes this amortized: a sweep only runs once there is real memory
- * pressure, and because entries this old are exactly the ones a real
- * fixed-window limiter expects to have expired by then, one sweep at that
- * point reliably brings the map back under the threshold rather than
- * running every request in between for nothing.
+ * The one deliberate change is the window *shape*: fixed rather than sliding,
+ * which is what lets the store hold two numbers per key instead of a list of
+ * timestamps whose length is the attacker's to choose. The observable contract
+ * — 30 attempts in a minute, then a `429` carrying `Retry-After` — is
+ * unchanged, and is pinned by `index.test.ts` and
+ * `tests/server-integration/recovery-code.integration.test.ts`.
  */
-function pruneExpiredRateLimitEntries(now: number): void {
-  for (const [address, attempts] of redemptionAttemptsByAddress) {
-    const live = attempts.filter((attemptedAt) => now - attemptedAt < RATE_LIMIT_WINDOW_MS);
-    if (live.length === 0) {
-      redemptionAttemptsByAddress.delete(address);
-    } else if (live.length !== attempts.length) {
-      redemptionAttemptsByAddress.set(address, live);
-    }
-  }
-}
-
-/** See `pruneExpiredRateLimitEntries`'s doc comment for why this is a size gate, not an every-request sweep. */
 const RATE_LIMIT_PRUNE_SIZE_THRESHOLD = 1_000;
 
-function checkRedemptionRateLimitInMemory(address: string | null): Promise<boolean> {
-  // No address to bucket by — see `extractCallerAddress`'s doc comment for
-  // why letting this through beats sharing one bucket across every such
-  // caller.
-  if (address === null) {
-    return Promise.resolve(true);
-  }
-
-  const now = Date.now();
-  if (redemptionAttemptsByAddress.size > RATE_LIMIT_PRUNE_SIZE_THRESHOLD) {
-    pruneExpiredRateLimitEntries(now);
-  }
-
-  const attempts = (redemptionAttemptsByAddress.get(address) ?? []).filter(
-    (attemptedAt) => now - attemptedAt < RATE_LIMIT_WINDOW_MS,
-  );
-
-  if (attempts.length >= RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS) {
-    redemptionAttemptsByAddress.set(address, attempts);
-    return Promise.resolve(false);
-  }
-
-  attempts.push(now);
-  redemptionAttemptsByAddress.set(address, attempts);
-  return Promise.resolve(true);
+export interface RecoveryCodeRateLimiters {
+  readonly redemptionByAddress: RateLimiter;
+  readonly generateByUser: RateLimiter;
+  /** Clears both stores — what `TEST_RESET_RATE_LIMIT_ROUTE` invokes. */
+  readonly resetRateLimitState: () => void;
 }
+
+/**
+ * Each limiter owns its own store: an `address:` key is literally the same
+ * string as a `user:` key only if the two were mixed into one map, and
+ * separate stores are what makes the redemption budget and the generate budget
+ * independent rather than one budget spent twice. Built by a factory so a test
+ * can drive the real configuration with an injected clock.
+ */
+export function createRecoveryCodeRateLimiters(
+  options: { readonly clockMs?: () => number } = {},
+): RecoveryCodeRateLimiters {
+  const clockMs = options.clockMs ?? Date.now;
+  const redemptionStore = createInMemoryRateLimitStore();
+  const generateStore = createInMemoryRateLimitStore();
+
+  return {
+    redemptionByAddress: createFixedWindowRateLimiter({
+      limit: RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      clockMs,
+      store: redemptionStore,
+      pruneSizeThreshold: RATE_LIMIT_PRUNE_SIZE_THRESHOLD,
+    }),
+    generateByUser: createFixedWindowRateLimiter({
+      limit: RATE_LIMIT_MAX_GENERATES_PER_USER,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      clockMs,
+      store: generateStore,
+      pruneSizeThreshold: RATE_LIMIT_PRUNE_SIZE_THRESHOLD,
+    }),
+    resetRateLimitState: () => {
+      redemptionStore.clear();
+      generateStore.clear();
+    },
+  };
+}
+
+/**
+ * Module-scoped, so it lives as long as this worker does — the honest scope
+ * recorded in `memory-bank/architecture.md`'s Step 25 section: per worker,
+ * best-effort, and an attacker with parallelism sees a higher ceiling. The
+ * real backstop behind redemption is the code's 128-bit entropy.
+ */
+const RECOVERY_CODE_RATE_LIMITERS = createRecoveryCodeRateLimiters();
 
 /**
  * Unset in every environment but a local dev stack's own
@@ -710,20 +790,22 @@ function checkTestResetAuthorizationViaEnv(providedToken: string | null): Promis
   return Promise.resolve(timingSafeEqual(providedToken, expectedToken));
 }
 
-function resetRateLimitStateInMemory(): Promise<void> {
-  redemptionAttemptsByAddress.clear();
-  return Promise.resolve();
-}
-
 const defaultDeps: RecoveryCodeDeps = {
   resolveCaller: resolveCallerViaSupabaseAuth,
   rotateRecoveryCode: rotateRecoveryCodeViaServiceRole,
   redeemRecoveryCode: redeemRecoveryCodeViaServiceRole,
   revertRecoveryCodeRedemption: revertRecoveryCodeRedemptionViaServiceRole,
   mintSessionForUser: mintSessionForUserViaGenerateLink,
-  checkRedemptionRateLimit: checkRedemptionRateLimitInMemory,
+  checkRedemptionRateLimit: (address) =>
+    RECOVERY_CODE_RATE_LIMITERS.redemptionByAddress.check(addressRateLimitKey(address)),
+  checkGenerateRateLimit: (userId) =>
+    RECOVERY_CODE_RATE_LIMITERS.generateByUser.check(userRateLimitKey(userId)),
+  readRedeemBody: async (request: Request): Promise<string> => await request.text(),
+  parseRedeemBody: (rawBody: string): unknown => JSON.parse(rawBody),
   checkTestResetAuthorization: checkTestResetAuthorizationViaEnv,
-  resetRateLimitState: resetRateLimitStateInMemory,
+  resetRateLimitState: async () => {
+    RECOVERY_CODE_RATE_LIMITERS.resetRateLimitState();
+  },
 };
 
 export async function handleRequest(

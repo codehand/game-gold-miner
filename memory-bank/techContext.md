@@ -998,8 +998,12 @@ fixed with a token-gated `POST /v1/test-only-reset-rate-limit` route (see
 - The leaderboard metric, reset period, and tie-break — Step 27. The schema is
   metric-agnostic on purpose: a season or period is a `board_key` value, not a
   schema change.
-- Rate-limit counters — Step 25, which may use platform facilities rather than
-  tables.
+- Rate-limit counters — settled by Step 25, which chose **no table**: the shared
+  limiter keeps a fixed-window `Map` per worker
+  (`supabase/functions/_shared/rateLimit.ts`), pruned past a size threshold.
+  It is best-effort rather than a durable guarantee — see `architecture.md`'s
+  Step 25 section for why that is accepted at this scale — so no migration was
+  added for it.
 - `offlineGrant` and anything Step 22 needs beyond `received_at`, which already
   anchors it.
 
@@ -1516,6 +1520,89 @@ clamps `document_bytes` defensively. **L3 (LOW)** — `request.text()` on an
 aborted body and building a `409` from a corrupted stored row are now also
 caught and recorded as `server_error` rows. Evidence rose to 112 Deno server
 unit tests and 91 integration tests.
+
+Server-milestone Step 25 (abuse limits). One shared limiter,
+`supabase/functions/_shared/rateLimit.ts`: a fixed-window counter with an
+**injected clock and injected store**, so `_shared/rateLimit.test.ts` drives
+window rolls, `Retry-After` countdown and prune pressure under
+`deno test supabase/functions` with no `--allow-*` flag, no Docker and no
+waiting. `recovery-code`'s Step 14 per-address limiter was folded into it with
+its behaviour and its `TEST_RESET_RATE_LIMIT_ROUTE` intact, and the same module
+now backs `save-sync` (`PUT`/`GET` per user and per address) and
+`telegram-sign-in` (per address). Limits, each derived rather than chosen:
+60 uploads/min/user and 600/min/address, 60 downloads/min/user and
+600/min/address, 60 sign-ins/min/address, 30 redemptions/min/address (Step 14's
+value) and 30 generations/min/user (the per-user half — redemption cannot have
+one, because there is no caller identity until the code has already matched).
+
+`MAX_REQUEST_BODY_BYTES = 65_536` moved from `save-sync`'s private constant to
+`_shared/http.ts` and is now enforced by `telegram-sign-in` and `recovery-code`
+too, neither of which had any cap; each function checks a truthful
+`Content-Length` first and the received byte length second, because a chunked
+body carries no header to check.
+
+Two findings from building it. **The declared-size refusal now drains a bounded
+prefix of the body before answering** (`discardRequestBody`, 1 MiB): answering a
+`413` without reading left the client waiting on a response Kong had not yet
+relayed, observed as a 20 s `TimeoutError` the moment the refusal moved above
+authentication. The bytes are never buffered into a string and never parsed, so
+AC5's "refused before it is parsed" stays meaningful. **The refusal order is
+CORS preflight → declared size → rate limit → authentication → body read →
+parse → validate → Step 23 bound → write**, which is what bounds Step 24's L2
+(1 authenticated request → 1 service-role `save_audit` write): a `429` is
+refused before any audit write exists on the path, and an oversized body now
+writes none either. `supabase/config.toml`'s `[auth.rate_limit]` was reviewed
+and deliberately **left unchanged** — its `anonymous_users` (30/hour/IP) is the
+only bound on `ensureGuestSession`'s direct `signInAnonymously`, which never
+passes through an Edge Function, and each committed value is already at or below
+the corresponding in-code limit. No fingerprint-derived signal is collected at
+all (threat model §7.2's GDPR default), and the enforcement is
+`tests/unit/server-fingerprint-absence.test.ts`, deliberately broken once during
+development (a planted `user-agent` read in `save-sync/index.ts`) and observed
+to fail naming the file, line and signal. Evidence rose to 682 Vitest unit
+tests, 138 Deno unit tests, and one new live suite,
+`tests/server-integration/rate-limit.integration.test.ts`.
+
+The one client change Step 25 needed: `rate_limited` was already retryable in
+Step 19's replica, but it backed off on §9's 1/2/4/8/16 s ladder alone — so its
+first retry came one second after a refusal asking for up to sixty, straight
+back into the closed window. `cloudSaveUpload.ts` parses `Retry-After`
+(delta-seconds only) into `retryAfterMs`; `#scheduleRetry` waits
+`max(ladderStep, retryAfterMs)`, a floor and never a shortcut, and an absent or
+malformed header leaves the ladder in sole charge rather than turning the
+throttle into a stopped sync.
+
+**Step 25's rework also repaired a pre-existing client-E2E flake.**
+`tests/e2e/player-journey.spec.ts` aimed every press at coordinates read from
+`BootScene`'s rendered-state read-back, which is republished at most once every
+`VIEW_DIAGNOSTIC_INTERVAL_MS` (100 ms) while the mine camera is moved the instant
+a wheel is applied. A snapshot read just after a scroll could therefore still
+describe where the control *was*: the press landed on empty space, the upgrade
+modal never opened, and the journey failed with a message that said nothing about
+the cause. Reproduced at `f573d5d` and — this is the point — identically with the
+Step 25 `src/` change reverted in place, so it is not a Step 25 defect. Two more
+harness bugs sat behind it: the scroll step wheeled a whole viewport height,
+overshooting a control that was only just out of view, and it awaited
+`expect.poll(isPressable)`, which a *stale* republish satisfied before the scroll
+had landed. `readSettledPurchaseControl` now reads until two consecutive
+snapshots agree on placement (`screenBounds` + `isPressable`), the scroll travels
+exactly the distance needed to centre the control, and a press is re-established
+and re-aimed up to `PRESS_ATTEMPTS` times. A press also now pins the opened
+modal's own `target` from `data-floor-upgrade-modal` instead of mere visibility,
+so a mis-aimed press can never buy from a floor the journey did not mean to open
+— the assertion is strictly stronger than the one it replaced. Verified 3/3 in
+isolation and 2/2 full-suite `npm run test:e2e`, where the spec had failed before
+and continues to fail on pristine `origin/master`.
+
+`production-stages.spec.ts:368` ("the filled cart eases from the chute toward the
+warehouse") is a **separate, pre-existing, load-dependent flake** and is *not*
+fixed here: the cart eases correctly (112 → 128.03) but the poll demands
+> 132 within a fixed 6.5 s real-time budget. It fails on pristine
+`origin/master` in this sandbox too (2/2 full-suite runs) and was already
+recorded by the first Step 25 iteration as flaking with a varying failing test
+(`368`/`449`/`449`); it passed in the reviewing human's own run. Re-tuning that
+budget is explicitly out of scope for this task (AC18, "Re-tuning unrelated test
+budgets").
 
 ## Closed incident reports
 

@@ -14,7 +14,18 @@
 import assert from 'node:assert/strict';
 
 import { createInitialGameState, createSaveDocument, GameNumber, BASE_GAME_BALANCE } from '../_shared/generated/core-bundle.js';
-import { handleRequest, normalizeAuditRevision, resolveFunctionRoute, type SaveSyncDeps, type StoredSaveRow } from './index.ts';
+import type { RateLimiter } from '../_shared/rateLimit.ts';
+import {
+  createSaveSyncRateLimiters,
+  handleRequest,
+  normalizeAuditRevision,
+  resolveFunctionRoute,
+  SAVE_UPLOAD_MAX_PER_USER,
+  type SaveAuditEntry,
+  type SaveSyncDeps,
+  type SaveSyncRateLimiters,
+  type StoredSaveRow,
+} from './index.ts';
 
 const FIXTURE_USER_ID = '11111111-1111-1111-1111-111111111111';
 const NOW_MS = 1_757_000_000_000;
@@ -72,8 +83,34 @@ function noopDeps(overrides: Partial<SaveSyncDeps> = {}): SaveSyncDeps {
     // existing test focused on its own subject. Audit-specific tests override
     // this to capture the row.
     writeSaveAudit: async () => {},
+    // Step 25: permissive limiters by default, so every test written before
+    // this step keeps exercising its own subject rather than a bucket. The
+    // rate-limit tests below substitute `denyAllLimiters` / a seeded factory.
+    rateLimit: permissiveRateLimiters(),
+    // The real reader/parser, so tests that do not care about the pre-parse
+    // guard behave exactly as before it existed.
+    readSaveBody: async (request) => await request.text(),
+    parseSaveBody: (rawBody) => JSON.parse(rawBody),
     ...overrides,
   };
+}
+
+function permissiveLimiters(): RateLimiter {
+  return { check: async () => ({ allowed: true, retryAfterSeconds: 0 }) };
+}
+
+function permissiveRateLimiters(): SaveSyncRateLimiters {
+  return {
+    uploadByAddress: permissiveLimiters(),
+    uploadByUser: permissiveLimiters(),
+    downloadByAddress: permissiveLimiters(),
+    downloadByUser: permissiveLimiters(),
+  };
+}
+
+/** Refuses every keyed check, so a test can assert the 429 branch without filling a real bucket. */
+function denyAllLimiters(): RateLimiter {
+  return { check: async () => ({ allowed: false, retryAfterSeconds: 17 }) };
 }
 
 function putSaveRequest(body: unknown, init: { readonly token?: string | null; readonly rawBody?: string } = {}): Request {
@@ -939,4 +976,358 @@ Deno.test('handleSaveDownload derives the offlineGrant from the server receipt, 
   // The receipt is exactly 60 s old at the pinned instant, so the grant is
   // exact — a moved document clock would show up here as 10 days, not ±1 s.
   assert.equal(grant.creditedDurationMs, 60_000);
+});
+
+// ---------------------------------------------------------------------------
+// Server-milestone Step 25 — abuse limits.
+//
+// Step 25's own test is: "A flood of uploads is throttled without affecting a
+// normal player's cadence. An oversized body is refused before it is parsed.
+// A test asserts no code path uses a fingerprint value to select an account or
+// authorize a save write." The third assertion lives in
+// `tests/unit/server-fingerprint-absence.test.ts` (it spans every function);
+// the first two are pinned here on the real request path.
+// ---------------------------------------------------------------------------
+
+Deno.test('handleSaveUpload refuses a Content-Length-declared oversized body without reading or parsing it', async () => {
+  let readCalled = false;
+  let parseCalled = false;
+  const request = new Request('http://localhost/v1/save', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      authorization: 'Bearer a-valid-token',
+      'content-length': '70000',
+    },
+    body: '{}',
+  });
+
+  const response = await handleRequest(
+    request,
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readSaveBody: async () => {
+        readCalled = true;
+        return '{}';
+      },
+      parseSaveBody: () => {
+        parseCalled = true;
+        return {};
+      },
+    }),
+  );
+
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).error.code, 'payload_too_large');
+  // AC5: proven by the collaborator never being called, not by reading the
+  // source order — the body is not buffered at all on this path.
+  assert.equal(readCalled, false, 'an oversized declared body must not be read');
+  assert.equal(parseCalled, false, 'an oversized declared body must not be parsed');
+});
+
+Deno.test('handleSaveUpload refuses an oversized body that arrives without a truthful Content-Length, still before parsing', async () => {
+  let parseCalled = false;
+  // A chunked upload omits Content-Length entirely, so the declared-size check
+  // above cannot catch it and the bytes actually received are what decide. The
+  // parse must still not run (AC5).
+  const request = putSaveRequest(undefined, { rawBody: '{' + 'a'.repeat(70_000) });
+
+  const response = await handleRequest(
+    request,
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      parseSaveBody: () => {
+        parseCalled = true;
+        return {};
+      },
+    }),
+  );
+
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).error.code, 'payload_too_large');
+  assert.equal(parseCalled, false, 'an oversized body must not be parsed');
+});
+
+Deno.test('handleSaveUpload answers a §10.2 429 from the per-address limit before authentication runs', async () => {
+  let resolveCallerCalled = false;
+  const request = new Request('http://localhost/v1/save', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      authorization: 'Bearer a-valid-token',
+      'x-forwarded-for': '198.51.100.9, 203.0.113.7',
+    },
+    body: JSON.stringify({ baseRevision: null, document: validSaveDocument() }),
+  });
+
+  const response = await handleRequest(
+    request,
+    noopDeps({
+      resolveCaller: async () => {
+        resolveCallerCalled = true;
+        return { userId: FIXTURE_USER_ID };
+      },
+      rateLimit: { ...permissiveRateLimiters(), uploadByAddress: denyAllLimiters() },
+    }),
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '17');
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: 'rate_limited',
+      message: 'Too many requests.',
+      detail: { retryAfterSeconds: 17 },
+    },
+  });
+  // Design constraint 2: the rate-limit refusal precedes authentication, so a
+  // flood of unauthenticated requests costs no token verification at all.
+  assert.equal(resolveCallerCalled, false, 'the address limit must refuse before authentication');
+});
+
+Deno.test('handleSaveUpload answers 429 from the per-user limit and writes no save_audit row for it', async () => {
+  const auditRows: SaveAuditEntry[] = [];
+  const request = putSaveRequest({ baseRevision: null, document: validSaveDocument() });
+
+  const response = await handleRequest(
+    request,
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      writeSaveAudit: async (entry) => {
+        auditRows.push(entry);
+      },
+      rateLimit: { ...permissiveRateLimiters(), uploadByUser: denyAllLimiters() },
+    }),
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error.code, 'rate_limited');
+  // Step 24's L2, bounded: a refused flood must not grow `save_audit` by one
+  // row per request. This is the mechanism, not an aspiration — the 429 is
+  // returned before any audit write exists on the path.
+  assert.deepEqual(auditRows, [], 'a 429 must not write a save_audit row');
+});
+
+Deno.test('handleSaveDownload answers 429 from the per-address limit before authentication runs', async () => {
+  let resolveCallerCalled = false;
+  const request = getSaveRequest();
+
+  const response = await handleRequest(
+    request,
+    noopDeps({
+      resolveCaller: async () => {
+        resolveCallerCalled = true;
+        return { userId: FIXTURE_USER_ID };
+      },
+      rateLimit: { ...permissiveRateLimiters(), downloadByAddress: denyAllLimiters() },
+    }),
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '17');
+  assert.equal(resolveCallerCalled, false);
+});
+
+Deno.test('handleSaveDownload answers 429 from the per-user limit without reading the stored save', async () => {
+  let readCalled = false;
+  const response = await handleRequest(
+    getSaveRequest(),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => {
+        readCalled = true;
+        return null;
+      },
+      rateLimit: { ...permissiveRateLimiters(), downloadByUser: denyAllLimiters() },
+    }),
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error.code, 'rate_limited');
+  assert.equal(readCalled, false);
+});
+
+Deno.test('a warm-up probe on an unrouted path never consults a limiter', async () => {
+  // Design constraint 3: `scripts/warm-edge-functions.mjs` pays every
+  // function's first-request cost with one refused `DELETE` on an unrouted
+  // path, before any suite runs. If that probe consumed a bucket, the suites
+  // it exists to protect would start from a partly-spent budget. The router's
+  // unknown-route branch returns before `defaultSaveSyncDeps` is reached at
+  // all — asserted here with limiters that would record a call.
+  let limiterCalls = 0;
+  const counting: RateLimiter = {
+    check: async () => {
+      limiterCalls += 1;
+      return { allowed: true, retryAfterSeconds: 0 };
+    },
+  };
+  const spyLimiters: SaveSyncRateLimiters = {
+    uploadByAddress: counting,
+    uploadByUser: counting,
+    downloadByAddress: counting,
+    downloadByUser: counting,
+  };
+
+  for (const route of ['__warmup', 'v1/save/__warmup']) {
+    const response = await handleRequest(
+      new Request(`http://localhost/${route}`, { method: 'DELETE' }),
+      { ...noopDeps(), rateLimit: spyLimiters },
+    );
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error.code, 'malformed_request');
+  }
+
+  assert.equal(limiterCalls, 0, 'a warm-up probe must not consume a rate-limit bucket');
+});
+
+Deno.test("the §9 worst-case honest upload burst is admitted; the limit refuses only past it", async () => {
+  // AC7: ping the honest-cadence floor. §9 (decision D5) fixes the legitimate
+  // traffic a session may produce — one routine upload per 60 s, forced
+  // uploads that ignore the interval (lifecycle flush, claimed offline reward,
+  // boot reconcile), and a 1/2/4/8/16 s retry ladder of at most five retries
+  // per trigger. Replayed against the *real* configured limiter, with an
+  // injected clock so no test waits.
+  let nowMs = 0;
+  const limiters = createSaveSyncRateLimiters({ clockMs: () => nowMs });
+
+  // Three forced triggers, each spending the full retry ladder (six requests:
+  // the initial one plus five retries, the last 16 s after the one before).
+  const retryOffsetsMs = [0, 1_000, 3_000, 7_000, 15_000, 31_000];
+  const decisions: { readonly allowed: boolean }[] = [];
+  for (let trigger = 0; trigger < 3; trigger += 1) {
+    for (const offsetMs of retryOffsetsMs) {
+      nowMs = offsetMs;
+      decisions.push(await limiters.uploadByUser.check('user:honest-session'));
+    }
+  }
+  // Plus the one routine upload that came due.
+  nowMs = 60_000 - 1;
+  decisions.push(await limiters.uploadByUser.check('user:honest-session'));
+
+  assert.equal(decisions.length, 19);
+  assert.equal(
+    decisions.every((decision) => decision.allowed),
+    true,
+    'the §9 worst-case honest burst must never be throttled',
+  );
+
+  // Pinned from the other side, so the constant cannot drift up unnoticed
+  // either: the budget really is SAVE_UPLOAD_MAX_PER_USER, and the request
+  // after it is refused.
+  let admitted = decisions.length;
+  while ((await limiters.uploadByUser.check('user:honest-session')).allowed) {
+    admitted += 1;
+  }
+  assert.equal(admitted, SAVE_UPLOAD_MAX_PER_USER);
+});
+
+// ---------------------------------------------------------------------------
+// Server-milestone Step 25 — the behavioural half of the fingerprint
+// proof-of-absence (AC6). `tests/unit/server-fingerprint-absence.test.ts`
+// asserts no server source *reads* a device or browser characteristic; these
+// two assert that no such characteristic changes which account is selected or
+// which write is authorized, by driving requests that differ in nothing else.
+// ---------------------------------------------------------------------------
+
+/** Every class of client-supplied device/browser characteristic Step 25's threat model §7.2 forbids collecting. */
+const DEVICE_CHARACTERISTIC_HEADERS: readonly (readonly [string, string])[] = [
+  ['user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15'],
+  ['sec-ch-ua', '"Chromium";v="120", "Not:A-Brand";v="99"'],
+  ['sec-ch-ua-mobile', '?1'],
+  ['sec-ch-ua-platform', '"iOS"'],
+  ['accept-language', 'vi-VN,vi;q=0.9,en;q=0.8'],
+  ['x-device-id', 'a-browser-minted-device-id'],
+];
+
+interface UploadOutcome {
+  readonly status: number;
+  readonly revision: number;
+  readonly resolvedTokens: readonly string[];
+  readonly writtenUserIds: readonly string[];
+}
+
+async function uploadWithHeaders(
+  headers: readonly (readonly [string, string])[],
+): Promise<UploadOutcome> {
+  const resolvedTokens: string[] = [];
+  const writtenUserIds: string[] = [];
+  const request = new Request('http://localhost/v1/save', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      authorization: 'Bearer the-callers-token',
+      ...Object.fromEntries(headers),
+    },
+    body: JSON.stringify({ baseRevision: null, document: validSaveDocument() }),
+  });
+
+  const response = await handleRequest(
+    request,
+    noopDeps({
+      resolveCaller: async (token) => {
+        resolvedTokens.push(token);
+        return { userId: FIXTURE_USER_ID };
+      },
+      readCurrentSave: async () => null,
+      writeSaveRow: async (userId) => {
+        writtenUserIds.push(userId);
+        return true;
+      },
+    }),
+  );
+
+  const body = (await response.json()) as { revision?: number };
+  return { status: response.status, revision: body.revision ?? 0, resolvedTokens, writtenUserIds };
+}
+
+Deno.test('handleSaveUpload selects no account and authorizes no write from a device characteristic', async () => {
+  const withoutCharacteristics = await uploadWithHeaders([]);
+  const withCharacteristics = await uploadWithHeaders(DEVICE_CHARACTERISTIC_HEADERS);
+
+  assert.equal(withoutCharacteristics.status, 200);
+  assert.equal(withCharacteristics.status, 200);
+
+  // The only input to account selection is the bearer token, and the only
+  // input to save ownership is what that token resolved to. Adding a full set
+  // of device/browser characteristics to the request changes neither.
+  assert.deepEqual(withCharacteristics.resolvedTokens, ['the-callers-token']);
+  assert.deepEqual(withCharacteristics.resolvedTokens, withoutCharacteristics.resolvedTokens);
+  assert.deepEqual(withCharacteristics.writtenUserIds, [FIXTURE_USER_ID]);
+  assert.deepEqual(withCharacteristics.writtenUserIds, withoutCharacteristics.writtenUserIds);
+  assert.equal(withCharacteristics.revision, withoutCharacteristics.revision);
+});
+
+Deno.test('handleSaveDownload selects no account from a device characteristic', async () => {
+  const readUserIds: string[] = [];
+
+  const download = async (
+    headers: readonly (readonly [string, string])[],
+  ): Promise<{ readonly status: number; readonly readUserIds: readonly string[] }> => {
+    const response = await handleRequest(
+      new Request('http://localhost/v1/save', {
+        method: 'GET',
+        headers: {
+          authorization: 'Bearer the-callers-token',
+          ...Object.fromEntries(headers),
+        },
+      }),
+      noopDeps({
+        resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+        readCurrentSave: async (userId) => {
+          readUserIds.push(userId);
+          return null;
+        },
+      }),
+    );
+    return { status: response.status, readUserIds: [...readUserIds] };
+  };
+
+  const withoutCharacteristics = await download([]);
+  readUserIds.length = 0;
+  const withCharacteristics = await download(DEVICE_CHARACTERISTIC_HEADERS);
+
+  assert.equal(withoutCharacteristics.status, 204);
+  assert.equal(withCharacteristics.status, 204);
+  assert.deepEqual(withCharacteristics.readUserIds, [FIXTURE_USER_ID]);
+  assert.deepEqual(withCharacteristics.readUserIds, withoutCharacteristics.readUserIds);
 });

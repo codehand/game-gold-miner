@@ -193,6 +193,68 @@ describe('CloudSaveReplica upload cadence (§9)', () => {
 });
 
 describe('CloudSaveReplica retry backoff (§9)', () => {
+  it('waits out the server Retry-After on a rate_limited refusal instead of retrying early', async () => {
+    const upload = vi
+      .fn<UploadCloudSave>()
+      .mockResolvedValueOnce({
+        kind: 'retryable',
+        code: 'rate_limited',
+        message: 'Too many requests.',
+        retryAfterMs: 30_000,
+      })
+      .mockResolvedValueOnce(accepted(4));
+    const { replica, events } = makeReplica(upload);
+
+    replica.enqueue(freshDocument());
+    await replica.flush();
+
+    // The ladder's first step is 1 s, but §4 says retry *after* `Retry-After`.
+    // Retrying at 1 s would walk straight back into the window the server just
+    // refused, so the scheduled delay is the header's 30 s, not the ladder's.
+    expect(events).toContainEqual({
+      kind: 'retry-scheduled',
+      attempt: 1,
+      delayMs: 30_000,
+      code: 'rate_limited',
+      message: 'Too many requests.',
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(upload).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(upload).toHaveBeenCalledTimes(2);
+  });
+
+  it('still applies the §9 ladder when Retry-After is shorter than the ladder step', async () => {
+    const upload = vi
+      .fn<UploadCloudSave>()
+      .mockResolvedValueOnce({
+        kind: 'retryable',
+        code: 'rate_limited',
+        message: 'Too many requests.',
+        retryAfterMs: 500,
+      })
+      .mockResolvedValueOnce(accepted(4));
+    const { replica, events } = makeReplica(upload);
+
+    replica.enqueue(freshDocument());
+    await replica.flush();
+
+    // The header is a floor, not a replacement: a shorter one never lets the
+    // client retry faster than §9's own ladder allows.
+    expect(events).toContainEqual({
+      kind: 'retry-scheduled',
+      attempt: 1,
+      delayMs: 1_000,
+      code: 'rate_limited',
+      message: 'Too many requests.',
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(upload).toHaveBeenCalledTimes(2);
+  });
+
   it('retries a retryable failure after the first backoff delay', async () => {
     const upload = vi
       .fn<UploadCloudSave>()

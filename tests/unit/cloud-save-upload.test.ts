@@ -40,8 +40,8 @@ function fakeAuth(
   };
 }
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
+function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 describe('uploadCloudSaveViaFetch success', () => {
@@ -216,6 +216,48 @@ describe('uploadCloudSaveViaFetch failure mapping (§4)', () => {
     const result = await uploadCloudSaveViaFetch(URL, fakeAuth(), 1, exampleDocument());
 
     expect(result).toMatchObject({ kind, code });
+  });
+
+  it('carries the §4 Retry-After header through as retryAfterMs on a 429', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        429,
+        { error: { code: 'rate_limited', message: 'Too many requests.', detail: { retryAfterSeconds: 30 } } },
+        { 'retry-after': '30' },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await uploadCloudSaveViaFetch(URL, fakeAuth(), 1, exampleDocument());
+
+    // §4: `rate_limited` is "retryable after `Retry-After`" — the client has to
+    // know how long the server asked for, or it retries into a closed window.
+    expect(result).toMatchObject({ kind: 'retryable', code: 'rate_limited', retryAfterMs: 30_000 });
+  });
+
+  it.each([
+    ['no header at all', undefined],
+    ['a non-numeric header', 'soon'],
+    ['the HTTP-date form this server never sends', 'Wed, 21 Oct 2026 07:28:00 GMT'],
+    ['zero', '0'],
+    ['a negative value', '-5'],
+    ['a fractional value', '1.5'],
+  ] as const)('falls back to the ladder when Retry-After is unusable (%s)', async (_label, header) => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        429,
+        { error: { code: 'rate_limited', message: 'Too many requests.' } },
+        header === undefined ? {} : { 'retry-after': header },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await uploadCloudSaveViaFetch(URL, fakeAuth(), 1, exampleDocument());
+
+    // Still retryable — an unreadable header must never turn a throttle into a
+    // stop — but with no retryAfterMs, so §9's ladder alone decides the wait.
+    expect(result).toMatchObject({ kind: 'retryable', code: 'rate_limited' });
+    expect(result).not.toHaveProperty('retryAfterMs');
   });
 
   it.each([

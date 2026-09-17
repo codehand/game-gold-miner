@@ -62,10 +62,56 @@
  */
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0';
 
-import { corsPreflightResponse, errorResponse, jsonResponse } from '../_shared/http.ts';
+import {
+  corsPreflightResponse,
+  declaredBodyBytes,
+  discardRequestBody,
+  errorResponse,
+  jsonResponse,
+  MAX_REQUEST_BODY_BYTES,
+} from '../_shared/http.ts';
+import {
+  addressRateLimitKey,
+  createFixedWindowRateLimiter,
+  createInMemoryRateLimitStore,
+  extractCallerAddress,
+  rateLimitedResponse,
+  type RateLimiter,
+} from '../_shared/rateLimit.ts';
 
 const WEB_APP_DATA_HMAC_KEY = 'WebAppData';
 const TELEGRAM_INVALID_EMAIL_DOMAIN = 'telegram.invalid';
+
+/**
+ * Step 25's authentication limit, derived rather than chosen.
+ *
+ * This route is the one place a client can make the server mint a session, and
+ * each accepted call costs one service-role `generateLink` round trip
+ * (`mintSessionViaGenerateLink`), so it needs a limit of its own even though
+ * GoTrue sits behind it. A real Telegram Mini App user signs in once per cold
+ * start and a flaky client may retry a handful of times; 60/minute leaves that
+ * untouched by more than an order of magnitude while still bounding the
+ * service-role work one address can provoke. It is deliberately looser than
+ * GoTrue's own `sign_in_sign_ups = 30` per 5 minutes per IP
+ * (`supabase/config.toml`, §`[auth.rate_limit]`) — the tighter of the two
+ * always wins, so this one must not be the thing that refuses a legitimate
+ * sign-in. A shared address (an office NAT, the local integration suite) is
+ * the reason it is per minute rather than per hour.
+ */
+export const TELEGRAM_SIGN_IN_MAX_PER_ADDRESS = 60;
+export const TELEGRAM_SIGN_IN_RATE_LIMIT_WINDOW_MS = 60_000;
+
+/** Built by a factory so a unit test can drive the real configuration with an injected clock. */
+export function createTelegramSignInRateLimiter(
+  options: { readonly clockMs?: () => number } = {},
+): RateLimiter {
+  return createFixedWindowRateLimiter({
+    limit: TELEGRAM_SIGN_IN_MAX_PER_ADDRESS,
+    windowMs: TELEGRAM_SIGN_IN_RATE_LIMIT_WINDOW_MS,
+    clockMs: options.clockMs ?? Date.now,
+    store: createInMemoryRateLimitStore(),
+  });
+}
 
 /** Ecosystem convention (`@telegram-apps/init-data-node`'s default), not a Telegram mandate. */
 export const MAX_INIT_DATA_AGE_SECONDS = 86_400;
@@ -181,10 +227,43 @@ export type MintSessionResult =
 export type VerifyInitData = (initData: string) => Promise<InitDataVerification>;
 export type MintSession = (telegramUserId: number) => Promise<MintSessionResult>;
 
+/** Step 25 (AC5): injected so a test can prove the pre-parse size cap refuses before the body is read or parsed, rather than trusting the source order. */
+export type ReadBody = (request: Request) => Promise<string>;
+export type ParseBody = (rawBody: string) => unknown;
+
+export interface TelegramSignInDeps {
+  readonly verify: VerifyInitData;
+  readonly mintSession: MintSession;
+  /** Step 25: the per-address authentication limit — see `TELEGRAM_SIGN_IN_MAX_PER_ADDRESS`. */
+  readonly rateLimit: RateLimiter;
+  readonly readBody: ReadBody;
+  readonly parseBody: ParseBody;
+}
+
+/**
+ * `verify` and `mintSession` are required; the Step 25 additions default to
+ * their one real implementation, so the tests written before this step — which
+ * pass only the two collaborators — keep exercising exactly what they did.
+ */
+export type TelegramSignInOverrides = Pick<TelegramSignInDeps, 'verify' | 'mintSession'> &
+  Partial<Omit<TelegramSignInDeps, 'verify' | 'mintSession'>>;
+
+/**
+ * Module-scoped, so it lives as long as this worker does — the honest scope
+ * recorded in `memory-bank/architecture.md`'s Step 25 section: per worker,
+ * best-effort, and an attacker with parallelism sees a higher ceiling.
+ */
+const DEFAULT_TELEGRAM_SIGN_IN_DEPS = {
+  rateLimit: createTelegramSignInRateLimiter(),
+  readBody: async (request: Request): Promise<string> => await request.text(),
+  parseBody: (rawBody: string): unknown => JSON.parse(rawBody),
+};
+
 export async function handleTelegramSignIn(
   request: Request,
-  deps: { readonly verify: VerifyInitData; readonly mintSession: MintSession },
+  overrides: TelegramSignInOverrides,
 ): Promise<Response> {
+  const deps: TelegramSignInDeps = { ...DEFAULT_TELEGRAM_SIGN_IN_DEPS, ...overrides };
   const origin = request.headers.get('origin');
 
   if (request.method === 'OPTIONS') {
@@ -197,9 +276,43 @@ export async function handleTelegramSignIn(
     });
   }
 
+  // Step 25 (design constraint 2): declared-size refusal, then the rate-limit
+  // refusal, both before the body is read — let alone parsed or HMAC-verified.
+  // This route had neither before this step: it buffered and JSON-parsed
+  // whatever it was sent, then paid two HMAC-SHA-256 operations over the
+  // `initData` string and a service-role `generateLink` round trip.
+  const declaredLength = declaredBodyBytes(request);
+  if (declaredLength !== null && declaredLength > MAX_REQUEST_BODY_BYTES) {
+    // Discard what the client has already sent before answering, so it can actually
+    // read this refusal — see `discardRequestBody`. Still never buffered, never parsed.
+    await discardRequestBody(request);
+    return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_REQUEST_BODY_BYTES} bytes.`, { origin });
+  }
+
+  const addressDecision = await deps.rateLimit.check(
+    addressRateLimitKey(extractCallerAddress(request)),
+  );
+  if (!addressDecision.allowed) {
+    return rateLimitedResponse(origin, addressDecision.retryAfterSeconds);
+  }
+
+  let rawBody: string;
+  try {
+    rawBody = await deps.readBody(request);
+  } catch {
+    return errorResponse(400, 'malformed_request', 'Body could not be read.', { origin });
+  }
+
+  // The authoritative size check, still before any parse — a chunked upload
+  // carries no `Content-Length` for the check above to catch, and a client can
+  // always lie about the one it sends.
+  if (new TextEncoder().encode(rawBody).length > MAX_REQUEST_BODY_BYTES) {
+    return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_REQUEST_BODY_BYTES} bytes.`, { origin });
+  }
+
   let body: unknown;
   try {
-    body = await request.json();
+    body = deps.parseBody(rawBody);
   } catch {
     return errorResponse(400, 'malformed_request', 'Body is not valid JSON.', { origin });
   }

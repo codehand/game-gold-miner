@@ -24,7 +24,10 @@
  *    `server_error`, `service_unavailable`, or a dropped connection) backs off
  *    1/2/4/8/16 s, capped, for at most five attempts, then stops cloud sync for
  *    the session. The player is shown nothing while a retry is pending, because
- *    the local save is always intact.
+ *    the local save is always intact. Step 25 added one qualifier: §4 makes
+ *    `rate_limited` retryable *after* `Retry-After`, so when the transport
+ *    reports one the wait is the longer of it and the ladder step — the ladder
+ *    is a floor, never a way to retry early into a window still closed.
  * 3. **§7 on `409`.** A refused upload carries the server's own document; the
  *    one `resolveSaveConflict` predicate the boot reconcile already uses
  *    decides. A dominating local re-uploads against the server's revision, a
@@ -161,6 +164,19 @@ export type CloudSaveUploadResult =
       readonly kind: 'retryable';
       readonly code: CloudSaveFailureCode;
       readonly message: string;
+      /**
+       * Step 25: the server's own `Retry-After`, in milliseconds, when the
+       * refusal carried one. §4 makes `rate_limited` "retryable after
+       * `Retry-After`", so the client must not come back *before* the server
+       * said it could — otherwise its retry ladder walks straight back into a
+       * window that is still closed and burns the budget §9 grants it.
+       *
+       * It is a **floor**, not a replacement: the ladder still applies, and
+       * `#scheduleRetry` waits the longer of the two. Absent when the
+       * transport found no usable header (a `server_error`, or a malformed
+       * value), in which case the ladder alone decides.
+       */
+      readonly retryAfterMs?: number;
     }
   | {
       readonly kind: 'terminal';
@@ -446,7 +462,7 @@ export class CloudSaveReplica {
         this.#emit({ kind: 'unconfigured' });
         return;
       case 'retryable':
-        this.#scheduleRetry(document, result.code, result.message);
+        this.#scheduleRetry(document, result.code, result.message, result.retryAfterMs);
         return;
       case 'terminal':
         if (result.keepSyncing) {
@@ -565,6 +581,7 @@ export class CloudSaveReplica {
     document: SaveDocumentV2,
     code: CloudSaveFailureCode,
     message: string,
+    retryAfterMs?: number,
   ): void {
     this.#attempt += 1;
 
@@ -581,10 +598,17 @@ export class CloudSaveReplica {
       this.#pendingDocument = document;
     }
 
-    const delayMs =
+    const ladderDelayMs =
       CLOUD_UPLOAD_RETRY_DELAYS_MS[
         Math.min(this.#attempt - 1, CLOUD_UPLOAD_RETRY_DELAYS_MS.length - 1)
       ];
+
+    // Step 25 / §4: `rate_limited` is "retryable after `Retry-After`". The
+    // header is a *floor* on the ladder, never a shortening of it — the client
+    // waits the longer of the two, so it can neither walk back into a window
+    // the server just refused (the ladder alone would, from attempt 1) nor
+    // wait less than §9 prescribes on a server that answers a shorter header.
+    const delayMs = Math.max(ladderDelayMs, retryAfterMs ?? 0);
 
     this.#emit({
       kind: 'retry-scheduled',

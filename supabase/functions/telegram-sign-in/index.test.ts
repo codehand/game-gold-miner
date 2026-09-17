@@ -12,8 +12,11 @@
  */
 import assert from 'node:assert/strict';
 
+import { addressRateLimitKey } from '../_shared/rateLimit.ts';
 import {
+  createTelegramSignInRateLimiter,
   handleTelegramSignIn,
+  TELEGRAM_SIGN_IN_MAX_PER_ADDRESS,
   telegramPlaceholderEmail,
   verifyTelegramInitData,
   type MintSessionResult,
@@ -303,4 +306,119 @@ Deno.test('the bot token never appears in any response this handler can give', a
     const text = await response.clone().text();
     assert.equal(text.includes(secret), false);
   }
+});
+
+// --- Step 25: abuse limits ------------------------------------------------
+
+Deno.test('handleTelegramSignIn refuses an oversized body before reading or parsing it', async () => {
+  let readCalled = false;
+  let parseCalled = false;
+  let verifyCalled = false;
+
+  // A truthful `Content-Length` is refused before the body is buffered; this
+  // route had no cap at all before Step 25, so it used to buffer and parse
+  // whatever it was sent and then pay two HMAC-SHA-256 operations over it.
+  const declared = new Request('http://example/telegram-sign-in', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-length': '70000' },
+    body: '{}',
+  });
+  const declaredResponse = await handleTelegramSignIn(declared, {
+    verify: () => {
+      verifyCalled = true;
+      return Promise.resolve({ valid: true, telegramUserId: TELEGRAM_USER_ID });
+    },
+    mintSession: () => Promise.resolve(MINT_SUCCESS),
+    readBody: async () => {
+      readCalled = true;
+      return '{}';
+    },
+    parseBody: () => {
+      parseCalled = true;
+      return {};
+    },
+  });
+
+  assert.equal(declaredResponse.status, 413);
+  assert.equal((await declaredResponse.json()).error.code, 'payload_too_large');
+  assert.equal(readCalled, false, 'an oversized declared body must not be read');
+  assert.equal(parseCalled, false);
+  assert.equal(verifyCalled, false, 'an oversized body must never reach HMAC verification');
+
+  // A chunked upload carries no `Content-Length`, so the bytes actually
+  // received are what decide — and the parse still must not run (AC5).
+  const chunked = new Request('http://example/telegram-sign-in', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ initData: 'x'.repeat(70_000) }),
+  });
+  const chunkedResponse = await handleTelegramSignIn(chunked, {
+    verify: ALWAYS_VALID,
+    mintSession: () => Promise.resolve(MINT_SUCCESS),
+    parseBody: () => {
+      parseCalled = true;
+      return {};
+    },
+  });
+
+  assert.equal(chunkedResponse.status, 413);
+  assert.equal((await chunkedResponse.json()).error.code, 'payload_too_large');
+  assert.equal(parseCalled, false, 'an oversized body must not be parsed');
+});
+
+Deno.test('handleTelegramSignIn answers a §10.2 429 before reading the body or verifying the payload', async () => {
+  let verifyCalled = false;
+  let readCalled = false;
+
+  const response = await handleTelegramSignIn(
+    new Request('http://example/telegram-sign-in', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-for': '198.51.100.9, 203.0.113.7',
+      },
+      body: JSON.stringify({ initData: 'whatever' }),
+    }),
+    {
+      verify: () => {
+        verifyCalled = true;
+        return Promise.resolve({ valid: true, telegramUserId: TELEGRAM_USER_ID });
+      },
+      mintSession: () => Promise.resolve(MINT_SUCCESS),
+      rateLimit: { check: async () => ({ allowed: false, retryAfterSeconds: 12 }) },
+      readBody: async () => {
+        readCalled = true;
+        return '{}';
+      },
+    },
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '12');
+  assert.deepEqual(await response.json(), {
+    error: { code: 'rate_limited', message: 'Too many requests.', detail: { retryAfterSeconds: 12 } },
+  });
+  assert.equal(readCalled, false, 'a throttled request must not read its body');
+  assert.equal(verifyCalled, false, 'a throttled request must not verify initData');
+});
+
+Deno.test('the wired per-address limiter admits a real sign-in and refuses only past its documented budget', async () => {
+  let nowMs = 0;
+  const rateLimit = createTelegramSignInRateLimiter({ clockMs: () => nowMs });
+  const address = addressRateLimitKey('203.0.113.7');
+
+  for (let attempt = 1; attempt <= TELEGRAM_SIGN_IN_MAX_PER_ADDRESS; attempt += 1) {
+    assert.equal((await rateLimit.check(address)).allowed, true, `attempt ${attempt}`);
+  }
+
+  const refused = await rateLimit.check(address);
+  assert.equal(refused.allowed, false);
+  assert.equal(refused.retryAfterSeconds, 60);
+
+  // A different address is unaffected...
+  assert.equal((await rateLimit.check(addressRateLimitKey('198.51.100.20'))).allowed, true);
+
+  // ...and the window rolls.
+  nowMs = 60_000;
+  assert.equal((await rateLimit.check(address)).allowed, true);
 });

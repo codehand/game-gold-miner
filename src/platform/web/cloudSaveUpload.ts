@@ -63,6 +63,33 @@ const FAILURE_CODES: readonly CloudSaveFailureCode[] = [
   'service_unavailable',
 ];
 
+/**
+ * `Retry-After` (Step 25) in milliseconds, or `undefined` when the header is
+ * absent or unusable.
+ *
+ * §4 makes `rate_limited` "retryable after `Retry-After`", and
+ * `server-save-sync-protocol.md` §10.2/§10.3 have the server send that header
+ * as whole seconds — the same number it repeats in
+ * `detail.retryAfterSeconds`. Only that delta-seconds form is honoured; the
+ * header's other legal form (an HTTP-date) is not something this server emits,
+ * so treating it as absent is safer than guessing at a date the client would
+ * then have to trust its own clock to interpret. A malformed, negative,
+ * zero or non-finite value is likewise treated as absent, which leaves the
+ * ladder in sole charge — the same behaviour as a server that sent no header.
+ */
+function parseRetryAfterMs(header: string | null): number | undefined {
+  if (header === null) {
+    return undefined;
+  }
+
+  const seconds = Number(header.trim());
+  if (!Number.isInteger(seconds) || seconds <= 0) {
+    return undefined;
+  }
+
+  return seconds * 1_000;
+}
+
 function toFailureCode(value: unknown, fallback: CloudSaveFailureCode): CloudSaveFailureCode {
   return typeof value === 'string' && (FAILURE_CODES as readonly string[]).includes(value)
     ? (value as CloudSaveFailureCode)
@@ -205,7 +232,13 @@ async function send(
   }
 
   if (response.status === 429) {
-    return { kind: 'retryable', code: 'rate_limited', message: messageOf(body, response.status) };
+    const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+    return {
+      kind: 'retryable',
+      code: 'rate_limited',
+      message: messageOf(body, response.status),
+      ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+    };
   }
   if (response.status === 503) {
     return { kind: 'retryable', code: 'service_unavailable', message: messageOf(body, response.status) };
