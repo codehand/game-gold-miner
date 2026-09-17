@@ -2,6 +2,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import {
+  WARMUP_MAX_ATTEMPTS,
+  WARMUP_WORST_CASE_MS,
+  warmEdgeFunction,
+} from '../../scripts/warm-edge-functions.mjs';
 import { LOCAL_ANON_KEY } from './authFixture';
 import { createServiceRoleClient } from './serviceRoleFixture';
 
@@ -26,6 +31,7 @@ function randomHexHash(): string {
  * depends on another test having run first.
  */
 const API_URL = 'http://127.0.0.1:54321';
+const FUNCTIONS_BASE_URL = `${API_URL}/functions/v1`;
 const GENERATE_URL = `${API_URL}/functions/v1/recovery-code/v1/generate`;
 const REDEEM_URL = `${API_URL}/functions/v1/recovery-code/v1/redeem`;
 const TEST_RESET_RATE_LIMIT_URL = `${API_URL}/functions/v1/recovery-code/v1/test-only-reset-rate-limit`;
@@ -39,6 +45,15 @@ const CODE_HASH_PATTERN = /^[0-9a-f]{64}$/;
  * protecting player data.
  */
 const RECOVERY_CODE_TEST_RESET_TOKEN = 'b5f1ce2061989404035108f8895075b893eaa4a3f56eeca2d0bc3a2aef8f9f66';
+
+/**
+ * Comfortably above `WARMUP_WORST_CASE_MS`, the retry loop's own worst case —
+ * the same relationship (and the same explicit per-hook timeout)
+ * `whoami.integration.test.ts`'s warm-up already establishes, for the reason
+ * `vitest.server-integration.config.ts` records: a hook that inherits a
+ * timeout smaller than the request it is waiting on is killed first.
+ */
+const WARMUP_HOOK_TIMEOUT_MS = WARMUP_WORST_CASE_MS + 10_000;
 
 /**
  * A 2026-09-13 review finding: once `extractCallerAddress` reads the
@@ -127,6 +142,28 @@ async function fetchRecoveryCodeRow(userId: string): Promise<
 }
 
 describe('recovery-code (server-milestone Step 14)', () => {
+  // 2026-09-16 CI cold-start finding: every other function this suite touches
+  // is warmed before its first assertion — `whoami-check` and
+  // `telegram-sign-in` by their own hooks, `save-sync` and
+  // `core-portability-check` by `scripts/verify-server-stack.mjs`'s retrying
+  // checks. `recovery-code` was the one function whose first request of the
+  // run was `resetRateLimitBucket`'s own one-shot `beforeAll` POST: a single
+  // 20 s budget, no retry, against a worker on a loaded runner that had to
+  // resolve `npm:@supabase/supabase-js` from an empty module cache. Warming it
+  // here costs one refused request and keeps this file runnable on its own,
+  // without `verify-server-stack.mjs`.
+  beforeAll(async () => {
+    const result = await warmEdgeFunction('recovery-code', { functionsBaseUrl: FUNCTIONS_BASE_URL });
+    if (!result.responded) {
+      // Not fatal: the tests below fail with their own specific errors if the
+      // function never came up. Logged so that failure is not misread as an
+      // unrelated one when it is really "the warm-up never got a response."
+      console.warn(
+        `recovery-code warm-up: no response after ${WARMUP_MAX_ATTEMPTS} attempts.`,
+      );
+    }
+  }, WARMUP_HOOK_TIMEOUT_MS);
+
   beforeAll(resetRateLimitBucket);
   afterAll(resetRateLimitBucket);
 

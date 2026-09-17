@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
 import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
+import { readCloudSave } from './cloudSaveFixture';
 
 /**
  * Server-milestone Step 20: adopt existing local saves, proven end to end
@@ -26,11 +27,6 @@ const SAVE_URL = `${API_URL}/functions/v1/save-sync/v1/save`;
 interface GuestSessionDiagnostic {
   readonly status: 'unconfigured' | 'sign-in-failed' | 'signed-in';
   readonly user?: { readonly id: string; readonly isAnonymous: boolean };
-}
-
-interface CloudSaveBody {
-  readonly revision: number;
-  readonly document: SaveDocumentV2;
 }
 
 /** A pre-milestone version-1 save with real progress, missing only the Step 18 counter. */
@@ -115,17 +111,6 @@ async function readAccessTokenFromStorage(page: Page): Promise<string> {
   return token!;
 }
 
-async function getCloudSave(accessToken: string): Promise<CloudSaveBody | null> {
-  const response = await fetch(SAVE_URL, {
-    headers: { authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (response.status !== 200) {
-    return null;
-  }
-  return response.json();
-}
-
 async function readStoredDocument(page: Page): Promise<SaveDocumentV2 | null> {
   return page.evaluate(async () => {
     const openRequest = indexedDB.open('cat-mine-idle');
@@ -171,13 +156,13 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
   // The account had no cloud save, so the boot reconcile adopts the local one.
   const accessToken = await readAccessTokenFromStorage(page);
   await expect
-    .poll(async () => (await getCloudSave(accessToken))?.document.schemaVersion ?? null, {
+    .poll(async () => (await readCloudSave(SAVE_URL, accessToken))?.document.schemaVersion ?? null, {
       message: 'the local save is adopted as the account cloud save',
       timeout: 20_000,
     })
     .toBe(2);
 
-  const adopted = await getCloudSave(accessToken);
+  const adopted = await readCloudSave(SAVE_URL, accessToken);
   expect(adopted).not.toBeNull();
   // The pre-milestone progress survived — this is the player's save, not a fresh game.
   expect(adopted!.document.state.elevator.level).toBe(seededState.elevator.level);
@@ -215,7 +200,7 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
 
   await expect
     .poll(async () => {
-      const cloud = await getCloudSave(accessToken);
+      const cloud = await readCloudSave(SAVE_URL, accessToken);
       return cloud !== null && JSON.stringify(cloud.document) === JSON.stringify(flushedLocal);
     }, {
       message: 'the downloaded document is byte-for-byte the adopted local save',

@@ -4,6 +4,7 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
 import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
 import { LIFECYCLE_SAVE_JOURNAL_KEY } from '../../src/platform/web';
+import { readCloudSave } from './cloudSaveFixture';
 import { tolerateNavigation } from './navigationFixture';
 
 /**
@@ -28,11 +29,6 @@ const SAVE_URL = `${API_URL}/functions/v1/save-sync/v1/save`;
 interface GuestSessionDiagnostic {
   readonly status: 'unconfigured' | 'sign-in-failed' | 'signed-in';
   readonly isNewSession?: boolean;
-}
-
-interface CloudSaveBody {
-  readonly revision: number;
-  readonly document: SaveDocumentV2;
 }
 
 /** A pre-milestone version-1 save with distinctive progress (elevator level 4). */
@@ -194,14 +190,6 @@ async function readAccessTokenFromStorage(page: Page): Promise<string> {
   return token!;
 }
 
-async function getCloudSave(accessToken: string): Promise<CloudSaveBody | null> {
-  const response = await fetch(SAVE_URL, {
-    headers: { authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(5_000),
-  });
-  return response.status === 200 ? response.json() : null;
-}
-
 async function readStoredLevel(page: Page): Promise<number | null> {
   return page.evaluate(async () => {
     const openRequest = indexedDB.open('cat-mine-idle');
@@ -236,13 +224,13 @@ test('restores a signed-in player from the cloud after the local save is evicted
 
   const accessToken = await readAccessTokenFromStorage(page);
   await expect
-    .poll(async () => (await getCloudSave(accessToken))?.document.schemaVersion ?? null, {
+    .poll(async () => (await readCloudSave(SAVE_URL, accessToken))?.document.schemaVersion ?? null, {
       message: 'the seeded save is adopted as the account cloud save',
       timeout: 20_000,
     })
     .toBe(2);
 
-  const adopted = await getCloudSave(accessToken);
+  const adopted = await readCloudSave(SAVE_URL, accessToken);
   const restoredLevel = adopted!.document.state.elevator.level;
   expect(restoredLevel).toBeGreaterThan(1);
 
