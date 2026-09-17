@@ -11,10 +11,13 @@
  */
 import assert from 'node:assert/strict';
 
+import { MAX_REQUEST_BODY_BYTES } from '../_shared/http.ts';
 import {
   canonicalizeRecoveryCode,
+  createRecoveryCodeRateLimiters,
   generateRecoveryCodePlaintext,
   handleRequest,
+  RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS,
   recoveryPlaceholderEmail,
   resolveFunctionRoute,
   type RecoveryCodeDeps,
@@ -40,7 +43,12 @@ function noopDeps(overrides: Partial<RecoveryCodeDeps> = {}): RecoveryCodeDeps {
     mintSessionForUser: async () => {
       throw new Error('mintSessionForUser should not have been called');
     },
-    checkRedemptionRateLimit: async () => true,
+    // Step 25: permissive by default, so every test that predates this step
+    // keeps exercising its own subject rather than a bucket.
+    checkRedemptionRateLimit: async () => ({ allowed: true, retryAfterSeconds: 0 }),
+    checkGenerateRateLimit: async () => ({ allowed: true, retryAfterSeconds: 0 }),
+    readRedeemBody: async (request) => await request.text(),
+    parseRedeemBody: (rawBody) => JSON.parse(rawBody),
     checkTestResetAuthorization: async () => {
       throw new Error('checkTestResetAuthorization should not have been called');
     },
@@ -177,7 +185,7 @@ Deno.test('handleRedeem passes null to checkRedemptionRateLimit when no X-Forwar
     noopDeps({
       checkRedemptionRateLimit: async (address) => {
         seenAddress = address;
-        return true;
+        return { allowed: true, retryAfterSeconds: 0 };
       },
     }),
   );
@@ -195,7 +203,7 @@ Deno.test('handleRedeem passes the last X-Forwarded-For hop to checkRedemptionRa
     noopDeps({
       checkRedemptionRateLimit: async (address) => {
         seenAddress = address;
-        return true;
+        return { allowed: true, retryAfterSeconds: 0 };
       },
     }),
   );
@@ -205,21 +213,31 @@ Deno.test('handleRedeem passes the last X-Forwarded-For hop to checkRedemptionRa
 
 Deno.test('handleRedeem answers 429 rate_limited before reading the body at all', async () => {
   let bodyWasRead = false;
-  const request = redeemRequest({ code: 'whatever' });
-  const originalJson = request.json.bind(request);
-  request.json = async () => {
-    bodyWasRead = true;
-    return originalJson();
-  };
-
+  let parseWasCalled = false;
   const response = await handleRequest(
-    request,
-    noopDeps({ checkRedemptionRateLimit: async () => false }),
+    redeemRequest({ code: 'whatever' }),
+    noopDeps({
+      checkRedemptionRateLimit: async () => ({ allowed: false, retryAfterSeconds: 60 }),
+      readRedeemBody: async () => {
+        bodyWasRead = true;
+        return '{}';
+      },
+      parseRedeemBody: () => {
+        parseWasCalled = true;
+        return {};
+      },
+    }),
   );
 
   assert.equal(response.status, 429);
-  assert.equal((await response.json()).error.code, 'rate_limited');
-  assert.equal(bodyWasRead, false);
+  // Step 25: §10.2's exact shape, including the Retry-After the limiter
+  // reported rather than a hardcoded one.
+  assert.equal(response.headers.get('retry-after'), '60');
+  assert.deepEqual(await response.json(), {
+    error: { code: 'rate_limited', message: 'Too many requests.', detail: { retryAfterSeconds: 60 } },
+  });
+  assert.equal(bodyWasRead, false, 'a throttled request must not read its body');
+  assert.equal(parseWasCalled, false);
 });
 
 Deno.test('handleRedeem answers 400 for a body that is not valid JSON', async () => {
@@ -490,4 +508,130 @@ Deno.test('no response this handler can give contains anything but its documente
     const text = await response.clone().text();
     assert.equal(text.includes(secret), false);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Server-milestone Step 25 — abuse limits.
+// ---------------------------------------------------------------------------
+
+Deno.test('handleRedeem refuses an oversized body before reading or parsing it', async () => {
+  let readCalled = false;
+  let parseCalled = false;
+
+  // A truthful `Content-Length`: refused before the body is buffered at all.
+  const declared = new Request('http://localhost/v1/redeem', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-length': '70000' },
+    body: '{}',
+  });
+  const declaredResponse = await handleRequest(
+    declared,
+    noopDeps({
+      readRedeemBody: async () => {
+        readCalled = true;
+        return '{}';
+      },
+      parseRedeemBody: () => {
+        parseCalled = true;
+        return {};
+      },
+    }),
+  );
+
+  assert.equal(declaredResponse.status, 413);
+  assert.equal((await declaredResponse.json()).error.code, 'payload_too_large');
+  assert.equal(readCalled, false, 'an oversized declared body must not be read');
+  assert.equal(parseCalled, false, 'an oversized declared body must not be parsed');
+
+  // A chunked upload carries no `Content-Length` at all, so the bytes actually
+  // received are what decide — and the parse must still not run (AC5).
+  const chunked = new Request('http://localhost/v1/redeem', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code: 'x'.repeat(MAX_REQUEST_BODY_BYTES + 1) }),
+  });
+  const chunkedResponse = await handleRequest(
+    chunked,
+    noopDeps({
+      parseRedeemBody: () => {
+        parseCalled = true;
+        return {};
+      },
+    }),
+  );
+
+  assert.equal(chunkedResponse.status, 413);
+  assert.equal((await chunkedResponse.json()).error.code, 'payload_too_large');
+  assert.equal(parseCalled, false, 'an oversized body must not be parsed');
+});
+
+Deno.test('handleGenerate answers 429 from the per-user limit without rotating the account code', async () => {
+  let rotated = false;
+
+  const response = await handleRequest(
+    generateRequest(),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      rotateRecoveryCode: async () => {
+        rotated = true;
+      },
+      checkGenerateRateLimit: async () => ({ allowed: false, retryAfterSeconds: 42 }),
+    }),
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '42');
+  assert.deepEqual(await response.json(), {
+    error: { code: 'rate_limited', message: 'Too many requests.', detail: { retryAfterSeconds: 42 } },
+  });
+  // Each generate is a service-role `rotate_recovery_code` round trip; a
+  // throttled one must cost nothing.
+  assert.equal(rotated, false, 'a throttled generate must not rotate the account code');
+});
+
+Deno.test('the per-user generate budget never refuses a different user, and is separate from the address budget', async () => {
+  const limiters = createRecoveryCodeRateLimiters({ clockMs: () => 0 });
+
+  // One user's bucket is theirs alone.
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    assert.equal((await limiters.generateByUser.check('user:one')).allowed, true);
+  }
+  assert.equal((await limiters.generateByUser.check('user:one')).allowed, false);
+  assert.equal((await limiters.generateByUser.check('user:two')).allowed, true);
+
+  // The redemption limiter is a different budget behind a different key kind:
+  // spending it does not spend the generate budget.
+  assert.equal((await limiters.redemptionByAddress.check('address:203.0.113.7')).allowed, true);
+  assert.equal((await limiters.generateByUser.check('user:two')).allowed, true);
+});
+
+Deno.test('the wired redemption limiter keeps Step 14\'s budget and the reset route really clears it', async () => {
+  let nowMs = 0;
+  const limiters = createRecoveryCodeRateLimiters({ clockMs: () => nowMs });
+  const address = 'address:203.0.113.7';
+
+  for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS; attempt += 1) {
+    assert.equal((await limiters.redemptionByAddress.check(address)).allowed, true, `attempt ${attempt}`);
+  }
+
+  const refused = await limiters.redemptionByAddress.check(address);
+  assert.equal(refused.allowed, false);
+  // The window opened at t=0 with a 60 s window, so the full remainder is
+  // reported — Step 14's fixed `Retry-After: 60`, now computed.
+  assert.equal(refused.retryAfterSeconds, 60);
+
+  // The window rolls by itself.
+  nowMs = 60_000;
+  assert.equal((await limiters.redemptionByAddress.check(address)).allowed, true);
+
+  // `TEST_RESET_RATE_LIMIT_ROUTE` is what the integration suite depends on
+  // between runs: it must actually empty both buckets, not just one.
+  nowMs = 120_000;
+  for (let attempt = 0; attempt < RATE_LIMIT_MAX_ATTEMPTS_PER_ADDRESS; attempt += 1) {
+    await limiters.redemptionByAddress.check(address);
+  }
+  assert.equal((await limiters.redemptionByAddress.check(address)).allowed, false);
+
+  limiters.resetRateLimitState();
+  assert.equal((await limiters.redemptionByAddress.check(address)).allowed, true);
 });

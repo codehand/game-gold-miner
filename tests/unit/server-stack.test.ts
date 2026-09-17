@@ -394,13 +394,24 @@ describe('every Edge Function', () => {
     expect(source).toContain('address: string | null');
   });
 
-  it("recovery-code's rate-limit sweep is gated by map size, not run on every request", () => {
+  it('the shared rate-limit sweep is gated by store size, not run on every request', () => {
     // A 2026-09-13 review finding: sweeping the whole map on every request
     // is O(n) per request under the exact rotated-address attack it exists
     // to bound, trading unbounded memory for unbounded (quadratic) CPU.
+    // Step 25 moved the mechanism into `_shared/rateLimit.ts`, so the
+    // assertion follows it there rather than being dropped — the property it
+    // protects is unchanged, and `_shared/rateLimit.test.ts` now pins the
+    // behaviour (a store that stays bounded under 200 rotating keys) as well
+    // as this grep pins the shape.
+    const shared = readProjectFile('supabase/functions/_shared/rateLimit.ts');
+    expect(shared).toContain('pruneSizeThreshold');
+    expect(shared).toMatch(/store\.size > pruneSizeThreshold/);
+
+    // Each limited function still carries its own threshold and passes it in,
+    // rather than inheriting the shared default silently.
     const source = readProjectFile('supabase/functions/recovery-code/index.ts');
     expect(source).toContain('RATE_LIMIT_PRUNE_SIZE_THRESHOLD');
-    expect(source).toMatch(/redemptionAttemptsByAddress\.size > RATE_LIMIT_PRUNE_SIZE_THRESHOLD/);
+    expect(source).toMatch(/pruneSizeThreshold: RATE_LIMIT_PRUNE_SIZE_THRESHOLD/);
   });
 
   it('recovery-code gates its test-only rate-limit reset route behind a token unset in any real deployment', () => {
@@ -412,7 +423,14 @@ describe('every Edge Function', () => {
     const source = readProjectFile('supabase/functions/recovery-code/index.ts');
     expect(source).toContain('test-only-reset-rate-limit');
     expect(source).toContain("Deno.env.get('RECOVERY_CODE_TEST_RESET_TOKEN')");
-    expect(source).toContain('redemptionAttemptsByAddress.clear()');
+    // Step 25: the reset now clears both of this function's limiter stores
+    // through the shared module rather than one in-file Map. `index.test.ts`'s
+    // "the reset route really clears it" proves the behaviour; this pins that
+    // the route is still wired to it.
+    expect(source).toContain('RECOVERY_CODE_RATE_LIMITERS.resetRateLimitState()');
+    expect(source).toMatch(
+      /resetRateLimitState: \(\) => \{[\s\S]{0,120}redemptionStore\.clear\(\);[\s\S]{0,80}generateStore\.clear\(\);/,
+    );
 
     const envExample = readProjectFile('.env.example');
     expect(envExample).toContain('RECOVERY_CODE_TEST_RESET_TOKEN');
