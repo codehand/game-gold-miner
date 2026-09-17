@@ -662,6 +662,10 @@ running; §4 decides what, if anything, is shown.
 | 64 KB cap | Threat model §4.4; enforced in `save-sync` since Step 16, extended to every body-taking function and pinned *before* the parse in Step 25 |
 | `rate_limited` / 429 | Threat model §4.4 and §4.6; Step 25's per-user and per-address limits (`supabase/functions/_shared/rateLimit.ts`) |
 | No fingerprint-derived signal | Threat model §7.2's GDPR default; enforced by `tests/unit/server-fingerprint-absence.test.ts` (Step 25) |
+| §4 error vocabulary under attack | Step 26 — every attack's refusal asserts the status, the code, and where one exists the `detail` shape, never a `500` (`supabase/functions/*/adversarial.test.ts`, `tests/server-integration/adversarial*.integration.test.ts`) |
+| §5 concurrency under attack | Step 26 attacks 2 and 3 — replay, rollback, and the §5-malformed `baseRevision` values H2 closed |
+| §6 server clock under attack | Step 26 attack 4 — the document clock recorded verbatim and never trusted (`adversarial.test.ts` for the pure half, `adversarial.integration.test.ts` for the real grant) |
+| §9 cadence and the 429 row | Step 26 attack 9 — a refused flood must not grow `save_audit`; redemption's absent per-user half is asserted as absent rather than implied to exist |
 
 ## 14. CORS policy — added by Step 12, resolving finding F11
 

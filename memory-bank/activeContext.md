@@ -2,7 +2,36 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 25 validation gate — Step 25 implemented
+**Server milestone, at the Step 26 validation gate — Step 26 (adversarial
+suite) implemented 2026-09-17, awaiting user validation; Step 27 is blocked
+until the user validates it. Phase 4, "Server-verified progress", is complete
+pending that validation.**
+
+Step 26 adds no production code. It is the nine-attack adversarial suite
+(`current: forge gold / replay / rollback / clock / another user's id /
+PostgREST / Telegram / stolen session / recovery brute force`), each attack
+refused by its own named assertion and each proven **load-bearing by mutation**
+— the per-attack record is the hand-off comment on `TASK-004`. The layout puts
+each attack at the lowest layer that still exercises the real guard: the pure
+guards run under `deno test` with no Docker
+(`supabase/functions/{save-sync,telegram-sign-in,recovery-code}/adversarial.test.ts`),
+and the forms that need the real stack (the stored `saves` row, the real clock,
+real PostgREST with real client tokens, the real `recovery_codes` table) run
+inside `npm run verify:server`
+(`tests/server-integration/adversarial.integration.test.ts` and
+`adversarial-rls.integration.test.ts`). Attack 6's matrix is **derived** from
+`supabase/migrations/*.sql`, not hand-listed, so a seventh table cannot slip
+through uncovered. See `architecture.md`'s Step 26 section for the attacks ×
+guards table and for the two honest gaps Step 26 records rather than papers
+over: redemption has no per-user limit before it resolves, and attack 8's
+rotation boundary does not cover a stolen session token (F5 stays out of scope).
+
+**Gate honesty for this step.** The implementing sandbox had no Docker and a
+macOS-built `node_modules`, so AC2, AC3, AC4 (the `vite build` half) and AC5
+could not be run here; only `npm run lint` and `tsc --noEmit` were observed
+green. The runner's fresh evidence is what must establish the rest.
+
+**Previously, at the Step 25 validation gate — Step 25 implemented
 2026-09-17, awaiting user validation; Step 26 is blocked until the user
 validates it.**
 
@@ -398,20 +427,17 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 25.** This is the gate; nothing below
-   starts before it. Step 25 is implemented and awaiting validation; **Step 26
-   is blocked** on that validation. The validating review's `playwright` failure
-   (`tests/e2e/player-journey.spec.ts`, the upgrade modal never opening) was a
-   pre-existing harness bug — a press aimed from the throttled rendered-state
-   read-back while the mine camera had already scrolled — reproduced with the
-   Step 25 `src/` change reverted in place, and is fixed in that spec; see
-   `techContext.md`'s Step 25 section. `production-stages.spec.ts:368` remains a
-   separate, pre-existing, load-dependent flake, out of scope here.
-2. Step 26 onward — the adversarial suite, then Steps 27–37. **Step 24's L2 is
-   closed by Step 25:** a `429` is refused before any `save_audit` row exists on
-   the path, and an oversized body writes none either, so the
-   1-request-to-1-audit-write amplification no longer grows the table per
-   refused request.
+1. **Wait for the user to validate Step 26.** This is the gate; nothing below
+   starts before it. Step 26 (the adversarial suite) is implemented and awaiting
+   validation; **Step 27 (leaderboard storage) is blocked** on that validation,
+   and Phase 4 is complete pending it. Step 25's own gate is closed — it was
+   validated, merged, and Step 26 was queued against it.
+2. Step 27 onward — leaderboard storage and the rest of Phase 5, then Phases
+   6–7. **Step 24's L2 is closed by Step 25:** a `429` is refused before any
+   `save_audit` row exists on the path, and an oversized body writes none
+   either, so the 1-request-to-1-audit-write amplification no longer grows the
+   table per refused request. Step 26 pins both under attack
+   (`attack 9 / AC9` in `adversarial.integration.test.ts`).
 3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
    shipped only a DEV hook; it remains the one protocol requirement with no
    player-facing implementation.

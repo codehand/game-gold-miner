@@ -1549,6 +1549,85 @@ throttled, `413` for an oversized body, and `save_audit` not growing by one row
 per refused request). `supabase/config.toml`'s `[auth.rate_limit]` was reviewed
 and deliberately left unchanged, with the reasoning recorded there.
 
+### Adversarial suite (Step 26)
+
+Step 26 adds no production code. Its deliverable is a suite that proves the
+guards Steps 15–25 built are load-bearing, in the shape `### Step 26` of
+`memory-bank/server-milestone-plan.md` requires: every attack the threat model
+names is refused by its **own named assertion**, and **removing that attack's
+one server-side guard makes that assertion fail**.
+
+**Nine attacks, at the lowest layer that still exercises the real guard.**
+Constraint 4 splits "pure logic" from "needs the stack", so the suite is two
+files per layer rather than one monster:
+
+| # | Attack | Guard mutated | Where it is proven |
+|---|---|---|---|
+| 1 | Forged gold | Step 23 `evaluateProgressBound` | `save-sync/adversarial.test.ts` (pure) + `adversarial.integration.test.ts` (real stored row) |
+| 2 | Replayed documents | §5 `baseRevision` concurrency, plus the Step 23 bound | same two files |
+| 3 | Rolled-back concurrency tokens | the `409` path; Step 24's H2 `isValidBaseRevision` | same two files |
+| 4 | Clock manipulation, both directions | Step 22's server-clock rule (`received_at` → `now()`); `readClientClock` recorded-never-trusted | same two files |
+| 5 | Another user's id | caller identity from the verified JWT, never a request field | `adversarial.integration.test.ts` + attack 6's matrix |
+| 6 | Direct PostgREST writes to every table | RLS + the column grant | `adversarial-rls.integration.test.ts` (real PostgREST, real `anon`/`authenticated` tokens) |
+| 7 | Unverified Telegram payloads | `verifyTelegramInitData`'s HMAC + `timingSafeEqualHex` | `telegram-sign-in/adversarial.test.ts` + the wire form in `adversarial.integration.test.ts` |
+| 8 | A stolen anonymous session | Step 14 recovery-code rotation | `adversarial.integration.test.ts` |
+| 9 | Brute-forced recovery codes | Step 25's per-user/per-address limits, the peppered hash, the single-redemption predicate | `recovery-code/adversarial.test.ts` (injected clock) + `adversarial.integration.test.ts` (real table) |
+
+`npm run test:server-unit` collects the three `adversarial.test.ts` files under
+`supabase/functions/` with no permission flag and no Docker; the two
+`tests/server-integration/adversarial*.integration.test.ts` files run inside
+`npm run verify:server`.
+
+**Attack 6's matrix is derived, not hand-listed.** `tests/server-integration/rlsMatrixFixture.ts`
+reads `supabase/migrations/*.sql` and builds the six tables × four verbs × two
+client roles from the `create table` and `create policy` statements themselves,
+so a seventh table is covered without anyone editing the suite — and its first
+column is read from the same statement, so no probe column is hard-coded either.
+The observable outcome is per-verb rather than a single "denied": an INSERT a
+policy does not admit raises (`403` / `42501`), while a SELECT/UPDATE/DELETE no
+policy admits is *filtered* (`200` / `[]`), which is the pair the pre-existing
+`profiles-rls` and `saves-rls` suites already pin. `rlsCellExpectation` is the
+single place that mapping lives.
+
+**The `leaderboard_entries` column control is asserted separately, because the
+row policy is not the control.** `leaderboard_entries_select_all` admits every
+row, so `?select=user_id` (and `select=*`, which PostgREST expands to every
+column) is refused by the *grant* with `42501` while a read naming only the
+granted columns succeeds. That is Step 3's recorded rule, and Step 26 is where
+it becomes a test rather than a comment.
+
+**Attack 8's boundary is pinned honestly.** Rotation invalidates the prior
+recovery **code**; it does **not** invalidate a stolen session **token**, which
+stays valid until rotated, and nothing in this milestone rotates it. Finding
+**F5** (an XSS flaw defeats the session boundary; the CSP/dependency-integrity
+half is unaddressed) is explicitly out of Step 26's scope and no test implies
+otherwise. What the test proves is the boundary that exists: a stolen code is
+spent the moment the real player generates a fresh one.
+
+**Attack 9's honest gap is stated too.** Redemption has **no per-user limit
+before it resolves** and cannot have one — there is no caller identity until the
+code has already been matched, and a post-match limit would run after the
+compare-and-swap it exists to bound. The per-address limit is the meaningful
+pre-resolution bound; the code's 128-bit entropy is the real backstop. A test
+asserts exactly that (a `null` address key, no user key) rather than implying a
+defence the milestone does not have.
+
+**Flake discipline (constraint 6).** The local gateway makes the whole
+integration suite one observed address (TASK-002's finding), so the flood loops
+spend **one user's** bucket (`SAVE_UPLOAD_MAX_PER_USER + 1`) rather than
+draining the shared per-address budget, and the recovery assertions clear the
+gateway-shared bucket first through the Step 14 reset route, because a `429`
+would short-circuit before the code is compared — the guard those tests exist to
+prove. The warm-up probe is the refused `DELETE` on an unrouted path, which
+returns from each router before any limiter runs, so warming spends no bucket.
+
+The **per-attack mutation record** — for each of the nine, the guard disabled,
+the test that went red by name, and its green restore — is in the Step 26
+hand-off comment on `TASK-004`, which is the deliverable AC10 grades. No
+production behaviour changed; the one guard whose answer is "no guard, by
+design" (attack 9's absent per-user redemption limit) is recorded above and
+below rather than quietly given a test that would pass either way.
+
 ### Guest linking and the identity collision (Step 13)
 
 Three of the step's required flows fall out of what Steps 10/12/17 already

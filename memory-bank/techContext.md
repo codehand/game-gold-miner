@@ -1197,6 +1197,13 @@ If a database is introduced, replace this statement with the complete authoritat
   while a secret mirrored under an unrelated `VITE_` name still does. Reduced
   coverage — no `.env.local`, or a running stack whose status could not be
   parsed — is printed as a warning rather than passing in silence.
+- `npm run test:adversarial`: Step 26's suite alone, in one command (AC6).
+  `test:adversarial:unit` is `deno test --filter "attack" supabase/functions`
+  (no Docker, no permission flag) and `test:adversarial:integration` is
+  `vitest run --config vitest.server-integration.config.ts adversarial`
+  (the live stack, the same `verify:server` preconditions). Every test in the
+  suite begins `attack <n> (<attack name>)` precisely so this filter selects
+  all nine attacks and nothing else.
 - `tests/unit/bundle-secret-scan.test.ts` covers the scanner directly against
   temporary fixtures outside the repository, importing it through
   `scripts/scan-bundle-secrets.d.mts` so `tsc` type-checks the test while the
@@ -1603,6 +1610,35 @@ recorded by the first Step 25 iteration as flaking with a varying failing test
 (`368`/`449`/`449`); it passed in the reviewing human's own run. Re-tuning that
 budget is explicitly out of scope for this task (AC18, "Re-tuning unrelated test
 budgets").
+
+Server-milestone Step 26 (adversarial suite). No production code changed. Five
+new test files, laid out by the layer the guard actually lives at: three
+`adversarial.test.ts` files under `supabase/functions/` (collected by
+`npm run test:server-unit`, no permission flag, no Docker) and two
+`tests/server-integration/adversarial*.integration.test.ts` files (inside
+`npm run verify:server`). `tests/server-integration/rlsMatrixFixture.ts` derives
+attack 6's matrix — tables, per-table probe column, and each cell's expected
+outcome — from `supabase/migrations/*.sql` rather than listing them, the same
+read-from-disk rule `readExpectedMigrations` and the warm-up list follow.
+
+**Building and running the suite — the state of this sandbox.** This iteration's
+sandbox had **no Docker** (`docker` absent, no daemon socket, no `supabase`
+binary for `linux-arm64`) and a `node_modules` whose **native binaries are
+macOS Mach-O**, so three gates could not be executed at all and are recorded as
+**not run**, never as passed:
+
+| Gate | Outcome |
+|---|---|
+| `npm run lint` (AC1) | **exit 0** |
+| `npm run build` — `tsc` half only (AC4) | **exit 0** for `tsc --noEmit`; `vite build` could not run (rolldown's binding is `-darwin-arm64` only, no Linux binary present or fetchable) |
+| `npm run test` (AC2) | **not run** — same missing rolldown binding (Vitest 4 loads rolldown for its config) |
+| `npm run test:server-unit` (AC3) | **not run** — the committed `deno-bin` binary is also Mach-O |
+| `npm run verify:server` (AC5) | **not run** — requires Docker, which does not exist here |
+
+AC2/AC3/AC5/AC4 remain **unverified**; the fresh runner evidence is what must
+establish them, and the Docker status is stated rather than assumed, exactly as
+AC5 requires. Rework is expected if the runner reports a failure these gates
+would have caught.
 
 ## Closed incident reports
 
