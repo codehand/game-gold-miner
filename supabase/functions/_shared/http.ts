@@ -59,6 +59,67 @@ export function declaredBodyBytes(request: Request): number | null {
 }
 
 /**
+ * How much of a body already refused by its declared `Content-Length` is read
+ * and thrown away before the `413` is returned.
+ *
+ * **Why discard at all.** Answering before the client has finished writing its
+ * body is not free on this stack. The local gateway (Kong) proxies a request
+ * body through to the edge runtime and only then relays the response; if the
+ * runtime answers and stops reading, the client can be left waiting on a
+ * response it never receives until its own timeout fires — observed as a 20 s
+ * `TimeoutError` in `tests/server-integration/save-upload.integration.test.ts`
+ * the moment the declared-size refusal moved above authentication. A refusal
+ * the client cannot read is not a refusal.
+ *
+ * **Why a bound.** Draining unconditionally would hand that same caller the
+ * unbounded read this check exists to avoid: a declared 10 GB body would be
+ * read in full merely to be rejected. 1 MiB is comfortably above every real
+ * body this milestone sends — a save is ~3–4 KB, a Telegram `initData` a few
+ * KB, a recovery code 39 characters — so an honest or merely mistaken client
+ * always finishes its write and reads its `413`, while anything genuinely
+ * hostile is cut off after a bounded amount and answered with a reset instead.
+ *
+ * The bytes are never buffered into a string and never parsed, which is what
+ * keeps Step 25's AC5 assertion ("an oversized body is refused before it is
+ * parsed") true and meaningful: the injected parse collaborator is still never
+ * called on this path.
+ */
+export const MAX_DISCARDED_BODY_BYTES = 1_048_576;
+
+export async function discardRequestBody(
+  request: Request,
+  maxBytes: number = MAX_DISCARDED_BODY_BYTES,
+): Promise<void> {
+  const body = request.body;
+  if (body === null) {
+    return;
+  }
+
+  const reader = body.getReader();
+  let discarded = 0;
+  try {
+    while (discarded < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) {
+        return;
+      }
+      discarded += value.byteLength;
+    }
+  } catch {
+    // A client that aborted mid-body is exactly the case this exists for.
+    return;
+  }
+
+  // More is still coming: stop rather than let a declared huge body make this
+  // function read all of it just to be refused.
+  try {
+    await reader.cancel();
+  } catch {
+    // Already closed by the peer.
+  }
+}
+
+/**
  * Origins the game itself is ever served from today. No deployed origin
  * exists yet (`memory-bank/server-threat-model.md` §7.5) — add the real one
  * here when it does, rather than widening this to a wildcard, which would

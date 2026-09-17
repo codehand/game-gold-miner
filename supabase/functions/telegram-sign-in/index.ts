@@ -65,6 +65,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.116.0';
 import {
   corsPreflightResponse,
   declaredBodyBytes,
+  discardRequestBody,
   errorResponse,
   jsonResponse,
   MAX_REQUEST_BODY_BYTES,
@@ -282,6 +283,9 @@ export async function handleTelegramSignIn(
   // `initData` string and a service-role `generateLink` round trip.
   const declaredLength = declaredBodyBytes(request);
   if (declaredLength !== null && declaredLength > MAX_REQUEST_BODY_BYTES) {
+    // Discard what the client has already sent before answering, so it can actually
+    // read this refusal — see `discardRequestBody`. Still never buffered, never parsed.
+    await discardRequestBody(request);
     return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_REQUEST_BODY_BYTES} bytes.`, { origin });
   }
 

@@ -56,6 +56,7 @@ import {
   corsHeaders,
   corsPreflightResponse,
   declaredBodyBytes,
+  discardRequestBody,
   errorResponse,
   jsonResponse,
   MAX_REQUEST_BODY_BYTES,
@@ -389,6 +390,9 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   // regardless of what this one finds.
   const declaredLength = declaredBodyBytes(request);
   if (declaredLength !== null && declaredLength > MAX_SAVE_BODY_BYTES) {
+    // Discard what the client has already sent before answering, so it can actually
+    // read this refusal — see `discardRequestBody`. Still never buffered, never parsed.
+    await discardRequestBody(request);
     return errorResponse(413, 'payload_too_large', `Body exceeds ${MAX_SAVE_BODY_BYTES} bytes.`, { origin });
   }
 
