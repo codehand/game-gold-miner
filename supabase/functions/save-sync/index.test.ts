@@ -1220,3 +1220,114 @@ Deno.test("the §9 worst-case honest upload burst is admitted; the limit refuses
   }
   assert.equal(admitted, SAVE_UPLOAD_MAX_PER_USER);
 });
+
+// ---------------------------------------------------------------------------
+// Server-milestone Step 25 — the behavioural half of the fingerprint
+// proof-of-absence (AC6). `tests/unit/server-fingerprint-absence.test.ts`
+// asserts no server source *reads* a device or browser characteristic; these
+// two assert that no such characteristic changes which account is selected or
+// which write is authorized, by driving requests that differ in nothing else.
+// ---------------------------------------------------------------------------
+
+/** Every class of client-supplied device/browser characteristic Step 25's threat model §7.2 forbids collecting. */
+const DEVICE_CHARACTERISTIC_HEADERS: readonly (readonly [string, string])[] = [
+  ['user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15'],
+  ['sec-ch-ua', '"Chromium";v="120", "Not:A-Brand";v="99"'],
+  ['sec-ch-ua-mobile', '?1'],
+  ['sec-ch-ua-platform', '"iOS"'],
+  ['accept-language', 'vi-VN,vi;q=0.9,en;q=0.8'],
+  ['x-device-id', 'a-browser-minted-device-id'],
+];
+
+interface UploadOutcome {
+  readonly status: number;
+  readonly revision: number;
+  readonly resolvedTokens: readonly string[];
+  readonly writtenUserIds: readonly string[];
+}
+
+async function uploadWithHeaders(
+  headers: readonly (readonly [string, string])[],
+): Promise<UploadOutcome> {
+  const resolvedTokens: string[] = [];
+  const writtenUserIds: string[] = [];
+  const request = new Request('http://localhost/v1/save', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      authorization: 'Bearer the-callers-token',
+      ...Object.fromEntries(headers),
+    },
+    body: JSON.stringify({ baseRevision: null, document: validSaveDocument() }),
+  });
+
+  const response = await handleRequest(
+    request,
+    noopDeps({
+      resolveCaller: async (token) => {
+        resolvedTokens.push(token);
+        return { userId: FIXTURE_USER_ID };
+      },
+      readCurrentSave: async () => null,
+      writeSaveRow: async (userId) => {
+        writtenUserIds.push(userId);
+        return true;
+      },
+    }),
+  );
+
+  const body = (await response.json()) as { revision?: number };
+  return { status: response.status, revision: body.revision ?? 0, resolvedTokens, writtenUserIds };
+}
+
+Deno.test('handleSaveUpload selects no account and authorizes no write from a device characteristic', async () => {
+  const withoutCharacteristics = await uploadWithHeaders([]);
+  const withCharacteristics = await uploadWithHeaders(DEVICE_CHARACTERISTIC_HEADERS);
+
+  assert.equal(withoutCharacteristics.status, 200);
+  assert.equal(withCharacteristics.status, 200);
+
+  // The only input to account selection is the bearer token, and the only
+  // input to save ownership is what that token resolved to. Adding a full set
+  // of device/browser characteristics to the request changes neither.
+  assert.deepEqual(withCharacteristics.resolvedTokens, ['the-callers-token']);
+  assert.deepEqual(withCharacteristics.resolvedTokens, withoutCharacteristics.resolvedTokens);
+  assert.deepEqual(withCharacteristics.writtenUserIds, [FIXTURE_USER_ID]);
+  assert.deepEqual(withCharacteristics.writtenUserIds, withoutCharacteristics.writtenUserIds);
+  assert.equal(withCharacteristics.revision, withoutCharacteristics.revision);
+});
+
+Deno.test('handleSaveDownload selects no account from a device characteristic', async () => {
+  const readUserIds: string[] = [];
+
+  const download = async (
+    headers: readonly (readonly [string, string])[],
+  ): Promise<{ readonly status: number; readonly readUserIds: readonly string[] }> => {
+    const response = await handleRequest(
+      new Request('http://localhost/v1/save', {
+        method: 'GET',
+        headers: {
+          authorization: 'Bearer the-callers-token',
+          ...Object.fromEntries(headers),
+        },
+      }),
+      noopDeps({
+        resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+        readCurrentSave: async (userId) => {
+          readUserIds.push(userId);
+          return null;
+        },
+      }),
+    );
+    return { status: response.status, readUserIds: [...readUserIds] };
+  };
+
+  const withoutCharacteristics = await download([]);
+  readUserIds.length = 0;
+  const withCharacteristics = await download(DEVICE_CHARACTERISTIC_HEADERS);
+
+  assert.equal(withoutCharacteristics.status, 204);
+  assert.equal(withCharacteristics.status, 204);
+  assert.deepEqual(withCharacteristics.readUserIds, [FIXTURE_USER_ID]);
+  assert.deepEqual(withCharacteristics.readUserIds, withoutCharacteristics.readUserIds);
+});
