@@ -1713,6 +1713,86 @@ the suite rather than reported around: attack 4's pure half could not fail
 guard, by design" — attack 9's absent per-user redemption limit — is recorded
 above and below rather than quietly given a test that would pass either way.
 
+### Leaderboard storage (Step 27)
+
+Step 27's own instructions: "Add the leaderboard table using the Step 3
+magnitude-plus-exact representation, with the indexes its queries need. Decide
+the metric, the reset period if any, and the tie-break." **No table, index, or
+RLS change was needed.** `public.leaderboard_entries`, its rank index
+(`leaderboard_entries_rank_idx`), and its RLS/grant matrix
+(`leaderboard_entries_select_all` plus the column-level grant withholding
+`user_id`) all shipped in Step 3/Step 5
+(`20260908130000_create_platform_tables.sql`) — Step 3 built the table
+metric-agnostic on purpose (see "What Step 3 does not design" below), so
+Step 27's actual job was the three decisions themselves, not a schema change:
+
+- **Metric: lifetime gold earned.** `state.warehouse.totalGoldDelivered +
+  state.warehouse.totalOfflineGoldClaimed` (`calculateLifetimeGoldEarned`,
+  `src/core/leaderboard/leaderboardMetric.ts`) — both monotonic, so the sum
+  can only rise across a save's lifetime. Current spendable `gold` is
+  deliberately **not** the metric: it falls every time a player buys an
+  upgrade, which would rank a patient spender below someone who never
+  invests.
+- **Reset period: none.** One board, `board_key = 'lifetime-gold'`
+  (`LIFETIME_GOLD_BOARD_KEY`), all-time. A future season is a new `board_key`
+  value under `leaderboard_entries_board_key_format`, never a schema change —
+  exactly the design Step 3 recorded.
+- **Tie-break: earliest to reach the score.** Two equal scores rank by
+  ascending `updated_at` — the player who got there first outranks one who
+  only matched it later. `leaderboard_entries_rank_idx`'s trailing column
+  already encoded this in Step 3; Step 27 confirms it rather than changing
+  it.
+
+`supabase/migrations/20260918100000_leaderboard_lifetime_gold_board.sql` pins
+these three decisions as `comment on table`/`comment on column` statements —
+a durable, queryable record alongside this document, not a structural change.
+
+**The magnitude-plus-exact conversion.** `toLeaderboardMagnitude` (same
+module) turns a `GameNumber` into the `metric_exact`/`metric_log10` pair: the
+exact value is `GameNumber.serialize()`, unchanged; the sortable magnitude is
+`Math.log10(mantissa) + exponent`, derived from the `GameNumber`'s own
+mantissa/exponent pair (see "How a `GameNumber` is stored" below) rather than
+from the value itself, so it stays exact for a value past `1e308` — which
+cannot survive a round trip through a plain `double` at all. It throws on a
+non-positive value, which the table's own
+`leaderboard_entries_metric_log10_finite` constraint would refuse regardless.
+This module only *represents* the metric; nothing here writes a row —
+publishing an entry from a save that passed Step 23's bound is Step 28's job.
+
+**Proof, against the real table.**
+`tests/server-integration/leaderboard-storage.integration.test.ts`:
+
+- Ten values spanning ordinary numbers through magnitudes past `1e308`
+  (`1e1000` down to `0.01`) are inserted out of order and read back through the
+  real ranking index (`order=metric_log10.desc,updated_at.asc`) in exactly the
+  expected descending order, with `metric_exact` byte-identical to
+  `GameNumber.serialize()` of the original value on every row.
+- A tie at equal `metric_log10` ranks the earlier `updated_at` first.
+- A focused RLS check for this table: an unauthenticated read of the allowed
+  columns succeeds; a read of the withheld `user_id` column is refused
+  `42501` even for the row's own owner (the control is the grant, not a row
+  policy an owner could read as "except my own"); a direct `PATCH` from
+  either client role is refused `42501` too — not the ordinary "filtered,
+  `200` with `[]`" an uncovered non-INSERT cell gets elsewhere, because this
+  table's table-level `SELECT` is *also* revoked, so `Prefer:
+  return=representation`'s read-back cannot be built at all
+  (`rlsMatrixFixture.ts`'s `rlsCellExpectation`, `tableSelectRevoked` branch —
+  the exhaustive six-table matrix itself is Step 26's, not re-derived here).
+- **Latency budget: the top-100 ranking query over 10,000 rows on one board —
+  the "~10⁴ rows" scale this document's Indexes section already records for
+  this schema — completes in under 300 ms, end-to-end through the real REST
+  API (Kong → PostgREST → the indexed query), measured three times after one
+  untimed warm-up request.** The 10,000 rows need 10,000 distinct
+  `auth.users` rows to reference (`(board_key, user_id)` is the primary key),
+  which `tests/server-integration/directSqlFixture.ts` seeds with one bulk
+  `insert` run as the Postgres superuser directly against the local stack's
+  own database container (`docker exec ... psql`, piped over stdin) —
+  minting each one through GoTrue would have made this one assertion the
+  slowest, flakiest thing `verify:server` runs. A JWT minted for one of those
+  ids by `mintFixtureUserToken` authenticates against RLS exactly as a real
+  GoTrue session would, because PostgREST trusts any validly-signed JWT's
+  `sub` claim without consulting a live session.
+
 ### Guest linking and the identity collision (Step 13)
 
 Three of the step's required flows fall out of what Steps 10/12/17 already
@@ -2583,9 +2663,12 @@ Throttling belongs per caller and per address, in Step 25.
   redemption, and entitlement grants. It is a separate table designed in its own
   step; merging it with `save_audit` would put frequent save rows and rare
   identity events in one table with opposing access patterns.
-- The leaderboard metric, reset period, and tie-break — Step 27. The schema is
-  metric-agnostic on purpose: a season or period is a `board_key` value, not a
-  schema change.
+- The leaderboard metric, reset period, and tie-break were left open here on
+  purpose — decided in Step 27 (`## Server Stack Contract`'s "Leaderboard
+  storage (Step 27)" section): lifetime gold earned, no reset (one board,
+  `board_key = 'lifetime-gold'`), tie-break by ascending `updated_at`. No
+  table, index, or RLS change was needed to decide them — a season or period
+  is a `board_key` value, not a schema change, exactly as designed here.
 - Rate-limit counters — Step 25, which may use platform facilities rather than
   tables.
 - `offlineGrant` and anything Step 22 needs beyond `received_at`, which already

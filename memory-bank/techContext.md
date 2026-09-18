@@ -995,9 +995,12 @@ fixed with a token-gated `POST /v1/test-only-reset-rate-limit` route (see
   redemption, and entitlement grants. It is a separate table designed in its own
   step; merging it with `save_audit` would put frequent save rows and rare
   identity events in one table with opposing access patterns.
-- The leaderboard metric, reset period, and tie-break — Step 27. The schema is
-  metric-agnostic on purpose: a season or period is a `board_key` value, not a
-  schema change.
+- The leaderboard metric, reset period, and tie-break were left open here on
+  purpose — decided in Step 27 (`## Server Stack Contract`'s "Leaderboard
+  storage (Step 27)" section): lifetime gold earned, no reset (one board,
+  `board_key = 'lifetime-gold'`), tie-break by ascending `updated_at`. No
+  table, index, or RLS change was needed to decide them — a season or period
+  is a `board_key` value, not a schema change, exactly as designed here.
 - Rate-limit counters — settled by Step 25, which chose **no table**: the shared
   limiter keeps a fixed-window `Map` per worker
   (`supabase/functions/_shared/rateLimit.ts`), pruned past a size threshold.
@@ -1664,6 +1667,38 @@ them a defect in production code:
   instead of pinning "the 61st request is refused" — which the per-worker
   `Map` cannot promise when the edge runtime splits a burst across workers.
   See `architecture.md`'s Step 26 section for the full reasoning.
+
+Server-milestone Step 27 (leaderboard storage). No table, index, or RLS
+change: `public.leaderboard_entries` already existed, metric-agnostic by
+design, from Step 3/5. `src/core/leaderboard/leaderboardMetric.ts` adds the
+decision — lifetime gold earned (`totalGoldDelivered +
+totalOfflineGoldClaimed`), one all-time board (`LIFETIME_GOLD_BOARD_KEY =
+'lifetime-gold'`), tie-break by ascending `updated_at` — plus the pure
+`toLeaderboardMagnitude` conversion (`log10(mantissa) + exponent`, exact past
+`1e308`) that the `metric_exact`/`metric_log10` pair requires.
+`supabase/migrations/20260918100000_leaderboard_lifetime_gold_board.sql` pins
+the three decisions as `comment on table`/`comment on column`, applied and
+verified against `supabase db reset` from empty.
+
+`tests/server-integration/leaderboard-storage.integration.test.ts` proves the
+step's own "Test" line against the real table: ten values from ordinary
+numbers through `1e1000` sort correctly through the real ranking index and
+display exactly (`metric_exact` byte-identical to `GameNumber.serialize()`);
+a tie at equal `metric_log10` ranks the earlier `updated_at` first; a focused
+RLS check (the exhaustive matrix stays Step 26's); and a stated latency
+budget — the top-100 ranking query over 10,000 rows on one board (the "~10⁴
+rows" scale already recorded for this schema) completes under 300 ms through
+the real REST API. The 10,000 rows need 10,000 distinct `auth.users` rows to
+reference (`(board_key, user_id)` is the primary key); minting them through
+GoTrue would have made this the slowest, flakiest thing `verify:server` runs,
+so `tests/server-integration/directSqlFixture.ts` seeds them with one bulk
+`insert` run as the Postgres superuser via `docker exec ... psql`, piped over
+stdin — test setup only, the same convention `serviceRoleFixture.ts`
+establishes for the write path PostgREST itself cannot reach. `npm run test`
+(8 new: `tests/unit/leaderboard-metric.test.ts`), `npm run test:server-unit`
+(unchanged, no server-side code touched), and `npm run verify:server`
+(17 integration files / 119 tests, 6 of them new) all pass. See
+`architecture.md`'s Step 27 section for the full design reasoning.
 
 ## Closed incident reports
 

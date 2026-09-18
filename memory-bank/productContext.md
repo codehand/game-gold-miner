@@ -252,6 +252,17 @@ evidence that the player-facing promises above — a save that cannot be
 fabricated, a reward that cannot be clock-hacked, an account that cannot be
 stolen by replaying a code — are enforced rather than merely intended.
 
+Server-milestone Step 27 (2026-09-18) is also not player-visible — there is no
+leaderboard screen yet (Step 29) and nothing writes an entry yet (Step 28).
+What it settles is what a leaderboard will mean once it appears: ranking by
+**lifetime gold earned**, which only ever rises, rather than a player's
+current spendable balance, which falls every time they buy an upgrade — so a
+patient, heavily-invested player is never shown ranked below someone who
+never spent anything. There is one board, with no reset period: progress
+toward it is permanent, the way every other number in this game is. A tie
+ranks whoever reached that total first, which rewards being ahead of the
+curve rather than merely catching up to it later.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

@@ -63,7 +63,7 @@ and download (Steps 15–17) · Client remote repository (Step 19) · Adopting a
 existing local save (Step 20) · Surviving local storage eviction (Step 21) ·
 The server clock is the only clock (Step 22) · Upper-bound re-simulation
 (Step 23) · Rejection handling (Step 24) · Abuse limits (Step 25) ·
-Adversarial suite (Step 26) · Guest
+Adversarial suite (Step 26) · Leaderboard storage (Step 27) · Guest
 linking and the identity collision (Step 13) · Recovery code
 (Step 14)
 
