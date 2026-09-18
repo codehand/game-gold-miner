@@ -263,6 +263,14 @@ toward it is permanent, the way every other number in this game is. A tie
 ranks whoever reached that total first, which rewards being ahead of the
 curve rather than merely catching up to it later.
 
+Server-milestone Step 28 (2026-09-18) starts actually recording that ranking —
+every accepted cloud save now publishes the player's current standing — but
+is still not player-visible, because there is still no leaderboard screen
+(Step 29). The player-facing promise this settles for later: only progress the
+server has already verified (past Step 23's bound) can ever reach the board,
+so a rejected or tampered save can never inflate a rank the way it could never
+inflate a cloud save.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

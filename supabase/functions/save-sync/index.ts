@@ -16,10 +16,12 @@
  *
  * 1. The health path never reads the service-role key. `/v1/save` is
  *    different: Step 15 makes the service role the only writer of `saves`,
- *    so upload's accept path legitimately needs it — `tests/unit/server-stack.test.ts`'s
- *    "never reads the service-role key" blanket check has its own
- *    `save-sync` exception for exactly this reason, mirroring the one it
- *    already carries for `telegram-sign-in`.
+ *    Step 24 the only writer of `save_audit`, and Step 28 the only writer of
+ *    `leaderboard_entries` — upload's accept path legitimately needs it for
+ *    all three — `tests/unit/server-stack.test.ts`'s "never reads the
+ *    service-role key" blanket check has its own `save-sync` exception for
+ *    exactly this reason, mirroring the one it already carries for
+ *    `telegram-sign-in`.
  * 2. Failures use the §4 envelope with a code from the §4 vocabulary. That
  *    vocabulary has no `not_found` and no `method_not_allowed`, so a request
  *    for a path or method the contract does not define is a client bug and is
@@ -46,10 +48,13 @@ import {
   BASE_GAME_BALANCE,
   CURRENT_SAVE_SCHEMA_VERSION,
   GameNumber,
+  LIFETIME_GOLD_BOARD_KEY,
+  calculateLifetimeGoldEarned,
   calculateOfflineGrant,
   deserializeSaveDocument,
   evaluateProgressBound,
   SaveDocumentError,
+  toLeaderboardMagnitude,
   validateSaveDocument,
 } from '../_shared/generated/core-bundle.js';
 import {
@@ -347,6 +352,44 @@ export interface SaveAuditEntry {
 export type WriteSaveAudit = (entry: SaveAuditEntry) => Promise<void>;
 
 /**
+ * Server-milestone Step 28: leaderboard writes.
+ *
+ * Step 27 designed the metric, the board, and the tie-break, and left the
+ * pure conversion in `src/core/leaderboard/leaderboardMetric.ts`
+ * (`calculateLifetimeGoldEarned`, `toLeaderboardMagnitude`) — nothing there
+ * writes a row. This is that writer: it publishes one `leaderboard_entries`
+ * row, keyed `(board_key, user_id)`, **only** from a document
+ * `handleSaveUpload` has already accepted (past Step 23's bound, past
+ * validation, past the revision compare-and-swap). A save this function
+ * rejects for any reason never reaches this type at all.
+ */
+export interface LeaderboardEntryToWrite {
+  readonly userId: string;
+  readonly boardKey: string;
+  readonly displayName: string | null;
+  readonly metricExact: string;
+  readonly metricLog10: number;
+  readonly sourceRevision: number;
+}
+
+/**
+ * Best-effort, exactly like {@link WriteSaveAudit}: a publish failure must
+ * never turn an accepted save into a rejected response or lose the player's
+ * game. `leaderboard_entries`' RLS grants no client role any write at all, so
+ * only the service-role path here can ever populate it.
+ */
+export type WriteLeaderboardEntry = (entry: LeaderboardEntryToWrite) => Promise<void>;
+
+/**
+ * The caller's own `display_name`, snapshotted at publish time. Reading it
+ * needs no elevated privilege — `profiles_select_own` already admits the
+ * caller's own row through their own bearer token — and a lookup failure is
+ * swallowed by the same best-effort publish this feeds, consistent with the
+ * column's own nullable contract.
+ */
+export type ReadDisplayName = (userId: string, bearerToken: string) => Promise<string | null>;
+
+/**
  * Step 25 (AC5): reading and parsing the body are collaborators, not inline
  * `request.text()`/`JSON.parse` calls, so a unit test can prove that an
  * oversized body is refused **before** either runs — by asserting an injected
@@ -361,6 +404,10 @@ export interface SaveSyncDeps {
   readonly readCurrentSave: ReadCurrentSave;
   readonly writeSaveRow: WriteSaveRow;
   readonly writeSaveAudit: WriteSaveAudit;
+  /** Step 28: publishes the accepted write's leaderboard entry — never called for a rejected or unvalidated save. */
+  readonly writeLeaderboardEntry: WriteLeaderboardEntry;
+  /** Step 28: the caller's own `profiles.display_name`, snapshotted for the published entry. */
+  readonly readDisplayName: ReadDisplayName;
   /** Step 25: the per-address/per-user limits both save routes consult — see `createSaveSyncRateLimiters`. */
   readonly rateLimit: SaveSyncRateLimiters;
   readonly readSaveBody: ReadSaveBody;
@@ -671,7 +718,58 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     detail: withClientClockNote(null, auditContext.clientClockOutOfRangeMs),
   });
 
+  // Step 28: publish only from this accepted write — every reject above
+  // returns before this line is ever reached, which is what keeps a rejected
+  // or unvalidated save off the board.
+  await publishLeaderboardEntry(deps, {
+    userId: caller.userId,
+    bearerToken: token,
+    revision,
+    documentJson: validatedDocumentJson,
+  });
+
   return jsonResponse(200, { revision, receivedAt }, origin);
+}
+
+/**
+ * Step 28: publishes one `leaderboard_entries` row from a document
+ * `handleSaveUpload` has already accepted. Best-effort like
+ * {@link recordSaveAudit}: a failure anywhere in this function — computing the
+ * metric, reading the display name, or the write itself — is logged and must
+ * never turn the already-`200`-decided upload into anything else, and must
+ * never lose the player's save.
+ *
+ * A zero or negative lifetime-gold-earned total (a brand-new account with no
+ * completed warehouse conversion or offline claim yet) makes
+ * `toLeaderboardMagnitude` throw by design — caught here the same as any
+ * other failure, so a fresh account simply publishes nothing yet rather than
+ * ranking with an invalid entry.
+ */
+async function publishLeaderboardEntry(
+  deps: SaveSyncDeps,
+  params: {
+    readonly userId: string;
+    readonly bearerToken: string;
+    readonly revision: number;
+    readonly documentJson: string;
+  },
+): Promise<void> {
+  try {
+    const state = deserializeState(params.documentJson);
+    const magnitude = toLeaderboardMagnitude(calculateLifetimeGoldEarned(state));
+    const displayName = await deps.readDisplayName(params.userId, params.bearerToken);
+
+    await deps.writeLeaderboardEntry({
+      userId: params.userId,
+      boardKey: LIFETIME_GOLD_BOARD_KEY,
+      displayName,
+      metricExact: magnitude.exact,
+      metricLog10: magnitude.log10,
+      sourceRevision: params.revision,
+    });
+  } catch (error) {
+    console.error('save-sync: publishing leaderboard entry failed.', error);
+  }
 }
 
 /**
@@ -1153,6 +1251,81 @@ async function writeSaveAuditViaServiceRole(entry: SaveAuditEntry): Promise<void
   }
 }
 
+/**
+ * The caller's own `display_name`, read through their own token exactly as
+ * `whoami-check/index.ts` reads it — `profiles_select_own` already admits it,
+ * so no elevated privilege is needed here. A missing row or read error is
+ * surfaced by throwing, which `publishLeaderboardEntry`'s own catch already
+ * treats as "skip publishing this round", matching `display_name`'s own
+ * nullable contract.
+ */
+async function readDisplayNameViaOwnToken(userId: string, bearerToken: string): Promise<string | null> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('save-sync: SUPABASE_URL or SUPABASE_ANON_KEY is not configured.');
+  }
+
+  const client = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${bearerToken}` } },
+    auth: { persistSession: false },
+  });
+
+  const { data, error } = await client
+    .from('profiles')
+    .select('display_name')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`save-sync: reading profiles.display_name failed: ${error.message}`);
+  }
+
+  return (data?.display_name as string | null | undefined) ?? null;
+}
+
+/**
+ * Step 28: the only writer of `leaderboard_entries`. That table's RLS admits
+ * every client role a read of its allowed columns and no write at all (Step
+ * 3/27's matrix), so publishing needs the service role exactly as `saves` and
+ * `save_audit` do — the third and last place in this function that reads it.
+ *
+ * An upsert keyed on the table's own primary key (`board_key`, `user_id`) is
+ * safe here, unlike the blind upsert Step 15's review found and fixed for
+ * `saves`: there is no shared counter to race over — this is one caller
+ * publishing a snapshot of their own metric — so a retried or repeated accept
+ * simply overwrites with that same caller's latest value.
+ */
+async function writeLeaderboardEntryViaServiceRole(entry: LeaderboardEntryToWrite): Promise<void> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('save-sync: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured.');
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { error } = await admin.from('leaderboard_entries').upsert(
+    {
+      board_key: entry.boardKey,
+      user_id: entry.userId,
+      display_name: entry.displayName,
+      metric_exact: entry.metricExact,
+      metric_log10: entry.metricLog10,
+      source_revision: entry.sourceRevision,
+    },
+    { onConflict: 'board_key,user_id' },
+  );
+
+  if (error) {
+    throw new Error(`save-sync: writing leaderboard_entries row failed: ${error.message}`);
+  }
+}
+
 /** The real body reader — `deps.readSaveBody` exists so a test can prove it is never reached for a body the declared-size check already refused (AC5), not because a second implementation was ever wanted. */
 async function readSaveBodyFromRequest(request: Request): Promise<string> {
   return await request.text();
@@ -1178,6 +1351,8 @@ const defaultSaveSyncDeps: SaveSyncDeps = {
   readCurrentSave: readCurrentSaveRow,
   writeSaveRow: writeSaveRowViaServiceRole,
   writeSaveAudit: writeSaveAuditViaServiceRole,
+  writeLeaderboardEntry: writeLeaderboardEntryViaServiceRole,
+  readDisplayName: readDisplayNameViaOwnToken,
   rateLimit: createSaveSyncRateLimiters(),
   readSaveBody: readSaveBodyFromRequest,
   parseSaveBody: parseSaveBodyJson,

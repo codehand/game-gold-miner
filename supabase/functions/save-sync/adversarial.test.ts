@@ -141,6 +141,10 @@ async function upload(
     writeSaveAudit: async (entry) => {
       audits.push(entry);
     },
+    // Step 28: no attack here is about the leaderboard, so a permissive no-op
+    // keeps every existing case focused on its own guard.
+    writeLeaderboardEntry: async () => {},
+    readDisplayName: async () => null,
     rateLimit: {
       uploadByAddress: { check: async () => ({ allowed: true, retryAfterSeconds: 0 }) },
       uploadByUser: { check: async () => ({ allowed: true, retryAfterSeconds: 0 }) },

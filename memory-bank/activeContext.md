@@ -2,9 +2,66 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 27 validation gate — Step 27 (leaderboard
-storage) implemented 2026-09-18, awaiting user validation; Step 28 is blocked
+**Server milestone, at the Step 28 validation gate — Step 28 (leaderboard
+writes) implemented 2026-09-18, awaiting user validation; Step 29 is blocked
 until the user validates it.**
+
+Step 28's own instructions: "Publish an entry only from a save that passed
+Step 23. A rejected or unvalidated save must never reach the board." The
+write lives on exactly one path — `handleSaveUpload`'s accept branch in
+`supabase/functions/save-sync/index.ts`, after the row and its `save_audit`
+row are both already recorded; every reject branch (`save_invalid`,
+`save_rejected`, `revision_conflict`, size/rate refusals, `server_error`)
+returns before that call site, which is what "never reaches the board" means
+concretely — there is no separate check to bypass. Metric and magnitude come
+from Step 27's own pure functions
+(`calculateLifetimeGoldEarned`, `toLeaderboardMagnitude`) run against the
+just-accepted document; `source_revision` is that same write's own resulting
+`saves.revision`, never client-supplied; `display_name` is read from the
+caller's own `profiles.display_name` through their own bearer token
+(`profiles_select_own` already admits it). The write is a third,
+best-effort service-role use in this function —
+`admin.from('leaderboard_entries').upsert(...)`, keyed on the table's own
+primary key (`board_key`, `user_id`) — best-effort exactly like Step 24's
+`save_audit` write, so a publish failure (computing the metric, reading the
+display name, or the write itself) is logged and swallowed and can never turn
+an accepted upload into a rejected one or lose the player's save. A
+zero-or-negative lifetime-gold-earned total — a brand-new account's first
+save — makes `toLeaderboardMagnitude` throw by design (Step 27); the same
+catch turns that into "publishes nothing yet" rather than an error on an
+otherwise-good upload.
+
+**Proof.** `supabase/functions/save-sync/index.test.ts` (fakes, no live
+database) covers every branch: an accepted save publishes exactly once, keyed
+to the resulting revision, carrying the caller's looked-up display name; a
+Step 23 bound violation, a revision conflict, and a validation failure each
+publish nothing; a publish-side failure still returns `200`; a fresh,
+zero-lifetime-gold account publishes nothing without raising.
+`tests/unit/server-stack.test.ts` extends its existing `save-sync`
+service-role assertion with the new `leaderboard_entries` upsert line, and
+keeps pinning that `saves`' own compare-and-swap still carries no `upsert` of
+its own — the Step 15 finding stays fixed even as a different table's writer
+legitimately gains one.
+`tests/server-integration/leaderboard-publish.integration.test.ts` proves the
+same contract against the real Edge Function and the real table: an accepted
+upload publishes one row with the correct metric, revision, and board key,
+carrying the caller's own `profiles.display_name`; a save Step 23 rejects
+leaves the prior accepted entry completely untouched; and a second accepted
+upload from the same user overwrites that one row rather than duplicating it.
+`leaderboard_entries`' insert/update/delete refusal for both client roles was
+already exhaustively covered by Step 26's migration-derived RLS matrix
+(`adversarial-rls.integration.test.ts`), so it is not re-proven here. See
+`architecture.md`'s Step 28 section for the full design reasoning.
+
+**Local build/test verification for this step is pending the validation
+gate's own run** — the implementing sandbox for this step could not run
+`npm install` (a hard sandbox restriction, not a project issue), so
+`npm run verify` / `npm run verify:server` numbers for Step 28 are not
+recorded here; they will be captured when this gate is actually validated.
+
+**Previously, at the Step 27 validation gate — Step 27 (leaderboard storage)
+implemented 2026-09-18, validated and merged; Step 28 was released against
+it.**
 
 Step 27's own instructions: "Add the leaderboard table using the Step 3
 magnitude-plus-exact representation, with the indexes its queries need.
@@ -473,12 +530,12 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 27.** This is the gate; nothing below
-   starts before it. Step 27 (leaderboard storage) is implemented and awaiting
-   validation; **Step 28 (leaderboard writes) is blocked** on that validation.
-   Step 26's own gate is closed — it was validated, merged, and Step 27 was
-   queued against it; Phase 4 is complete.
-2. Step 28 onward — leaderboard writes, then display, friends, and the rest of
+1. **Wait for the user to validate Step 28.** This is the gate; nothing below
+   starts before it. Step 28 (leaderboard writes) is implemented and awaiting
+   validation; **Step 29 (leaderboard display) is blocked** on that
+   validation. Step 27's own gate is closed — it was validated, merged, and
+   Step 28 was queued against it; Phase 4 is complete.
+2. Step 29 onward — leaderboard display, then friends, and the rest of
    Phase 5, then Phases 6–7. **Step 24's L2 is closed by Step 25:** a `429` is
    refused before any
    `save_audit` row exists on the path, and an oversized body writes none
