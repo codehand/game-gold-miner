@@ -165,7 +165,13 @@ a way of choosing what to put in a request.
 token from Step 2 against replay and rollback; Step 15's RLS denial of every
 direct client write to `saves`; Step 25's rate limits and pre-parse size cap;
 Step 26's adversarial suite, which must fail if any single server-side guard is
-removed.
+removed. The real tests are
+`supabase/functions/save-sync/adversarial.test.ts` (attacks 1–4 against the
+pure guards), `supabase/functions/telegram-sign-in/adversarial.test.ts` and
+`supabase/functions/recovery-code/adversarial.test.ts` (attacks 7 and 9), and
+`tests/server-integration/adversarial.integration.test.ts` +
+`tests/server-integration/adversarial-rls.integration.test.ts` for the forms
+that need the real stack.
 
 **Step 25's refusal order, and what it bounds.** Every body-taking endpoint
 refuses in one documented sequence — CORS preflight → declared-size refusal →
@@ -202,7 +208,11 @@ Step 25 added — generating rotates the account's only active code through the
 service role, so it needs its own bound). Redemption cannot have a per-user half
 before it resolves: the point of the endpoint is that there is no caller
 identity until the code has already been matched, and a post-match limit would
-run after the compare-and-swap it exists to bound. The code's 128-bit entropy
+run after the compare-and-swap it exists to bound. Step 26's attack 8 proves
+the rotation boundary against the live stack
+(`tests/server-integration/adversarial.integration.test.ts`) and states what it
+does *not* cover: a stolen session **token** stays valid until it is rotated,
+and F5 remains unaddressed. The code's 128-bit entropy
 remains the real backstop.
 
 **Not defended — recorded as finding F5.** An XSS flaw in our own bundle defeats

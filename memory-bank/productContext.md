@@ -229,6 +229,29 @@ privacy decision is also a player-facing one: the server collects **no**
 browser- or device-fingerprint signal at all, relying on address and behaviour
 alone, so nothing about a player's hardware is stored to make this work.
 
+Server-milestone Step 26 (2026-09-17) changes nothing a player can see, because
+it changes no production code at all. It is the test suite that asks, for every
+way a player's own save or session could be abused, whether the answer is
+actually a *refusal* rather than an accident: a forged save claiming more gold
+than the elapsed time could have produced, a replayed or rolled-back save, a
+device clock moved forwards or backwards, one account reaching for another's
+data, a direct database request that bypasses the game's own server, a forged
+Telegram login, a stolen recovery code, and brute-forced recovery codes. Each
+one is refused, and the suite is written so that **removing the single guard
+that stops it makes that guard's own test fail** — which is what turns "we
+implemented a check" into "we know the check is what is stopping this."
+Two boundaries are deliberately recorded rather than overstated. A stolen
+*recovery code* is invalidated the moment the real player generates a fresh one,
+but a stolen *session token* stays valid until it is rotated, and nothing in
+this milestone rotates it — so the suite pins the boundary that exists without
+implying a stronger one. And recovery-code redemption cannot be limited per
+account before the code is matched, because until then the server does not know
+whose account it is; the rate limit is per address and the code's own 128-bit
+randomness is the real defence. Nothing here is player-visible; it is the
+evidence that the player-facing promises above — a save that cannot be
+fabricated, a reward that cannot be clock-hacked, an account that cannot be
+stolen by replaying a code — are enforced rather than merely intended.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

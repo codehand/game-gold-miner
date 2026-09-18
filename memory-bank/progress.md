@@ -6,10 +6,20 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 25 gate.** Steps 1–8 are validated.
-Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–25 are implemented and await
-user validation together. Step 25 is implemented and awaiting user validation;
-**Step 26 is blocked until the user validates it.**
+**Server milestone: in progress, at the Step 26 gate.** Steps 1–8 are validated.
+Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–26 are implemented and await
+user validation together. Step 26 (the adversarial suite) is implemented and
+awaiting user validation; **Step 27 and the rest of Phase 5 are blocked until
+the user validates it, and Phase 4 is complete pending that validation.** Step
+25 was validated and merged, which is what released Step 26.
+
+Step 26's own gate evidence is complete on a Docker-capable runner as of
+2026-09-18: `npm run verify` (682 unit, 52 e2e, build, secret scan, 10
+production-smoke) and `npm run verify:server` (170 Deno unit tests, 16
+integration files / 113 tests, 9 guest-session browser specs) both pass, and
+**all nine attacks were mutation-proven individually** — guard disabled, that
+attack's own test observed red, restored, observed green. The per-attack record
+is in `architecture.md`'s Step 26 section and in the task hand-off comment.
 
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
@@ -47,8 +57,8 @@ untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 25 — abuse limits.** Implemented 2026-09-17, awaiting user validation. |
-| Blocked on the gate | Step 26 (the adversarial suite) and Steps 27–37 |
+| Current gate | **Step 26 — adversarial suite.** Implemented 2026-09-17, awaiting user validation. Phase 4 complete pending it. |
+| Blocked on the gate | Step 27 (leaderboard storage) and Steps 28–37 |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
@@ -88,8 +98,9 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 22 — The server clock is the only clock | Implemented 2026-09-14, awaiting validation |
 | 23 — Upper-bound re-simulation | Implemented 2026-09-14; six review fixes absorbed; awaiting validation |
 | 24 — Rejection handling | Implemented 2026-09-14; review fixes absorbed (H1/H2 HIGH, M1, L1–L3); awaiting validation |
-| 25 — Abuse limits | Implemented 2026-09-17; awaiting validation — **current gate** |
-| 26–37 | Not started, blocked by the Step 25 gate |
+| 25 — Abuse limits | Implemented 2026-09-17; validated and merged — Step 26 released against it |
+| 26 — Adversarial suite | Implemented 2026-09-17; awaiting validation — **current gate** |
+| 27–37 | Not started, blocked by the Step 26 gate |
 
 ## Known Risks
 
@@ -115,8 +126,10 @@ with the reason each one closed.
   cost: its rate limits refuse before any audit write exists on the path, and an
   oversized body writes none either, so Step 24's L2 amplification
   (1 authenticated request → 1 service-role `save_audit` write) no longer grows
-  the table per refused request. What remains open is only Step 26's adversarial
-  suite. See `archive/risks-resolved.md` for the closed half.
+  the table per refused request. Step 26 now attacks each of those guards by
+  name and proves by mutation that removing one makes its own test fail, so the
+  guards are known load-bearing rather than assumed to be. See
+  `archive/risks-resolved.md` for the closed half.
 - **The Step 23 fork anchor is one generation deep (N1, known limit).** A save
   that resolved a `409` is measured from the row's immediate predecessor, so a
   fork older than roughly two minutes against an actively-syncing peer (a tablet

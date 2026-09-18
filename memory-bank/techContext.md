@@ -1197,6 +1197,13 @@ If a database is introduced, replace this statement with the complete authoritat
   while a secret mirrored under an unrelated `VITE_` name still does. Reduced
   coverage — no `.env.local`, or a running stack whose status could not be
   parsed — is printed as a warning rather than passing in silence.
+- `npm run test:adversarial`: Step 26's suite alone, in one command (AC6).
+  `test:adversarial:unit` is `deno test --filter "attack" supabase/functions`
+  (no Docker, no permission flag) and `test:adversarial:integration` is
+  `vitest run --config vitest.server-integration.config.ts adversarial`
+  (the live stack, the same `verify:server` preconditions). Every test in the
+  suite begins `attack <n> (<attack name>)` precisely so this filter selects
+  all nine attacks and nothing else.
 - `tests/unit/bundle-secret-scan.test.ts` covers the scanner directly against
   temporary fixtures outside the repository, importing it through
   `scripts/scan-bundle-secrets.d.mts` so `tsc` type-checks the test while the
@@ -1603,6 +1610,60 @@ recorded by the first Step 25 iteration as flaking with a varying failing test
 (`368`/`449`/`449`); it passed in the reviewing human's own run. Re-tuning that
 budget is explicitly out of scope for this task (AC18, "Re-tuning unrelated test
 budgets").
+
+Server-milestone Step 26 (adversarial suite). No production code changed. Five
+new test files, laid out by the layer the guard actually lives at: three
+`adversarial.test.ts` files under `supabase/functions/` (collected by
+`npm run test:server-unit`, no permission flag, no Docker) and two
+`tests/server-integration/adversarial*.integration.test.ts` files (inside
+`npm run verify:server`). `tests/server-integration/rlsMatrixFixture.ts` derives
+attack 6's matrix — tables, per-table probe column, and each cell's expected
+outcome — from `supabase/migrations/*.sql` rather than listing them, the same
+read-from-disk rule `readExpectedMigrations` and the warm-up list follow.
+
+**Building and running the suite.** The iteration that first wrote the suite
+had **no Docker** and a `node_modules` whose native binaries were macOS
+Mach-O, so none of the build-and-run gates could be executed there. The
+2026-09-18 iteration ran on a Docker-capable runner and executed every one of
+them; the first run was **red**, and the failures are recorded here because
+they are what the gates were for:
+
+| Gate | Outcome (2026-09-18) |
+|---|---|
+| `npm run lint` (AC1) | **exit 0** |
+| `npm run test` (AC2) | **exit 0** — 52 files, 682 tests, the recorded count |
+| `npm run test:server-unit` (AC3) | **exit 0** — **170** tests (this was 163 passed / 6 failed before the fixes below) |
+| `npm run build` (AC4) | **exit 0** — `tsc --noEmit`, then `vite build` |
+| `npm run verify:server` (AC5) | **exit 0** — Docker present; stack start, 6 migrations applied, health, ten-minute core portability byte-for-byte, warm-up, 16 integration files / 113 tests, 9 guest-session browser specs |
+
+Four defects in the suite itself were found and fixed by running it, none of
+them a defect in production code:
+
+- **Attack 9's pure half could not pass as written.** `drivenHandler().redeem`
+  spread `unusedCollaborators()`, whose `redeemRecoveryCode` throws; a
+  well-formed wrong code reaches that collaborator, so the flood rejected on
+  its first iteration and never reached the `429` branch it asserts. It now
+  resolves `{ status: 'invalid' }` — the answer a wrong code actually gets —
+  and the malformed-code test learned that an empty `code` is `400
+  malformed_request` while a non-canonical one is `401 recovery_code_invalid`.
+- **Attack 4's behind-direction unit test never reached the bound**: a document
+  whose `savedAtTimestampMs` precedes its own `state.lastUpdateTimestampMs` is
+  `422 save_invalid` before the clock rule is consulted. Both the document's
+  timestamps and its claim now come from the bound itself (see
+  `architecture.md`'s Step 26 section).
+- **Four RLS cells asserted a status the stack does not return** — see the
+  same section for the role split and the `leaderboard_entries` grant-layer
+  refusal.
+- **One cross-suite flake**, in a file this branch never edited:
+  `rate-limit.integration.test.ts`'s flood assertions raced the limiter's
+  fixed window, the shared bucket and the per-worker limiter's own ceiling.
+  The integration config now runs with `fileParallelism: false` (which costs
+  nothing: ~21 s either way); the post-flood assertions state the L2 invariant
+  (one audit row per *admitted* request) instead of assuming the window has
+  not rolled; and the flood runs until refused, bounded at three budgets,
+  instead of pinning "the 61st request is refused" — which the per-worker
+  `Map` cannot promise when the edge runtime splits a burst across workers.
+  See `architecture.md`'s Step 26 section for the full reasoning.
 
 ## Closed incident reports
 

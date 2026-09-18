@@ -1549,6 +1549,170 @@ throttled, `413` for an oversized body, and `save_audit` not growing by one row
 per refused request). `supabase/config.toml`'s `[auth.rate_limit]` was reviewed
 and deliberately left unchanged, with the reasoning recorded there.
 
+### Adversarial suite (Step 26)
+
+Step 26 adds no production code. Its deliverable is a suite that proves the
+guards Steps 15–25 built are load-bearing, in the shape `### Step 26` of
+`memory-bank/server-milestone-plan.md` requires: every attack the threat model
+names is refused by its **own named assertion**, and **removing that attack's
+one server-side guard makes that assertion fail**.
+
+**Nine attacks, at the lowest layer that still exercises the real guard.**
+Constraint 4 splits "pure logic" from "needs the stack", so the suite is two
+files per layer rather than one monster:
+
+| # | Attack | Guard mutated | Where it is proven |
+|---|---|---|---|
+| 1 | Forged gold | Step 23 `evaluateProgressBound` | `save-sync/adversarial.test.ts` (pure) + `adversarial.integration.test.ts` (real stored row) |
+| 2 | Replayed documents | §5 `baseRevision` concurrency, plus the Step 23 bound | same two files |
+| 3 | Rolled-back concurrency tokens | the `409` path; Step 24's H2 `isValidBaseRevision` | same two files |
+| 4 | Clock manipulation, both directions | Step 22's server-clock rule (`received_at` → `now()`); `readClientClock` recorded-never-trusted | same two files |
+| 5 | Another user's id | caller identity from the verified JWT, never a request field | `adversarial.integration.test.ts` + attack 6's matrix |
+| 6 | Direct PostgREST writes to every table | RLS + the column grant | `adversarial-rls.integration.test.ts` (real PostgREST, real `anon`/`authenticated` tokens) |
+| 7 | Unverified Telegram payloads | `verifyTelegramInitData`'s HMAC + `timingSafeEqualHex` | `telegram-sign-in/adversarial.test.ts` + the wire form in `adversarial.integration.test.ts` |
+| 8 | A stolen anonymous session | Step 14 recovery-code rotation | `adversarial.integration.test.ts` |
+| 9 | Brute-forced recovery codes | Step 25's per-user/per-address limits, the peppered hash, the single-redemption predicate | `recovery-code/adversarial.test.ts` (injected clock) + `adversarial.integration.test.ts` (real table) |
+
+`npm run test:server-unit` collects the three `adversarial.test.ts` files under
+`supabase/functions/` with no permission flag and no Docker; the two
+`tests/server-integration/adversarial*.integration.test.ts` files run inside
+`npm run verify:server`.
+
+**Attack 6's matrix is derived, not hand-listed.** `tests/server-integration/rlsMatrixFixture.ts`
+reads `supabase/migrations/*.sql` and builds the six tables × four verbs × two
+client roles from the `create table` and `create policy` statements themselves,
+so a seventh table is covered without anyone editing the suite — and its first
+column is read from the same statement, so no probe column is hard-coded either.
+Three further things are read from the same files rather than listed: each
+table's `generated always as identity` columns, so the UPDATE probe never
+assigns one (Postgres answers `428C9`/`400` to `set id = <n>`, which would look
+like a refusal for a reason unrelated to RLS), whether a table's *table-level*
+SELECT is revoked, and every policy's (role, verb, table) coverage.
+
+The observable outcome is per-verb, per-role and per-grant, and all three were
+**measured against the live stack on 2026-09-18** rather than assumed:
+
+- a covered cell answers `200`, whether or not the policy's `USING` clause
+  matches a row;
+- an uncovered INSERT raises `42501` — the only verb whose default-deny raises
+  rather than filters;
+- an uncovered SELECT/UPDATE/DELETE is *filtered* (`200` / `[]`), the shape the
+  pre-existing `profiles-rls` and `saves-rls` suites already pin;
+- **the status of a `42501` refusal is role-dependent**: `401` for the `anon`
+  role, `403` for `authenticated`. Asserting `403` for both was the first
+  draft's bug, and it is why `refusedStatusFor(role)` exists;
+- **`leaderboard_entries` is refused a fourth way.** Its table-level SELECT is
+  revoked, so PostgREST cannot read back the `RETURNING` representation any
+  mutation needs and every INSERT/UPDATE/DELETE there is answered `42501`
+  *before* a policy is consulted. Derived from the `revoke select` statement,
+  not special-cased.
+
+`rlsCellExpectation` is the single place that mapping lives.
+
+**The suite runs with `fileParallelism: false`.** The local stack is one
+observed address, so every Edge Function limiter is shared by every integration
+file: a flood in one file spends a bucket another file is measuring, and the
+only way to empty it is the test-only reset route — which a *different* file
+calling concurrently corrupts the measurement in the other direction. With the
+adversarial suite's attack 8/9 needing real redemptions and
+`recovery-code.integration.test.ts` measuring the same bucket, the parallel run
+failed in both directions (the throttle test never saw its `429`; the sibling's
+concurrency tests were answered `429` by the bucket the throttle test had just
+filled). Serialising the files makes each one the only consumer of the shared
+bucket for its duration, which is the assumption that file's own
+`beforeAll`/`afterAll` reset discipline already makes. It costs nothing
+measurable — the full integration suite runs in ~21 s either way, because the
+parallel run was spending its time contending.
+
+`rate-limit.integration.test.ts`'s flood was relaxed from "exactly one budget,
+so the 61st request is refused" to "run until refused, bounded at three
+budgets". That is not a weaker claim about the guard; it is the correct claim
+about *this* mechanism. The limiter is an in-process `Map`, the local edge
+runtime can serve one burst through more than one worker, and Step 25's own
+honesty note (and `_shared/rateLimit.ts`) already records the ceiling as
+`workers × limit` — so a burst split across two workers fills neither bucket,
+and the 61st-request assertion fails for a reason no one controls. It was
+observed once in three `verify:server` runs and never in isolation. The
+assertions that remain are the ones the mechanism can keep: nothing inside one
+budget is refused, the flood does reach a refusal within the bound, every
+refusal carries `Retry-After` and §10.2's body, and `save_audit` grows by
+exactly the admitted count.
+
+**Attack 4's pure half had to be strengthened to be load-bearing at all.** Its
+first draft uploaded a claim of `1e12` and asserted `422`; that passes with the
+server-clock rule intact *or* broken, because a trillion gold is outside any
+interval's allowance, so the test could not detect its own mutation (constraint
+3's "a test that survives its mutation" case). It now derives the claim from
+`evaluateProgressBound` itself (`maximumDeliveryFor`, two hours' production:
+inside a hundred-hour allowance, outside a sixty-second one) and drives the
+skew from `Date.now()` rather than a fixed symbolic timestamp, and it carries a
+control that the same claim is *admitted* against a genuinely two-hour server
+interval. Each direction names its own mutation, because a five-hour-early
+clock cannot be exposed by the mutation that removes the server's `now()` as
+the origin and vice versa.
+
+**The `leaderboard_entries` column control is asserted separately, because the
+row policy is not the control.** `leaderboard_entries_select_all` admits every
+row, so `?select=user_id` (and `select=*`, which PostgREST expands to every
+column) is refused by the *grant* with `42501` while a read naming only the
+granted columns succeeds. That is Step 3's recorded rule, and Step 26 is where
+it becomes a test rather than a comment.
+
+**Attack 8's boundary is pinned honestly.** Rotation invalidates the prior
+recovery **code**; it does **not** invalidate a stolen session **token**, which
+stays valid until rotated, and nothing in this milestone rotates it. Finding
+**F5** (an XSS flaw defeats the session boundary; the CSP/dependency-integrity
+half is unaddressed) is explicitly out of Step 26's scope and no test implies
+otherwise. What the test proves is the boundary that exists: a stolen code is
+spent the moment the real player generates a fresh one.
+
+**Attack 9's honest gap is stated too.** Redemption has **no per-user limit
+before it resolves** and cannot have one — there is no caller identity until the
+code has already been matched, and a post-match limit would run after the
+compare-and-swap it exists to bound. The per-address limit is the meaningful
+pre-resolution bound; the code's 128-bit entropy is the real backstop. A test
+asserts exactly that (a `null` address key, no user key) rather than implying a
+defence the milestone does not have.
+
+**Flake discipline (constraint 6).** The local gateway makes the whole
+integration suite one observed address (TASK-002's finding), so the flood loops
+spend **one user's** bucket (`SAVE_UPLOAD_MAX_PER_USER + 1`) rather than
+draining the shared per-address budget, and the recovery assertions clear the
+gateway-shared bucket first through the Step 14 reset route, because a `429`
+would short-circuit before the code is compared — the guard those tests exist to
+prove. The warm-up probe is the refused `DELETE` on an unrouted path, which
+returns from each router before any limiter runs, so warming spends no bucket.
+
+**The per-attack mutation record.** Every one of the nine was performed on
+2026-09-18 against a Docker-capable runner: the guard was disabled in the
+working tree (or, for attack 6, in the live database), the named test was
+observed **red**, the file/database was restored with `git checkout --` /
+`supabase db reset`, and the same test was observed **green** again. Where the
+guard exists at both layers, the layer tested is named — the pure-layer
+mutations need no restart, and the live ones were followed by
+`docker restart supabase_edge_runtime_cat-mine-idle` so the runtime actually
+served the mutated source (without it the first attempt showed the mutation
+having no effect at all, which is its own trap for anyone repeating this).
+
+| # | Guard disabled | Test that went red by name |
+|---|---|---|
+| 1 | `findProgressBoundViolation`'s return, i.e. the whole Step 23 bound block in `handleSaveUpload` | `attack 1 (forged gold): an upload claiming more gold…` (pure **and** live; the honest-document control stayed green) |
+| 2 | the `baseRevision !== storedRevision` branch | `attack 2 (replayed documents): re-uploading an already-accepted document…` and `…replaying against an account the server has no row for…` (pure) |
+| 3 | `isValidBaseRevision` → `return true` (H2), and separately the `409` branch | `attack 3 …a fractional, out-of-int8, negative, or non-numeric baseRevision…` (H2 mutation) and `attack 3 …a baseRevision lower than the server's current revision…` (409 mutation) (pure) |
+| 4 | the bound's elapsed origin: `nowMs - receivedAtMs` → `nowMs - savedAtTimestampMs` (behind), and → `savedAtTimestampMs - receivedAtMs` (ahead) | `attack 4 …hours behind cannot buy extra allowance…` and `attack 4 …hours ahead cannot buy extra allowance either` (pure, one mutation each), plus the two-hour control under each |
+| 5 | the caller identity: `caller.userId` overwritten from the request body's `user_id` | `attack 5 (another user's id): a body claiming a different user_id neither selects that account nor writes to it…` (live) |
+| 6 | `alter table public.save_audit disable row level security`, and separately `grant select on public.leaderboard_entries to anon, authenticated` | the four per-verb matrix tests plus `leaves save_audit and recovery_codes with no client access…` (RLS mutation); `withholds leaderboard_entries.user_id at the grant layer…` (grant mutation) (live PostgREST) |
+| 7 | `timingSafeEqualHex(computed, hash)` → `timingSafeEqualHex(computed, computed)` | `attack 7 …tampered after signing…`, `…hash replaced with a well-formed but wrong digest…`, `…field appended after signing…`, `…empty hash field…`, `…signed under a different bot token…` (pure; the freshness and order controls correctly stayed green) |
+| 8 | `rotate_recovery_code`'s revoke half removed, with `recovery_codes_one_active_per_user_idx` dropped so the mutated function can still insert | `attack 8 (a stolen anonymous session): regenerating a recovery code invalidates the prior one…` (live) |
+| 9 | the `checkRedemptionRateLimit` refusal in `handleRedeem` | `attack 9 …a sustained brute-force flood from one address…`, `…the address budget rolls…`, `…one address exhausting its budget does not throttle a different address` (pure, injected clock) |
+
+Two findings came out of performing it rather than claiming it, both fixed in
+the suite rather than reported around: attack 4's pure half could not fail
+(above), and the parallel integration run's shared-bucket interference
+(above). No production behaviour changed. The one guard whose answer is "no
+guard, by design" — attack 9's absent per-user redemption limit — is recorded
+above and below rather than quietly given a test that would pass either way.
+
 ### Guest linking and the identity collision (Step 13)
 
 Three of the step's required flows fall out of what Steps 10/12/17 already
