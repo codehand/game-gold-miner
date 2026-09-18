@@ -25,6 +25,12 @@ export {
   type OfflineGrant,
 } from './offline-income/calculateOfflineGrant';
 export {
+  LIFETIME_GOLD_BOARD_KEY,
+  calculateLifetimeGoldEarned,
+  toLeaderboardMagnitude,
+  type LeaderboardMagnitude,
+} from './leaderboard/leaderboardMetric';
+export {
   PROGRESS_BOUND_TOLERANCE,
   evaluateProgressBound,
   type ProgressBoundInput,

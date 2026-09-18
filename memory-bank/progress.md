@@ -6,12 +6,12 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 26 gate.** Steps 1–8 are validated.
-Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–26 are implemented and await
-user validation together. Step 26 (the adversarial suite) is implemented and
-awaiting user validation; **Step 27 and the rest of Phase 5 are blocked until
-the user validates it, and Phase 4 is complete pending that validation.** Step
-25 was validated and merged, which is what released Step 26.
+**Server milestone: in progress, at the Step 27 gate.** Steps 1–8 are validated.
+Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–27 are implemented and await
+user validation together. Step 27 (leaderboard storage) is implemented and
+awaiting user validation; **Step 28 and the rest of Phase 5 are blocked until
+the user validates it.** Phase 4 (Steps 22–26) is complete, validated by
+Step 26's own gate evidence below.
 
 Step 26's own gate evidence is complete on a Docker-capable runner as of
 2026-09-18: `npm run verify` (682 unit, 52 e2e, build, secret scan, 10
@@ -20,6 +20,22 @@ integration files / 113 tests, 9 guest-session browser specs) both pass, and
 **all nine attacks were mutation-proven individually** — guard disabled, that
 attack's own test observed red, restored, observed green. The per-attack record
 is in `architecture.md`'s Step 26 section and in the task hand-off comment.
+
+**Step 27's own gate evidence, 2026-09-18.** No table, index, or RLS change —
+`public.leaderboard_entries` already existed metric-agnostic from Step 3/5;
+Step 27 decided the metric (lifetime gold earned), the board (one, all-time,
+`lifetime-gold`), and the tie-break (ascending `updated_at`), pinned in
+`supabase/migrations/20260918100000_leaderboard_lifetime_gold_board.sql` as
+table/column comments. `npm run verify` (690 unit — 8 new — 52 e2e, build,
+secret scan, 10 production-smoke) and `npm run verify:server` (170 Deno unit,
+17 integration files / 119 tests — 6 new — 9 guest-session browser specs) both
+pass. The new integration suite proves the step's own "Test" line against the
+real table: ten values from ordinary numbers through `1e1000` sort correctly
+through the real ranking index and display exactly; a tie ranks the earlier
+`updated_at` first; and the top-100 ranking query over 10,000 rows on one
+board — the "~10⁴ rows" scale already recorded for this schema — completes
+under a stated 300 ms budget through the real REST API. Full detail in
+`architecture.md`'s Step 27 section.
 
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
@@ -99,8 +115,9 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 23 — Upper-bound re-simulation | Implemented 2026-09-14; six review fixes absorbed; awaiting validation |
 | 24 — Rejection handling | Implemented 2026-09-14; review fixes absorbed (H1/H2 HIGH, M1, L1–L3); awaiting validation |
 | 25 — Abuse limits | Implemented 2026-09-17; validated and merged — Step 26 released against it |
-| 26 — Adversarial suite | Implemented 2026-09-17; awaiting validation — **current gate** |
-| 27–37 | Not started, blocked by the Step 26 gate |
+| 26 — Adversarial suite | Implemented 2026-09-17; validated and merged — Step 27 released against it |
+| 27 — Leaderboard storage | Implemented 2026-09-18; awaiting validation — **current gate** |
+| 28–37 | Not started, blocked by the Step 27 gate |
 
 ## Known Risks
 
