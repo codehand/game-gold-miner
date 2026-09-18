@@ -1700,6 +1700,31 @@ establishes for the write path PostgREST itself cannot reach. `npm run test`
 (17 integration files / 119 tests, 6 of them new) all pass. See
 `architecture.md`'s Step 27 section for the full design reasoning.
 
+Server-milestone Step 28 (leaderboard writes). No schema change: publishing is
+one new service-role call inside `save-sync/index.ts`'s existing accepted-upload
+path, `admin.from('leaderboard_entries').upsert(...)`, run only after the row
+is durably written and only ever from a document Step 23's bound, validation,
+and the revision compare-and-swap have all already accepted — every reject
+branch returns before the call site. Metric and revision come from Step 27's
+own pure functions and the write's own resulting revision, never re-derived or
+client-supplied; `display_name` is read from the caller's own
+`profiles.display_name` through their own token. The publish is best-effort,
+the same shape Step 24 established for `save_audit`: a failure anywhere in it
+is logged and swallowed, never turning an accepted upload into a rejected one.
+`supabase/functions/save-sync/index.test.ts` covers every branch (publish on
+accept, no publish on any reject path, publish-failure resilience, a fresh
+zero-gold account publishing nothing) with fakes; `tests/unit/server-stack.test.ts`
+extends its `save-sync` service-role assertion with the new upsert line and
+keeps pinning that `saves`' own compare-and-swap still carries no `upsert` of
+its own; `tests/server-integration/leaderboard-publish.integration.test.ts`
+proves the same contract against the real Edge Function and table — one row
+published per accepted upload, a rejected upload leaves the prior entry
+untouched, and a repeat accepted upload overwrites rather than duplicates.
+`leaderboard_entries`' insert/update/delete refusal for both client roles was
+already exhaustively covered by Step 26's migration-derived RLS matrix
+(`adversarial-rls.integration.test.ts`), so it is not re-proven here. See
+`architecture.md`'s Step 28 section for the full design reasoning.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

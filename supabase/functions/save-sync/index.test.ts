@@ -13,7 +13,14 @@
  */
 import assert from 'node:assert/strict';
 
-import { createInitialGameState, createSaveDocument, GameNumber, BASE_GAME_BALANCE } from '../_shared/generated/core-bundle.js';
+import {
+  createInitialGameState,
+  createSaveDocument,
+  GameNumber,
+  LIFETIME_GOLD_BOARD_KEY,
+  toLeaderboardMagnitude,
+  BASE_GAME_BALANCE,
+} from '../_shared/generated/core-bundle.js';
 import type { RateLimiter } from '../_shared/rateLimit.ts';
 import {
   createSaveSyncRateLimiters,
@@ -21,6 +28,7 @@ import {
   normalizeAuditRevision,
   resolveFunctionRoute,
   SAVE_UPLOAD_MAX_PER_USER,
+  type LeaderboardEntryToWrite,
   type SaveAuditEntry,
   type SaveSyncDeps,
   type SaveSyncRateLimiters,
@@ -83,6 +91,12 @@ function noopDeps(overrides: Partial<SaveSyncDeps> = {}): SaveSyncDeps {
     // existing test focused on its own subject. Audit-specific tests override
     // this to capture the row.
     writeSaveAudit: async () => {},
+    // Step 28: same reasoning — a no-op default so every existing accepted-
+    // write test (most of which carry zero lifetime gold, which
+    // `toLeaderboardMagnitude` refuses anyway) is unaffected. Leaderboard
+    // publish tests override both below to capture what was written.
+    writeLeaderboardEntry: async () => {},
+    readDisplayName: async () => null,
     // Step 25: permissive limiters by default, so every test written before
     // this step keeps exercising its own subject rather than a bucket. The
     // rate-limit tests below substitute `denyAllLimiters` / a seeded factory.
@@ -852,6 +866,175 @@ Deno.test('handleSaveUpload rejects a non-integer baseRevision and still writes 
     assert.equal(audits[0].errorCode, 'malformed_request');
     assert.equal(audits[0].baseRevision, null);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Server-milestone Step 28 — leaderboard writes. Step 27 left the metric,
+// board, and magnitude-plus-exact conversion as pure functions that write
+// nothing; these tests are the writer's own contract: publish exactly once,
+// only from this accepted write, and never let a publish failure change the
+// upload's own outcome. The one real collaborator each (`profiles` read,
+// `leaderboard_entries` upsert) is exercised only by
+// `tests/server-integration/leaderboard-publish.integration.test.ts`.
+// ---------------------------------------------------------------------------
+
+Deno.test('handleSaveUpload publishes a leaderboard entry from an accepted save, keyed to the resulting revision', async () => {
+  // The exact stored/candidate shape the "dominating branch re-uploaded after
+  // a conflict" test above already proves is accepted by Step 23's bound —
+  // reused here so this test is about the publish, not about re-litigating
+  // the bound.
+  const stored: StoredSaveRow = {
+    revision: 2,
+    documentJson: JSON.stringify(
+      progressedSaveDocument({ delivered: '1000', extracted: '1000', transported: '900' }),
+    ),
+    receivedAt: new Date(Date.now() - 2_000).toISOString(),
+    previousDocumentJson: JSON.stringify(validSaveDocument()),
+    previousReceivedAt: new Date(Date.now() - 3 * 60 * 60 * 1_000).toISOString(),
+  };
+  const document = progressedSaveDocument({ delivered: '50000', extracted: '50000', transported: '48000' });
+  const published: LeaderboardEntryToWrite[] = [];
+  let displayNameLookup: { userId: string; bearerToken: string } | undefined;
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 2, document }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async () => true,
+      readDisplayName: async (userId, bearerToken) => {
+        displayNameLookup = { userId, bearerToken };
+        return 'Prospector';
+      },
+      writeLeaderboardEntry: async (entry) => {
+        published.push(entry);
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  // The candidate's warehouse carries `totalGoldDelivered: '50000'` and
+  // `totalOfflineGoldClaimed: 0` (`progressedSaveDocument`'s own shape), so
+  // the metric this publishes is exactly that sum.
+  const expectedMagnitude = toLeaderboardMagnitude(GameNumber.from('50000'));
+  assert.equal(published.length, 1);
+  assert.deepEqual(published[0], {
+    userId: FIXTURE_USER_ID,
+    boardKey: LIFETIME_GOLD_BOARD_KEY,
+    displayName: 'Prospector',
+    metricExact: expectedMagnitude.exact,
+    metricLog10: expectedMagnitude.log10,
+    sourceRevision: 3,
+  });
+  assert.deepEqual(displayNameLookup, { userId: FIXTURE_USER_ID, bearerToken: 'a-valid-token' });
+});
+
+Deno.test('handleSaveUpload never publishes a leaderboard entry when Step 23 rejects the save', async () => {
+  const current = validSaveDocument() as { state: { warehouse: Record<string, unknown> } } & Record<
+    string,
+    unknown
+  >;
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const inflated = {
+    ...current,
+    state: {
+      ...current.state,
+      warehouse: { ...current.state.warehouse, totalGoldDelivered: '1000000000000' },
+    },
+  };
+  let publishCalled = false;
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document: inflated }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeLeaderboardEntry: async () => {
+        publishCalled = true;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 422);
+  assert.equal(publishCalled, false, 'a save_rejected upload must never reach the board');
+});
+
+Deno.test('handleSaveUpload never publishes a leaderboard entry on a revision conflict or a validation failure', async () => {
+  let publishCalled = false;
+  const spyDeps = (overrides: Partial<SaveSyncDeps>) =>
+    noopDeps({
+      writeLeaderboardEntry: async () => {
+        publishCalled = true;
+      },
+      ...overrides,
+    });
+
+  const conflict = await handleRequest(
+    putSaveRequest({ baseRevision: 5, document: validSaveDocument() }),
+    spyDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => null,
+    }),
+  );
+  assert.equal(conflict.status, 409);
+  assert.equal(publishCalled, false, 'a revision_conflict upload must never reach the board');
+
+  const invalid = await handleRequest(
+    putSaveRequest({ baseRevision: null, document: { schemaVersion: 2, savedAtTimestampMs: 'nope', state: {} } }),
+    spyDeps({ resolveCaller: async () => ({ userId: FIXTURE_USER_ID }) }),
+  );
+  assert.equal(invalid.status, 422);
+  assert.equal(publishCalled, false, 'a save_invalid upload must never reach the board');
+});
+
+Deno.test('handleSaveUpload still accepts the save when publishing the leaderboard entry throws', async () => {
+  const document = progressedSaveDocument({ delivered: '999', extracted: '999', transported: '999' });
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: null, document }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => null,
+      writeSaveRow: async () => true,
+      readDisplayName: async () => {
+        throw new Error('profiles is down');
+      },
+      writeLeaderboardEntry: async () => {
+        throw new Error('leaderboard_entries is down');
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200, 'a publish failure must never turn an accepted save into a rejected one');
+});
+
+Deno.test('handleSaveUpload publishes nothing yet for a fresh account with zero lifetime gold earned', async () => {
+  // `toLeaderboardMagnitude` refuses a zero/negative value by design (Step
+  // 27) — `createInitialGameState`'s fresh state earns exactly that, so the
+  // very first save has nothing to rank yet, and this proves that stays a
+  // silent skip rather than a thrown 500.
+  let publishCalled = false;
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: null, document: validSaveDocument() }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => null,
+      writeSaveRow: async () => true,
+      writeLeaderboardEntry: async () => {
+        publishCalled = true;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(publishCalled, false);
 });
 
 Deno.test('normalizeAuditRevision coerces anything but a safe integer to null', () => {

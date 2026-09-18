@@ -6,12 +6,13 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 27 gate.** Steps 1–8 are validated.
-Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–27 are implemented and await
-user validation together. Step 27 (leaderboard storage) is implemented and
-awaiting user validation; **Step 28 and the rest of Phase 5 are blocked until
-the user validates it.** Phase 4 (Steps 22–26) is complete, validated by
-Step 26's own gate evidence below.
+**Server milestone: in progress, at the Step 28 gate.** Steps 1–8 are validated.
+Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–24 are implemented and await
+user validation together. Steps 25, 26, and 27 are each implemented, validated,
+and merged in turn. Step 28 (leaderboard writes) is implemented and awaiting
+user validation; **Step 29 and the rest of Phase 5 are blocked until the user
+validates it.** Phase 4 (Steps 22–26) is complete, validated by Step 26's own
+gate evidence below.
 
 Step 26's own gate evidence is complete on a Docker-capable runner as of
 2026-09-18: `npm run verify` (682 unit, 52 e2e, build, secret scan, 10
@@ -36,6 +37,27 @@ through the real ranking index and display exactly; a tie ranks the earlier
 board — the "~10⁴ rows" scale already recorded for this schema — completes
 under a stated 300 ms budget through the real REST API. Full detail in
 `architecture.md`'s Step 27 section.
+
+**Step 28 (leaderboard writes), implemented 2026-09-18.** No schema change:
+publishing is one new service-role call inside `save-sync/index.ts`'s
+existing accepted-upload path — `admin.from('leaderboard_entries').upsert(...)`,
+keyed on the table's own `(board_key, user_id)` primary key, run only after a
+document Step 23's bound, validation, and the revision compare-and-swap have
+all already accepted (every reject branch returns before the call site).
+Metric and revision come from Step 27's own pure functions and the write's
+own resulting revision; `display_name` is read from the caller's own
+`profiles.display_name` through their own token. The publish is best-effort,
+the same shape Step 24 established for `save_audit`. `save-sync/index.test.ts`
+covers every branch with fakes; `tests/server-integration/leaderboard-publish.integration.test.ts`
+proves the same contract against the real Edge Function and table — one row
+published per accepted upload, a rejected upload leaves the prior entry
+untouched, a repeat accepted upload overwrites rather than duplicates.
+`leaderboard_entries`'s write refusal for both client roles was already
+exhaustively covered by Step 26's migration-derived RLS matrix, so it is not
+re-proven. Full detail in `architecture.md`'s Step 28 section. **This
+implementer's sandbox could not run `npm install`, so `npm run verify` /
+`npm run verify:server` numbers are not recorded here — the validation gate's
+own run captures that evidence.**
 
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
@@ -73,8 +95,8 @@ untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 26 — adversarial suite.** Implemented 2026-09-17, awaiting user validation. Phase 4 complete pending it. |
-| Blocked on the gate | Step 27 (leaderboard storage) and Steps 28–37 |
+| Current gate | **Step 28 — leaderboard writes.** Implemented 2026-09-18, awaiting user validation. |
+| Blocked on the gate | Step 29 (leaderboard display) and Steps 30–37 |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
@@ -116,8 +138,9 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 24 — Rejection handling | Implemented 2026-09-14; review fixes absorbed (H1/H2 HIGH, M1, L1–L3); awaiting validation |
 | 25 — Abuse limits | Implemented 2026-09-17; validated and merged — Step 26 released against it |
 | 26 — Adversarial suite | Implemented 2026-09-17; validated and merged — Step 27 released against it |
-| 27 — Leaderboard storage | Implemented 2026-09-18; awaiting validation — **current gate** |
-| 28–37 | Not started, blocked by the Step 27 gate |
+| 27 — Leaderboard storage | Implemented 2026-09-18; validated and merged — Step 28 released against it |
+| 28 — Leaderboard writes | Implemented 2026-09-18; awaiting validation — **current gate** |
+| 29–37 | Not started, blocked by the Step 28 gate |
 
 ## Known Risks
 

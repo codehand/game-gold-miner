@@ -304,20 +304,26 @@ describe('every Edge Function', () => {
     expect(source).toContain('admin.generateLink');
   });
 
-  it('save-sync does read the service-role key, and only to write saves through a compare-and-swap and append one audit row', () => {
+  it('save-sync does read the service-role key, and only to write saves through a compare-and-swap, append one audit row, and publish one leaderboard entry', () => {
     const source = readProjectFile('supabase/functions/save-sync/index.ts');
     expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
     // A 2026-09-12 review found a blind `upsert` here let two concurrent
     // uploads both win, silently discarding one and breaking §5's monotonic
     // revision guarantee — fixed with an atomic insert (first write) or a
-    // conditional `update ... where revision = ?` (subsequent write),
-    // neither of which is a plain `upsert` any more.
-    expect(source).not.toContain('.upsert(');
+    // conditional `update ... where revision = ?` (subsequent write). That
+    // finding was specific to `saves`' shared, racing counter; `leaderboard_entries`
+    // below has no such invariant (one caller publishing a snapshot of their
+    // own metric), so its own upsert is intentional and not a regression of it.
     expect(source).toContain("admin.from('saves').insert(");
     expect(source).toMatch(/admin\s*\.from\('saves'\)\s*\.update\(/);
+    expect(source).not.toMatch(/admin\s*\.from\('saves'\)\s*\.upsert\(/);
     // Step 24: the service-role key is also the only way to append to
     // `save_audit`, which carries no RLS policy for any client role.
     expect(source).toContain("admin.from('save_audit').insert(");
+    // Step 28: and the only way to publish to `leaderboard_entries`, which
+    // grants every client role a read of its allowed columns and no write at
+    // all.
+    expect(source).toMatch(/admin\s*\.from\('leaderboard_entries'\)\s*\.upsert\(/);
   });
 
   it('recovery-code does read the service-role key, and only to rotate/redeem codes and mint a session', () => {

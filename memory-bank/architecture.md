@@ -1793,6 +1793,77 @@ publishing an entry from a save that passed Step 23's bound is Step 28's job.
   GoTrue session would, because PostgREST trusts any validly-signed JWT's
   `sub` claim without consulting a live session.
 
+### Leaderboard writes (Step 28)
+
+Step 28's own instructions: "Publish an entry only from a save that passed
+Step 23. A rejected or unvalidated save must never reach the board." Step 27
+built the table and the pure metric/magnitude conversion and wrote nothing;
+this step is the writer, and it lives on exactly one path —
+`handleSaveUpload`'s accept branch in `supabase/functions/save-sync/index.ts`,
+after the row is durably written and its `save_audit` row recorded, never on
+any of the function's reject branches (`422 save_invalid`, `422
+save_rejected`, `409 revision_conflict`, `413`/`429`, or a `500`). Every one
+of those returns before the publish call, which is what "never reaches the
+board" means concretely: there is no separate check to bypass, because the
+call site itself is unreachable from a rejection.
+
+**The write is a third, and last, service-role use in this function** —
+`admin.from('leaderboard_entries').upsert(...)`, alongside `saves`' insert/update
+compare-and-swap and `save_audit`'s append-only insert. Unlike the blind
+`upsert` a 2026-09-12 review found and fixed for `saves`, this one is not a
+regression of that finding: `saves`' problem was two concurrent uploads racing
+over one shared monotonic counter, which a blind upsert lets both win. A
+leaderboard publish has no shared counter to race — one caller publishing a
+snapshot of their own metric — so a retried or repeated accept simply
+overwrites with that caller's latest value, keyed on the table's own primary
+key (`board_key`, `user_id`).
+
+**What gets published.** `metric_exact`/`metric_log10` come from Step 27's own
+pure functions (`calculateLifetimeGoldEarned`, `toLeaderboardMagnitude`) run
+against the just-accepted document's deserialized state — not re-derived here.
+`source_revision` is that same accepted write's resulting `saves.revision`,
+never a client-supplied value. `display_name` is snapshotted from the caller's
+`profiles.display_name` at publish time, read through the caller's own bearer
+token (`profiles_select_own` already admits it, so no elevated privilege is
+needed for that half) — nullable, matching the column's own contract for a
+player who has never set one. `board_key` is always
+`LIFETIME_GOLD_BOARD_KEY` ('lifetime-gold'); Step 28 populates no other board.
+
+**Best-effort, like `save_audit`'s write (Step 24).** Computing the metric,
+reading the display name, and the write itself all run inside one `try`/`catch`
+(`publishLeaderboardEntry`) whose failure is logged and swallowed — it can
+never turn the already-`200`-decided upload into anything else, and can never
+lose the player's save. `toLeaderboardMagnitude` throws by design on a
+zero-or-negative value (Step 27), which a brand-new account's first save
+always is (no completed warehouse conversion or offline claim yet); this
+best-effort catch is what turns that into "publishes nothing yet" rather than
+a raised error on an otherwise-good first upload.
+
+Evidence: `supabase/functions/save-sync/index.test.ts` (Deno unit tests, fakes
+only) covers every branch with a faked `SaveSyncDeps` — an accepted save
+publishes exactly once, keyed to the resulting revision, with the caller's
+looked-up display name; a Step 23 bound violation, a revision conflict, and a
+validation failure each publish nothing; a publish failure (either
+collaborator throwing) still returns `200`; and a fresh, zero-lifetime-gold
+account publishes nothing without raising. `tests/unit/server-stack.test.ts`
+extends its existing `save-sync` service-role assertion with the new
+`leaderboard_entries` upsert line, and confirms the `saves` compare-and-swap
+still carries no `upsert` of its own — the Step 15 finding stays fixed even as
+a different table's writer legitimately gains one.
+`tests/server-integration/leaderboard-publish.integration.test.ts` proves the
+same contract against the real Edge Function and the real table: an accepted
+upload publishes one row with the correct metric, revision, and board key,
+carrying the caller's own `profiles.display_name`; a save Step 23 rejects
+leaves the prior accepted entry completely untouched (no row added, no field
+changed); and a second accepted upload from the same user overwrites that one
+row rather than duplicating it. The exhaustive, migration-derived RLS matrix in
+`tests/server-integration/adversarial-rls.integration.test.ts` (Step 26's
+attack 6) already covers `leaderboard_entries`' insert/update/delete cells for
+both client roles — refused at the grant layer regardless of role, since the
+table's table-level `SELECT` is revoked for anon/authenticated — so no
+`leaderboard_entries`-specific write-refusal test is duplicated here; Step 28
+only adds the service-role path the matrix already treats as the sole writer.
+
 ### Guest linking and the identity collision (Step 13)
 
 Three of the step's required flows fall out of what Steps 10/12/17 already
