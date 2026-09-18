@@ -26,10 +26,15 @@ guards table and for the two honest gaps Step 26 records rather than papers
 over: redemption has no per-user limit before it resolves, and attack 8's
 rotation boundary does not cover a stolen session token (F5 stays out of scope).
 
-**Gate honesty for this step.** The implementing sandbox had no Docker and a
-macOS-built `node_modules`, so AC2, AC3, AC4 (the `vite build` half) and AC5
-could not be run here; only `npm run lint` and `tsc --noEmit` were observed
-green. The runner's fresh evidence is what must establish the rest.
+**Gate evidence, all green on a Docker-capable runner (2026-09-18).**
+`npm run lint`, `npm run test` (682 unit tests, the recorded count), `npm run
+build`, `npm run test:e2e` (52), `npm run test:prod` (10), `npm run
+test:server-unit` (**170** Deno unit tests, up from 112 at Step 25) and `npm
+run verify:server` (16 integration files / 113 tests, plus the 9 guest-session
+browser specs) all exit 0. The first self-check run on this branch was red on
+six Deno tests, four RLS cells and one cross-suite `429` interference; those
+are fixed — see `architecture.md`'s Step 26 section for what each fix was and
+for the per-attack mutation record.
 
 **Previously, at the Step 25 validation gate — Step 25 implemented
 2026-09-17, awaiting user validation; Step 26 is blocked until the user

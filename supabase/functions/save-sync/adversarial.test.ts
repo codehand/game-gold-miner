@@ -32,6 +32,7 @@ import {
   BASE_GAME_BALANCE,
   createInitialGameState,
   createSaveDocument,
+  evaluateProgressBound,
   GameNumber,
 } from '../_shared/generated/core-bundle.js';
 import {
@@ -59,6 +60,22 @@ function storedRowOneMinuteOld(
     revision: 1,
     documentJson: JSON.stringify({ ...document, ...columnValues }),
     receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+}
+
+/**
+ * A stored row two hours old. Used as attack 4's **control**: the same claim
+ * the clock tests upload is admitted once the server's own measured interval is
+ * genuinely long enough for it, which is what keeps those tests from being a
+ * blanket refusal that would pass with the clock rule deleted.
+ */
+function storedRowTwoHoursOld(): StoredSaveRow {
+  return {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt: new Date(Date.now() - 2 * HOUR_MS).toISOString(),
     previousDocumentJson: null,
     previousReceivedAt: null,
   };
@@ -332,20 +349,98 @@ Deno.test('attack 3 (rolled-back concurrency tokens): a fractional, out-of-int8,
 // ---------------------------------------------------------------------------
 
 /**
- * Guard: Step 22's rule that the server clock is the only clock — the offline
- * grant comes from the stored `received_at` to the server's `now()`, and the
- * document's own timestamps can move neither it nor the allowance.
- * Mutation: using the document's `savedAtTimestampMs` as the elapsed-time
- * origin in [the bound's elapsed computation] must make this red.
+ * The largest `totalGoldDelivered` the Step 23 bound admits over a given
+ * elapsed interval, **read out of the bound itself** rather than hard-coded.
+ *
+ * The two clock tests below only mean something if the document they upload
+ * claims an amount that is *inside* one interval's allowance and *outside*
+ * another's. A claim of `1e12` — the value the other attacks use, where the
+ * bound is the whole point — is refused even when the server wrongly grants a
+ * hundred hours, because the mine cannot produce a trillion gold in a hundred
+ * hours either; the assertion would hold with the clock rule intact or broken
+ * alike. An obviously-forged claim makes `evaluateProgressBound` return the
+ * maximum it computed, so this number is the bound's own and follows the
+ * balance config instead of drifting from it.
  */
-Deno.test('attack 4 (clock manipulation): a document whose client clock is hours ahead cannot buy extra allowance against the server elapsed time', async () => {
-  const aheadDocument = {
-    ...documentClaimingDelivery('1000000000000'),
-    savedAtTimestampMs: NOW_MS + 5 * HOUR_MS,
+function maximumDeliveryFor(elapsedMs: number): string {
+  const previous = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
+  const candidate = {
+    ...previous,
+    warehouse: { ...previous.warehouse, totalGoldDelivered: GameNumber.from('1e30') },
   };
 
+  const violation = evaluateProgressBound({
+    previous,
+    candidate,
+    elapsedMs,
+    config: BASE_GAME_BALANCE,
+  });
+
+  if (violation === null || violation.counter !== 'state.warehouse.totalGoldDelivered') {
+    throw new Error('the clock probe was not bounded on state.warehouse.totalGoldDelivered');
+  }
+
+  return violation.maximum;
+}
+
+/**
+ * Two hours of the mine's own production: refused by the sixty seconds the
+ * server actually measured, admitted by the hundred (or the five) hours the
+ * document claims. That gap is what makes each direction's assertion sensitive
+ * to the clock *origin*, which is the guard attack 4 exists to prove.
+ */
+function twoHoursOfDelivery(): string {
+  return maximumDeliveryFor(2 * HOUR_MS);
+}
+
+/**
+ * A document whose own clock claims `skewMs` relative to real now, carrying
+ * `delivered` gold.
+ *
+ * Both `savedAtTimestampMs` **and** the state's own `lastUpdateTimestampMs`
+ * move together: `saveSchema.ts` rejects a document whose save time precedes
+ * its own last update, so skewing only the former would answer
+ * `422 save_invalid` before the bound was ever consulted — a red test that
+ * proves nothing about the clock rule. The skew is taken from `Date.now()`
+ * rather than the fixed `NOW_MS` for the same class of reason: the handler's
+ * stored row is stamped from the real clock, so a document dated against a
+ * symbolic one is "ahead" or "behind" only relative to itself.
+ */
+function documentWithSkewedClock(skewMs: number, delivered: string): Record<string, unknown> {
+  const clientClockMs = Date.now() + skewMs;
+  const document = createSaveDocument(
+    createInitialGameState(BASE_GAME_BALANCE, clientClockMs),
+    BASE_GAME_BALANCE,
+    clientClockMs,
+  ) as unknown as Record<string, unknown>;
+  const state = document.state as Record<string, unknown>;
+
+  return {
+    ...document,
+    state: {
+      ...state,
+      warehouse: {
+        ...(state.warehouse as Record<string, unknown>),
+        totalGoldDelivered: delivered,
+      },
+    },
+  };
+}
+
+/**
+ * Guard: Step 22's rule that the server clock is the only clock — the allowance
+ * is measured from the stored `received_at` to the server's `now()`, and the
+ * document's own timestamps can move neither.
+ * Mutation: using the document's `savedAtTimestampMs` in place of the server's
+ * `now()` in [the bound's elapsed computation] (`nowMs - savedAtTimestampMs`)
+ * must make this test red.
+ */
+Deno.test('attack 4 (clock manipulation): a document whose client clock is hours behind cannot buy extra allowance against the server elapsed time', async () => {
   const outcome = await upload(
-    { baseRevision: 1, document: aheadDocument },
+    {
+      baseRevision: 1,
+      document: documentWithSkewedClock(-100 * HOUR_MS, twoHoursOfDelivery()),
+    },
     { readCurrentSave: async () => storedRowOneMinuteOld() },
   );
 
@@ -355,20 +450,45 @@ Deno.test('attack 4 (clock manipulation): a document whose client clock is hours
   assert.equal(outcome.writes.length, 0);
 });
 
-Deno.test('attack 4 (clock manipulation): a document whose client clock is hours behind is bounded by the same server elapsed time, in the other direction', async () => {
-  const behindDocument = {
-    ...documentClaimingDelivery('1000000000000'),
-    savedAtTimestampMs: NOW_MS - 100 * HOUR_MS,
-  };
-
+/**
+ * Guard: the same server-clock rule, from the other side.
+ * Mutation: treating the document's claimed instant as the *end* of the
+ * interval (`savedAtTimestampMs - receivedAt`) must make this test red. It is
+ * a different mutation from the behind-direction one: a five-hour-early clock
+ * cannot be exposed by a mutation that only removes the server's `now()` as
+ * the origin, and vice versa, so each direction names its own.
+ */
+Deno.test('attack 4 (clock manipulation): a document whose client clock is hours ahead cannot buy extra allowance either', async () => {
   const outcome = await upload(
-    { baseRevision: 1, document: behindDocument },
+    {
+      baseRevision: 1,
+      document: documentWithSkewedClock(5 * HOUR_MS, twoHoursOfDelivery()),
+    },
     { readCurrentSave: async () => storedRowOneMinuteOld() },
   );
 
   assert.equal(outcome.status, 422);
   assert.equal(outcome.code, 'save_rejected');
+  assert.equal(outcome.detail?.counter, 'state.warehouse.totalGoldDelivered');
   assert.equal(outcome.writes.length, 0);
+});
+
+/**
+ * The control: the same two hours of delivery is **admitted** when the server's
+ * measured interval is genuinely long enough for it, so the two tests above
+ * are not a blanket refusal of a two-hour claim.
+ */
+Deno.test('attack 4 (clock manipulation): the same two-hour claim is admitted against a two-hour server interval, so the clock tests are not a blanket refusal', async () => {
+  const outcome = await upload(
+    {
+      baseRevision: 1,
+      document: documentWithSkewedClock(0, twoHoursOfDelivery()),
+    },
+    { readCurrentSave: async () => storedRowTwoHoursOld() },
+  );
+
+  assert.equal(outcome.status, 200);
+  assert.deepEqual(outcome.writes, [FIXTURE_USER_ID]);
 });
 
 /**

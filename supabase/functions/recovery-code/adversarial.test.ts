@@ -53,6 +53,13 @@ function drivenHandler() {
   const redeem = (code: string, address: string | null = ATTACKER_ADDRESS): Promise<Response> =>
     handleRequest(redeemRequest(code, address), {
       ...unusedCollaborators(),
+      // Below the limit a well-formed wrong code is answered by the real
+      // compare-and-swap, so the store collaborator must *resolve* rather than
+      // throw: this flood asserts the limiter, and a throwing stub would
+      // reject out of `handleRedeem` on the first iteration and never let the
+      // loop reach the `429` branch it exists to pin. `invalid` is exactly
+      // what a wrong-but-well-formed code yields.
+      redeemRecoveryCode: async () => ({ status: 'invalid' }),
       checkRedemptionRateLimit: (callerAddress) =>
         limiters.redemptionByAddress.check(addressRateLimitKey(callerAddress)),
       checkGenerateRateLimit: (userId) =>
@@ -259,8 +266,24 @@ Deno.test('attack 9 (brute-forced recovery codes): redemption is bounded by addr
  * Mutation: removing [that format check] must make this red.
  */
 Deno.test('attack 9 (brute-forced recovery codes): a malformed or truncated code is refused before it can cost a service-role redemption attempt', async () => {
-  for (const malformed of ['', 'nope', 'ffff', 'z'.repeat(32), 'f'.repeat(31), 'f'.repeat(33)]) {
-    const response = await handleRequest(redeemRequest(malformed, ATTACKER_ADDRESS), {
+  // Each shape gets the §4 code that actually belongs to it. An empty body
+  // field is a client bug (`400 malformed_request`, refused before the code is
+  // even canonicalized); every non-empty but non-canonical shape is
+  // `401 recovery_code_invalid`, indistinguishable from a well-formed wrong
+  // code so the endpoint is not a format oracle. Both are refusals that never
+  // reach the peppered compare; the throwing `redeemRecoveryCode` below is
+  // what proves that.
+  const malformed: readonly (readonly [string, number, string])[] = [
+    ['', 400, 'malformed_request'],
+    ['nope', 401, 'recovery_code_invalid'],
+    ['ffff', 401, 'recovery_code_invalid'],
+    ['z'.repeat(32), 401, 'recovery_code_invalid'],
+    ['f'.repeat(31), 401, 'recovery_code_invalid'],
+    ['f'.repeat(33), 401, 'recovery_code_invalid'],
+  ];
+
+  for (const [malformedCode, expectedStatus, expectedCode] of malformed) {
+    const response = await handleRequest(redeemRequest(malformedCode, ATTACKER_ADDRESS), {
       ...unusedCollaborators(),
       redeemRecoveryCode: async () => {
         throw new Error('a malformed code must never reach redeemRecoveryCode');
@@ -269,8 +292,8 @@ Deno.test('attack 9 (brute-forced recovery codes): a malformed or truncated code
       parseRedeemBody: (rawBody) => JSON.parse(rawBody),
     });
 
-    assert.equal(response.status, 401, `"${malformed}" should be refused`);
-    assert.equal((await response.json()).error.code, 'recovery_code_invalid');
+    assert.equal(response.status, expectedStatus, `"${malformedCode}" should be refused`);
+    assert.equal((await response.json()).error.code, expectedCode, `"${malformedCode}" code`);
   }
 });
 

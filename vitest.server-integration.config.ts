@@ -28,6 +28,32 @@ import { defineConfig } from 'vitest/config';
  * 30 s keeps the same headroom above the 20 s per-request budget the suite
  * uses everywhere else. The two warm-up hooks that declare their own, larger,
  * `WARMUP_HOOK_TIMEOUT_MS` are unaffected — a per-hook timeout overrides this.
+ *
+ * `fileParallelism: false` — added by Step 26, and it is a correctness
+ * requirement rather than a speed trade.
+ *
+ * The local stack is observed as **one address**, so the Edge Functions' own
+ * rate limiters are shared by every file in this suite: a flood in one file
+ * spends the bucket another file is measuring, and the only way to empty it
+ * again is the test-only reset route, which a *different* file calling
+ * concurrently makes the first file's measurement meaningless in the other
+ * direction. Measured on 2026-09-18 with `recovery-code.integration.test.ts`
+ * (whose throttle test fills the shared bucket and then proves the reset route
+ * clears it) and the new `adversarial.integration.test.ts` (whose attack 8 and
+ * attack 9 must redeem the real store, so they reset the bucket first): run in
+ * parallel, the throttle test never saw its `429` — the other file's reset
+ * cleared the bucket underneath it — and the sibling's concurrent-redemption
+ * tests were answered `429` by the bucket the throttle test had just filled.
+ * Both are failures the code under test is not responsible for.
+ *
+ * Serialising the files makes each one the only consumer of the shared bucket
+ * for its duration, which is exactly the assumption `recovery-code`'s
+ * `beforeAll`/`afterAll` reset discipline already makes. It costs roughly a
+ * minute on the full suite and removes the class rather than widening a retry
+ * budget, which is TASK-002's rule: pay a startup cost once, in one place,
+ * instead of making every caller absorb it. Tests *within* a file are already
+ * sequential, so file order is the only remaining variable — and every file's
+ * reset hook leaves the bucket empty whether it ran first or last.
  */
 export default defineConfig({
   test: {
@@ -35,5 +61,6 @@ export default defineConfig({
     include: ['tests/server-integration/**/*.test.ts'],
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    fileParallelism: false,
   },
 });

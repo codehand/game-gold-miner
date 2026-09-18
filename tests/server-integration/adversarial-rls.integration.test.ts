@@ -8,7 +8,9 @@ import {
   CLIENT_ROLES,
   LEADERBOARD_ALLOWED_COLUMNS,
   LEADERBOARD_WITHHELD_COLUMN,
+  readGeneratedIdentityColumns,
   readPlatformTables,
+  refusedStatusFor,
   rlsCellExpectation,
   rlsMatrixRequest,
   rlsMatrixUpdateBody,
@@ -78,6 +80,15 @@ async function createGuestIdentity(): Promise<AuthenticatedGuest> {
  */
 function seededRowFor(table: string, userId: string, randomHex: string): Record<string, unknown> {
   switch (table) {
+    case 'profiles':
+      // Never inserted — `profiles` has no INSERT policy for any client role,
+      // so this body is only ever sent as a probe. It carries the guest's own
+      // **real** id (FK-satisfying against `auth.users`, and already present,
+      // which is harmless): RLS's `WITH CHECK` is evaluated before the primary
+      // key is, so the refusal is the policy's `42501` and not a conflict. If
+      // the policy were ever removed the answer would stop being `42501` —
+      // which is exactly the mutation this cell has to catch.
+      return { id: userId, display_name: 'Rls Probe' };
     case 'saves':
       return { user_id: userId, revision: 1, schema_version: 2, document_json: '{"rlsProbe":true}' };
     case 'save_audit':
@@ -133,39 +144,65 @@ function postgrest(
 describe('attack 6 (direct PostgREST writes to every table): the derived RLS matrix', () => {
   let tables: readonly PlatformTable[];
   let guest: AuthenticatedGuest;
-  /** The value of each table's probe column, so every update/delete filter is well-typed. */
-  const probeValues = new Map<string, unknown>();
+  /**
+   * Each table's seeded row, read back whole rather than assumed. The probe
+   * value for a filter and the no-op body for a PATCH are both taken from it,
+   * so every request the matrix sends is well-typed for its column and no cell
+   * is refused for a type reason instead of the control under test.
+   */
+  const seededRows = new Map<string, Record<string, unknown>>();
+  /** From the migrations, so the no-op PATCH never assigns an identity column. */
+  let identityColumns: ReadonlySet<string>;
 
   beforeAll(async () => {
     tables = readPlatformTables();
+    identityColumns = readGeneratedIdentityColumns();
     guest = await createGuestIdentity();
     const admin = createServiceRoleClient(API_URL);
 
     for (const table of tables) {
       if (table.name === 'profiles') {
-        // Already exists, created by the Step 9 sign-up trigger — inserting
-        // would violate the primary key. Its probe value is the guest's own id.
-        probeValues.set(table.name, guest.userId);
+        // Already exists, created by the Step 9 sign-up trigger — inserting a
+        // second one would violate the primary key. Its row is the guest's own.
+        const { data, error } = await admin
+          .from(table.name)
+          .select('*')
+          .eq('id', guest.userId)
+          .single();
+        if (error || data === null) {
+          throw new Error(
+            `reading the sign-up-triggered public.${table.name} row failed: ${error?.message ?? 'no row'}`,
+          );
+        }
+        seededRows.set(table.name, data as Record<string, unknown>);
         continue;
       }
 
       const row = seededRowFor(table.name, guest.userId, randomHexHash());
-      const { data, error } = await admin.from(table.name).insert(row).select(table.probeColumn);
+      const { data, error } = await admin.from(table.name).insert(row).select('*');
       if (error) {
         throw new Error(`seeding public.${table.name} failed: ${error.message}`);
       }
-      // `select()` is deliberately asked for the probe column: the seeded
-      // value is read back rather than assumed (a table defaulting its own
-      // primary key would otherwise leave the filter pointing at nothing).
+      // The seeded row is read back rather than assumed (a table defaulting
+      // its own primary key would otherwise leave the filter pointing at
+      // nothing, and the PATCH body would carry a value the column rejects).
       const seeded = (data as unknown as Record<string, unknown>[] | null)?.[0];
       if (seeded === undefined || seeded === null) {
-        throw new Error(
-          `seeding public.${table.name} returned no row to read ${table.probeColumn} from`,
-        );
+        throw new Error(`seeding public.${table.name} returned no row to read back`);
       }
-      probeValues.set(table.name, seeded[table.probeColumn]);
+      seededRows.set(table.name, seeded);
     }
   }, 60_000);
+
+  function seededRowForName(tableName: string): Record<string, unknown> {
+    const row = seededRows.get(tableName);
+    if (row === undefined) {
+      throw new Error(
+        `adversarial-rls: no seeded row for public.${tableName} — the matrix would probe it with no valid filter value.`,
+      );
+    }
+    return row;
+  }
 
   /**
    * A regression guard for the derivation itself, not a substitute for it.
@@ -208,8 +245,8 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
       for (const cell of matrix) {
         const table = tables.find((candidate) => candidate.name === cell.table)!;
         const expectation = rlsCellExpectation(cell);
-        const probeValue = probeValues.get(table.name);
-        const request = rlsMatrixRequest(table, cell, { [table.probeColumn]: probeValue });
+        const seededRow = seededRowForName(table.name);
+        const request = rlsMatrixRequest(table, cell, seededRow);
 
         const init: RequestInit = {
           method: request.method,
@@ -219,19 +256,21 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
           init.body = JSON.stringify(seededRowFor(cell.table, guest.userId, 'a'.repeat(64)));
         }
         if (verb === 'update') {
-          init.body = JSON.stringify(rlsMatrixUpdateBody(table, probeValue));
+          init.body = JSON.stringify(rlsMatrixUpdateBody(table, seededRow, identityColumns));
         }
 
         const response = await postgrest(cell.role, cell.table, request.query, init, guest.accessToken);
-        const label = `${cell.role}/${cell.table}/${cell.verb} (covered by ${cell.policies.join(', ') || 'no policy'})`;
+        const refusedBy = expectation.kind === 'refused' ? ` — refused by ${expectation.reason}` : '';
+        const label = `${cell.role}/${cell.table}/${cell.verb} (covered by ${cell.policies.join(', ') || 'no policy'}${refusedBy})`;
 
         if (expectation.kind === 'refused') {
-          // Insert is the only verb whose default-deny raises rather than filters.
-          expect(response.status, label).toBe(403);
-          expect((await response.json()).code, label).toBe('42501');
+          // AC8: the specific refusal — the §4 status for this role and the
+          // `42501` code, never "not 200" and never a `500`.
+          expect(response.status, label).toBe(refusedStatusFor(cell.role));
+          expect((await response.json()).code, label).toBe(expectation.code);
         } else if (expectation.kind === 'filtered') {
           // No permissive policy: Postgres filters every row, raising nothing.
-          expect(response.status, label).toBe(200);
+          expect(response.status, label).toBe(expectation.status);
           expect(await response.json(), label).toEqual([]);
         } else {
           // A policy covers this cell, so PostgREST does not refuse it. Zero
@@ -262,12 +301,14 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
 
     for (const { role, withheld, wildcard, allowed } of await Promise.all(attempts)) {
       // The policy admits the row; the grant does not admit this column.
-      expect(withheld.status, `${role}: select=user_id`).toBe(403);
+      // AC8: the specific refusal for this role, with the `42501` code.
+      expect(withheld.status, `${role}: select=user_id`).toBe(refusedStatusFor(role));
       expect((await withheld.json()).code, `${role}: select=user_id`).toBe('42501');
 
       // `*` expands to every column, including the withheld one — so it is
       // refused too, which means a board query must name its columns.
-      expect(wildcard.status, `${role}: select=*`).toBe(403);
+      expect(wildcard.status, `${role}: select=*`).toBe(refusedStatusFor(role));
+      expect((await wildcard.json()).code, `${role}: select=*`).toBe('42501');
 
       // Naming only the granted columns succeeds — the board really is
       // world-readable for everything except the id.

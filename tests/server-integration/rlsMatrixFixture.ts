@@ -23,16 +23,34 @@
  * ## The observable outcome differs by verb, and that is not an accident
  *
  * Postgres row-level security is not a single "denied" shape. An INSERT that a
- * policy does not admit raises, and PostgREST answers `403` with
- * `code: "42501"`; a SELECT/UPDATE/DELETE that no policy admits is *filtered* —
- * zero rows are visible or affected, no error is raised — and PostgREST
- * answers `200` with `[]`. The existing `saves-rls` and `profiles-rls` suites
- * pin exactly that pair of shapes, and a matrix that asserted `403` everywhere
- * would be asserting a contract this database does not have.
+ * policy does not admit raises `42501`; a SELECT/UPDATE/DELETE that no policy
+ * admits is *filtered* — zero rows are visible or affected, no error is raised
+ * — and PostgREST answers `200` with `[]`. The existing `saves-rls` and
+ * `profiles-rls` suites pin exactly that pair of shapes, and a matrix that
+ * asserted `403` everywhere would be asserting a contract this database does
+ * not have.
  *
- * So a denied cell's expectation is per-verb, and a granted cell is "admitted"
- * (any non-`42501` answer). `rlsCellExpectation` below is the single place
- * that mapping lives.
+ * **A refusal's status depends on the role, and the matrix says so.** Measured
+ * against the live stack on 2026-09-18: an `anon` request that PostgREST
+ * refuses with `42501` is answered **`401`**, while the identical refusal for
+ * an `authenticated` request is **`403`** — the gateway treats the anonymous
+ * role as an unauthenticated caller. Both carry `code: "42501"`, which is what
+ * is asserted for both; only the status differs, so it is derived by
+ * `refusedStatusFor(role)` rather than written twice.
+ *
+ * **A third refusal shape exists, and it is not row-level security.**
+ * `leaderboard_entries` has had its *table-level* SELECT revoked
+ * (`revoke select on public.leaderboard_entries from anon, authenticated`), so
+ * PostgREST cannot read back the `RETURNING` representation any mutation on it
+ * would need. Every INSERT/UPDATE/DELETE there is answered `401`/`403` with
+ * `42501` *before* any policy is consulted, whatever the `USING`/`WITH CHECK`
+ * clauses say. That is derived (`PlatformTable.tableSelectRevoked`) rather than
+ * special-cased, and the column-grant rule it comes from keeps its own named
+ * test in the suite.
+ *
+ * So a denied cell's expectation is per-verb and per-grant, and a granted cell
+ * is "admitted" (any non-`42501` answer). `rlsCellExpectation` below is the
+ * single place that mapping lives.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -62,6 +80,13 @@ export interface PlatformTable {
   readonly name: string;
   /** The table's own first column, used as the `select=` probe. Derived, so a new table needs no edit here. */
   readonly probeColumn: string;
+  /**
+   * True when the migrations revoke this table's *table-level* SELECT from the
+   * client roles. PostgREST needs that privilege to return a `RETURNING`
+   * representation, so every mutation against such a table is refused at the
+   * grant layer regardless of its policies — see this file's header.
+   */
+  readonly tableSelectRevoked: boolean;
 }
 
 interface SqlSource {
@@ -90,6 +115,19 @@ export function readPlatformTables(directory = MIGRATIONS_DIRECTORY): PlatformTa
   // semicolon (constraints are comma-separated) and always ends `);`.
   const tablePattern =
     /create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_][a-z0-9_]*)\s*\(([^;]*?)\)\s*;/gi;
+  // A *table-level* revoke only: `revoke select (a, b) on public.t from …` is a
+  // column revoke and must not match, because it leaves the table privilege
+  // intact and so does not refuse a `RETURNING` readback.
+  const tableSelectRevokePattern =
+    /revoke\s+select\s+on\s+public\.([a-z_][a-z0-9_]*)\s+from\s+[^;]+;/gi;
+
+  const revokedSelectTables = new Set<string>();
+  for (const { sql } of readMigrationSql(directory)) {
+    let revoke: RegExpExecArray | null;
+    while ((revoke = tableSelectRevokePattern.exec(sql)) !== null) {
+      revokedSelectTables.add(revoke[1]);
+    }
+  }
 
   for (const { sql } of readMigrationSql(directory)) {
     let match: RegExpExecArray | null;
@@ -104,11 +142,48 @@ export function readPlatformTables(directory = MIGRATIONS_DIRECTORY): PlatformTa
           `rlsMatrixFixture: could not read a first column for public.${name} — the derived matrix would have no probe column for it.`,
         );
       }
-      tables.push({ name, probeColumn: firstColumn[1] });
+      tables.push({
+        name,
+        probeColumn: firstColumn[1],
+        tableSelectRevoked: revokedSelectTables.has(name),
+      });
     }
   }
 
   return tables;
+}
+
+/**
+ * Every column the migrations declare `generated always as identity`, keyed
+ * `table.column`.
+ *
+ * The matrix's UPDATE probe has to send a body that names at least one column
+ * (PostgREST answers `400` to an empty patch), and Postgres answers
+ * `428C9`/`400` — not an RLS refusal — to a patch that assigns an identity
+ * column ("column \"id\" can only be updated to DEFAULT"). That would make an
+ * uncovered cell look refused for a reason unrelated to the control under test,
+ * so the identity columns are read from the migrations and left out of the
+ * no-op body rather than discovered by a red test.
+ */
+export function readGeneratedIdentityColumns(directory = MIGRATIONS_DIRECTORY): Set<string> {
+  const identityColumns = new Set<string>();
+  const tablePattern =
+    /create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_][a-z0-9_]*)\s*\(([^;]*?)\)\s*;/gi;
+  const identityColumnPattern = /\b([a-z_][a-z0-9_]*)\s+[^,()]*\bgenerated\s+always\s+as\s+identity\b/gi;
+
+  for (const { sql } of readMigrationSql(directory)) {
+    let table: RegExpExecArray | null;
+    while ((table = tablePattern.exec(sql)) !== null) {
+      const [, tableName, body] = table;
+      let column: RegExpExecArray | null;
+      while ((column = identityColumnPattern.exec(body)) !== null) {
+        identityColumns.add(`${tableName}.${column[1]}`);
+      }
+      identityColumnPattern.lastIndex = 0;
+    }
+  }
+
+  return identityColumns;
 }
 
 export interface RlsPolicy {
@@ -161,6 +236,8 @@ export interface RlsCell {
   readonly policies: readonly string[];
   /** True when at least one permissive policy covers this (role, verb, table). */
   readonly covered: boolean;
+  /** Copied from the table: whether its table-level SELECT is revoked (see `PlatformTable`). */
+  readonly tableSelectRevoked: boolean;
 }
 
 /** The exhaustive matrix: every table × verb × client role. */
@@ -184,6 +261,7 @@ export function buildRlsMatrix(
           table: table.name,
           policies: covering.map((policy) => policy.name),
           covered: covering.length > 0,
+          tableSelectRevoked: table.tableSelectRevoked,
         });
       }
     }
@@ -193,21 +271,52 @@ export function buildRlsMatrix(
 
 /** A cell's expected observable answer. */
 export type CellExpectation =
-  | { readonly kind: 'refused'; readonly status: 403; readonly code: '42501' }
+  | { readonly kind: 'refused'; readonly code: '42501'; readonly reason: string }
   | { readonly kind: 'filtered'; readonly status: 200 }
   | { readonly kind: 'admitted' };
 
 /**
- * The one place the per-verb observable is encoded — see this file's header.
- * A refused cell is only ever an INSERT, because that is the only verb whose
- * RLS default-deny raises rather than filters.
+ * The status PostgREST answers a `42501` refusal with, per client role.
+ *
+ * Measured, not assumed: the anonymous role is answered `401` (`401` is what
+ * the gateway returns for an authorization failure that no credential could
+ * make good), the authenticated role `403`. The `42501` code is identical and
+ * is asserted for both; only the status is derived here.
+ */
+export function refusedStatusFor(role: ClientRole): 401 | 403 {
+  return role === 'anon' ? 401 : 403;
+}
+
+/**
+ * The one place the per-verb, per-grant observable is encoded — see this
+ * file's header.
+ *
+ * - covered → `200`, whether or not the policy's `USING` clause matches a row.
+ * - uncovered INSERT → `42501`: RLS's default-deny raises for a write.
+ * - uncovered INSERT/UPDATE/DELETE on a table whose table-level SELECT is
+ *   revoked → `42501` as well, from the grant rather than the policy, because
+ *   the mutation's `RETURNING` representation cannot be read back.
+ * - any other uncovered cell → `200` with `[]`: Postgres filters the rows and
+ *   raises nothing.
  */
 export function rlsCellExpectation(cell: RlsCell): CellExpectation {
   if (cell.covered) {
     return { kind: 'admitted' };
   }
   if (cell.verb === 'insert') {
-    return { kind: 'refused', status: 403, code: '42501' };
+    return {
+      kind: 'refused',
+      code: '42501',
+      reason: 'no permissive INSERT policy admits this role',
+    };
+  }
+  if (cell.tableSelectRevoked) {
+    return {
+      kind: 'refused',
+      code: '42501',
+      reason:
+        'the table-level SELECT grant is revoked, so the RETURNING representation cannot be read back',
+    };
   }
   return { kind: 'filtered', status: 200 };
 }
@@ -278,22 +387,42 @@ export function rlsMatrixRequest(
 }
 
 /**
- * The body a PATCH cell sends. Deliberately **never empty** — PostgREST
- * answers `400` to an empty `{}` patch, which would make an un-covered update
- * cell look refused for the wrong reason and a covered one fail outright.
+ * The body a PATCH cell sends: the seeded row's own values, minus any column
+ * the migrations declare `generated always as identity`.
  *
- * It is a harmless no-op either way: the probe column is re-sent with the
- * value it already holds, so this can never change a row. `profiles` is the
- * one exception — its probe column is the primary key, which cannot be
- * assigned, so it sends `display_name` (the column a player can actually
- * update) instead.
+ * - **Never empty.** PostgREST answers `400` to an empty `{}` patch, which
+ *   would make an un-covered update cell look refused for the wrong reason.
+ * - **Never assigning an identity column.** Postgres answers `428C9`/`400` to
+ *   `set id = <n>` on `save_audit.id` before RLS is consulted, so naming the
+ *   probe column there would probe the identity rule instead of the control
+ *   the cell is about.
+ * - **A genuine no-op.** Every value is the one the row already holds and every
+ *   value is correctly typed for its column, so a covered, own-row cell cannot
+ *   be failed by a type error and an admitted cell cannot be changed.
+ *
+ * The `profiles` special case the first draft carried is gone: re-sending a
+ * row's own values works for a table whose probe column is its primary key for
+ * exactly the same reason it works everywhere else, so no table is named in
+ * this file.
  */
 export function rlsMatrixUpdateBody(
   table: PlatformTable,
-  probeValue: unknown,
+  seededRow: Readonly<Record<string, unknown>>,
+  identityColumns: ReadonlySet<string>,
 ): Record<string, unknown> {
-  if (table.name === 'profiles') {
-    return { display_name: 'Rls Probe' };
+  const assignable: Record<string, unknown> = {};
+  for (const [column, value] of Object.entries(seededRow)) {
+    if (identityColumns.has(`${table.name}.${column}`)) {
+      continue;
+    }
+    assignable[column] = value;
   }
-  return { [table.probeColumn]: probeValue };
+
+  if (Object.keys(assignable).length === 0) {
+    throw new Error(
+      `rlsMatrixFixture: every column of public.${table.name} is generated, so its UPDATE cells would be probed with an empty patch — which PostgREST refuses with 400 for reasons unrelated to RLS.`,
+    );
+  }
+
+  return assignable;
 }

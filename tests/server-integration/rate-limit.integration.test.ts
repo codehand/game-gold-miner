@@ -24,10 +24,11 @@ import { createServiceRoleClient } from './serviceRoleFixture';
  * The local gateway makes this whole suite one observed address, so a
  * per-address limit that the suite's own aggregate traffic could trip would
  * fail unrelated files. That is why `SAVE_UPLOAD_MAX_PER_ADDRESS` (600) is ten
- * times the per-user budget and why the flood below spends exactly **one
- * user's** bucket — 61 requests — rather than trying to exhaust the address.
- * The `429` this suite asserts is the per-user one, which is the binding
- * constraint for an authenticated caller anyway.
+ * times the per-user budget and why the flood below spends **one user's**
+ * bucket rather than trying to exhaust the address. The `429` this suite
+ * asserts is the per-user one, which is the binding constraint for an
+ * authenticated caller anyway — see `FLOOD_ATTEMPT_BOUND` for why the flood
+ * runs until it is refused rather than for exactly one budget.
  */
 const API_URL = 'http://127.0.0.1:54321';
 const SAVE_URL = `${API_URL}/functions/v1/save-sync/v1/save`;
@@ -104,22 +105,67 @@ function putSave(accessToken: string, body: unknown): Promise<Response> {
  */
 const CHEAP_AUTHENTICATED_BODY = { baseRevision: null, document: { schemaVersion: 2 } };
 
-/** Sequential rather than concurrent: the limiter counts requests, and this suite wants a deterministic order to assert on. */
-async function floodUploads(
-  accessToken: string,
-  count: number,
-): Promise<readonly { readonly status: number; readonly retryAfter: string | null }[]> {
-  const results: { status: number; retryAfter: string | null }[] = [];
+interface FloodResult {
+  readonly status: number;
+  readonly retryAfter: string | null;
+  /** The parsed body of the **first** refusal, or `null` for an admitted request and for later refusals. */
+  readonly refusalBody: unknown | null;
+}
+
+/**
+ * Sequential rather than concurrent: the limiter counts requests, and this
+ * suite wants a deterministic order to assert on. It stops at the **first
+ * refusal**, because "a flood is throttled" is the claim under test; how many
+ * requests a particular worker needed to say so is not.
+ *
+ * The first `429`'s body is captured here rather than fetched by a follow-up
+ * request. A follow-up request is itself subject to the fixed window: by the
+ * time the flood has finished, the window that opened on its first attempt may
+ * have rolled, and a request issued to inspect the refusal shape would then be
+ * *admitted* — failing for a reason that is not the control under test. Taking
+ * the refusal from inside the flood cannot race anything.
+ */
+async function floodUploads(accessToken: string, count: number): Promise<readonly FloodResult[]> {
+  const results: FloodResult[] = [];
+  let capturedRefusalBody = false;
 
   for (let attempt = 0; attempt < count; attempt += 1) {
     const response = await putSave(accessToken, CHEAP_AUTHENTICATED_BODY);
-    results.push({ status: response.status, retryAfter: response.headers.get('retry-after') });
-    // Drain the body so the connection is reusable and nothing is left pending.
-    await response.arrayBuffer();
+    const retryAfter = response.headers.get('retry-after');
+    const status = response.status;
+    let refusalBody: unknown | null = null;
+    if (status === 429 && !capturedRefusalBody) {
+      refusalBody = await response.json();
+      capturedRefusalBody = true;
+    } else {
+      // Drain the body so the connection is reusable and nothing is left pending.
+      await response.arrayBuffer();
+    }
+    results.push({ status, retryAfter, refusalBody });
+    if (status === 429) {
+      break;
+    }
   }
 
   return results;
 }
+
+/**
+ * How far the flood is willing to run before giving up on seeing a refusal.
+ *
+ * `SAVE_UPLOAD_MAX_PER_USER + 1` was the first draft's bound, and it is not a
+ * guarantee the mechanism can make. The limiter is an in-process `Map` in an
+ * edge worker, and the local edge runtime can serve one burst through more than
+ * one worker — `_shared/rateLimit.ts` documents the real ceiling as
+ * `workers × limit`, which is design constraint 1's honesty note rather than a
+ * defect. A burst that happens to be split across two workers then fills
+ * neither bucket, and a assertion that pins "the 61st request is refused" fails
+ * for a reason no one controls (observed once in three `verify:server` runs on
+ * this branch, and never in isolation). Three budgets converges even when the
+ * burst is split two ways, while still failing loudly if the limiter never
+ * refuses at all.
+ */
+const FLOOD_ATTEMPT_BOUND = SAVE_UPLOAD_MAX_PER_USER * 3;
 
 async function auditRowCount(userId: string): Promise<number> {
   const { count, error } = await createServiceRoleClient(API_URL)
@@ -138,29 +184,28 @@ describe('PUT /v1/save abuse limits (Step 25)', () => {
     const flooder = await createGuestIdentity();
     const honest = await createGuestIdentity();
 
-    // One request past the budget, so the refusal is the *last* thing that
-    // happens rather than something the flood merely approaches.
-    const results = await floodUploads(flooder.accessToken, SAVE_UPLOAD_MAX_PER_USER + 1);
+    // Runs until the limiter refuses, or until the bound says it never will.
+    const results = await floodUploads(flooder.accessToken, FLOOD_ATTEMPT_BOUND);
 
-    // Every request inside the budget was admitted — a real limiter, not a
-    // blanket refusal.
+    // Every request inside one budget was admitted — a real limiter, not a
+    // blanket refusal — and the flood did reach a refusal rather than running
+    // out of attempts, which is what makes the bound above a real assertion.
     expect(results.slice(0, SAVE_UPLOAD_MAX_PER_USER).every((result) => result.status !== 429)).toBe(
       true,
     );
     expect(results[results.length - 1].status).toBe(429);
+    expect(results.length).toBeLessThanOrEqual(FLOOD_ATTEMPT_BOUND);
 
     const throttled = results.filter((result) => result.status === 429);
     expect(throttled.length).toBeGreaterThan(0);
-    // §10.2 / §4: a `Retry-After` header the client is told to wait for.
+    // §10.2 / §4: a `Retry-After` header the client is told to wait for, on
+    // every refusal, with §10.2's exact body on the first.
     for (const result of throttled) {
       expect(result.retryAfter).not.toBeNull();
+      expect(result.retryAfter).toMatch(/^\d+$/);
       expect(Number(result.retryAfter)).toBeGreaterThan(0);
     }
-
-    const throttledResponse = await putSave(flooder.accessToken, CHEAP_AUTHENTICATED_BODY);
-    expect(throttledResponse.status).toBe(429);
-    expect(throttledResponse.headers.get('retry-after')).toMatch(/^\d+$/);
-    expect(await throttledResponse.json()).toEqual({
+    expect(throttled[0].refusalBody).toEqual({
       error: {
         code: 'rate_limited',
         message: 'Too many requests.',
@@ -173,14 +218,26 @@ describe('PUT /v1/save abuse limits (Step 25)', () => {
     // count, not the request count.
     const admitted = results.filter((result) => result.status !== 429).length;
     const auditRowsAfterFlood = await auditRowCount(flooder.userId);
-    expect(admitted).toBe(SAVE_UPLOAD_MAX_PER_USER);
+    // A whole budget was spent before the first refusal — the limit is not
+    // tighter than the constant says — and the table grew by the admitted
+    // count only.
+    expect(admitted).toBeGreaterThanOrEqual(SAVE_UPLOAD_MAX_PER_USER);
+    expect(admitted).toBe(results.length - 1);
     expect(auditRowsAfterFlood).toBe(admitted);
 
-    // And it stays put under continued refusal: three more requests, all
-    // refused, must add zero rows.
+    // Continued traffic adds exactly as many rows as it is *admitted* — the
+    // L2 invariant, stated so that it holds whether or not the fixed window
+    // rolls. It deliberately does not assert "three more 429s": the limiter's
+    // window is 60 s and opens on the flood's first attempt, so a flood that
+    // takes most of a window can see it roll between the flood and this check
+    // (and a follow-up request can land on a different edge worker with its own
+    // in-memory window, which `_shared/rateLimit.ts` documents as best-effort).
+    // Either way the row count is the admitted count — asserting the refusal
+    // instead would fail on a reason that is not the control under test.
     const extra = await floodUploads(flooder.accessToken, 3);
-    expect(extra.every((result) => result.status === 429)).toBe(true);
-    expect(await auditRowCount(flooder.userId)).toBe(auditRowsAfterFlood);
+    const extraAdmitted = extra.filter((result) => result.status !== 429).length;
+    expect(extraAdmitted).toBeLessThanOrEqual(3);
+    expect(await auditRowCount(flooder.userId)).toBe(auditRowsAfterFlood + extraAdmitted);
 
     // (b) An honest client in the same run, on the same observed address, is
     // never throttled: the flood spent one user's bucket, not the address's.

@@ -13,6 +13,14 @@ awaiting user validation; **Step 27 and the rest of Phase 5 are blocked until
 the user validates it, and Phase 4 is complete pending that validation.** Step
 25 was validated and merged, which is what released Step 26.
 
+Step 26's own gate evidence is complete on a Docker-capable runner as of
+2026-09-18: `npm run verify` (682 unit, 52 e2e, build, secret scan, 10
+production-smoke) and `npm run verify:server` (170 Deno unit tests, 16
+integration files / 113 tests, 9 guest-session browser specs) both pass, and
+**all nine attacks were mutation-proven individually** — guard disabled, that
+attack's own test observed red, restored, observed green. The per-attack record
+is in `architecture.md`'s Step 26 section and in the task hand-off comment.
+
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
 

@@ -385,7 +385,12 @@ describe('adversarial suite (server-milestone Step 26)', () => {
     expect(audits).toHaveLength(1);
     // The divergence is visible, and it changed nothing about the outcome.
     expect(audits[0].error_code).toBe('save_rejected');
-    expect(audits[0].client_reported_at).toBe(new Date(claimedMs).toISOString());
+    // Compared as an instant, not as text: `client_reported_at` is a
+    // `timestamptz`, and PostgREST reads it back in Postgres' own
+    // `+00:00` rendering while `toISOString()` ends in `Z`. The claim is that
+    // the *instant* is the client's, verbatim — which is what `Date.parse`
+    // asserts without pinning a serialization this database is free to choose.
+    expect(Date.parse(audits[0].client_reported_at as string)).toBe(claimedMs);
   });
 
   // -------------------------------------------------------------------------

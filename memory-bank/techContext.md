@@ -1621,24 +1621,49 @@ attack 6's matrix — tables, per-table probe column, and each cell's expected
 outcome — from `supabase/migrations/*.sql` rather than listing them, the same
 read-from-disk rule `readExpectedMigrations` and the warm-up list follow.
 
-**Building and running the suite — the state of this sandbox.** This iteration's
-sandbox had **no Docker** (`docker` absent, no daemon socket, no `supabase`
-binary for `linux-arm64`) and a `node_modules` whose **native binaries are
-macOS Mach-O**, so three gates could not be executed at all and are recorded as
-**not run**, never as passed:
+**Building and running the suite.** The iteration that first wrote the suite
+had **no Docker** and a `node_modules` whose native binaries were macOS
+Mach-O, so none of the build-and-run gates could be executed there. The
+2026-09-18 iteration ran on a Docker-capable runner and executed every one of
+them; the first run was **red**, and the failures are recorded here because
+they are what the gates were for:
 
-| Gate | Outcome |
+| Gate | Outcome (2026-09-18) |
 |---|---|
 | `npm run lint` (AC1) | **exit 0** |
-| `npm run build` — `tsc` half only (AC4) | **exit 0** for `tsc --noEmit`; `vite build` could not run (rolldown's binding is `-darwin-arm64` only, no Linux binary present or fetchable) |
-| `npm run test` (AC2) | **not run** — same missing rolldown binding (Vitest 4 loads rolldown for its config) |
-| `npm run test:server-unit` (AC3) | **not run** — the committed `deno-bin` binary is also Mach-O |
-| `npm run verify:server` (AC5) | **not run** — requires Docker, which does not exist here |
+| `npm run test` (AC2) | **exit 0** — 52 files, 682 tests, the recorded count |
+| `npm run test:server-unit` (AC3) | **exit 0** — **170** tests (this was 163 passed / 6 failed before the fixes below) |
+| `npm run build` (AC4) | **exit 0** — `tsc --noEmit`, then `vite build` |
+| `npm run verify:server` (AC5) | **exit 0** — Docker present; stack start, 6 migrations applied, health, ten-minute core portability byte-for-byte, warm-up, 16 integration files / 113 tests, 9 guest-session browser specs |
 
-AC2/AC3/AC5/AC4 remain **unverified**; the fresh runner evidence is what must
-establish them, and the Docker status is stated rather than assumed, exactly as
-AC5 requires. Rework is expected if the runner reports a failure these gates
-would have caught.
+Four defects in the suite itself were found and fixed by running it, none of
+them a defect in production code:
+
+- **Attack 9's pure half could not pass as written.** `drivenHandler().redeem`
+  spread `unusedCollaborators()`, whose `redeemRecoveryCode` throws; a
+  well-formed wrong code reaches that collaborator, so the flood rejected on
+  its first iteration and never reached the `429` branch it asserts. It now
+  resolves `{ status: 'invalid' }` — the answer a wrong code actually gets —
+  and the malformed-code test learned that an empty `code` is `400
+  malformed_request` while a non-canonical one is `401 recovery_code_invalid`.
+- **Attack 4's behind-direction unit test never reached the bound**: a document
+  whose `savedAtTimestampMs` precedes its own `state.lastUpdateTimestampMs` is
+  `422 save_invalid` before the clock rule is consulted. Both the document's
+  timestamps and its claim now come from the bound itself (see
+  `architecture.md`'s Step 26 section).
+- **Four RLS cells asserted a status the stack does not return** — see the
+  same section for the role split and the `leaderboard_entries` grant-layer
+  refusal.
+- **One cross-suite flake**, in a file this branch never edited:
+  `rate-limit.integration.test.ts`'s flood assertions raced the limiter's
+  fixed window, the shared bucket and the per-worker limiter's own ceiling.
+  The integration config now runs with `fileParallelism: false` (which costs
+  nothing: ~21 s either way); the post-flood assertions state the L2 invariant
+  (one audit row per *admitted* request) instead of assuming the window has
+  not rolled; and the flood runs until refused, bounded at three budgets,
+  instead of pinning "the 61st request is refused" — which the per-worker
+  `Map` cannot promise when the edge runtime splits a burst across workers.
+  See `architecture.md`'s Step 26 section for the full reasoning.
 
 ## Closed incident reports
 
