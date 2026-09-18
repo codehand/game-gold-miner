@@ -2,10 +2,51 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 26 validation gate — Step 26 (adversarial
-suite) implemented 2026-09-17, awaiting user validation; Step 27 is blocked
-until the user validates it. Phase 4, "Server-verified progress", is complete
-pending that validation.**
+**Server milestone, at the Step 27 validation gate — Step 27 (leaderboard
+storage) implemented 2026-09-18, awaiting user validation; Step 28 is blocked
+until the user validates it.**
+
+Step 27's own instructions: "Add the leaderboard table using the Step 3
+magnitude-plus-exact representation, with the indexes its queries need.
+Decide the metric, the reset period if any, and the tie-break." **No table,
+index, or RLS change was needed** — `public.leaderboard_entries`, its rank
+index, and its RLS/grant matrix all shipped in Step 3/5, built
+metric-agnostic on purpose. Step 27's actual job was the three decisions:
+metric = lifetime gold earned (`totalGoldDelivered +
+totalOfflineGoldClaimed`, never current spendable `gold`); board = one,
+all-time, `board_key = 'lifetime-gold'`; tie-break = ascending `updated_at`
+(earliest to reach the score ranks first). `src/core/leaderboard/
+leaderboardMetric.ts` adds the pure decision plus the
+`toLeaderboardMagnitude` conversion (`log10(mantissa) + exponent`, exact past
+`1e308`); `supabase/migrations/20260918100000_leaderboard_lifetime_gold_board.sql`
+pins the three decisions as table/column comments, a durable record rather
+than a structural change.
+
+**Proof, against the real table
+(`tests/server-integration/leaderboard-storage.integration.test.ts`).** Ten
+values spanning ordinary numbers through `1e1000` sort correctly through the
+real ranking index and display exactly; a tie at equal `metric_log10` ranks
+the earlier `updated_at` first; a focused RLS check (the exhaustive matrix
+stays Step 26's); and the stated latency budget — top-100 of 10,000 rows on
+one board, the "~10⁴ rows" scale already recorded for this schema, under
+300 ms through the real REST API. The 10,000 rows needed 10,000 distinct
+`auth.users` rows to reference (`(board_key, user_id)` is the primary key);
+`tests/server-integration/directSqlFixture.ts` seeds them with one bulk
+superuser `insert` via `docker exec ... psql` rather than 10,000 real GoTrue
+sign-ins, which would have made this the slowest, flakiest thing
+`verify:server` runs. See `architecture.md`'s Step 27 section for the full
+design reasoning.
+
+**Gate evidence, all green on a Docker-capable runner (2026-09-18).**
+`npm run lint`, `npm run test` (**690** unit tests, 8 new), `npm run build`,
+`npm run test:e2e` (52), `npm run test:prod` (10), `npm run test:server-unit`
+(170 Deno unit tests, unchanged — no server-side code touched) and `npm run
+verify:server` (**17** integration files / **119** tests, 6 new, plus the 9
+guest-session browser specs) all exit 0.
+
+**Previously, at the Step 26 validation gate — Step 26 (adversarial
+suite) implemented 2026-09-17, validated and merged; Step 27 was released
+against it. Phase 4, "Server-verified progress", is complete.**
 
 Step 26 adds no production code. It is the nine-attack adversarial suite
 (`current: forge gold / replay / rollback / clock / another user's id /
@@ -432,13 +473,14 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 26.** This is the gate; nothing below
-   starts before it. Step 26 (the adversarial suite) is implemented and awaiting
-   validation; **Step 27 (leaderboard storage) is blocked** on that validation,
-   and Phase 4 is complete pending it. Step 25's own gate is closed — it was
-   validated, merged, and Step 26 was queued against it.
-2. Step 27 onward — leaderboard storage and the rest of Phase 5, then Phases
-   6–7. **Step 24's L2 is closed by Step 25:** a `429` is refused before any
+1. **Wait for the user to validate Step 27.** This is the gate; nothing below
+   starts before it. Step 27 (leaderboard storage) is implemented and awaiting
+   validation; **Step 28 (leaderboard writes) is blocked** on that validation.
+   Step 26's own gate is closed — it was validated, merged, and Step 27 was
+   queued against it; Phase 4 is complete.
+2. Step 28 onward — leaderboard writes, then display, friends, and the rest of
+   Phase 5, then Phases 6–7. **Step 24's L2 is closed by Step 25:** a `429` is
+   refused before any
    `save_audit` row exists on the path, and an oversized body writes none
    either, so the 1-request-to-1-audit-write amplification no longer grows the
    table per refused request. Step 26 pins both under attack
