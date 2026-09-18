@@ -1,0 +1,62 @@
+# Cipher — regeneration prompts v2 (sharpness pass)
+#
+# Same recipe as the Elon and Baron v2 passes. Cipher has one extra, measured
+# problem the other two do not have.
+#
+# Measured from the checkout:
+# - public/assets/marketplace/cipher.png is a byte-identical copy of
+#   processed/idle-1.png (md5 3f138ffb86eb73f171766fa1ac8daf28).
+# - Subject in that 128x128 file is 65x89 px (pipeline-meta.json: cell_size 128,
+#   fit_scale 0.82, shared_scale true, scale_strategy preserve, align feet,
+#   output_size [65, 89], paste_position [30, 31]); the generator cell held
+#   384x526 px of subject, ~5.9x the shipped pixels.
+# - The shipped file has 375 pixels with partial alpha (8 < alpha < 248), but
+#   this is NOT a Cipher-specific tablet defect and must not be read as one:
+#   measured the same way, Baron has 367, Elon 394 and Mofy 425, and Cipher's
+#   interior semi-alpha rate is the LOWEST of the four (231 interior pixels,
+#   8.20% of its core, against Mofy's 13.38%). Their average colour is near-black
+#   (#0b0417) and they sit at internal edges, so this is an artifact of the
+#   chroma-key edge-clean plus the 128 px alpha resample, present in every
+#   portrait. It still justifies the "every pixel fully opaque or fully
+#   transparent" clause below, because a near-black interior is what the clean
+#   pass has to dig into. What is genuinely Cipher-specific is the old prompt
+#   asking for a TRANSPARENT holographic tablet and a cyan glow: a translucent
+#   element cannot survive a 65x89 px downscale, and a semi-transparent edge over
+#   magenta keys to fringe rather than to a clean cut.
+# - CONTRAST is Cipher's second problem, and it is not a resolution issue at all.
+#   Mean subject relative luminance is 0.067 (charcoal #303030 is 0.030,
+#   #181818 is 0.009, #000018 is 0.001) against the SR card background
+#   .market-portrait radial-gradient(#446aa3 -> #1b2d49) whose dark end is
+#   0.026. That is roughly 1.5:1 where Baron sits at 5.8:1 and Elon at 5.4:1:
+#   the lower half of a charcoal cat on a dark blue card almost disappears.
+#   A prompt can only half-fix that, by giving the fur a readable second value
+#   band and one large bright shape (the opaque tablet). The other half is the
+#   card background in src/style.css — see the note at the bottom.
+#
+# Palette (read from the design reference and the shipped frame):
+# charcoal #303030, slate #303048, near-black #000018, dark teal-navy #001818
+# and #183030, electric blue #0060f0, steel blue #4890c0, pale-gold eyes,
+# gold trim #f4bd3e. The reference still carries lavender #d8c0f0 from the
+# user's concept; the SR adaptation shifts that to sapphire/electric blue and
+# cyan, so do NOT "correct" it to the project's violet SR key #8a5cd6.
+#
+# Background: plain pure white per the supplied template. If this still runs
+# through the existing generate2dsprite pass (threshold 100, magenta key),
+# replace "plain pure white" with "perfectly flat #FF00FF" — and for Cipher it
+# matters more than for the others, because any semi-transparent tablet edge
+# over magenta becomes a fringe rather than a clean cut.
+
+=== PROMPT A — runtime sheet, 2x2 x 4 idle frames (square canvas) ===
+
+Output a square image with a 1 to 1 aspect ratio, at the largest square resolution the model supports, 1024 by 1024 or larger, so that each of the four cells is a square of at least 512 by 512 pixels. Draw a 2D game sprite sheet laid out as a 2 by 2 grid, four frames in total, read left to right along the top row and then left to right along the bottom row. Every frame shows the same character, Cipher, a cute chibi sleek charcoal-black cat warehouse manager with a big rounded head, a short stocky body and short limbs, pointed ears, huge round pale-gold eyes each with a single white highlight dot, a small dark nose, a tiny mouth, and a long curved tail. His short sleek fur is drawn in exactly two flat value bands, a charcoal base and one lighter slate band along the upper-left of the head, back and tail, so the body never collapses into one dark mass, and it is never drawn as individual fur strands. He wears futuristic segmented manager armour of dark slate plates with restrained gold trim on exactly two elements, and a rich sapphire-blue and electric-blue under-layer with a restrained pale-cyan edge highlight, and no full cape. He holds one flat inventory tablet close across his torso: the tablet is a solid, fully opaque icy-cyan panel with a dark navy outline and one simple inner border line, and its face carries only abstract inventory bar shapes and a small chevron, never any legible writing, letters, numerals, icons or logos. The tablet is not transparent, not semi-transparent and not glassy: nothing behind it shows through, and there is no gradient across it. He is seen from a front three-quarter angle, facing the viewer, standing upright with both feet flat on an invisible ground line. The four frames form one single restrained idle loop, evenly spaced in time, so that frame 4 leads straight back into frame 1 as a seamless loop; only the eyelids, the ear tips, the tail tip, one paw on the tablet, a slight body bob, and a two-step brightness change of the tablet bars change between frames, while the shape and position of the tablet and the position of the feet stay fixed. Frame 1 is an attentive neutral pose with open eyes; frame 2 adds a gentle breath and a blink; frame 3 adds a tiny ear and tail settle with a small paw adjustment; frame 4 returns toward neutral with another soft blink. The character must be identical in every frame: same fur value bands, same armour, same tablet, same outline thickness, same proportions, same camera distance, same standing scale and the same size. All four frames must be different poses, none of them repeated. Every frame stands on the same invisible ground line so the feet line up across the whole sheet. The whole character, including head, ears, tail, armour, paws, tablet and outline, stays inside the central 76% of every cell with a clear empty margin on all four sides, and nothing crosses a cell boundary. Draw it in a bold cartoon vector art style with a thick dark navy outline of even weight on every shape, inner and outer, exactly two flat value bands per material and no third tint, and a charcoal, slate, gold, sapphire, electric-blue and cyan palette using charcoal #303030, slate #4a4a5a, near-black navy outline #0a0a18, gold trim #f4bd3e, electric blue #0060f0, steel blue #4890c0 and icy cyan #9fe8f5, with no gradients, no gradient meshes, no airbrushing, no ambient occlusion, no texture and no line thickness variation, and with every colour region fully flat, fully opaque and at least 6 pixels wide at a 512 pixel cell. Every pixel of the character must be either fully opaque or fully transparent: no partially transparent pixels, no soft edges, no glow, no bloom, no light halo, no aura and no transparency anywhere, and if a rim light is wanted it is one flat solid lighter band of even width along the upper-left contour only. The tablet bars, the armour trim and the tail curl must be large simple shapes, each at least 8 pixels wide at a 512 pixel cell, with no fine fur strands, no hatching, no dithering, no grain and no pixel-scale noise anywhere. Keep the whole sheet readable as a clean mobile game sprite whose silhouette and any single frame still read when shrunk to 96 pixels tall against a dark background; simplify shapes rather than decorate them, and keep the pale-gold eyes and the bright tablet as the two strongest lights in the frame. Edges must be crisp: the outline is a clean solid band of even width with no smudged, feathered or blurred edge. The background must be plain pure white, not cream and not grey, with no floor, no horizon, no vignette and no isometric tile. Do not draw any shadow under or behind the character. Do not draw panel borders, grid lines, frames, numbers, labels, text or a watermark. Do not add any props or decorations that were not asked for, and no floating panels, holograms, screens, orbs, sparks, particles, dust or detached effects. Do not add extra cats, scenery, a rarity badge, UI, a signature, human likeness, and do not crop any part of the character.
+
+=== PROMPT B — dedicated marketplace portrait, single image ===
+
+Output a square image with a 1 to 1 aspect ratio, about 1024 by 1024 pixels. Draw one single full-body 2D game character portrait: Cipher, a cute chibi sleek charcoal-black cat warehouse manager with a big rounded head, a short stocky body and short limbs, pointed ears, huge round pale-gold eyes each with a single white highlight dot, a small dark nose, a tiny mouth, and a long curved tail. His short sleek fur is drawn in exactly two flat value bands, a charcoal base and one lighter slate band along the upper-left of the head, back and tail, so the body never collapses into one dark mass, and it is never drawn as individual fur strands. He wears futuristic segmented manager armour of dark slate plates with restrained gold trim on exactly two elements, and a rich sapphire-blue and electric-blue under-layer with a restrained pale-cyan edge highlight, and no full cape. He holds one flat inventory tablet close across his torso: the tablet is a solid, fully opaque icy-cyan panel with a dark navy outline and one simple inner border line, and its face carries only abstract inventory bar shapes and a small chevron, never any legible writing, letters, numerals, icons or logos. The tablet is not transparent, not semi-transparent and not glassy: nothing behind it shows through, and there is no gradient across it. He stands upright and faces the viewer in a front three-quarter view, centred, filling about 88% of the frame height, with both feet flat on an invisible ground line near the bottom of the frame and even empty margin on the left, right and top. Draw it in a bold cartoon vector art style with a thick dark navy outline of even weight on every shape, inner and outer, exactly two flat value bands per material and no third tint, and a charcoal, slate, gold, sapphire, electric-blue and cyan palette using charcoal #303030, slate #4a4a5a, near-black navy outline #0a0a18, gold trim #f4bd3e, electric blue #0060f0, steel blue #4890c0 and icy cyan #9fe8f5, with no gradients, no gradient meshes, no airbrushing, no ambient occlusion, no texture and no line thickness variation, and with every colour region fully flat, fully opaque and at least 8 pixels wide at 1024 pixels. Every pixel of the character must be either fully opaque or fully transparent: no partially transparent pixels, no soft edges, no glow, no bloom, no light halo, no aura and no transparency anywhere, and if a rim light is wanted it is one flat solid lighter band of even width along the upper-left contour only. The tablet bars, the armour trim and the tail curl must be large simple shapes, each at least 12 pixels wide, with no fine fur strands, no hatching, no dithering, no grain and no pixel-scale noise anywhere. The whole character must read as a clean silhouette when shrunk to 96 pixels tall against a dark background, so simplify shapes rather than decorate them, and keep the pale-gold eyes and the bright tablet as the two strongest lights in the frame. Edges must be crisp: the outline is a clean solid band of even width with no smudged, feathered or blurred edge. The background must be plain pure white, not cream and not grey, with no gradient, no floor, no horizon and no vignette. Do not draw any shadow under or behind the character. Do not draw a border, panel, frame, number, label, text or watermark. Do not add props or decorations that were not asked for, and no floating panels, holograms, screens, orbs, sparks, particles or detached effects, no extra cats, no scenery, no rarity badge, no UI, no signature, no human likeness, and do not crop any part of the character.
+
+# Half of the contrast problem cannot be fixed by any prompt: the SR card
+# background in src/style.css is .market-portrait radial-gradient(#446aa3 ->
+# #1b2d49), and Cipher's charcoal is almost the same luminance as that dark end.
+# If Cipher still reads soft after v2, the fix is on the card, not in the art:
+# lighten the SR portrait background, or special-case Cipher with its own
+# backdrop. Neither is done here.
