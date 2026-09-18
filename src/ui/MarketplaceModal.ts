@@ -345,7 +345,9 @@ export class MarketplaceModal {
 
   #portraitImage(cat: CatListing): HTMLImageElement {
     const image = document.createElement('img');
-    image.src = `/assets/marketplace/${cat.name.toLowerCase()}.png`;
+    image.src = cat.name === 'Elon'
+      ? '/assets/marketplace/elon-v2/idle-1.png'
+      : `/assets/marketplace/${cat.name.toLowerCase()}.png`;
     image.alt = cat.name;
     return image;
   }
