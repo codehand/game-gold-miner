@@ -177,6 +177,8 @@ export interface SaveConflictCandidate {
   readonly document: SaveDocumentV2;
   /** Server candidate: the upload's `receivedAt`. Local candidate: `savedAtTimestampMs`. */
   readonly lastPlayedMs: number;
+  /** The cloud revision this candidate was read from; absent for the local side. */
+  readonly serverRevision?: number;
   readonly gold: GameNumber;
   readonly floorsOpen: number;
   readonly deepestShaftLevel: number;

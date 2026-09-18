@@ -344,7 +344,7 @@ export class CloudSaveReplica {
     if (
       options.force !== true &&
       this.#droppedStateSignature !== null &&
-      stateShapeSignature(document.state) === this.#droppedStateSignature
+      stateSignature(document.state) === this.#droppedStateSignature
     ) {
       return;
     }
@@ -466,7 +466,7 @@ export class CloudSaveReplica {
         return;
       case 'terminal':
         if (result.keepSyncing) {
-          this.#droppedStateSignature = stateShapeSignature(document.state);
+          this.#droppedStateSignature = stateSignature(document.state);
           this.#emit({
             kind: 'document-dropped',
             code: result.code,
@@ -558,7 +558,7 @@ export class CloudSaveReplica {
         this.#emit({ kind: 'remote-dominates' });
         this.#onRemoteDominates?.(remoteDocument, conflict.receivedAtMs);
         return;
-      case 'fork':
+      case 'fork': {
         // §7.3: neither candidate is destroyed until the player chooses, and
         // there is no chooser yet. Sync must stop here, exactly as the boot
         // reconcile's fork does: the client now holds the server's revision
@@ -566,14 +566,19 @@ export class CloudSaveReplica {
         // would be accepted and silently replace the remote branch the player
         // was never shown. `stop()` clears any queued document and makes every
         // future `enqueue` a no-op; both candidates still travel to the caller.
+        const remoteCandidate = {
+          ...resolution.remote,
+          serverRevision: conflict.serverRevision,
+        };
         this.stop();
         this.#emit({
           kind: 'fork',
           local: resolution.local,
-          remote: resolution.remote,
+          remote: remoteCandidate,
         });
-        this.#onFork?.(resolution.local, resolution.remote);
+        this.#onFork?.(resolution.local, remoteCandidate);
         return;
+      }
     }
   }
 
@@ -660,26 +665,21 @@ export class CloudSaveReplica {
 }
 
 /**
- * A stable structural signature of an authoritative game state: sorted keys
- * and value *types*, with array length and its first element's shape. Two
- * saves of the same game — however far the numbers have moved — share it, so
- * §4's "stop uploading this document" can distinguish "the same broken save
- * again" from a save whose structure genuinely changed.
+ * A stable value signature of an authoritative game state. Gameplay values are
+ * preserved, while the outer document timestamp is not. Routine saves of the
+ * exact same rejected state share it, while gameplay changes can retry cloud
+ * sync.
  */
-export function stateShapeSignature(value: unknown): string {
-  if (value === null) {
-    return 'null';
-  }
-  if (Array.isArray(value)) {
-    return `[${value.length}${value.length === 0 ? '' : `:${stateShapeSignature(value[0])}`}]`;
-  }
-  if (typeof value === 'object') {
-    const record = value as Readonly<Record<string, unknown>>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${key}:${stateShapeSignature(record[key])}`)
-      .join(',')}}`;
-  }
+export function stateSignature(value: unknown): string {
+  return JSON.stringify(value, (_key, nestedValue: unknown) => {
+    if (nestedValue === null || typeof nestedValue !== 'object' || Array.isArray(nestedValue)) {
+      return nestedValue;
+    }
 
-  return typeof value;
+    return Object.fromEntries(
+      Object.entries(nestedValue as Record<string, unknown>).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    );
+  });
 }

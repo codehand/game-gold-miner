@@ -1,5 +1,15 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Account settings and save-conflict UI
+
+Added the player-facing settings button and account modal. Guest players can
+start Google linking; linked players can inspect identity/version and log out,
+which clears the active local save before booting a fresh guest. Genuine cloud
+forks now show local/cloud summaries and let the player choose; local choice
+uploads against the retained server revision, while cloud choice adopts the
+remote document. Verified with build, lint, 690 unit tests, and the live
+in-app-browser smoke check.
+
 Finished work from the base-game milestone (Steps 1–37, closed 2026-09-08) and
 the server milestone through Step 22. Moved out of `progress.md` and
 `activeContext.md` on 2026-09-14 because it is closed history, not live state.

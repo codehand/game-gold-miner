@@ -8,6 +8,14 @@ Not part of the contract.
 
 ## Closed
 
+- **The cloud fork had no player-facing chooser.** *Closed 2026-09-19:* the
+  HUD settings control opens `AccountSettingsModal`, which presents both
+  candidates and applies either the local branch through a server-revision
+  compare-and-swap upload or the cloud branch through a guarded local adopt;
+  both paths suspend local writes and reload only after the selected document
+  is settled. The replica remains stopped while the choice is pending, so a
+  routine save cannot overwrite the unshown branch.
+
 - **Idle-game number growth can overflow without a large-number abstraction.**
   *Closed:* `src/core/numbers/GameNumber.ts` is an immutable wrapper that keeps
   `break_infinity.js` private and serializes to a decimal/scientific string. All

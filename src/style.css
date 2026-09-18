@@ -332,6 +332,210 @@ body {
   outline-offset: 2px;
 }
 
+/* Account settings is a DOM modal so auth and conflict choices remain keyboard accessible. */
+.account-settings-backdrop {
+  position: fixed;
+  z-index: 12;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(3 7 18 / 80%);
+}
+
+.account-settings-backdrop[hidden] {
+  display: none;
+}
+
+.account-settings-dialog {
+  width: min(100%, 350px);
+  max-height: calc(100dvh - 36px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+  border: 2px solid #4e9fb4;
+  border-radius: 18px;
+  background: #172b43;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 60%);
+  color: #f9fafb;
+  overscroll-behavior: contain;
+}
+
+.account-settings-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid #41658a;
+  background: #172b43;
+}
+
+.account-settings-heading h1 {
+  margin: 0;
+  color: #f4bd3e;
+  font-size: 24px;
+}
+
+.account-settings-close {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: #243f5b;
+  color: #f9fafb;
+  cursor: pointer;
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.account-settings-content {
+  padding: 18px;
+}
+
+.account-settings-status,
+.account-settings-note,
+.account-settings-version,
+.account-settings-error {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.account-settings-status {
+  color: #dbeafe;
+  font-size: 15px;
+}
+
+.account-settings-details {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid #385b79;
+  border-radius: 12px;
+  background: #102239;
+  font-size: 13px;
+}
+
+.account-settings-details dt {
+  color: #9fb9ce;
+}
+
+.account-settings-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #f9fafb;
+  text-align: right;
+}
+
+.account-settings-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.account-settings-actions button,
+.account-settings-conflict-card button {
+  width: 100%;
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 1px solid #6b9fba;
+  border-radius: 11px;
+  color: #f9fafb;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  touch-action: manipulation;
+}
+
+.account-settings-primary {
+  border-color: #f8d77c !important;
+  background: #f4bd3e;
+  color: #182337 !important;
+}
+
+.account-settings-secondary {
+  background: #285573;
+}
+
+.account-settings-danger {
+  border-color: #e88b8b !important;
+  background: #7f2d38;
+}
+
+.account-settings-actions button:hover,
+.account-settings-conflict-card button:hover {
+  filter: brightness(1.12);
+}
+
+.account-settings-actions button:disabled,
+.account-settings-conflict-card button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.account-settings-close:focus-visible,
+.account-settings-actions button:focus-visible,
+.account-settings-conflict-card button:focus-visible {
+  outline: 3px solid #8ee5e3;
+  outline-offset: 2px;
+}
+
+.account-settings-version {
+  margin-top: 18px;
+  color: #8da9bf;
+  font-size: 12px;
+  text-align: center;
+}
+
+.account-settings-conflicts {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.account-settings-conflict-card {
+  padding: 14px;
+  border: 1px solid #41658a;
+  border-radius: 13px;
+  background: #102239;
+}
+
+.account-settings-conflict-card h2 {
+  margin: 0 0 10px;
+  color: #f4bd3e;
+  font-size: 18px;
+}
+
+.account-settings-conflict-card ul {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 14px;
+  padding-left: 18px;
+  color: #c7d8e8;
+  font-size: 13px;
+}
+
+.account-settings-note {
+  margin-top: 16px;
+  color: #9fb9ce;
+  font-size: 12px;
+}
+
+.account-settings-error {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 9px;
+  background: #7f1d1d;
+  color: #fee2e2;
+  font-size: 13px;
+}
+
 /* Marketplace is a native modal: background input and keyboard focus stay isolated. */
 .marketplace {
   width: min(480px, calc(100vw - 24px));

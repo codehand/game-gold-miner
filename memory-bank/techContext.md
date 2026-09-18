@@ -391,19 +391,14 @@ version change is authorized in this phase.
   exact Google Cloud Console setup — a Web application OAuth client with
   `http://127.0.0.1:54321/auth/v1/callback` (the fixed local GoTrue callback)
   as its redirect URI, needing no domain.
-- No production UI exists for Google sign-in yet: `HudView.ts`'s fixed HUD
-  already covers the 360×640 canvas edge-to-edge (gold left, warehouse queue
-  centered, income right), leaving no free region for a DOM overlay that
-  would not risk covering existing HUD content or an existing canvas click
-  target. `import.meta.env.DEV` gates a `window.catMineIdleAccount` hook in
-  `src/main.ts` exposing `beginGoogleSignIn()`/`signOut()`, the same
-  `app.dataset.guestSession`-style diagnostic pattern Step 8 established. A
-  real human completing Google's own consent screen is the one thing nothing
-  local can substitute for, so the step's "same user id, same account after
-  sign-out/in" proof is a guided manual verification rather than part of
-  `npm run verify:server` — the same kind of unautomatable external
-  prerequisite Steps 11 (Apple membership/domain) and 12 (Telegram bot host)
-  already record for themselves.
+- The production player-facing entry point is the settings control beside the
+  HUD income value. It opens `src/ui/AccountSettingsModal.ts`, which shows
+  account status/email/user id, app version, Google login for guests, and
+  logout-and-reset for linked accounts. Auth effects remain injected from
+  `src/main.ts`; the DEV-only `window.catMineIdleAccount` hook remains for
+  guided verification and collision diagnostics. A real human completing
+  Google's own consent screen is still the one thing nothing local can
+  substitute for, so the same-user-id proof remains a guided manual check.
 - `tests/unit/server-stack.test.ts` gained two static-source assertions
   pinning `enable_manual_linking = true` and the `[auth.external.google]`
   block, plus `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in the "declares the

@@ -77,9 +77,8 @@ browser — start at Phase 2 and are only kept from Phase 3.
 
 
 Server-milestone Steps 8 through 17 and 13 landed between 2026-09-09 and
-2026-09-12 and change what is true about accounts and saves, even though — no
-production UI existing yet for any of it — a player cannot see or reach any
-of this in the shipped game today. An account now exists: every player gets
+2026-09-12 and change what is true about accounts and saves. An account now
+exists: every player gets
 a real anonymous session at boot, and can attach Google or Telegram to it
 (Apple was cut) while keeping the same identity and progress. A save can now
 genuinely leave the device: `saves` denies every client write, but the
@@ -87,16 +86,13 @@ genuinely leave the device: `saves` denies every client write, but the
 player who has no local progress on a new device silently restored from
 whatever their account already holds, and a player who *does* have local
 progress on a device that turns out to hold a genuinely different account
-save left completely untouched rather than either being silently merged or
-silently asked to lose one. Every path into this — Google/Telegram sign-in,
-the account-linking collision, the cloud upload/download — is reachable only
-through `import.meta.env.DEV`-only diagnostics and hooks today, the same
-"land the mechanism, defer the real entry point" pattern every identity step
-since Step 8 has followed; the player-facing promise this paragraph is
-building toward — a save that survives a new device, cleared storage, or a
-lost browser — is still not something any real player benefits from yet.
-That remains true until a production UI exists and, for an unlinked guest
-specifically, until Step 14's recovery code lands: script-writable storage
+ save left completely untouched rather than either being silently merged or
+silently asked to lose one. Google sign-in and cloud save are now reachable
+from the in-game settings popup; the DEV hooks remain for verification. The
+player-facing promise this paragraph is building toward — a save that survives
+a new device, cleared storage, or a lost browser — is available to a linked
+account; an unlinked guest still depends on Step 14's recovery code because
+script-writable storage
 (the session token included) is deleted by iOS Safari after seven days
 regardless of any of this milestone's work.
 
@@ -114,11 +110,10 @@ genuine fork reaches the player as a prompt. Making "keeps the ahead save loses
 nothing" true required counting *every* gold source, so an offline reward now
 also increments a new monotonic `warehouse.totalOfflineGoldClaimed` counter
 (save schema version 2, migrated from version 1 by defaulting it to zero) that
-the conflict rule compares. Like the rest of this milestone,
-no production UI surfaces it yet: the candidate saves are retained for the
-session through a DEV-only hook, and the chooser screen plus the upload path
-that produces a conflicting write are later steps. This changes nothing a
-current player can see or do.
+the conflict rule compares. Genuine forks now open the in-game account popup,
+which shows both candidates and lets the player keep the device save or the
+cloud save. The selected branch is settled safely before reload; the
+unselected branch is not silently applied.
 
 Server-milestone Step 19 (2026-09-13) makes the cloud save a real replica of
 the local one without changing how the game plays. IndexedDB is still the

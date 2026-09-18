@@ -2,7 +2,7 @@ import './style.css';
 
 import { BASE_GAME_BALANCE, validateBaseGameBalance } from './config';
 import { claimOfflineReward, createPendingOfflineReward, GameNumber, type PendingOfflineReward } from './core';
-import { createGame, MineSimulationDriver } from './game';
+import { createGame, formatAmount, MineSimulationDriver } from './game';
 import {
   createSaveDocument,
   CloudSaveReplica,
@@ -52,8 +52,13 @@ import {
 } from './platform/web';
 import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
 import {
+  AccountSettingsModal,
   createSaveDiagnosticBanner,
   showOfflineRewardModal,
+  type AccountActionResult,
+  type AccountConflictCandidateView,
+  type AccountConflictView,
+  type AccountIdentityView,
   type OfflineRewardModal,
 } from './ui';
 
@@ -157,6 +162,13 @@ if (telegramInitData !== null) {
       // unset here and no notice can fire. A returning Telegram player is
       // restored from the cloud by the reconcile below.
       if (result.status === 'signed-in') {
+        accountIdentity = {
+          status: 'signed-in',
+          userId: null,
+          email: null,
+          googleLoginLabel: undefined,
+        };
+        void refreshAccountIdentity();
         triggerCloudSaveReconcile();
       } else {
         // Step 22: no session means no server grant; fall back to the local projection.
@@ -190,6 +202,15 @@ if (telegramInitData !== null) {
       // reused session with no local save can be recognised as a returning
       // player whose device lost its copy.
       if (result.status === 'signed-in') {
+        accountIdentity = {
+          status: result.user.isAnonymous ? 'guest' : 'signed-in',
+          userId: result.user.id,
+          email: null,
+          googleLoginLabel: result.user.isAnonymous
+            ? getGoogleLoginLabel()
+            : undefined,
+        };
+        void refreshAccountIdentity();
         sessionIsNew = result.isNewSession;
         triggerCloudSaveReconcile();
       } else {
@@ -203,19 +224,11 @@ if (telegramInitData !== null) {
 /**
  * Server-milestone Step 10: DEV-only trigger for the Google sign-in flow.
  *
- * No production UI exists for this yet — deliberately: the fixed HUD
- * (`HudView.ts`) already draws gold, the warehouse queue, and income
- * edge-to-edge across the full 360×640 canvas, and the bottom navigation,
- * surface strip, and scrollable mine account for the rest, so there is no
- * free region to place a DOM overlay without either visually colliding with
- * existing HUD content or sitting on top of an existing canvas click target
- * (an upgrade control, a bottom-nav tile). A real player-facing entry point
- * is a Phaser-rendered control akin to the bottom-nav tiles, which is a
- * distinct scope of work belonging to a later polish step. Until then this
- * mirrors `app.dataset.guestSession` above: a DEV-only hook the guided
- * manual verification (and, later, a real E2E suite once real Google test
- * credentials exist) can call directly, the same way existing E2E specs
- * already call test-injected `window.catMineIdle*` hooks.
+ * The player-facing entry point is now the settings control rendered by
+ * `HudView`. This DEV-only hook remains useful for guided verification (and,
+ * later, a real E2E suite once real Google test credentials exist), the same
+ * way existing E2E specs already call test-injected `window.catMineIdle*`
+ * hooks.
  */
 if (import.meta.env.DEV) {
   void supabaseClientPromise
@@ -253,11 +266,9 @@ if (import.meta.env.DEV) {
       };
       // Server-milestone Step 13: whether this page load's return URL
       // carried `error_code=identity_already_exists` — a `linkIdentity`
-      // attempt that collided with an existing account. No production UI
-      // reads this yet (same reason the hook above is DEV-only); it exists
-      // so the guided manual verification (and, later, a real E2E suite) can
-      // observe the collision and then call `beginGoogleAccountSwitch()` to
-      // resolve it.
+      // attempt that collided with an existing account. The account popup
+      // still leaves this rare post-redirect collision to the normal auth
+      // return flow; the hook keeps it observable for guided verification.
       app.dataset.googleIdentityCollision = String(
         await detectGoogleIdentityCollision(client?.auth ?? null),
       );
@@ -285,6 +296,7 @@ function toPublicGuestSessionDiagnostic(result: GuestSessionResult): unknown {
 }
 
 const indexedRepository = new DexieActiveSaveRepository();
+const PREFER_GOOGLE_SIGN_IN_KEY = 'cat-mine-idle:prefer-google-sign-in';
 
 /**
  * Server-milestone Step 18 §7.3: the genuine-fork saves a boot reconcile
@@ -294,6 +306,11 @@ const indexedRepository = new DexieActiveSaveRepository();
  * verbatim. `null` whenever the last reconcile was not a fork.
  */
 let pendingSaveConflict: CloudSaveReconcileOutcome | null = null;
+let accountIdentity: AccountIdentityView = {
+  status: 'loading',
+  userId: null,
+  email: null,
+};
 
 /**
  * Server-milestone Step 21: the facts `shouldExplainMissingLocalSave` needs,
@@ -368,6 +385,9 @@ function triggerCloudSaveReconcile(): void {
     )
     .then((outcome) => {
       pendingSaveConflict = outcome.kind === 'deferred-conflict' ? outcome : null;
+      if (outcome.kind === 'deferred-conflict') {
+        accountSettingsModal?.showConflict(toAccountConflictView(outcome));
+      }
 
       // Step 19 §11: no upload runs before the reconcile settles. A download
       // that reported a revision armed the replica through
@@ -649,6 +669,7 @@ function toPublicReconcileDiagnostic(outcome: CloudSaveReconcileOutcome): unknow
 function toPublicConflictCandidate(candidate: SaveConflictCandidate): unknown {
   return {
     lastPlayedMs: candidate.lastPlayedMs,
+    serverRevision: candidate.serverRevision,
     gold: candidate.gold.serialize(),
     floorsOpen: candidate.floorsOpen,
     deepestShaftLevel: candidate.deepestShaftLevel,
@@ -887,6 +908,9 @@ const cloudReplica = new CloudSaveReplica({
     // `pendingSaveConflict` the boot reconcile already populates, so the DEV
     // account hook exposes an upload fork exactly as it exposes a boot fork.
     pendingSaveConflict = { kind: 'deferred-conflict', local, remote };
+    accountSettingsModal?.showConflict(
+      toAccountConflictView({ kind: 'deferred-conflict', local, remote }),
+    );
   },
 });
 /**
@@ -901,6 +925,7 @@ const persistence = new SavePersistenceCoordinator(repository, {
 });
 let game: ReturnType<typeof createGame> | null = null;
 let offlineRewardModal: OfflineRewardModal | null = null;
+let accountSettingsModal: AccountSettingsModal | null = null;
 let unbindSaveLifecycle: (() => void) | null = null;
 let saveHeartbeatId: number | null = null;
 let disposed = false;
@@ -930,7 +955,257 @@ const CLOUD_ADOPT_RELOAD_FALLBACK_MS = 2_000;
  */
 const SAVE_HEARTBEAT_MS = 30_000;
 
+accountSettingsModal = new AccountSettingsModal({
+  parent: app,
+  appVersion: import.meta.env.VITE_APP_VERSION?.trim() || 'dev',
+  getIdentity: () => accountIdentity,
+  onLogin: handleGoogleLogin,
+  onLogout: handleLogout,
+  onConflictChoice: handleConflictChoice,
+});
+
 void startApplication();
+
+function getPreferGoogleSignIn(): boolean {
+  return getAvailableLocalStorage()?.getItem(PREFER_GOOGLE_SIGN_IN_KEY) === '1';
+}
+
+function setPreferGoogleSignIn(preferSignIn: boolean): void {
+  const storage = getAvailableLocalStorage();
+  if (storage === null) {
+    return;
+  }
+
+  try {
+    if (preferSignIn) {
+      storage.setItem(PREFER_GOOGLE_SIGN_IN_KEY, '1');
+    } else {
+      storage.removeItem(PREFER_GOOGLE_SIGN_IN_KEY);
+    }
+  } catch {
+    // Account routing is best effort; the normal guest-link path remains safe.
+  }
+}
+
+function getGoogleLoginLabel(): string {
+  return getPreferGoogleSignIn() ? 'Sign in with Google' : 'Continue with Google';
+}
+
+function clearGoogleIdentityErrorFromUrl(): void {
+  const url = new URL(window.location.href);
+  const errorKeys = ['error', 'error_code', 'error_description', 'error_uri'];
+  let changed = false;
+
+  for (const key of errorKeys) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  }
+
+  const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+  for (const key of errorKeys) {
+    if (hashParams.has(key)) {
+      hashParams.delete(key);
+      changed = true;
+    }
+  }
+  const nextHash = hashParams.toString();
+  if (url.hash !== (nextHash === '' ? '' : `#${nextHash}`)) {
+    url.hash = nextHash;
+    changed = true;
+  }
+
+  if (changed) {
+    window.history.replaceState(null, document.title, url);
+  }
+}
+
+async function refreshAccountIdentity(): Promise<void> {
+  const client = await supabaseClientPromise;
+  if (client === null) {
+    accountIdentity = { status: 'unconfigured', userId: null, email: null };
+    return;
+  }
+
+  if (await detectGoogleIdentityCollision(client.auth)) {
+    setPreferGoogleSignIn(true);
+    clearGoogleIdentityErrorFromUrl();
+  }
+
+  const { data, error } = await client.auth.getSession();
+  const user = data.session?.user;
+  if (error !== null || user === undefined) {
+    accountIdentity = {
+      status: 'guest',
+      userId: null,
+      email: null,
+      googleLoginLabel: getGoogleLoginLabel(),
+    };
+    return;
+  }
+
+  const isGuest = user.is_anonymous === true;
+  if (!isGuest) {
+    setPreferGoogleSignIn(false);
+  }
+  accountIdentity = {
+    status: isGuest ? 'guest' : 'signed-in',
+    userId: user.id,
+    email: user.email ?? null,
+    googleLoginLabel: isGuest ? getGoogleLoginLabel() : undefined,
+  };
+}
+
+async function handleGoogleLogin(): Promise<AccountActionResult> {
+  const client = await supabaseClientPromise;
+  const result = getPreferGoogleSignIn()
+    ? await beginGoogleAccountSwitch(client?.auth ?? null, window.location.origin)
+    : await beginGoogleSignIn(client?.auth ?? null, window.location.origin);
+  if (result.status === 'redirecting') {
+    return result;
+  }
+  return result.status === 'error'
+    ? result
+    : { status: 'error', reason: 'Google sign-in is not configured.' };
+}
+
+async function handleLogout(): Promise<AccountActionResult> {
+  const client = await supabaseClientPromise;
+  const result = await signOutOfSession(client?.auth ?? null);
+  if (result.status === 'error') {
+    return result;
+  }
+
+  setPreferGoogleSignIn(true);
+  disposed = true;
+  localSavesSuspended = true;
+  persistence.cancelScheduledSave();
+  cloudReplica.stop();
+  unbindSaveLifecycle?.();
+  unbindSaveLifecycle = null;
+  if (saveHeartbeatId !== null) {
+    window.clearInterval(saveHeartbeatId);
+    saveHeartbeatId = null;
+  }
+
+  try {
+    lifecycleJournal.clear();
+    await indexedRepository.deleteDatabase();
+    indexedRepository.close();
+    window.location.reload();
+    return { status: 'ok' };
+  } catch (error) {
+    disposed = false;
+    localSavesSuspended = false;
+    return {
+      status: 'error',
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function handleConflictChoice(
+  choice: 'local' | 'remote',
+): Promise<AccountActionResult> {
+  const conflict = pendingSaveConflict;
+  if (conflict?.kind !== 'deferred-conflict') {
+    return { status: 'error', reason: 'This save conflict is no longer available.' };
+  }
+
+  cloudReplica.stop();
+  suspendLocalSavesForCloudAdopt();
+
+  if (choice === 'remote') {
+    try {
+      unbindSaveLifecycle?.();
+      unbindSaveLifecycle = null;
+      await localRepository.storeActiveSave(conflict.remote.document);
+      lifecycleJournal.clear();
+      pendingSaveConflict = null;
+      window.location.reload();
+      return { status: 'ok' };
+    } catch (error) {
+      localSavesSuspended = false;
+      return {
+        status: 'error',
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  const serverRevision = conflict.remote.serverRevision;
+  if (serverRevision === undefined) {
+    localSavesSuspended = false;
+    return { status: 'error', reason: 'Cloud revision is unavailable; reload and try again.' };
+  }
+
+  const client = await supabaseClientPromise;
+  const result = await uploadCloudSaveViaFetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-sync/v1/save`,
+    client?.auth ?? null,
+    serverRevision,
+    conflict.local.document,
+  );
+  if (result.kind !== 'accepted') {
+    localSavesSuspended = false;
+    return {
+      status: 'error',
+      reason: describeConflictChoiceUploadFailure(result),
+    };
+  }
+
+  try {
+    unbindSaveLifecycle?.();
+    unbindSaveLifecycle = null;
+    await localRepository.storeActiveSave(conflict.local.document);
+    lifecycleJournal.clear();
+    pendingSaveConflict = null;
+    window.location.reload();
+    return { status: 'ok' };
+  } catch (error) {
+    localSavesSuspended = false;
+    return {
+      status: 'error',
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function describeConflictChoiceUploadFailure(
+  result: Exclude<Awaited<ReturnType<typeof uploadCloudSaveViaFetch>>, { kind: 'accepted' }>,
+): string {
+  if (result.kind === 'unconfigured') {
+    return 'Cloud account services are not configured.';
+  }
+  if (result.kind === 'conflict') {
+    return 'The cloud save changed again. Reload and choose a branch again.';
+  }
+  return result.message;
+}
+
+function toAccountConflictView(
+  outcome: Extract<CloudSaveReconcileOutcome, { kind: 'deferred-conflict' }>,
+): AccountConflictView {
+  return {
+    local: toAccountConflictCandidate(outcome.local, 'This device'),
+    remote: toAccountConflictCandidate(outcome.remote, 'Cloud save'),
+  };
+}
+
+function toAccountConflictCandidate(
+  candidate: SaveConflictCandidate,
+  title: string,
+): AccountConflictCandidateView {
+  return {
+    title,
+    lastPlayedLabel: `Last played: ${new Date(candidate.lastPlayedMs).toLocaleString()}`,
+    goldLabel: `Gold: ${formatAmount(candidate.gold)}`,
+    floorsOpenLabel: `Floors open: ${candidate.floorsOpen}`,
+    deepestShaftLabel: `Deepest shaft: ${candidate.deepestShaftLevel}`,
+    deliveredLabel: `Gold delivered: ${formatAmount(candidate.totalGoldDelivered)}`,
+  };
+}
 
 async function startApplication(): Promise<void> {
   await Promise.all([
@@ -988,7 +1263,16 @@ async function startApplication(): Promise<void> {
   localProjectionReward = createPendingOfflineReward(loadResult.offlineIncome);
   maybePresentOfflineReward();
 
-  game = createGame(gameViewport, driver);
+  game = createGame(gameViewport, driver, {
+    onSettings: (onClosed) => {
+      if (accountSettingsModal === null) {
+        onClosed();
+        return;
+      }
+
+      accountSettingsModal.open(onClosed);
+    },
+  });
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
     () => {
@@ -1033,6 +1317,7 @@ if (import.meta.hot) {
     disposed = true;
     saveDiagnostics.destroy();
     offlineRewardModal?.destroy();
+    accountSettingsModal?.destroy();
     unbindSaveLifecycle?.();
 
     if (saveHeartbeatId !== null) {

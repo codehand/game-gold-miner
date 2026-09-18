@@ -162,6 +162,7 @@ export interface BootSceneOptions {
   readonly source: MineRuntimePort;
   /** Scales cosmetic motion only; production is never derived from it. */
   readonly animationSpeedMultiplier?: number;
+  readonly onSettings?: (onClosed: () => void) => void;
 }
 
 /**
@@ -180,6 +181,7 @@ export interface BootSceneOptions {
  */
 export class BootScene extends Phaser.Scene {
   readonly #source: MineRuntimePort;
+  readonly #onSettings: ((onClosed: () => void) => void) | null;
   /** Live press results, keyed by control, cleared as each one expires. */
   readonly #purchaseFeedback = new Map<string, PurchaseFeedback>();
   /** The snapshot currently bound to the views, compared by identity. */
@@ -230,6 +232,7 @@ export class BootScene extends Phaser.Scene {
     );
 
     this.#source = options.source;
+    this.#onSettings = options.onSettings ?? null;
     this.#viewModel = options.source.snapshot;
     this.#visibleFloorCount = countVisibleFloors(options.source.snapshot);
     this.#animationSpeedMultiplier =
@@ -869,7 +872,21 @@ export class BootScene extends Phaser.Scene {
   }
 
   #createHud(region: LayoutRegion): Phaser.GameObjects.Container {
-    this.#hudView = new HudView(this, region);
+    this.#hudView = new HudView(this, region, {
+      onSettings: () => {
+        if (this.#onSettings === null) {
+          return;
+        }
+
+        // Settings is a top-level modal. Close any upgrade surface first so
+        // dismissing it cannot reveal a stale warehouse/elevator popup below.
+        this.#floorUpgradeModal?.close();
+        this.input.enabled = false;
+        this.#onSettings(() => {
+          this.input.enabled = true;
+        });
+      },
+    });
 
     return this.#hudView.root;
   }

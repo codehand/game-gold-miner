@@ -56,7 +56,7 @@ export {
   CLOUD_UPLOAD_RETRY_DELAYS_MS,
   CloudSaveReplica,
   describeCloudSaveNotice,
-  stateShapeSignature,
+  stateSignature,
   type CloudSaveFailureCode,
   type CloudSaveNotice,
   type CloudSaveReplicaEvent,

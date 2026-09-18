@@ -6,7 +6,7 @@ import {
   createSaveDocument,
   CloudSaveReplica,
   describeCloudSaveNotice,
-  stateShapeSignature,
+  stateSignature,
   type CloudSaveFailureCode,
   type CloudSaveReplicaEvent,
   type CloudSaveReplicaOptions,
@@ -423,6 +423,11 @@ describe('CloudSaveReplica conflict handling (§7)', () => {
     }
     expect(forkEvent.local.document).toEqual(local);
     expect(forkEvent.remote.document).toEqual(remote);
+    expect(forkEvent.remote.serverRevision).toBe(6);
+    expect(onFork).toHaveBeenCalledWith(
+      expect.objectContaining({ document: local }),
+      expect.objectContaining({ document: remote, serverRevision: 6 }),
+    );
     expect(replica.baseRevision).toBe(6);
     // §7.3: with no chooser, sync must stop. The client holds the server's
     // revision now, so one more routine save would be accepted and would
@@ -550,7 +555,7 @@ describe('CloudSaveReplica terminal failures (§4)', () => {
     expect(upload).toHaveBeenCalledTimes(3);
   });
 
-  it('allows a new attempt when the rejected save’s structure actually changes', async () => {
+  it('allows a new attempt when the rejected save’s gameplay state changes', async () => {
     const rejected = freshDocument();
     const upload = vi.fn<UploadCloudSave>(async () => ({
       kind: 'terminal',
@@ -563,12 +568,12 @@ describe('CloudSaveReplica terminal failures (§4)', () => {
     replica.enqueue(rejected);
     await replica.flush();
 
-    const structurallyChanged = {
+    const gameplayChanged = {
       ...rejected,
-      state: { ...rejected.state, newStructuralField: true },
-    } as unknown as SaveDocumentV2;
+      state: { ...rejected.state, gold: '1' },
+    };
     vi.setSystemTime(T0 + 120_000);
-    replica.enqueue(structurallyChanged);
+    replica.enqueue(gameplayChanged);
     await replica.flush();
 
     expect(upload).toHaveBeenCalledTimes(2);
@@ -674,18 +679,18 @@ describe('describeCloudSaveNotice (§4 player-facing copy)', () => {
   });
 });
 
-describe('stateShapeSignature', () => {
-  it('ignores moving values but detects a structural change', () => {
+describe('stateSignature', () => {
+  it('detects gameplay value changes', () => {
     const state = freshDocument().state;
     const moved = { ...state, gold: '999999' };
 
-    expect(stateShapeSignature(moved)).toBe(stateShapeSignature(state));
-    expect(stateShapeSignature({ ...state, extraField: true })).not.toBe(
-      stateShapeSignature(state),
+    expect(stateSignature(moved)).not.toBe(stateSignature(state));
+    expect(stateSignature({ ...state, extraField: true })).not.toBe(
+      stateSignature(state),
     );
     expect(
-      stateShapeSignature({ ...state, floors: state.floors.slice(0, 1) }),
-    ).not.toBe(stateShapeSignature(state));
+      stateSignature({ ...state, floors: state.floors.slice(0, 1) }),
+    ).not.toBe(stateSignature(state));
   });
 });
 

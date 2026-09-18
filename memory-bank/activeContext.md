@@ -59,6 +59,14 @@ gate's own run** — the implementing sandbox for this step could not run
 `npm run verify` / `npm run verify:server` numbers for Step 28 are not
 recorded here; they will be captured when this gate is actually validated.
 
+**Player-facing account/settings feedback (2026-09-19).** The top HUD now
+has a settings button. Its accessible modal shows guest or Google-linked
+identity details, app version, and the appropriate Google login or logout/reset
+action. Genuine local/cloud forks open the same modal with both save summaries;
+the selected branch is persisted safely before reload, while the replica stays
+stopped until the choice is complete. Local verification passes build, lint,
+690 unit tests, and the in-app browser smoke check.
+
 **Previously, at the Step 27 validation gate — Step 27 (leaderboard storage)
 implemented 2026-09-18, validated and merged; Step 28 was released against
 it.**
@@ -542,9 +550,9 @@ Decisions that still constrain code not yet written. Settled base-game decisions
    either, so the 1-request-to-1-audit-write amplification no longer grows the
    table per refused request. Step 26 pins both under attack
    (`attack 9 / AC9` in `adversarial.integration.test.ts`).
-3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
-   shipped only a DEV hook; it remains the one protocol requirement with no
-   player-facing implementation.
+3. Validate the new account/settings and conflict chooser flow with a real
+   Google OAuth return and a two-device fork fixture. The local UI and choice
+   handlers are implemented; live identity redirects remain environment work.
 4. The Step 23 N1 limit (a fork older than ~2 minutes against an actively-syncing
    peer is refused) needs a real fix — retain fork points, or accept a
    verifiable fork revision. Not scheduled.

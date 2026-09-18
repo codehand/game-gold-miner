@@ -1,4 +1,4 @@
-export { HudView, type RenderedHudState } from './HudView';
+export { HudView, type HudViewOptions, type RenderedHudState } from './HudView';
 export {
   BottomNavigationView,
   type BottomNavigationItemKey,

@@ -24,6 +24,10 @@ export interface RenderedHudState {
   readonly incomeValueLabel: string;
 }
 
+export interface HudViewOptions {
+  readonly onSettings?: () => void;
+}
+
 /** Which edge a text object is anchored by: `0` its left, `1` its right. */
 type HorizontalOrigin = 0 | 1;
 
@@ -41,6 +45,8 @@ const HUD_ICON_Y = 26;
 const LABEL_Y = 7;
 const VALUE_Y = 16;
 const DIVIDER_HEIGHT = 2;
+const SETTINGS_BUTTON_SIZE = 38;
+const SETTINGS_BUTTON_CENTER_Y = 26;
 
 /**
  * The fixed top HUD: spendable gold on the left, the authoritative warehouse
@@ -61,7 +67,11 @@ export class HudView {
   readonly #incomeLabel: Phaser.GameObjects.Text;
   readonly #incomeValue: Phaser.GameObjects.Text;
 
-  public constructor(scene: Phaser.Scene, region: LayoutRegion) {
+  public constructor(
+    scene: Phaser.Scene,
+    region: LayoutRegion,
+    options: HudViewOptions = {},
+  ) {
     this.#root = scene.add.container(region.x, region.y);
 
     const background = scene.add
@@ -82,7 +92,7 @@ export class HudView {
       .setDisplaySize(24, 24);
     const incomeIcon = scene.add
       .image(
-        region.width - HUD_INSET_X - 10,
+        region.width - HUD_INSET_X - 32,
         HUD_ICON_Y,
         PLACEHOLDER_TEXTURES.mineCart,
       )
@@ -104,10 +114,39 @@ export class HudView {
     );
     // Anchored to the right edge so a long value grows inwards rather than off
     // the screen.
-    const incomeX = region.width - HUD_TEXT_INSET_X;
+    const incomeX = region.width - HUD_TEXT_INSET_X - 22;
 
     this.#incomeLabel = this.#createLabel(scene, incomeX, ORIGIN_RIGHT);
     this.#incomeValue = this.#createValue(scene, incomeX, ORIGIN_RIGHT);
+
+    const settingsButton = scene.add
+      .container(region.width - SETTINGS_BUTTON_SIZE / 2 - 1, SETTINGS_BUTTON_CENTER_Y)
+      .setSize(SETTINGS_BUTTON_SIZE, SETTINGS_BUTTON_SIZE)
+      .setInteractive(
+        new Phaser.Geom.Rectangle(
+          0,
+          0,
+          SETTINGS_BUTTON_SIZE,
+          SETTINGS_BUTTON_SIZE,
+        ),
+        Phaser.Geom.Rectangle.Contains,
+      );
+    const settingsIcon = scene.add
+      .text(0, 0, '⚙', {
+        color: '#f9fafb',
+        fontFamily: FONT_FAMILY,
+        fontSize: '22px',
+        fontStyle: FONT_STYLE_BOLD,
+      })
+      .setOrigin(0.5);
+    settingsButton
+      .add(settingsIcon)
+      .on('pointerdown', () => settingsIcon.setScale(0.9))
+      .on('pointerout', () => settingsIcon.setScale(1))
+      .on('pointerup', () => {
+        settingsIcon.setScale(1);
+        options.onSettings?.();
+      });
 
     this.#root.add([
       background,
@@ -120,6 +159,7 @@ export class HudView {
       this.#warehouseQueueValue,
       this.#incomeLabel,
       this.#incomeValue,
+      settingsButton,
     ]);
   }
 

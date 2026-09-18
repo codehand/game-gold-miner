@@ -586,17 +586,12 @@ fixed local GoTrue callback) as its authorized redirect URI — no domain
 needed, since Google permits `localhost`/`127.0.0.1` redirects in
 development, unlike Step 11's Apple.
 
-No production UI exists for this yet. `HudView.ts`'s fixed HUD already draws
-gold at the left edge, the warehouse queue centered, and income anchored to
-the right edge across the full 360×640 canvas, and the surface strip, mine,
-and bottom navigation account for the rest — there is no free region to place
-a DOM overlay without either visually colliding with existing HUD content or
-sitting on top of an existing canvas click target. A real entry point is a
-Phaser-rendered control akin to the bottom-nav tiles, left for a later polish
-step. Until then, `import.meta.env.DEV` gates a `window.catMineIdleAccount`
-hook in `src/main.ts` exposing `beginGoogleSignIn()`/`signOut()` bound to the
-resolved Supabase client — the same `app.dataset.guestSession`-style
-diagnostic pattern Step 8 established, not new production surface.
+`HudView.ts` now adds a compact settings control beside the income value. It
+opens `src/ui/AccountSettingsModal.ts`, a DOM modal with keyboard focus,
+account status/email/user id, app version, and either Google sign-in or
+logout-and-reset. The modal keeps auth effects injected from `src/main.ts`,
+while the DEV-only `window.catMineIdleAccount` hook remains for guided
+verification and collision diagnostics.
 
 **What nothing local can prove.** A real human completing Google's own
 consent screen is the one thing no test double, local mock, or CI runner can
@@ -945,9 +940,12 @@ so the save the player did not choose is retained for the session. §7's
 requirement is absolute: no accepted branch may destroy progress the player was
 not shown, and a fork is the only branch a silent resolution cannot cover.
 `src/main.ts`'s `triggerCloudSaveReconcile` stores that outcome in
-`pendingSaveConflict`, exposed through the DEV account hook, and publishes a
-compact candidate summary (never two whole documents) as
-`app.dataset.cloudSaveReconcile`.
+`pendingSaveConflict`, publishes a compact candidate summary (never two whole
+documents) as `app.dataset.cloudSaveReconcile`, and opens the production
+account modal's chooser. The remote candidate carries its server revision so
+choosing the local branch can perform one compare-and-swap upload; choosing
+the cloud branch stores that document and reloads. Logout signs out, clears
+the lifecycle journal and IndexedDB active save, then reloads into a new guest.
 
 `src/main.ts` calls `triggerCloudSaveReconcile()` from the tail of both the
 guest and Telegram boot chains, once each resolves `signed-in` — a fourth
@@ -1895,10 +1893,11 @@ caller into:
   bootstrap), so every Telegram sign-in already runs through Step 17's
   reconcile unconditionally.
 
-No production UI exists yet, matching Steps 8/10/12: `main.ts`'s existing
-`DEV`-only `window.catMineIdleAccount` hook gained `beginGoogleAccountSwitch`
-alongside `beginGoogleSignIn`, and a `data-google-identity-collision`
-diagnostic published from `detectGoogleIdentityCollision`.
+The production account popup now owns the normal login/logout entry point;
+`main.ts`'s `DEV`-only `window.catMineIdleAccount` hook still carries
+`beginGoogleAccountSwitch` for the rare post-redirect collision, alongside the
+`data-google-identity-collision` diagnostic published by
+`detectGoogleIdentityCollision`.
 
 ### Recovery code (Step 14)
 

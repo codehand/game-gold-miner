@@ -62,6 +62,14 @@ own run captures that evidence.**
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
 
+**2026-09-19 — player-facing account/settings feedback.** Added the HUD
+settings button and accessible account modal with guest/Google identity,
+version, login, logout-and-reset, and the cloud conflict policy's local-versus-
+cloud chooser. Local choice uses the conflict's server revision for one
+compare-and-swap upload; cloud choice adopts the remote document before reload.
+`npm run build`, `npm run lint`, `npm run test -- --run` (690 tests), and live
+in-app browser inspection pass.
+
 Full history is archived, not deleted:
 
 - Finished work → `archive/completed-log.md`
@@ -196,10 +204,6 @@ with the reason each one closed.
   event still needs the Step 14 recovery code.
   Recorded in `server-milestone-plan.md` as a base-game defect that the server
   milestone reduces but does not eliminate.
-- **The fork chooser has no production surface.** Protocol §7.3 assigns the
-  conflict-resolution chooser UI to Step 13, which shipped only a DEV hook;
-  Step 18 and Step 19 likewise park a genuine fork in `src/main.ts`'s
-  `pendingSaveConflict` session hook with no player-facing way to choose.
 - **Visual fidelity must not rely on copied art, audio, branding, or UI assets.**
   Standing rule for all future art work.
 - **Two verification items carried past the base-game milestone**, both

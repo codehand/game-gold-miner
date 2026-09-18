@@ -28,9 +28,9 @@
  * That later failure surfaces as `error`/`error_code=identity_already_exists`
  * query/hash parameters on the *return* URL, which the Supabase client
  * parses during its own session-detection at the next page load, not as a
- * rejection here. Nothing in `src/` reads those parameters yet — doing so
- * (or subscribing to `onAuthStateChange`) is what Step 13's collision
- * handling requires, not this function.
+ * rejection here. `src/main.ts` records that return as a local routing hint
+ * and switches the next guest attempt to `signInWithOAuth`, which resolves the
+ * existing Google account instead of trying `linkIdentity` again.
  *
  * Like `ensureGuestSession`, this never throws: a misconfigured provider or
  * a rejected pre-redirect request must not crash the game, only leave the
