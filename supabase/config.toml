@@ -466,6 +466,14 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# Server-milestone Step 31: verifies the caller's bearer token by hand, reads
+# only active entitlement rows through that same caller-scoped token, and
+# derives the server-owned effect flags. It never carries the service-role key;
+# grants are written only by server-side code that bypasses RLS.
+[functions.entitlement-check]
+enabled = true
+verify_jwt = false
+
 # Server-milestone Step 12: verifies Telegram Mini App `initData` by hand
 # (HMAC-SHA256 against `TELEGRAM_BOT_TOKEN`) and mints a session for the
 # caller — there is no bearer token to verify yet, since no caller is signed

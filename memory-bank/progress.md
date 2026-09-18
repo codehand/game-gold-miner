@@ -6,13 +6,17 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 28 gate.** Steps 1–8 are validated.
+**Server milestone: in progress, at the Step 31 validation gate.** Steps 1–8
+are validated.
 Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–24 are implemented and await
 user validation together. Steps 25, 26, and 27 are each implemented, validated,
-and merged in turn. Step 28 (leaderboard writes) is implemented and awaiting
-user validation; **Step 29 and the rest of Phase 5 are blocked until the user
-validates it.** Phase 4 (Steps 22–26) is complete, validated by Step 26's own
-gate evidence below.
+and merged in turn. Step 28 (leaderboard writes) remains implemented and
+awaiting user validation. Step 30 is recorded as a documentation-only
+deferral: the verified leaderboard is sufficient for the current social goal,
+so no friend graph is needed. **Step 31 is implemented and awaiting user
+validation; Step 32 has not started and remains blocked until that validation.**
+Phase 4 (Steps 22–26) is complete, validated by Step 26's own gate evidence
+below.
 
 Step 26's own gate evidence is complete on a Docker-capable runner as of
 2026-09-18: `npm run verify` (682 unit, 52 e2e, build, secret scan, 10
@@ -70,6 +74,25 @@ compare-and-swap upload; cloud choice adopts the remote document before reload.
 `npm run build`, `npm run lint`, `npm run test -- --run` (690 tests), and live
 in-app browser inspection pass.
 
+**Step 30 (decide on friends), documentation-only deferral, 2026-09-19.** The
+server milestone already provides asynchronous social competition through one
+verified all-time leaderboard. A friend graph is not required by the
+milestone's purpose or Definition of Done, so no friend table, relationship
+API, UI, or moderation surface is being added. Revisit only when a concrete
+product requirement defines discovery, privacy, blocking, and deletion
+semantics. **The Step 30 validation gate remains open; Step 31 proceeded under
+the user's explicit instruction to continue, and Step 32 remains blocked until
+the Step 31 validation gate is passed.**
+
+**Step 31 (entitlements), implemented 2026-09-19.** The existing
+`entitlements` table and own-row/no-write RLS policy from Step 3 are reused;
+there is no migration. `entitlement-check` verifies the caller's bearer token,
+reads active `cosmetic.supporter_badge` rows through the caller-scoped client,
+and returns `effects.supporterBadge`. Unit coverage has 8 tests; the live
+integration coverage has 4 tests proving client INSERT refusal, server-role
+grant visibility, and revocation. **The Step 31 validation gate is open; Step
+32 must not begin until the user validates this test.**
+
 Full history is archived, not deleted:
 
 - Finished work → `archive/completed-log.md`
@@ -103,8 +126,8 @@ untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 28 — leaderboard writes.** Implemented 2026-09-18, awaiting user validation. |
-| Blocked on the gate | Step 29 (leaderboard display) and Steps 30–37 |
+| Current gate | **Step 31 — entitlements.** Implemented 2026-09-19, awaiting user validation. |
+| Blocked on the gate | Step 32 and later steps; no Step 32 work has started |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
@@ -147,8 +170,11 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 25 — Abuse limits | Implemented 2026-09-17; validated and merged — Step 26 released against it |
 | 26 — Adversarial suite | Implemented 2026-09-17; validated and merged — Step 27 released against it |
 | 27 — Leaderboard storage | Implemented 2026-09-18; validated and merged — Step 28 released against it |
-| 28 — Leaderboard writes | Implemented 2026-09-18; awaiting validation — **current gate** |
-| 29–37 | Not started, blocked by the Step 28 gate |
+| 28 — Leaderboard writes | Implemented 2026-09-18; awaiting validation |
+| 29 — Leaderboard display | Not started; prior validation gate remains unresolved |
+| 30 — Decide on friends | Deferred 2026-09-19; decision recorded |
+| 31 — Entitlements | **Implemented 2026-09-19; awaiting validation — current gate** |
+| 32–37 | Not started, blocked by the Step 31 gate |
 
 ## Known Risks
 

@@ -266,6 +266,20 @@ server has already verified (past Step 23's bound) can ever reach the board,
 so a rejected or tampered save can never inflate a rank the way it could never
 inflate a cloud save.
 
+Server-milestone Step 30 (2026-09-19) defers a friend graph. The all-time
+verified leaderboard already supplies asynchronous competition for the current
+milestone; adding friends would require a separate product requirement for
+discovery, privacy, blocking, moderation, and account-deletion behaviour. No
+friend relationship is implied by an account, and no friend UI or server
+surface is part of the current player experience.
+
+Server-milestone Step 31 adds only the server-side groundwork for a future
+supporter effect. A server-granted `cosmetic.supporter_badge` entitlement is
+visible through the authenticated entitlement check and resolves to
+`effects.supporterBadge`; the client cannot create or revoke it. No payment
+flow, price, store integration, or player-facing purchase UI is introduced in
+this step.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

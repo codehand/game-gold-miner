@@ -147,6 +147,17 @@ version change is authorized in this phase.
   `tests/unit/server-stack.test.ts` were flipped to pin `dependencies` instead,
   so the placement stays intentional at every future step rather than drifting
   back silently.
+- `entitlement-check` is the server-milestone Step 31 entitlement boundary.
+  The `entitlements` table and its own-row SELECT/no-write RLS matrix already
+  landed in Step 3, so Step 31 adds no migration. The function verifies the
+  bearer token with GoTrue, reads only active rows through the caller-scoped
+  Supabase client, and derives the server-owned
+  `cosmetic.supporter_badge` → `effects.supporterBadge` flag. It never reads
+  `SUPABASE_SERVICE_ROLE_KEY`; only server-side grant code may write the table.
+  `index.test.ts` covers the pure handler and
+  `tests/server-integration/entitlement-check.integration.test.ts` proves
+  direct client INSERT refusal, server-role visibility, and revocation against
+  the real local stack.
 - `tests/server-integration/authFixture.ts` is Step 7's fixed "fixture pattern
   for an authenticated caller": `mintFixtureUserToken()` signs an HS256 JWT
   (`sub`/`role: authenticated`/`aud: authenticated`/`exp`) for the seeded
@@ -1147,6 +1158,11 @@ If a database is introduced, replace this statement with the complete authoritat
 - `npm run test:server-e2e` (`playwright.server-e2e.config.ts`, port 4176): 8 Chromium tests pass against the live local stack (Steps 8, 20, 21, and 22) — a fresh browser boots playable and holds a real anonymous session with a UUID `user.id`; every `**/auth/v1/**` request aborted still boots the game and a forced `visibilitychange` flush still reaches IndexedDB across a reload; two fresh browser contexts receive distinct `user.id`s whose access tokens each answer only for themselves through the live `whoami-check` function. Assumes `supabase start` and `supabase db reset` already ran and needs `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` pointed at that stack.
 - `npm run test:e2e`: all 52 Chromium tests pass, including the fixed five-icon bottom navigation and every click target, explicit 5→10→15 reveal gates, all three stage-detail/batch-upgrade paths, drag rejection at the shared popup boundary, camera-invariant deep elevator return, the Step 33 journey, and Step 34 hidden/visible and abrupt-navigation scenarios. Step 19's test — "the full existing client E2E suite passes offline, unchanged" — was run both ways on 2026-09-13: fully green with the configured local Supabase stack running *and* with `.env.local` removed entirely, so the cloud replica is provably a no-op with no backend. The configured run also caught and fixed a real "Illegal invocation" defect: the replica stored the browser's `setTimeout`/`clearTimeout` detached, so the first scheduled cadence call threw; they are now bound to `globalThis`. Producing a false `409` on a returning player's first save was likewise caught here and fixed with §11 arming.
 - `npm run test:perf`: the repeated ten-minute benchmark passes with all fifteen floors unlocked — 60.000 FPS, 16.67 ms mean, 17.6 ms p95, 17.8 ms maximum, zero of 36,139 frames beyond the 18.34 ms threshold, +229,928 bytes post-GC live-heap growth at +188 B/s, 665 Phaser objects and 371 DOM nodes constant across twenty samples, and 81.9 ms scroll p95 against a 100 ms budget. It presented at 60 Hz, so mean frame time equals the vsync interval and carries no headroom information. This is Pixel 5 emulation under 4× CPU throttling in desktop Chrome and is not physical Android-device evidence.
+- Server-milestone Step 31 adds 8 Deno unit tests and 4 live integration tests
+  for `entitlement-check`: a client cannot insert an entitlement, a
+  service-role grant is visible as `effects.supporterBadge`, and revocation
+  removes the effect. The live run requires the local Supabase stack and
+  passed after restarting it with the new function loaded.
 - `npm run lint`: the repository passes the ESLint flat configuration.
 - `npm run test:prod`: builds the optimized bundle, serves it with `vite preview`
   from the root base path at `127.0.0.1:4175`, and passes all nine production

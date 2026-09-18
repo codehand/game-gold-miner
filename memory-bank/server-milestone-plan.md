@@ -613,9 +613,11 @@ changing the economy, the absence of any XSS/CSP step, the unspecified cloud
 upload cadence that drives cost and rate limits (Steps 2, 19, 25, 36), the Apple
 Developer Program membership and verified domain that Step 11 needs and the
 budget did not contain, the seven-day observation window Step 21's measurement
-actually requires, and the absence of any concrete entitlement for Step 31 to
-grant. **F5, the missing XSS/CSP step, is the one item left genuinely open**,
-because closing it means adding a step and that is the user's decision.
+actually requires, and, before Step 31, the absence of any concrete entitlement
+for it to grant. Step 31 now settles that default as the server-owned
+`cosmetic.supporter_badge` entitlement. **F5, the missing XSS/CSP step, is the
+one item left genuinely open**, because closing it means adding a step and that
+is the user's decision.
 
 ## Related open item outside this plan
 

@@ -332,6 +332,9 @@ supabase/
     ├── whoami-check/               Step 7's "trivial authenticated endpoint"
     │   ├── index.ts
     │   └── index.test.ts
+    ├── entitlement-check/          Step 31's server-owned effect check
+    │   ├── index.ts
+    │   └── index.test.ts
     └── _shared/
         ├── coreBundleEntry.ts      pure re-export; the bundler's real entry
         ├── generated/              git-ignored; `npm run build:server-core`
@@ -1861,6 +1864,33 @@ both client roles — refused at the grant layer regardless of role, since the
 table's table-level `SELECT` is revoked for anon/authenticated — so no
 `leaderboard_entries`-specific write-refusal test is duplicated here; Step 28
 only adds the service-role path the matrix already treats as the sole writer.
+
+### Entitlements (Step 31)
+
+Step 31 uses the `entitlements` table and RLS policy already landed by Step 3;
+no migration is needed. The one concrete entitlement in this milestone is
+`cosmetic.supporter_badge`. Its writer is intentionally not an HTTP route:
+only server-side code with the service role may insert, update, or revoke a
+row, leaving a later payment milestone a sound place to add a grant source
+without giving the client a self-serve purchase or grant path.
+
+`entitlement-check` verifies the caller's bearer token with GoTrue and then
+reads active rows through a Supabase client carrying that same token. The
+query filters `revoked_at is null`, so a revoked grant cannot keep its effect;
+RLS independently restricts the rows to the caller. The response exposes the
+server-owned entitlement key, grant timestamp, source, and the derived
+`effects.supporterBadge` flag. The effect is derived from the returned key on
+the server, never from a client-supplied entitlement or request body. The
+function handles browser CORS preflight and has `verify_jwt = false` only
+because it performs the bearer check itself, matching `whoami-check` and the
+other authenticated functions.
+
+Evidence: `supabase/functions/entitlement-check/index.test.ts` covers token,
+method, CORS, effect, and resolver-failure branches. The live
+`tests/server-integration/entitlement-check.integration.test.ts` proves that a
+client PostgREST insert is refused, a service-role grant becomes visible with
+`supporterBadge: true`, and revocation removes the effect. The function does
+not read the service-role key.
 
 ### Guest linking and the identity collision (Step 13)
 

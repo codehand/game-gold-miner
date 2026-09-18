@@ -2,9 +2,27 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 28 validation gate — Step 28 (leaderboard
-writes) implemented 2026-09-18, awaiting user validation; Step 29 is blocked
-until the user validates it.**
+**Server milestone, at the Step 31 validation gate — Step 31 (entitlements)
+was implemented on 2026-09-19 and is awaiting user validation. Step 32 has not
+started and must remain blocked until that validation.**
+
+Step 31 reuses the `entitlements` table and RLS already landed in Step 3; no
+migration was needed. The server-owned key is
+`cosmetic.supporter_badge`. New `entitlement-check` verifies the bearer token,
+reads only active own rows through the caller-scoped Supabase client, and
+returns the derived `effects.supporterBadge` flag. It never reads the
+service-role key, and there is no client-accessible grant route.
+
+**Proof.** The 8-function unit suite covers method/auth/CORS/effect/error
+branches. The live integration suite proves client PostgREST INSERT is refused,
+a service-role grant is visible to its owner with `supporterBadge: true`, and
+revocation removes the effect. Step 31 has no migration because the table was
+already part of the documented six-table schema.
+
+**Previously, Step 30 (decide on friends) was handled as a documentation-only
+deferral on 2026-09-19.** The verified all-time leaderboard is enough for the
+current asynchronous social goal; a friend graph remains deferred until a
+product requirement defines discovery, privacy, moderation, and deletion.
 
 Step 28's own instructions: "Publish an entry only from a save that passed
 Step 23. A rejected or unvalidated save must never reach the board." The
@@ -538,13 +556,11 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 28.** This is the gate; nothing below
-   starts before it. Step 28 (leaderboard writes) is implemented and awaiting
-   validation; **Step 29 (leaderboard display) is blocked** on that
-   validation. Step 27's own gate is closed — it was validated, merged, and
-   Step 28 was queued against it; Phase 4 is complete.
-2. Step 29 onward — leaderboard display, then friends, and the rest of
-   Phase 5, then Phases 6–7. **Step 24's L2 is closed by Step 25:** a `429` is
+1. **Wait for the user to validate Step 31.** This is the current gate; Step 32
+   must not start before it. The entitlement table is already in the schema,
+   and the function is the only new server surface for this step.
+2. Resolve the earlier Step 28/Step 29 validation status before advancing the
+   milestone's implementation sequence. **Step 24's L2 is closed by Step 25:** a `429` is
    refused before any
    `save_audit` row exists on the path, and an oversized body writes none
    either, so the 1-request-to-1-audit-write amplification no longer grows the
