@@ -10,18 +10,27 @@ import {
   MARKETPLACE_ASSETS,
   MARKETPLACE_ASSET_IDS,
 } from '../../src/ui/marketplaceAssetRegistry';
+import { MARKETPLACE_RUNTIME_ASSET_IDS } from '../../src/game/assets/marketplaceRuntimeAssets';
 
 const PNG_SIGNATURE = '89504e470d0a1a0a';
 
 describe('Marketplace asset registry', () => {
-  it('exposes the expanded stable preview catalog without duplicate IDs or paths', () => {
+  it('exposes the expanded stable catalog without duplicate IDs or paths', () => {
     expect(MARKETPLACE_ASSETS).toHaveLength(9);
     expect(new Set(MARKETPLACE_ASSET_IDS).size).toBe(MARKETPLACE_ASSET_IDS.length);
     expect(new Set(MARKETPLACE_ASSETS.map((asset) => asset.portraitPath)).size).toBe(
       MARKETPLACE_ASSETS.length,
     );
-    expect(MARKETPLACE_ASSETS.every((asset) => asset.catalogStatus === 'preview-canonical')).toBe(true);
-    expect(MARKETPLACE_ASSETS.every((asset) => asset.runtimeIntegrated === false)).toBe(true);
+    expect(
+      MARKETPLACE_ASSETS
+        .filter((asset) => asset.runtimeIntegrated)
+        .map((asset) => asset.assetId),
+    ).toEqual(MARKETPLACE_RUNTIME_ASSET_IDS);
+    expect(
+      MARKETPLACE_ASSETS
+        .filter((asset) => !asset.runtimeIntegrated)
+        .every((asset) => asset.catalogStatus === 'preview-canonical'),
+    ).toBe(true);
   });
 
   it('resolves known IDs and fails closed for unknown listing data', () => {

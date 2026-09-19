@@ -2,13 +2,16 @@
 
 ## Current Focus
 
-**Asset catalog update, 2026-09-19.** The SR+ animation policy is now applied
-to Mofy (`elevator-cargo-cat:SSR`): an exact 4×2 sheet with eight 128×128
-frames at 110 ms each. The processed sheet passed strict raster QC with zero
-empty, edge-touch, or clamped frames; body-scale CV is 0.01158 and anchor-Y
-standard deviation is 0.00076. This remains asset-only and is not runtime
-integrated. `public/assets/marketplace/mofy.png` stays a single extracted idle
-frame for the existing portrait consumer.
+**Marketplace runtime presentation, 2026-09-19.** Phase 7 is complete after
+explicit approval. Mofy (`elevator-cargo-cat:SSR`), Baron
+(`warehouse-manager:SR`), and Forge (`miner:SSR`) now use their approved exact
+4×2 sheets with eight 128×128 frames at 110 ms in the elevator, warehouse, and
+mine-floor presentation slots. Runtime copies are local and stable; missing
+runtime copies fall back to the bundled 4-frame placeholder, so offline boot
+remains playable. The integration is presentation-only: no role, sprite,
+texture, frame, or animation state enters save data or simulation formulas.
+`public/assets/marketplace/mofy.png` remains the single extracted portrait
+frame for the Marketplace card/detail consumer.
 
 **Marketplace asset implementation, Phase 0 complete 2026-09-19.** The role
 taxonomy gate is now recorded in
@@ -51,15 +54,15 @@ Assigned, Listed, Rented, Expired, and Locked to approved state icons,
 descriptions, and non-conflicting CTA permissions. The Listed card/detail path
 uses this contract; it never writes ownership, save, or transaction state.
 State contract tests, 715 full unit tests, lint, build, and six browser tests
-pass. Phase 7 runtime integration is optional and requires explicit approval.
-
-Phase 8 release audit completed 2026-09-19 for the catalog/UI scope: all nine
-public portraits resolve through registry, manifest, source, and provenance;
-the 16-icon family is complete; and every current variant remains
-`runtimeIntegrated: false`. Release-audit tests pass. Phase 7 remains deferred
-pending explicit approval to replace current mine-role runtime sprites. Full
-Playwright E2E now passes 55/55 after the navigation hit-target regression test
-waits for the leaderboard modal's close callback.
+pass. Phase 7 runtime integration completed after explicit approval. The
+selected Mofy, Baron, and Forge IDs resolve through local runtime sheets and
+role-slot diagnostics; the unloader remains future-only and other catalog
+variants remain preview-only. Fallback, identity, scale, offline boot, and
+no-save/no-simulation coupling are covered by tests. Phase 8 release audit
+completed 2026-09-19 for the catalog/UI/runtime scope: all nine public
+portraits resolve through registry, manifest, source, and provenance; the
+16-icon family is complete; selected runtime paths are audited; and full
+Playwright E2E passes 56/56.
 
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31

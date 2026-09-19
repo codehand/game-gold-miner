@@ -8,6 +8,15 @@ enforced by shipped code and restated as a contract in `architecture.md` or
 Not part of the contract. `activeContext.md` keeps only decisions that still
 constrain code not yet written.
 
+## Marketplace asset runtime decisions
+
+- **2026-09-19:** The first runtime-integrated Marketplace roles are Mofy for
+  the elevator, Baron for the warehouse, and Forge for miners. Runtime asset
+  identity is presentation-only and must not become authoritative assignment,
+  save, economy, or simulation state; the Unloader remains a future receiving
+  role. A missing runtime sheet must resolve to the existing local placeholder
+  so offline boot remains playable.
+
 ## Settled base-game decisions
 
 - Advance foreground simulation in deterministic 100 ms ticks, carry sub-tick remainder in authoritative state, and credit at most 1,000 ms of simulation per update while consuming the full wall-clock delta.

@@ -48,5 +48,21 @@ The approved premium catalog now has exact 4×2/8-frame families at 128×128
 per frame and 110 ms for Mofy, Win, Elon, Baron, Cipher, Gauge, Nautilus, and
 Forge. Mofy's authored 8-frame family was preserved; the other seven were
 reconstructed from QC-passed 4-frame candidates with the deterministic
-ping-pong sequence `1,2,3,4,3,2,1,2`. The sheets remain source/preview art and
-are not runtime-integrated. Mica stays on the N-tier 2×2/4-frame contract.
+ping-pong sequence `1,2,3,4,3,2,1,2`. The processed source sheets remain in
+`art-source/` for provenance; the approved runtime copies are listed below.
+Mica stays on the N-tier 2×2/4-frame contract.
+
+## Phase 7 runtime integration
+
+The user-approved runtime selection uses the same stable Marketplace IDs as the
+preview catalog and copies only the QC-passed transparent sheets into the
+served runtime asset path:
+
+- `elevator-cargo-cat:SSR:mofy:idle` → `runtime/elevator/mofy-8f-sheet.png`
+- `warehouse-manager:SR:baron:idle` → `runtime/warehouse/baron-8f-sheet.png`
+- `miner:SSR:forge:idle` → `runtime/miner/forge-8f-sheet.png`
+
+These are presentation-only role assignments. They do not enter save data,
+change simulation formulas, or imply authoritative ownership. The unloader
+role remains on the existing Step 32A fallback because it is future-role art,
+not a Marketplace v1 role.

@@ -7,6 +7,18 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Marketplace asset gates — 2026-09-19
+
+- **Phase 7 runtime integration — Passed:** Explicit approval was recorded;
+  Mofy, Baron, and Forge render in the elevator, warehouse, and miner slots;
+  fallback assets preserve offline boot; runtime state remains presentation-only;
+  720 unit tests, lint, build, focused runtime E2E, and full 56/56 Playwright
+  E2E passed.
+- **Phase 8 catalog/UI/runtime release audit — Passed:** Nine portrait IDs,
+  sixteen icons, manifest/source/provenance links, and the three selected
+  runtime sheets resolve uniquely; six unselected variants remain catalog-only;
+  release-audit tests and native mobile review passed.
+
 ## Implementation Step Status
 
 | Step | Status | Evidence |

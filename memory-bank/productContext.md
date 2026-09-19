@@ -52,17 +52,17 @@ Step 37 closed the milestone, validated by the user on 2026-09-08. It reviewed t
 An asset-only cat-role catalog was authorized on 2026-09-08. Every cat role is
 planned across five rarity tiers: `N` normal/gray, `R` rare/green, `SR` super
 rare/blue, `SSR` super-super rare/purple, and `UR` ultra rare/gold. The current
-`unloader` remains the runtime default and is the normal-tier baseline. New
+Unloader remains a separate future role and receiving-position fallback. New
 role/tier art will be created from a user-supplied role name, tier, and design
-reference. Different tier attributes are future design work: this catalog does
-not yet change the playable product, economy, state, save format, or UI.
-Animation fidelity is now part of the asset-only presentation contract: `N`/`R`
-cat roles use four frames in a `2x2` sheet, while `SR`/`SSR`/`UR` roles use
-eight frames in a `4x2` sheet with consistent `128x128` proportions and feet
-anchors. Mofy is the first applied SSR example; its eight poses add deliberate
-ledger inspection, grip adjustment, breathing, and recovery motion without
-changing gameplay or runtime selection. The marketplace portrait remains a
-single extracted frame for compatibility.
+reference. Different tier attributes remain future design work: runtime art
+does not grant gameplay benefits or change the economy, state, save format, or
+schema. Animation fidelity is part of the presentation contract: `N`/`R` cat
+roles use four frames in a `2x2` sheet, while `SR`/`SSR`/`UR` roles use eight
+frames in a `4x2` sheet with consistent `128x128` proportions and feet anchors.
+Phase 7 now applies Mofy to the elevator, Baron to the warehouse, and Forge to
+mine floors; their runtime sheets are presentation-only and fall back locally
+when unavailable. The Marketplace portrait remains a single extracted frame
+for card/detail compatibility.
 
 Server-milestone Steps 4 through 7 landed between 2026-09-08 and 2026-09-09,
 closing Phase 1, and change nothing a player can see or do. They are

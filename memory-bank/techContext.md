@@ -18,12 +18,15 @@ Role-based cat art now has an approved asset-only catalog contract under
 `art-source/cat-role-catalog/`. Asset metadata uses `rarityTier` with the fixed
 codes `N`, `R`, `SR`, `SSR`, and `UR`; this is deliberately distinct from the
 numeric gameplay `level`. The existing 2×2, four-frame Step 32A unloader sheet
-remains the runtime default and the `unloader:N` baseline. Asset presentation
-uses 2×2/four-frame sheets for `N`/`R` and 4×2/eight-frame sheets for
-`SR`/`SSR`/`UR`, with shared 128×128 cells and feet anchors. Mofy is the first
-SSR 4×2 example at 8×110 ms; the extra poses are presentation-only. No catalog
-resolver, runtime import, gameplay attribute, balance value, persistence field,
-or schema version change is authorized in this phase.
+remains the receiving-position fallback and the `unloader:N` baseline. Asset
+presentation uses 2×2/four-frame sheets for `N`/`R` and 4×2/eight-frame sheets
+for `SR`/`SSR`/`UR`, with shared 128×128 cells and feet anchors. The approved
+Phase 7 runtime set uses Mofy for the elevator, Baron for the warehouse, and
+Forge for miners at 8×110 ms; local runtime copies fall back to the existing
+placeholders when unavailable. The resolver and animation state are
+presentation-only: no gameplay attribute, balance value, persistence field, or
+schema version change is authorized by this integration. Unselected catalog
+variants and the future Unloader role remain preview/source assets.
 
 - TypeScript
 - Phaser 4.2.1, pinned for reproducible 2D rendering and animation builds

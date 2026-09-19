@@ -2263,12 +2263,18 @@ example, with eight deliberate ledger-inspection, grip-adjustment, breathing,
 and recovery poses at 110 ms per frame; this does not affect gameplay.
 
 The term `rarityTier` is used in asset metadata to avoid collision with the
-existing numeric stage `level`. The existing Step 32A `unloader` sheet is the
-default runtime fallback and the baseline candidate for `unloader:N`. Future
-role/tier assets remain under `art-source/` until they pass deterministic raster
-QA and explicit visual approval. The current catalog phase creates no runtime
-loader entry, selection rule, gameplay attribute, authoritative state field,
-balance input, persistence field, or save/database schema change.
+existing numeric stage `level`. The existing Step 32A `unloader` sheet remains
+the receiving-position fallback and the baseline candidate for `unloader:N`.
+After explicit Phase 7 approval, three selected role assets are runtime
+integrated: Mofy (`elevator-cargo-cat:SSR:mofy:idle`) in the elevator, Baron
+(`warehouse-manager:SR:baron:idle`) at the warehouse, and Forge
+(`miner:SSR:forge:idle`) on mine floors. `BootScene` resolves local 8-frame
+runtime sheets and falls back to the bundled 4-frame placeholders when a copy
+is unavailable. Runtime identity, display frames, and animation timing remain
+presentation-only: they add no gameplay attribute, authoritative state field,
+balance input, persistence field, or save/database schema change. Future
+role/tier assets remain under `art-source/` until deterministic raster QA and
+explicit visual approval pass.
 
 ## Live Production Stage Contract
 

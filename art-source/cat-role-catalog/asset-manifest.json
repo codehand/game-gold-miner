@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "catalogId": "cat-role-catalog",
-  "status": "asset-preproduction",
+  "status": "runtime-integrated",
   "scope": {
-    "assetOnly": true,
-    "runtimeIntegration": false,
+    "assetOnly": false,
+    "runtimeIntegration": true,
     "gameplayAttributesDefined": false,
     "saveSchemaChange": false
   },
@@ -196,9 +196,9 @@
       "roleName": "Warehouse supervisor",
       "codeAlias": "warehouseManager",
       "defaultRarityTier": "N",
-      "currentRuntimeAsset": "public/assets/step-32a/warehouse-manager-idle-sheet.png",
-      "currentRuntimeTextureKey": "step-32a-warehouse-manager-animation",
-      "runtimeBehavior": "Unchanged; current cosmetic warehouse supervisor remains the default fallback.",
+      "currentRuntimeAsset": "public/assets/marketplace/runtime/warehouse/baron-8f-sheet.png",
+      "currentRuntimeTextureKey": "marketplace-runtime-warehouse-baron",
+      "runtimeBehavior": "Marketplace runtime preview uses Baron as the role presentation; the Step 32A manager remains the fallback.",
       "variants": [
         { "rarityTier": "N", "status": "baseline-existing", "reference": "current Step 32A warehouse manager" },
         { "rarityTier": "R", "status": "awaiting-user-reference" },
@@ -243,11 +243,13 @@
           "rarityTier": "SR",
           "characterName": "Baron",
           "assetId": "warehouse-manager:SR:baron:idle",
-          "status": "candidate-generated-awaiting-user-review",
+          "status": "runtime-integrated",
           "designReference": "art-source/cat-role-catalog/warehouse-manager/sr/baron/reference/warehouse-manager-sr-baron-design-reference.png",
           "rawCandidate": "art-source/cat-role-catalog/warehouse-manager/sr/baron/raw-8f/baron-idle-raw-v2-8f.png",
           "transparentSheet": "art-source/cat-role-catalog/warehouse-manager/sr/baron/processed-8f/sheet-transparent.png",
           "animationPreview": "art-source/cat-role-catalog/warehouse-manager/sr/baron/processed-8f/animation.gif",
+          "runtimeAsset": "public/assets/marketplace/runtime/warehouse/baron-8f-sheet.png",
+          "runtimeTextureKey": "marketplace-runtime-warehouse-baron",
           "contextPreview": "art-source/cat-role-catalog/warehouse-manager/sr/baron/warehouse-manager-sr-baron-context-preview.png",
           "grid": "4x2",
           "frameSize": "128x128",
@@ -272,7 +274,7 @@
             "alphaValidated": true,
             "nativeScaleContextReviewed": true
           },
-          "runtimeIntegrated": false,
+          "runtimeIntegrated": true,
           "provenance": "art-source/cat-role-catalog/warehouse-manager/sr/baron/provenance.md"
         },
         {
@@ -356,9 +358,9 @@
       "roleName": "Elevator cargo steward",
       "codeAlias": "elevatorCargoCat",
       "defaultRarityTier": "N",
-      "currentRuntimeAsset": "public/assets/step-32a/elevator-cargo-cat-v2-sheet.png",
-      "currentRuntimeTextureKey": "step-32a-elevator-cargo-cat-animation",
-      "runtimeBehavior": "Unchanged; current decorative elevator cargo cat remains the default fallback.",
+      "currentRuntimeAsset": "public/assets/marketplace/runtime/elevator/mofy-8f-sheet.png",
+      "currentRuntimeTextureKey": "marketplace-runtime-elevator-mofy",
+      "runtimeBehavior": "Marketplace runtime preview uses Mofy as the role presentation; the Step 32A cargo cat remains the fallback.",
       "variants": [
         { "rarityTier": "N", "status": "baseline-existing", "reference": "current Step 32A elevator cargo cat" },
         { "rarityTier": "R", "status": "awaiting-user-reference" },
@@ -367,11 +369,13 @@
           "rarityTier": "SSR",
           "characterName": "Mofy",
           "assetId": "elevator-cargo-cat:SSR:mofy:idle",
-          "status": "candidate-generated-awaiting-user-review",
+          "status": "runtime-integrated",
           "designReference": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/reference/elevator-cargo-cat-ssr-mofy-design-reference.png",
           "rawCandidate": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/raw/elevator-cargo-cat-ssr-mofy-idle-raw-v3-8f.png",
           "transparentSheet": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/elevator-cargo-cat-ssr-mofy-idle-8f-sheet.png",
           "animationPreview": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/elevator-cargo-cat-ssr-mofy-idle-8f.gif",
+          "runtimeAsset": "public/assets/marketplace/runtime/elevator/mofy-8f-sheet.png",
+          "runtimeTextureKey": "marketplace-runtime-elevator-mofy",
           "contextPreview": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/elevator-cargo-cat-ssr-mofy-context-preview.png",
           "grid": "4x2",
           "frameSize": "128x128",
@@ -396,7 +400,7 @@
             "alphaValidated": true,
             "nativeScaleContextReviewed": true
           },
-          "runtimeIntegrated": false,
+          "runtimeIntegrated": true,
           "provenance": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/provenance.md"
         },
         {
@@ -479,9 +483,9 @@
       "roleName": "Underground extraction specialist",
       "codeAlias": "miner",
       "defaultRarityTier": "N",
-      "currentRuntimeAsset": "public/assets/placeholder/miner-cat.png",
-      "currentRuntimeTextureKey": "placeholder-miner-cat",
-      "runtimeBehavior": "Unchanged; the placeholder remains the runtime fallback while Marketplace portraits stay preview-only.",
+      "currentRuntimeAsset": "public/assets/marketplace/runtime/miner/forge-8f-sheet.png",
+      "currentRuntimeTextureKey": "marketplace-runtime-miner-forge",
+      "runtimeBehavior": "Marketplace runtime preview uses Forge as the role presentation; the Step 32A miner remains the fallback.",
       "variants": [
         {
           "rarityTier": "N",
@@ -521,11 +525,13 @@
           "rarityTier": "SSR",
           "characterName": "Forge",
           "assetId": "miner:SSR:forge:idle",
-          "status": "phase-3-preview-canonical",
+          "status": "runtime-integrated",
           "designReference": "art-source/cat-role-catalog/miner/ssr/forge/reference/miner-ssr-forge-design-reference.png",
           "rawCandidate": "art-source/cat-role-catalog/miner/ssr/forge/raw-8f/forge-idle-raw-v2-8f.png",
           "transparentSheet": "art-source/cat-role-catalog/miner/ssr/forge/processed-8f/sheet-transparent.png",
           "animationPreview": "art-source/cat-role-catalog/miner/ssr/forge/processed-8f/animation.gif",
+          "runtimeAsset": "public/assets/marketplace/runtime/miner/forge-8f-sheet.png",
+          "runtimeTextureKey": "marketplace-runtime-miner-forge",
           "contextPreview": "art-source/cat-role-catalog/miner/ssr/forge/miner-ssr-forge-context-preview.png",
           "grid": "4x2",
           "frameSize": "128x128",
@@ -548,7 +554,7 @@
             "alphaValidated": true,
             "nativeScaleContextReviewed": true
           },
-          "runtimeIntegrated": false,
+          "runtimeIntegrated": true,
           "provenance": "art-source/cat-role-catalog/miner/ssr/forge/provenance.md"
         },
         { "rarityTier": "R", "status": "awaiting-user-reference" },

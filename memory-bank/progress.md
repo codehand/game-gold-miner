@@ -194,15 +194,17 @@ Added the UI-only state contract for Idle, Assigned, Listed, Rented, Expired,
 and Locked, with approved icons, explanations, and explicit non-conflicting
 assign/list/rent permissions. Marketplace Listed cards/details consume it;
 authoritative ownership and transaction behavior remain untouched. State tests,
-715 unit tests, lint, build, and six browser tests pass. Phase 7 runtime
-integration is optional and awaits explicit approval. Phase 8 release audit
-completed 2026-09-19 for the catalog/UI scope: all nine public portraits
-resolve through registry, manifest, source, and provenance; the 16-icon family
-is complete; and every current variant remains `runtimeIntegrated: false`.
-Release-audit tests pass. Phase 7 remains deferred pending explicit approval to
-replace current mine-role runtime sprites. Full Playwright E2E now passes 55/55
-after the navigation hit-target regression test waits for the leaderboard
-modal's close callback.
+715 unit tests, lint, build, and six browser tests pass. Phase 7 — in-world
+runtime integration — completed 2026-09-19 after explicit approval: Mofy,
+Baron, and Forge are applied to the elevator, warehouse, and miner slots
+through stable runtime sheets; missing sheets fall back to bundled placeholders;
+the unloader remains future-only; and runtime state remains presentation-only.
+Phase 7 validation passes 720 unit tests, lint, build, the focused runtime
+browser test, and full Playwright E2E at 56/56. Phase 8 release audit completed
+2026-09-19 for the catalog/UI/runtime scope: all nine public portraits resolve
+through registry, manifest, source, and provenance; the 16-icon family is
+complete; selected runtime paths are audited; and unselected variants remain
+catalog-only. Release-audit tests pass.
 
 ## Phase Status
 

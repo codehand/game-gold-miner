@@ -8,6 +8,13 @@ Not part of the contract.
 
 ## Closed
 
+- **Approved Marketplace sheets could break offline boot or leak renderer state
+  into gameplay.** *Closed 2026-09-19:* Phase 7 loads only stable local runtime
+  copies, resolves a bundled placeholder when a copy is unavailable, and keeps
+  asset IDs, frames, textures, and animation timing outside save data and
+  simulation formulas. Runtime identity, fallback, dimensions, and role-slot
+  behavior are covered by unit and browser tests.
+
 - **The cloud fork had no player-facing chooser.** *Closed 2026-09-19:* the
   HUD settings control opens `AccountSettingsModal`, which presents both
   candidates and applies either the local branch through a server-revision

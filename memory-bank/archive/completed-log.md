@@ -1,15 +1,27 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Marketplace asset Phase 7 runtime integration
+
+After explicit approval, integrated the approved runtime sheets for Mofy
+(`elevator-cargo-cat:SSR:mofy:idle`), Baron
+(`warehouse-manager:SR:baron:idle`), and Forge (`miner:SSR:forge:idle`) into
+the elevator, warehouse, and mine-floor presentation slots. Runtime copies are
+stable local 512×256 sheets with 8 frames at 110 ms; missing copies fall back
+to the bundled 4-frame placeholders. The unloader remains future-only and
+presentation-only runtime identity never enters saves, simulation formulas, or
+ownership state. The runtime contract/fallback tests, release audit, 720 unit
+tests, lint, build, focused mobile browser test, and full 56-test Playwright
+suite passed. Native 390×844 review confirmed stable anchors and scale.
+
 ## 2026-09-19 — Marketplace asset Phase 8 release audit
 
 Audited the catalog/UI release scope: all nine public portraits resolve through
 unique registry IDs, manifest entries, source files, and provenance records;
-the 16-symbol icon family is complete; and all current assets remain
-`runtimeIntegrated: false`. Added a release-audit test covering those links and
-the asset-only boundary. Full Playwright E2E passes 55/55 after the navigation
-hit-target test was updated to close and await the leaderboard modal introduced
-by Step 29. Phase 7 runtime integration remains intentionally deferred pending
-explicit approval.
+the 16-symbol icon family is complete; the three approved runtime IDs resolve to
+their local sheets; and the remaining six variants stay catalog-only. Added a
+release-audit test covering those links, selected runtime paths, and the
+asset-only boundary. Full Playwright E2E passes 56/56, including runtime role
+identity and dimensions.
 
 ## 2026-09-19 — Marketplace asset Phase 6 state presentation
 

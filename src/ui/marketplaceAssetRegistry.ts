@@ -18,8 +18,8 @@ export interface MarketplaceAssetRecord {
   readonly characterName: string;
   readonly portraitPath: string;
   readonly sourcePortraitPath: string;
-  readonly catalogStatus: 'preview-canonical';
-  readonly runtimeIntegrated: false;
+  readonly catalogStatus: 'preview-canonical' | 'runtime-integrated';
+  readonly runtimeIntegrated: boolean;
 }
 
 const MARKETPLACE_ASSET_ENTRIES = [
@@ -32,8 +32,8 @@ const MARKETPLACE_ASSET_ENTRIES = [
     characterName: 'Mofy',
     portraitPath: '/assets/marketplace/catalog/elevator-cargo-cat/ssr/mofy/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/processed-8f-v2/idle-1.png',
-    catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
+    catalogStatus: 'runtime-integrated',
+    runtimeIntegrated: true,
   },
   {
     assetId: 'elevator-cargo-cat:SSR:elon:idle',
@@ -68,8 +68,8 @@ const MARKETPLACE_ASSET_ENTRIES = [
     characterName: 'Baron',
     portraitPath: '/assets/marketplace/catalog/warehouse-manager/sr/baron/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/warehouse-manager/sr/baron/processed/idle-1.png',
-    catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
+    catalogStatus: 'runtime-integrated',
+    runtimeIntegrated: true,
   },
   {
     assetId: 'warehouse-manager:SR:cipher:idle',
@@ -128,8 +128,8 @@ const MARKETPLACE_ASSET_ENTRIES = [
     characterName: 'Forge',
     portraitPath: '/assets/marketplace/catalog/miner/ssr/forge/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/miner/ssr/forge/processed/idle-1.png',
-    catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
+    catalogStatus: 'runtime-integrated',
+    runtimeIntegrated: true,
   },
 ] as const satisfies readonly MarketplaceAssetRecord[];
 

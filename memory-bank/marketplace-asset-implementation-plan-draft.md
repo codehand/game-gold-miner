@@ -5,11 +5,10 @@ sequence, asset gates, role-taxonomy gate, and premium 8-frame requirements are
 approved as the working plan; individual asset approval remains subject to the
 phase validation gates.
 
-**Execution status:** Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, and
-Phase 6 — complete and verified 2026-09-19. Phase 7 — optional and awaiting
-explicit runtime-integration approval. Phase 8 — complete and verified
-2026-09-19 for the catalog/UI release scope. No later phase may begin until its
-predecessor's validation gate passes.
+**Execution status:** Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5,
+Phase 6, Phase 7, and Phase 8 — complete and verified 2026-09-19. Phase 7
+runtime-integration approval was explicitly granted before implementation. No
+later phase may begin until its predecessor's validation gate passes.
 
 **Scope:** Asset production and asset-facing integration for Marketplace v1.
 This plan covers portraits, role/attribute presentation, premium animation
@@ -548,10 +547,10 @@ data plus overlay UI; the cat identity asset remains stable.
 - Validation passed: 715 full unit tests, state/icon contract tests, lint,
   build, and six Marketplace/icon/catalog browser tests.
 
-**Phase 6 gate:** closed for preview state presentation. Phase 7 remains an
-optional separate runtime-approval gate.
+**Phase 6 gate:** closed for preview state presentation. The separate Phase 7
+runtime-approval gate was subsequently granted and closed below.
 
-## 10. Phase 7 — Optional in-world runtime integration
+## 10. Phase 7 — In-world runtime integration
 
 ### Goal
 
@@ -582,9 +581,31 @@ the appropriate mine role without changing simulation authority.
 - Anchors, scale, baseline, and prop readability remain stable while scrolling.
 - Offline boot remains playable and does not require the asset server.
 
-**Exit gate:** Runtime integration is explicitly approved as a separate
-milestone. Asset production alone does not authorize replacing current default
-runtime sprites.
+### Phase 7 execution record — verified 2026-09-19
+
+- Applied the approved `elevator-cargo-cat:SSR:mofy:idle` sheet to the elevator,
+  `warehouse-manager:SR:baron:idle` to the warehouse supervisor, and
+  `miner:SSR:forge:idle` to every visible mine-floor miner.
+- Runtime copies are local, stable 512×256 RGBA sheets at
+  `public/assets/marketplace/runtime/`; the role map keeps the Marketplace
+  asset IDs, texture keys, 8-frame/110 ms animation contract, and 50/56/75 px
+  display sizes together.
+- `BootScene` resolves the runtime copy when available and falls back to the
+  bundled placeholder with 4-frame/220 ms timing when it is not. The unloader
+  remains the Step 32A receiving-position fallback and is not misidentified as
+  a Marketplace v1 role asset.
+- Runtime identity is presentation-only: no sprite, texture, frame, assigned
+  role, or animation clock enters save data or simulation formulas.
+- Validation passed: runtime contract, fallback, registry, manifest, and
+  release-audit unit tests; 720 full unit tests; lint; build; 1 focused runtime
+  browser test at 390×844; and full Playwright E2E at 56/56. Native mobile
+  screenshot review confirmed stable anchors, scale, and baseline while the
+  mine remains scrollable.
+
+**Phase 7 gate:** closed after explicit runtime-integration approval and the
+validation above. Selected runtime assets may replace the role-appropriate
+presentation sprites; future roles and unapproved catalog variants remain
+catalog-only.
 
 ## 11. Phase 8 — Release audit and provenance
 
@@ -619,15 +640,18 @@ runtime sprites.
 - Audited all nine public portrait IDs against the allowlisted registry,
   manifest entries, source files, and provenance records.
 - Confirmed the 16-symbol Marketplace icon family and its manifest are present.
-- Confirmed every current asset variant remains `runtimeIntegrated: false`;
-  no catalog-only asset was promoted into runtime paths.
+- Confirmed the three approved role assets are marked `runtimeIntegrated: true`
+  and resolve to their runtime paths; the remaining six catalog variants stay
+  `runtimeIntegrated: false` and catalog-only.
 - Added a release-audit test covering registry uniqueness, manifest/source/
-  provenance links, icon completeness, and the asset-only boundary.
-- Full Playwright E2E now passes 55/55 after the navigation hit-target test was
-  updated to close and await the leaderboard modal introduced by Step 29.
+  provenance links, icon completeness, selected runtime IDs, and the
+  asset-only boundary for unselected variants.
+- Full Playwright E2E now passes 56/56, including runtime identity, dimensions,
+  and role-slot read-back for the selected three sheets.
 
-**Phase 8 gate:** closed for the catalog/UI release scope; Phase 7 runtime
-integration remains explicitly deferred pending separate approval.
+**Phase 8 gate:** closed for the catalog, UI, runtime presentation, and
+provenance scope. No transaction, ownership, economy, save, or schema work is
+included in this plan.
 
 ## 12. Dependency and gate summary
 
@@ -644,7 +668,7 @@ Phase 1: canonical registry and existing portrait normalization
             ↓
         Phase 6: transaction-state presentation
             ↓
-        Phase 7: optional in-world runtime integration
+        Phase 7: in-world runtime integration
             ↓
         Phase 8: release audit and provenance
 ```
@@ -665,4 +689,5 @@ The asset implementation plan is ready to execute when:
 - Current public portraits are mapped to stable asset IDs.
 - The 8-frame list is approved, including which candidates are catalog-only.
 - The product accepts portrait-first Marketplace integration.
-- Runtime replacement remains a separate approval gate.
+- Runtime replacement approval is recorded and the selected three role assets
+  pass the Phase 7 runtime gate; unselected variants remain catalog-only.

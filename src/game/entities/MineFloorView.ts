@@ -4,6 +4,7 @@ import {
   PLACEHOLDER_ANIMATION_TEXTURES,
   PLACEHOLDER_TEXTURES,
 } from '../assets/placeholderAssets';
+import type { MarketplaceRuntimeAnimationAsset } from '../assets/marketplaceRuntimeAssets';
 import {
   toFillColor,
   calculateMineFloorPanelLayout,
@@ -44,8 +45,12 @@ import { setTextColor } from './setTextColor';
 export interface RenderedMineFloorMinerState {
   readonly x: number;
   readonly y: number;
+  readonly width: number;
+  readonly height: number;
   readonly facesLeft: boolean;
   readonly assetFrame: number;
+  readonly assetId: string | null;
+  readonly textureKey: string;
 }
 
 /** What the view actually put on screen, read back from its own objects. */
@@ -82,6 +87,9 @@ export interface RenderedFloorState {
   readonly minerSwingOffsetPx: number;
   /** Current frame from the generated Step 32A digging sheet. */
   readonly minerAssetFrame: number;
+  /** Stable Marketplace identity when a role asset is runtime-integrated. */
+  readonly minerAssetId: string | null;
+  readonly minerTextureKey: string;
   readonly minerFacesLeft: boolean;
   readonly minerPatrolX: number;
   /** Visible base miner plus every level-derived assistant on this floor. */
@@ -121,6 +129,8 @@ export interface MineFloorViewOptions {
   readonly onUpgrade: () => void;
   /** Called when the unlock control on a locked floor is pressed. */
   readonly onUnlock: () => void;
+  /** Optional Marketplace role animation; omitted keeps the Step 32A fallback. */
+  readonly minerAnimation?: MarketplaceRuntimeAnimationAsset;
   /** Floors below floor one crop the ceiling seam to half its art thickness. */
   readonly hasThinSoilLayer?: boolean;
 }
@@ -169,6 +179,11 @@ export class MineFloorView {
   readonly #minerStartX: number;
   readonly #minerEndX: number;
   readonly #minerRestY: number;
+  readonly #minerAssetId: string | null;
+  readonly #minerTextureKey: string;
+  readonly #minerDisplaySize: number;
+  readonly #minerFrameCount: number;
+  readonly #minerFrameDurationMs: number;
   #extractionProgress = 0;
   #extractionProgressFrom = 0;
   #extractionTransitionStartMs = 0;
@@ -188,6 +203,11 @@ export class MineFloorView {
     this.#minerStartX = panel.minerPatrol.x + 8;
     this.#minerEndX = panel.minerPatrol.x + panel.minerPatrol.width - 8;
     this.#minerRestY = panel.minerPatrol.y + panel.minerPatrol.height / 2;
+    this.#minerAssetId = options.minerAnimation?.assetId ?? null;
+    this.#minerTextureKey = options.minerAnimation?.textureKey ?? PLACEHOLDER_ANIMATION_TEXTURES.minerWalk;
+    this.#minerDisplaySize = options.minerAnimation?.displaySize ?? MINE_FLOOR_CHARACTER_DISPLAY_SIZE;
+    this.#minerFrameCount = options.minerAnimation?.frameCount ?? 4;
+    this.#minerFrameDurationMs = options.minerAnimation?.frameDurationMs ?? 220;
     this.#goldContainerSize = {
       width: panel.goldContainer.width,
       height: panel.goldContainer.height,
@@ -272,12 +292,12 @@ export class MineFloorView {
       .sprite(
         this.#minerStartX,
         this.#minerRestY,
-        PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+        this.#minerTextureKey,
         0,
       )
       .setDisplaySize(
-        MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
-        MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+        this.#minerDisplaySize,
+        this.#minerDisplaySize,
       );
     this.#minerAssistants = Array.from(
       { length: MINE_FLOOR_MINER_ASSISTANT_COUNT },
@@ -285,12 +305,12 @@ export class MineFloorView {
         .sprite(
           this.#minerStartX,
           this.#minerRestY,
-          PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+          this.#minerTextureKey,
           0,
         )
         .setDisplaySize(
-          MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
-          MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+          this.#minerDisplaySize,
+          this.#minerDisplaySize,
         )
         .setVisible(false),
     );
@@ -568,7 +588,11 @@ export class MineFloorView {
     );
 
     this.#miner
-      .setFrame(calculateGeneratedAssetFrame(animationTimeMs))
+      .setFrame(calculateGeneratedAssetFrame(
+        animationTimeMs,
+        this.#minerFrameCount,
+        this.#minerFrameDurationMs,
+      ))
       .setY(this.#minerRestY)
       .setX(pose.x)
       .setFlipX(pose.facesLeft);
@@ -588,6 +612,8 @@ export class MineFloorView {
       assistant
         .setFrame(calculateGeneratedAssetFrame(
           animationTimeMs + assistantPose.animationTimeOffsetMs,
+          this.#minerFrameCount,
+          this.#minerFrameDurationMs,
         ))
         .setPosition(
           assistantPose.x,
@@ -616,8 +642,12 @@ export class MineFloorView {
       .map((miner) => ({
         x: miner.x,
         y: miner.y,
+        width: miner.displayWidth,
+        height: miner.displayHeight,
         facesLeft: miner.flipX,
         assetFrame: Number(miner.frame.name),
+        assetId: this.#minerAssetId,
+        textureKey: miner.texture.key,
       }));
 
     return {
@@ -647,6 +677,8 @@ export class MineFloorView {
       showsMiner: this.#miner.visible,
       minerSwingOffsetPx: this.#miner.y - this.#minerRestY,
       minerAssetFrame: Number(this.#miner.frame.name),
+      minerAssetId: this.#minerAssetId,
+      minerTextureKey: this.#miner.texture.key,
       minerFacesLeft: this.#miner.flipX,
       minerPatrolX: this.#miner.x,
       activeMinerCount: minerCrew.length,
