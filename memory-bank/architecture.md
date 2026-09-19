@@ -1865,6 +1865,43 @@ table's table-level `SELECT` is revoked for anon/authenticated — so no
 `leaderboard_entries`-specific write-refusal test is duplicated here; Step 28
 only adds the service-role path the matrix already treats as the sole writer.
 
+### Leaderboard display (Step 29)
+
+Step 29 adds the read path and the first player-facing surface for the board
+chosen in Step 27. `supabase/functions/leaderboard-read/index.ts` accepts public
+`GET`/`HEAD` requests for `board_key = 'lifetime-gold'` and an optional bounded
+`limit`; a public request returns only the ranked display projection. A request
+with an `Authorization: Bearer` token resolves that caller through GoTrue and
+adds their own rank/value projection when they have an entry. The response
+never contains `leaderboard_entries.user_id`, which remains withheld by the
+column grant and is used only inside the server boundary.
+
+The function uses the service role only for read-side projection. The visible
+rows are ordered by `metric_log10 desc, updated_at asc`, retaining the exact
+`metric_exact` string. For an authenticated caller, the ranking rows are read in
+1,000-row pages and rank is calculated in server code with the same ordering
+predicate. This preserves correctness across the local Edge Runtime, where the
+otherwise attractive PostgREST `count: 'exact', head: true` predicates returned
+an incorrect count in live verification. The function has `verify_jwt = false`
+because it performs its optional bearer validation itself, and it has no write
+path; `save-sync` remains the sole publisher.
+
+`src/platform/web/leaderboard.ts` is the browser boundary. It passes the
+current session token when present, validates the response shape, and maps any
+network, non-OK, or malformed response to a retryable offline state without
+blocking the game. `src/ui/LeaderboardModal.ts` renders the accessible native
+dialog opened by the Rewards bottom-navigation item. It formats each exact
+`GameNumber` through the existing Phaser-free `formatAmount` authority, shows
+the player's rank separately from the visible top rows, restores focus on close,
+and leaves the underlying game playable when the endpoint is unavailable.
+
+Evidence: the function unit suite has 7 tests; the live integration suite has
+3 tests covering public exact values/no ids, an authenticated caller outside
+the visible limit, and invalid-token rejection. `tests/unit/leaderboard-display.test.ts`
+covers ordinary, abbreviated, and beyond-`Number.MAX_VALUE` magnitudes; the
+focused layout smoke proves Rewards opens and closes the modal. No acceptance
+gate is recorded until the user validates the player-facing flow.
+
 ### Entitlements (Step 31)
 
 Step 31 uses the `entitlements` table and RLS policy already landed by Step 3;
@@ -2217,6 +2254,13 @@ cat variants. Its art-direction brief fixes the rarity order
 `N < R < SR < SSR < UR`, with gray, green, blue, purple, and gold visual
 identities respectively. Its manifest records role/tier status, references,
 provenance, and the boundary between candidates and runtime assets.
+
+The animation fidelity policy is presentation-only: `N`/`R` candidates use
+four frames in a `2x2` grid, while `SR`/`SSR`/`UR` candidates use eight frames
+in a `4x2` grid. Both formats keep `128x128` cells, the same camera, body
+proportions, feet anchor, and role silhouette. Mofy is the first applied SSR
+example, with eight deliberate ledger-inspection, grip-adjustment, breathing,
+and recovery poses at 110 ms per frame; this does not affect gameplay.
 
 The term `rarityTier` is used in asset metadata to avoid collision with the
 existing numeric stage `level`. The existing Step 32A `unloader` sheet is the

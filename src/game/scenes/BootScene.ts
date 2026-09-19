@@ -163,6 +163,7 @@ export interface BootSceneOptions {
   /** Scales cosmetic motion only; production is never derived from it. */
   readonly animationSpeedMultiplier?: number;
   readonly onSettings?: (onClosed: () => void) => void;
+  readonly onLeaderboard?: (onClosed: () => void) => void;
 }
 
 /**
@@ -182,6 +183,7 @@ export interface BootSceneOptions {
 export class BootScene extends Phaser.Scene {
   readonly #source: MineRuntimePort;
   readonly #onSettings: ((onClosed: () => void) => void) | null;
+  readonly #onLeaderboard: ((onClosed: () => void) => void) | null;
   /** Live press results, keyed by control, cleared as each one expires. */
   readonly #purchaseFeedback = new Map<string, PurchaseFeedback>();
   /** The snapshot currently bound to the views, compared by identity. */
@@ -233,6 +235,7 @@ export class BootScene extends Phaser.Scene {
 
     this.#source = options.source;
     this.#onSettings = options.onSettings ?? null;
+    this.#onLeaderboard = options.onLeaderboard ?? null;
     this.#viewModel = options.source.snapshot;
     this.#visibleFloorCount = countVisibleFloors(options.source.snapshot);
     this.#animationSpeedMultiplier =
@@ -895,6 +898,15 @@ export class BootScene extends Phaser.Scene {
     this.#bottomNavigationView = new BottomNavigationView(this, region, {
       onActivate: (key) => {
         this.#publishBottomNavigationActivation(key);
+        if (key === 'rewards' && this.#onLeaderboard !== null) {
+          this.input.enabled = false;
+          this.#onLeaderboard(() => {
+            this.input.enabled = true;
+            this.#publishLeaderboardClose();
+          });
+          return;
+        }
+
         // Scene input is only surrendered once the modal that restores it is
         // known to exist: disabling it for a marketplace that never opens
         // would leave the mine unreachable with nothing left to re-enable it.
@@ -906,6 +918,16 @@ export class BootScene extends Phaser.Scene {
     });
 
     return this.#bottomNavigationView.root;
+  }
+
+  #publishLeaderboardClose(): void {
+    if (!PUBLISHES_VIEW_DIAGNOSTICS) {
+      return;
+    }
+
+    const canvas = this.game.canvas;
+    const closeCount = Number(canvas.dataset.leaderboardCloseCount ?? '0');
+    canvas.dataset.leaderboardCloseCount = String(closeCount + 1);
   }
 
   /**

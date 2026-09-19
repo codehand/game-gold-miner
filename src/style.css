@@ -536,6 +536,203 @@ body {
   font-size: 13px;
 }
 
+/* The leaderboard is a read-only DOM dialog so exact server values stay
+ * accessible even when the canvas is letterboxed or the board is offline. */
+.leaderboard {
+  width: min(480px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  padding: 0;
+  border: 2px solid #4e9fb4;
+  border-radius: 22px;
+  background: #101f32;
+  color: #f1f5fa;
+  box-shadow: 0 24px 90px #000a;
+  overscroll-behavior: contain;
+}
+
+.leaderboard::backdrop {
+  background: #030d1de0;
+}
+
+.leaderboard button {
+  min-height: 44px;
+  border: 1px solid #3c5771;
+  border-radius: 10px;
+  background: #1b334c;
+  color: #edf5ff;
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 12px;
+}
+
+.leaderboard button:hover {
+  filter: brightness(1.15);
+}
+
+.leaderboard :focus-visible {
+  outline: 3px solid #8ee5e3;
+  outline-offset: 2px;
+}
+
+.leaderboard-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 18px;
+  border-bottom: 1px solid #34516b;
+  background: #12253b;
+}
+
+.leaderboard-eyebrow {
+  color: #a9c4db;
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.leaderboard-heading h1 {
+  margin: 4px 0 0;
+  color: #f4bd3e;
+  font-size: 25px;
+  letter-spacing: -0.5px;
+}
+
+.leaderboard .leaderboard-close {
+  min-width: 44px;
+  padding: 0;
+  font-size: 26px;
+}
+
+.leaderboard-content {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 20px;
+}
+
+.leaderboard-intro,
+.leaderboard-status,
+.leaderboard-player p,
+.leaderboard-board > p {
+  margin: 0;
+  color: #c7d8e8;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.leaderboard-status {
+  padding: 28px 12px;
+  text-align: center;
+}
+
+.leaderboard-offline {
+  border: 1px solid #806a39;
+  border-radius: 12px;
+  background: #2c2a1f;
+  color: #f8d77c;
+}
+
+.leaderboard-retry {
+  justify-self: center;
+  min-width: 120px;
+  background: #285573 !important;
+  font-weight: 700;
+}
+
+.leaderboard-player,
+.leaderboard-board {
+  padding: 14px;
+  border: 1px solid #385b79;
+  border-radius: 14px;
+  background: #102239;
+}
+
+.leaderboard-player {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.leaderboard-player h2,
+.leaderboard-board h2 {
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
+  color: #f4bd3e;
+  font-size: 17px;
+}
+
+.leaderboard-player strong {
+  color: #f8d77c;
+  font-size: 24px;
+}
+
+.leaderboard-player-value {
+  color: #f9fafb;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.leaderboard-player-name {
+  overflow: hidden;
+  color: #9fb9ce;
+  font-size: 12px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-board {
+  overflow: hidden;
+}
+
+.leaderboard-board table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.leaderboard-board th,
+.leaderboard-board td {
+  padding: 9px 4px;
+  border-bottom: 1px solid #29445f;
+  text-align: left;
+}
+
+.leaderboard-board thead th {
+  color: #8da9bf;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.leaderboard-board tbody th {
+  width: 48px;
+  color: #f8d77c;
+}
+
+.leaderboard-board tbody td:nth-child(2) {
+  max-width: 140px;
+  overflow: hidden;
+  color: #dbeafe;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-board tbody tr:last-child th,
+.leaderboard-board tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.leaderboard-value {
+  color: #f9fafb;
+  font-weight: 700;
+  text-align: right !important;
+  white-space: nowrap;
+}
+
 /* Marketplace is a native modal: background input and keyboard focus stay isolated. */
 .marketplace {
   width: min(480px, calc(100vw - 24px));

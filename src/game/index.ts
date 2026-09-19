@@ -30,6 +30,7 @@ export interface CreateGameOptions {
   /** Scales cosmetic motion only; production is never derived from it. */
   readonly animationSpeedMultiplier?: number;
   readonly onSettings?: (onClosed: () => void) => void;
+  readonly onLeaderboard?: (onClosed: () => void) => void;
 }
 
 export function createGame(
@@ -54,6 +55,7 @@ export function createGame(
         source,
         animationSpeedMultiplier: options.animationSpeedMultiplier,
         onSettings: options.onSettings,
+        onLeaderboard: options.onLeaderboard,
       }),
     ],
     scale: {

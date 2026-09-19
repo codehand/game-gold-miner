@@ -2,22 +2,42 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 31 validation gate — Step 31 (entitlements)
-was implemented on 2026-09-19 and is awaiting user validation. Step 32 has not
-started and must remain blocked until that validation.**
+**Asset catalog update, 2026-09-19.** The SR+ animation policy is now applied
+to Mofy (`elevator-cargo-cat:SSR`): an exact 4×2 sheet with eight 128×128
+frames at 110 ms each. The processed sheet passed strict raster QC with zero
+empty, edge-touch, or clamped frames; body-scale CV is 0.01158 and anchor-Y
+standard deviation is 0.00076. This remains asset-only and is not runtime
+integrated. `public/assets/marketplace/mofy.png` stays a single extracted idle
+frame for the existing portrait consumer.
+
+**Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
+display) was implemented on 2026-09-19 and is awaiting user validation. Step 31
+is also implemented but remains unvalidated; Step 32 has not started and must
+remain blocked.**
+
+Step 29 adds the public `leaderboard-read` Edge Function and the Rewards-tab
+leaderboard modal. Public requests receive the top lifetime-gold rows; an
+optional valid bearer token also receives the caller's own rank without any
+`user_id` leaving the server. Because the local Edge Runtime produced incorrect
+results for `count: 'exact', head: true` rank predicates, the authenticated
+rank path now reads the indexed ranking rows in pages and applies the same
+metric-desc/updated-at-asc ordering in server code. The client preserves exact
+`GameNumber` strings for `formatAmount` and falls back to an offline state with
+retry when the read is unavailable.
+
+**Proof.** The function has 7 Deno unit tests; the live integration suite has
+3 passing tests for public exact values, authenticated rank outside the visible
+limit, and invalid-token rejection. Client unit tests cover all magnitude tiers,
+`npm run build` and `npm run lint` pass, and the focused browser smoke confirms
+the Rewards tab opens and closes the modal. The modal remains a validation-gate
+change; no acceptance-gate archive entry has been added.
 
 Step 31 reuses the `entitlements` table and RLS already landed in Step 3; no
-migration was needed. The server-owned key is
-`cosmetic.supporter_badge`. New `entitlement-check` verifies the bearer token,
-reads only active own rows through the caller-scoped Supabase client, and
-returns the derived `effects.supporterBadge` flag. It never reads the
-service-role key, and there is no client-accessible grant route.
-
-**Proof.** The 8-function unit suite covers method/auth/CORS/effect/error
-branches. The live integration suite proves client PostgREST INSERT is refused,
-a service-role grant is visible to its owner with `supporterBadge: true`, and
-revocation removes the effect. Step 31 has no migration because the table was
-already part of the documented six-table schema.
+migration was needed. The server-owned key is `cosmetic.supporter_badge`.
+`entitlement-check` verifies the bearer token, reads only active own rows
+through the caller-scoped Supabase client, and returns the derived
+`effects.supporterBadge` flag. It never reads the service-role key, and there
+is no client-accessible grant route. Its validation gate remains open.
 
 **Previously, Step 30 (decide on friends) was handled as a documentation-only
 deferral on 2026-09-19.** The verified all-time leaderboard is enough for the

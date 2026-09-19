@@ -12,7 +12,7 @@
 
 > **Phạm vi tham chiếu:** Video chỉ dài khoảng 8,56 giây nên không thể xác nhận 100% mọi luật, công thức và màn hình. Tài liệu này tách phần quan sát trực tiếp khỏi phần suy luận cần kiểm chứng. Khi phát triển sản phẩm thật, nên dùng tên, hình ảnh, âm thanh và UI nguyên bản để tránh sao chép tài sản sở hữu trí tuệ.
 
-> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ có tối đa 15 tầng và hiển thị theo cụm 5 tầng: 1–5 lúc bắt đầu, 6–10 sau khi mở tầng 5, 11–15 sau khi mở tầng 10; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chỉ đi sâu hơn sau khi vét hết tầng hiện tại và còn sức chứa, nếu không sẽ quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Sau base-game milestone, một bottom-navigation shell gồm năm icon Rewards, Shop, Boost, Managers và Map đã được thêm; nút nhận click và phản hồi hình ảnh nhưng chưa mở màn hình hay thay đổi gameplay. Manager, boost gameplay và gift drop vẫn được triển khai ở milestone riêng.
+> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ có tối đa 15 tầng và hiển thị theo cụm 5 tầng: 1–5 lúc bắt đầu, 6–10 sau khi mở tầng 5, 11–15 sau khi mở tầng 10; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chỉ đi sâu hơn sau khi vét hết tầng hiện tại và còn sức chứa, nếu không sẽ quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Sau base-game milestone, một bottom-navigation shell gồm năm icon Rewards, Shop, Boost, Managers và Map đã được thêm. Server-milestone Step 29 nối Rewards vào leaderboard đọc-only; Shop, Boost, Managers và Map vẫn chỉ phản hồi nhấn. Manager, boost gameplay và gift drop vẫn được triển khai ở milestone riêng.
 
 ## 2. Trải nghiệm cốt lõi
 
@@ -203,8 +203,9 @@ Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự đ
 - Chạm Manager: mở bảng Manager của tầng.
 - Vuốt dọc: xem các tầng sâu hơn.
 - Chạm quà: nhận phần thưởng.
-- Chạm thanh điều hướng dưới: hiện tại chỉ nhận click và phản hồi nhấn; các màn
-  Rewards, Shop, Boost, Managers và Map chưa được nối chức năng. Thanh cao 58
+- Chạm thanh điều hướng dưới: Rewards mở leaderboard lifetime-gold của
+  server-milestone Step 29, còn Shop, Boost, Managers và Map hiện chỉ nhận click
+  và phản hồi nhấn. Thanh cao 58
   logical px; bốn nút thường 48×44, nút Boost nhô lên 62×50, và mỗi mục dùng
   một minh họa riêng theo cùng palette vàng, trắng, navy và teal. Toàn bộ phần
   hiển thị của mỗi nút được thu còn 60% trong khi vùng chạm không đổi.
@@ -293,6 +294,14 @@ công thức và cách sở hữu chưa được thiết kế. Giai đoạn hi�
 asset và metadata. Không tier nào được phép ảnh hưởng simulation, production,
 balance, save hoặc UI gameplay cho tới khi có một milestone tích hợp riêng được
 phê duyệt.
+
+Độ chi tiết animation cũng phân tầng theo rarity nhưng chỉ là presentation:
+`N`/`R` dùng 4 frame trong grid `2x2`, còn `SR`/`SSR`/`UR` dùng 8 frame trong
+grid `4x2`. Các tier giữ nguyên cell `128x128`, camera, tỷ lệ cơ thể, mốc chân
+và silhouette role; frame bổ sung dành cho nhịp chuẩn bị, hành động chính,
+follow-through và chuyển động phụ của trang bị/trang phục, không tạo khác biệt
+cho simulation hay balance. Mofy `elevator-cargo-cat:SSR` là asset đầu tiên áp
+dụng format premium này với 8 frame × 110 ms.
 
 Mèo `unloader` Step 32A hiện tại là baseline/default của role `unloader` và là
 ứng viên tier `N`; runtime tiếp tục dùng nguyên asset này. Mỗi asset tiếp theo

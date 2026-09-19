@@ -26,3 +26,8 @@ export {
   type AccountIdentityView,
   type AccountSettingsModalOptions,
 } from './AccountSettingsModal';
+export {
+  formatLeaderboardMetric,
+  LeaderboardModal,
+  type LeaderboardModalOptions,
+} from './LeaderboardModal';

@@ -6,15 +6,16 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 31 validation gate.** Steps 1–8
+**Server milestone: in progress, at the Step 29 validation gate.** Steps 1–8
 are validated.
 Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–24 are implemented and await
 user validation together. Steps 25, 26, and 27 are each implemented, validated,
 and merged in turn. Step 28 (leaderboard writes) remains implemented and
+awaiting user validation. Step 29 (leaderboard display) is implemented and
 awaiting user validation. Step 30 is recorded as a documentation-only
 deferral: the verified leaderboard is sufficient for the current social goal,
 so no friend graph is needed. **Step 31 is implemented and awaiting user
-validation; Step 32 has not started and remains blocked until that validation.**
+validation; Step 32 has not started and remains blocked.**
 Phase 4 (Steps 22–26) is complete, validated by Step 26's own gate evidence
 below.
 
@@ -63,8 +64,36 @@ implementer's sandbox could not run `npm install`, so `npm run verify` /
 `npm run verify:server` numbers are not recorded here — the validation gate's
 own run captures that evidence.**
 
+**Step 29 (leaderboard display), implemented 2026-09-19.** The new
+`leaderboard-read` Edge Function serves the public top lifetime-gold rows and,
+when a valid bearer token is supplied, the caller's own rank/value projection;
+the response never exposes `leaderboard_entries.user_id`. The authenticated rank
+uses paginated service-role reads and the established metric-desc/
+`updated_at`-asc ordering, avoiding an Edge Runtime discrepancy observed with
+PostgREST `count: 'exact', head: true` predicates. The client opens an accessible
+leaderboard modal from the Rewards navigation item, formats exact
+`GameNumber` values through the existing `formatAmount` authority, and shows a
+retryable offline state when the endpoint is unavailable. **The Step 29
+validation gate is open; Step 30 remains a documented deferral and Step 32 is
+not started.**
+
+Evidence for this implementation: `npx --no-install deno test
+supabase/functions/leaderboard-read` (7 passing), the focused client unit run
+(85 passing), `npm run build`, `npm run lint`, and the focused Rewards-tab
+browser smoke all pass. The live `leaderboard-read` integration file passes
+3/3 tests against the restarted local Supabase stack.
+
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
+
+**2026-09-19 — asset catalog animation fidelity.** The approved presentation
+policy now uses 4-frame `2x2` sheets for `N`/`R` and 8-frame `4x2` sheets for
+`SR`/`SSR`/`UR`, with consistent 128×128 proportions and anchors. Mofy is the
+first applied SSR asset: its second row deliberately continues the ledger
+inspection, grip adjustment, breathing, and recovery motion instead of
+duplicating row 1. The 8-frame sheet passed strict raster QC, while the
+marketplace portrait remains a compatible single-frame extract. No runtime
+resolver or gameplay behavior changed.
 
 **2026-09-19 — player-facing account/settings feedback.** Added the HUD
 settings button and accessible account modal with guest/Google identity,
@@ -80,9 +109,9 @@ verified all-time leaderboard. A friend graph is not required by the
 milestone's purpose or Definition of Done, so no friend table, relationship
 API, UI, or moderation surface is being added. Revisit only when a concrete
 product requirement defines discovery, privacy, blocking, and deletion
-semantics. **The Step 30 validation gate remains open; Step 31 proceeded under
-the user's explicit instruction to continue, and Step 32 remains blocked until
-the Step 31 validation gate is passed.**
+semantics. **The Step 30 validation gate remains open; Step 29 proceeded under
+the user's explicit instruction to continue. Step 32 remains blocked until the
+Step 31 validation gate is passed.**
 
 **Step 31 (entitlements), implemented 2026-09-19.** The existing
 `entitlements` table and own-row/no-write RLS policy from Step 3 are reused;
@@ -126,7 +155,7 @@ untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 31 — entitlements.** Implemented 2026-09-19, awaiting user validation. |
+| Current gate | **Step 29 — leaderboard display.** Implemented 2026-09-19, awaiting user validation. |
 | Blocked on the gate | Step 32 and later steps; no Step 32 work has started |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
@@ -171,10 +200,10 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 26 — Adversarial suite | Implemented 2026-09-17; validated and merged — Step 27 released against it |
 | 27 — Leaderboard storage | Implemented 2026-09-18; validated and merged — Step 28 released against it |
 | 28 — Leaderboard writes | Implemented 2026-09-18; awaiting validation |
-| 29 — Leaderboard display | Not started; prior validation gate remains unresolved |
+| 29 — Leaderboard display | **Implemented 2026-09-19; awaiting validation — current gate** |
 | 30 — Decide on friends | Deferred 2026-09-19; decision recorded |
-| 31 — Entitlements | **Implemented 2026-09-19; awaiting validation — current gate** |
-| 32–37 | Not started, blocked by the Step 31 gate |
+| 31 — Entitlements | Implemented 2026-09-19; awaiting validation |
+| 32–37 | Not started, blocked; no Step 32 work has started |
 
 ## Known Risks
 

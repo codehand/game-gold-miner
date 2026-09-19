@@ -8,6 +8,21 @@
     "gameplayAttributesDefined": false,
     "saveSchemaChange": false
   },
+  "animationPolicy": {
+    "baseRarityTiers": {
+      "tiers": ["N", "R"],
+      "grid": "2x2",
+      "frameCount": 4,
+      "frameSize": "128x128"
+    },
+    "premiumRarityTiers": {
+      "tiers": ["SR", "SSR", "UR"],
+      "grid": "4x2",
+      "frameCount": 8,
+      "frameSize": "128x128",
+      "presentationOnly": true
+    }
+  },
   "rarityTiers": [
     { "order": 1, "code": "N", "nameVi": "Bình thường", "nameEn": "Normal", "colorIdentityVi": "Xám", "colorIdentityEn": "Gray" },
     { "order": 2, "code": "R", "nameVi": "Hiếm", "nameEn": "Rare", "colorIdentityVi": "Xanh lá", "colorIdentityEn": "Green" },
@@ -354,14 +369,14 @@
           "assetId": "elevator-cargo-cat:SSR:mofy:idle",
           "status": "candidate-generated-awaiting-user-review",
           "designReference": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/reference/elevator-cargo-cat-ssr-mofy-design-reference.png",
-          "rawCandidate": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/raw/elevator-cargo-cat-ssr-mofy-idle-raw-v1.png",
-          "transparentSheet": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/elevator-cargo-cat-ssr-mofy-idle-sheet.png",
-          "animationPreview": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/elevator-cargo-cat-ssr-mofy-idle.gif",
+          "rawCandidate": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/raw/elevator-cargo-cat-ssr-mofy-idle-raw-v3-8f.png",
+          "transparentSheet": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/elevator-cargo-cat-ssr-mofy-idle-8f-sheet.png",
+          "animationPreview": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/elevator-cargo-cat-ssr-mofy-idle-8f.gif",
           "contextPreview": "art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/elevator-cargo-cat-ssr-mofy-context-preview.png",
-          "grid": "2x2",
+          "grid": "4x2",
           "frameSize": "128x128",
-          "frameCount": 4,
-          "frameDurationMs": 220,
+          "frameCount": 8,
+          "frameDurationMs": 110,
           "outputOrigin": [64, 117],
           "visualLocks": [
             "calico black orange and cream-white fur with split face markings",
@@ -376,8 +391,8 @@
             "sourceEdgeTouchFrames": 0,
             "outputEdgeTouchFrames": 0,
             "pasteClampedFrames": 0,
-            "bodyScaleCv": 0.014997310665403066,
-            "anchorYStd": 0.007269789983844865,
+            "bodyScaleCv": 0.0115773178286557,
+            "anchorYStd": 0.0007602733652484227,
             "alphaValidated": true,
             "nativeScaleContextReviewed": true
           },

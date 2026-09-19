@@ -28,6 +28,7 @@ import {
   ensureGuestSession,
   generateRecoveryCode,
   LifecycleSafeActiveSaveRepository,
+  loadLeaderboardViaFetch,
   markOfflineGrantApplied,
   MISSING_LOCAL_SAVE_CODE,
   MISSING_LOCAL_SAVE_MESSAGE,
@@ -53,6 +54,7 @@ import {
 import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
 import {
   AccountSettingsModal,
+  LeaderboardModal,
   createSaveDiagnosticBanner,
   showOfflineRewardModal,
   type AccountActionResult,
@@ -926,6 +928,7 @@ const persistence = new SavePersistenceCoordinator(repository, {
 let game: ReturnType<typeof createGame> | null = null;
 let offlineRewardModal: OfflineRewardModal | null = null;
 let accountSettingsModal: AccountSettingsModal | null = null;
+let leaderboardModal: LeaderboardModal | null = null;
 let unbindSaveLifecycle: (() => void) | null = null;
 let saveHeartbeatId: number | null = null;
 let disposed = false;
@@ -962,6 +965,16 @@ accountSettingsModal = new AccountSettingsModal({
   onLogin: handleGoogleLogin,
   onLogout: handleLogout,
   onConflictChoice: handleConflictChoice,
+});
+leaderboardModal = new LeaderboardModal({
+  parent: app,
+  load: async () => {
+    const client = await supabaseClientPromise;
+    return loadLeaderboardViaFetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/leaderboard-read`,
+      client?.auth ?? null,
+    );
+  },
 });
 
 void startApplication();
@@ -1271,6 +1284,14 @@ async function startApplication(): Promise<void> {
       }
 
       accountSettingsModal.open(onClosed);
+    },
+    onLeaderboard: (onClosed) => {
+      if (leaderboardModal === null) {
+        onClosed();
+        return;
+      }
+
+      leaderboardModal.open(onClosed);
     },
   });
   unbindSaveLifecycle = bindSaveLifecycle(

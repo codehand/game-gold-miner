@@ -33,6 +33,26 @@ values, formulas, acquisition, and progression are intentionally undefined.
 In code and metadata, use `rarityTier` for this classification so it cannot be
 confused with the existing numeric mine-shaft, elevator, or warehouse `level`.
 
+## Animation fidelity tiers
+
+Animation frame count is a presentation budget, not a gameplay attribute. Keep
+the existing four-frame, exact `2×2` idle contract for `N` and `R` assets. New
+`SR`, `SSR`, and `UR` character candidates use eight frames in an exact `4×2`
+grid so premium roles can show a clearer in-place motion arc and more detailed
+secondary motion.
+
+Both tiers keep the same `128×128` frame size, camera distance, body scale,
+feet baseline, transparent output, and role silhouette. The extra frames may
+express equipment-specific or costume-specific motion — for example an
+inventory inspection, a cargo adjustment, a cape settle, or a tail gesture —
+but must not turn a role into a different job. Frame count and animation
+detail never grant a production, balance, save, or ownership effect.
+
+For eight-frame loops, describe a deliberate sequence rather than duplicating
+the two rows: neutral, preparation, action peak, follow-through, recovery,
+secondary prop/costume motion, settle, and return. Preserve approximately the
+same total loop duration as the role baseline when increasing frame count.
+
 ## Stable asset identity and naming
 
 - Role IDs use kebab-case English semantic names, beginning with `unloader`.
@@ -196,9 +216,13 @@ The current `unloader` baseline establishes the initial technical target:
 - current idle timing: 220 ms per frame;
 - presentation-only animation, independent of authoritative simulation.
 
-The `elevator-cargo-cat` reuses the same 128×128-frame, 2×2-sheet, 220 ms idle,
-and bottom-center anchor contract, but its current runtime display box is a more
-compact 50×50 logical pixels so it fits inside the elevator cabin.
+The current runtime `elevator-cargo-cat:N` fallback reuses the same
+128×128-frame, `2×2` sheet, 220 ms idle, and bottom-center anchor contract, but
+its current runtime display box is a more compact 50×50 logical pixels so it
+fits inside the elevator cabin. Premium `SR+` catalog candidates use `4×2`
+with role-specific timing while retaining that same frame size and anchor.
+Mofy's SSR candidate is the first applied example: eight frames at 110 ms each,
+for an 880 ms loop, with a visible ledger-inspection and grip-adjustment beat.
 
 The `surface-elevator-tower` is a single 512×512 transparent RGBA prop with a
 128×128 logical-pixel display target. Candidate generation and QC remain under

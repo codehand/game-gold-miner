@@ -474,6 +474,14 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# Server-milestone Step 29: returns the public lifetime-gold board and, when a
+# bearer token is supplied, the caller's own rank. The function keeps
+# `leaderboard_entries.user_id` server-side because the public table grant
+# deliberately withholds that column.
+[functions.leaderboard-read]
+enabled = true
+verify_jwt = false
+
 # Server-milestone Step 12: verifies Telegram Mini App `initData` by hand
 # (HMAC-SHA256 against `TELEGRAM_BOT_TOKEN`) and mints a session for the
 # caller — there is no bearer token to verify yet, since no caller is signed

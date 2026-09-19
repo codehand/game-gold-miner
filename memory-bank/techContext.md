@@ -6,15 +6,24 @@ All 37 implementation-plan steps are complete and user-validated; the user valid
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
+The post-milestone server milestone is in progress at Step 29. The leaderboard
+display uses a read-only Edge Function boundary because the browser may read
+public board columns but cannot select `leaderboard_entries.user_id`; the UI
+formats the table's exact `GameNumber` strings through the existing
+`formatAmount` authority and degrades to a retryable offline state.
+
 ## Approved Direction
 
 Role-based cat art now has an approved asset-only catalog contract under
 `art-source/cat-role-catalog/`. Asset metadata uses `rarityTier` with the fixed
 codes `N`, `R`, `SR`, `SSR`, and `UR`; this is deliberately distinct from the
 numeric gameplay `level`. The existing 2×2, four-frame Step 32A unloader sheet
-remains the runtime default and the `unloader:N` baseline. No catalog resolver,
-runtime import, gameplay attribute, balance value, persistence field, or schema
-version change is authorized in this phase.
+remains the runtime default and the `unloader:N` baseline. Asset presentation
+uses 2×2/four-frame sheets for `N`/`R` and 4×2/eight-frame sheets for
+`SR`/`SSR`/`UR`, with shared 128×128 cells and feet anchors. Mofy is the first
+SSR 4×2 example at 8×110 ms; the extra poses are presentation-only. No catalog
+resolver, runtime import, gameplay attribute, balance value, persistence field,
+or schema version change is authorized in this phase.
 
 - TypeScript
 - Phaser 4.2.1, pinned for reproducible 2D rendering and animation builds
@@ -1222,6 +1231,15 @@ If a database is introduced, replace this statement with the complete authoritat
   temporary fixtures outside the repository, importing it through
   `scripts/scan-bundle-secrets.d.mts` so `tsc` type-checks the test while the
   script stays plain JavaScript that `package.json` runs with no build step.
+
+- Step 29's focused verification is `npx --no-install deno test
+  supabase/functions/leaderboard-read` (7 tests), `npm run test -- --run
+  tests/unit/leaderboard-display.test.ts tests/unit/server-stack.test.ts` (85
+  tests), `npm run build`, `npm run lint`, the focused Rewards-tab Playwright
+  smoke, and `npm run test:server-integration -- leaderboard-read.integration.test.ts`
+  (3 live tests). The authenticated rank test runs against the local Edge
+  Runtime after a restart/warm-up and proves a caller outside the visible top
+  limit receives the correct rank.
 
 ## Conventions
 

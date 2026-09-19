@@ -27,7 +27,7 @@ The player claims offline gold, inspects the mine, upgrades the slowest stage, o
 
 ## UX Principles
 
-Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback and keeps future features discoverable without pretending their screens already exist.
+Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback; the Rewards item now opens the Step 29 leaderboard, while the remaining future-feature items stay discoverable without pretending their screens already exist.
 
 ## Base-Game Delivery Boundary
 
@@ -56,6 +56,13 @@ rare/blue, `SSR` super-super rare/purple, and `UR` ultra rare/gold. The current
 role/tier art will be created from a user-supplied role name, tier, and design
 reference. Different tier attributes are future design work: this catalog does
 not yet change the playable product, economy, state, save format, or UI.
+Animation fidelity is now part of the asset-only presentation contract: `N`/`R`
+cat roles use four frames in a `2x2` sheet, while `SR`/`SSR`/`UR` roles use
+eight frames in a `4x2` sheet with consistent `128x128` proportions and feet
+anchors. Mofy is the first applied SSR example; its eight poses add deliberate
+ledger inspection, grip adjustment, breathing, and recovery motion without
+changing gameplay or runtime selection. The marketplace portrait remains a
+single extracted frame for compatibility.
 
 Server-milestone Steps 4 through 7 landed between 2026-09-08 and 2026-09-09,
 closing Phase 1, and change nothing a player can see or do. They are
@@ -247,9 +254,10 @@ evidence that the player-facing promises above — a save that cannot be
 fabricated, a reward that cannot be clock-hacked, an account that cannot be
 stolen by replaying a code — are enforced rather than merely intended.
 
-Server-milestone Step 27 (2026-09-18) is also not player-visible — there is no
-leaderboard screen yet (Step 29) and nothing writes an entry yet (Step 28).
-What it settles is what a leaderboard will mean once it appears: ranking by
+Server-milestone Step 27 (2026-09-18) settled what the leaderboard means, and
+Step 28 (2026-09-18) started recording accepted progress. Step 29 (2026-09-19)
+now exposes the first player-facing leaderboard screen from the Rewards tab;
+its validation gate remains open. The board ranks by
 **lifetime gold earned**, which only ever rises, rather than a player's
 current spendable balance, which falls every time they buy an upgrade — so a
 patient, heavily-invested player is never shown ranked below someone who
@@ -258,13 +266,13 @@ toward it is permanent, the way every other number in this game is. A tie
 ranks whoever reached that total first, which rewards being ahead of the
 curve rather than merely catching up to it later.
 
-Server-milestone Step 28 (2026-09-18) starts actually recording that ranking —
-every accepted cloud save now publishes the player's current standing — but
-is still not player-visible, because there is still no leaderboard screen
-(Step 29). The player-facing promise this settles for later: only progress the
-server has already verified (past Step 23's bound) can ever reach the board,
-so a rejected or tampered save can never inflate a rank the way it could never
-inflate a cloud save.
+Step 29's player-facing promise is that the board shows exact large-number
+values, the caller's own rank when signed in, and a retryable offline state
+without blocking the mine. Only progress the server has already verified (past
+Step 23's bound) can reach the board, so a rejected or tampered save can never
+inflate a rank the way it could never inflate a cloud save. The all-time
+verified leaderboard supplies asynchronous competition for the current social
+goal; Step 30 therefore defers a friend graph.
 
 Server-milestone Step 30 (2026-09-19) defers a friend graph. The all-time
 verified leaderboard already supplies asynchronous competition for the current
