@@ -1,6 +1,9 @@
-# Marketplace v1 — Draft Specification
+# Marketplace v1 — Approved Draft Specification
 
-**Status:** Draft for product review; not indexed in `memory-bank/INDEX.md`.
+**Status:** Approved draft for implementation planning, 2026-09-19. The
+story, v1 attributes, role-score model, and availability rules are approved as
+the working contract; balance coefficients still require deterministic tests
+and playtesting before production lock.
 
 **Purpose:** Define the first product and simulation contract for cats listed
 on the marketplace. This document covers the story, attributes, role skills,
@@ -386,4 +389,3 @@ accepted:
 - The cat state rules prevent simultaneous assignment and listing.
 - The product accepts the proposed maximum bonus range as a balance starting
   point for playtesting.
-

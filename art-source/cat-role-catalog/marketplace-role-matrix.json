@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "status": "approved-phase-0",
+  "approvedAt": "2026-09-19",
+  "story": "The Cat Miners Guild certifies mine specialists and records the role, rarity, attributes, and skill profile shown on a marketplace listing.",
+  "rarityTiers": ["N", "R", "SR", "SSR", "UR"],
+  "attributeKeys": ["power", "speed", "capacity", "efficiency"],
+  "roles": [
+    {
+      "roleId": "elevator",
+      "displayName": "Elevator",
+      "assetFamilyId": "elevator-cargo-cat",
+      "marketplaceV1": true,
+      "runtimeDisplaySize": 50,
+      "storyRead": "A compact cargo steward who keeps the shared elevator moving and carries the mine's output safely.",
+      "primarySkill": "Lift Mastery",
+      "primaryBenefit": "Elevator throughput and cycle rate",
+      "weights": {
+        "power": 0.1,
+        "speed": 0.45,
+        "capacity": 0.3,
+        "efficiency": 0.15
+      }
+    },
+    {
+      "roleId": "warehouse",
+      "displayName": "Warehouse",
+      "assetFamilyId": "warehouse-manager",
+      "marketplaceV1": true,
+      "runtimeDisplaySize": 56,
+      "storyRead": "An inventory specialist who receives, sorts, and processes the mine's incoming value.",
+      "primarySkill": "Storage Mastery",
+      "primaryBenefit": "Warehouse processing rate",
+      "weights": {
+        "power": 0.1,
+        "speed": 0.25,
+        "capacity": 0.4,
+        "efficiency": 0.25
+      }
+    },
+    {
+      "roleId": "miner",
+      "displayName": "Miner",
+      "assetFamilyId": "miner",
+      "marketplaceV1": true,
+      "runtimeDisplaySize": 75,
+      "storyRead": "An underground extraction specialist who increases the mine's useful output.",
+      "primarySkill": "Mining Mastery",
+      "primaryBenefit": "Mining yield rate",
+      "weights": {
+        "power": 0.45,
+        "speed": 0.3,
+        "capacity": 0.05,
+        "efficiency": 0.2
+      }
+    }
+  ],
+  "futureRoles": [
+    {
+      "roleId": "unloader",
+      "displayName": "Unloader",
+      "assetFamilyId": "unloader",
+      "marketplaceV1": false,
+      "runtimeDisplaySize": 75,
+      "storyRead": "A floor-head receiving attendant who accepts cargo at the end of an underground route.",
+      "reasonDeferred": "Keep the receiving job distinct from the Marketplace v1 Miner extraction role until a separate role profile is approved."
+    }
+  ],
+  "supportAssets": [
+    {
+      "assetId": "surface-elevator-tower",
+      "assetFamilyId": "surface-elevator-tower",
+      "marketplaceV1": false,
+      "kind": "environment-prop",
+      "reasonDeferred": "The tower communicates the mine world but is not an owned cat listing."
+    }
+  ],
+  "animationPolicy": {
+    "baseTiers": {
+      "rarityTiers": ["N", "R"],
+      "grid": "2x2",
+      "frameCount": 4,
+      "frameSize": "128x128"
+    },
+    "premiumTiers": {
+      "rarityTiers": ["SR", "SSR", "UR"],
+      "grid": "4x2",
+      "frameCount": 8,
+      "frameSize": "128x128"
+    }
+  }
+}

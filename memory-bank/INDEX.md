@@ -28,6 +28,8 @@ A `PreToolUse` hook blocks whole-file reads of Memory Bank files over
 | `projectbrief.md` | 1k | You need the one-paragraph "what is this". |
 | `tech-stack.md` | 1k | Choosing or changing a dependency. |
 | `productContext.md` | 3k | Player-facing intent, why a feature exists. |
+| `marketplace-spec-v1-draft.md` | ~5k | Approved Marketplace v1 story, ownership states, attributes, role scores, skills, and derived benefits. Read when designing or implementing Marketplace behavior. |
+| `marketplace-asset-implementation-plan-draft.md` | ~6k | Approved Marketplace asset phases, role taxonomy, asset registry, portrait catalog, 8-frame animation work, and validation gates. Read when producing or integrating Marketplace assets. |
 | `game-design-document.md` | 6k | Gameplay loop, systems, UI, economy, MVP scope. **Source of truth for scope.** |
 | `implementation-plan.md` | 6k | The 37 base-game steps and their gates. **Source of truth for scope.** |
 | `server-save-sync-protocol.md` | 7k | Touching save upload/download, revisions, conflicts, `409`. |

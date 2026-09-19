@@ -10,6 +10,16 @@ standard deviation is 0.00076. This remains asset-only and is not runtime
 integrated. `public/assets/marketplace/mofy.png` stays a single extracted idle
 frame for the existing portrait consumer.
 
+**Marketplace asset implementation, Phase 0 complete 2026-09-19.** The role
+taxonomy gate is now recorded in
+`art-source/cat-role-catalog/marketplace-role-matrix.json`: v1 contains
+Elevator, Warehouse, and a dedicated Miner family; Unloader remains a separate
+future role. The matrix pins the four v1 attributes, role weights, runtime
+display sizes, and the 2×2/4-frame versus 4×2/8-frame animation policy. Phase 0
+verification passed the focused role-matrix suite (6 tests), all 702 unit
+tests, lint, build, and the three Marketplace browser tests. Phase 1 has not
+started.
+
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31
 is also implemented but remains unvalidated; Step 32 has not started and must
@@ -573,26 +583,33 @@ Decisions that still constrain code not yet written. Settled base-game decisions
   *(Corrected 2026-09-14: this decision previously read "Keep MVP client-only and
   exclude monetization, blockchain, and social systems," which the server
   milestone had already superseded.)*
+- Marketplace v1 keeps `Miner` as a dedicated extraction role and keeps
+  `Unloader` separate as a floor-head receiving role. The asset family
+  `miner` is therefore a future production input for Marketplace v1; existing
+  `unloader` candidates must not be silently repurposed.
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 31.** This is the current gate; Step 32
+1. **Marketplace asset Phase 1:** build the canonical asset registry and
+   normalize the current Marketplace portraits. Do not begin Phase 2 until its
+   asset/QC/UI regression gate passes.
+2. **Wait for the user to validate Step 31.** This is the current gate; Step 32
    must not start before it. The entitlement table is already in the schema,
    and the function is the only new server surface for this step.
-2. Resolve the earlier Step 28/Step 29 validation status before advancing the
+3. Resolve the earlier Step 28/Step 29 validation status before advancing the
    milestone's implementation sequence. **Step 24's L2 is closed by Step 25:** a `429` is
    refused before any
    `save_audit` row exists on the path, and an oversized body writes none
    either, so the 1-request-to-1-audit-write amplification no longer grows the
    table per refused request. Step 26 pins both under attack
    (`attack 9 / AC9` in `adversarial.integration.test.ts`).
-3. Validate the new account/settings and conflict chooser flow with a real
+4. Validate the new account/settings and conflict chooser flow with a real
    Google OAuth return and a two-device fork fixture. The local UI and choice
    handlers are implemented; live identity redirects remain environment work.
-4. The Step 23 N1 limit (a fork older than ~2 minutes against an actively-syncing
+5. The Step 23 N1 limit (a fork older than ~2 minutes against an actively-syncing
    peer is refused) needs a real fix — retain fork points, or accept a
    verifiable fork revision. Not scheduled.
-5. Non-blocking carry-overs from the base-game milestone: a physical mid-range
+6. Non-blocking carry-overs from the base-game milestone: a physical mid-range
    Android Chrome pass, and a human playtest of the 30-second-comprehension
    criterion.
 

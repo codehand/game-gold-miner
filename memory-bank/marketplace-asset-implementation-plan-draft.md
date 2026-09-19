@@ -1,7 +1,13 @@
-# Marketplace Asset Implementation Plan — Draft
+# Marketplace Asset Implementation Plan — Approved Draft
 
-**Status:** Draft for product and art review; not indexed in
-`memory-bank/INDEX.md`.
+**Status:** Approved draft for implementation planning, 2026-09-19. The phase
+sequence, asset gates, role-taxonomy gate, and premium 8-frame requirements are
+approved as the working plan; individual asset approval remains subject to the
+phase validation gates.
+
+**Execution status:** Phase 0 — complete and verified 2026-09-19. Phase 1 —
+not started. No later phase may begin until its predecessor's validation gate
+passes.
 
 **Scope:** Asset production and asset-facing integration for Marketplace v1.
 This plan covers portraits, role/attribute presentation, premium animation
@@ -563,4 +569,3 @@ The asset implementation plan is ready to execute when:
 - The 8-frame list is approved, including which candidates are catalog-only.
 - The product accepts portrait-first Marketplace integration.
 - Runtime replacement remains a separate approval gate.
-
