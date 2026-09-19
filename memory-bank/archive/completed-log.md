@@ -1,5 +1,16 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Server milestone Steps 33–37 implementation close
+
+Closed the operations phase after the account deletion, backup/restore,
+monitoring, and load/performance gates passed. The final client and server
+verification evidence is recorded in `progress.md`; README, CLAUDE, the server
+plan, architecture, technical context, product context, and live progress now
+describe the same local server milestone. No production deployment or secret
+was introduced. The final Step 36 client benchmark ran for 600,000 ms under
+Pixel 5/Chrome 4× CPU emulation and passed its frame, memory, scene-graph, and
+input budgets.
+
 ## 2026-09-19 — Server milestone Steps 34–36: operations evidence
 
 Step 34 added `scripts/backup-restore-drill.mjs`, `ops/backup-policy.md`, and

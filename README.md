@@ -9,8 +9,8 @@ sequential floor unlocks, and receives a capped reward for time spent away.
 The game runs in a mobile browser at a fixed 360×640 portrait logical viewport.
 **The playable game stays fully playable offline** — no account or cloud save is
 required on any path; it boots, plays, and saves entirely in IndexedDB even with
-no network at all. A separate server milestone is under way in
-`memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
+no network at all. The server milestone is implemented locally and documented
+in `memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
 `supabase/`, holds the six original designed tables plus the Step 32 account
 audit table and Step 33 deletion policy with row-level security, and its
 `save-sync` Edge Function accepts a real upload and download
@@ -172,7 +172,7 @@ IndexedDB transaction may not commit before teardown.
 **Any change to the save shape must bump the schema version and add a migration
 plus tests.**
 
-## Local server stack (server milestone, in progress)
+## Local server stack (server milestone implementation complete)
 
 The playable game does not use this. It exists for the milestone in
 `memory-bank/server-milestone-plan.md`, whose design documents are

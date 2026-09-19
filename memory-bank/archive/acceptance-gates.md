@@ -7,6 +7,21 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Server milestone Steps 33–37 — implementation close 2026-09-19
+
+Steps 33–36 have recorded green implementation gates: exhaustive account/data
+deletion with 30-day audit anonymization, a real seven-table backup/restore
+drill, deliberate monitoring failure alerts, and a real 20-player save-sync
+load run with latency/throughput/re-simulation budgets. Step 37 closes the
+documentation audit: `npm run verify` passes with 700 unit tests, 52 E2E tests,
+build, secret scan, and 10 production smoke tests; `npm run verify:server`
+passes with 198 Deno unit tests, 21 integration files / 134 tests, and 9
+server-E2E tests. Both database-schema copies remain identical, and local
+documentation explicitly states that no hosted production deployment or
+credentials exist. The full 600,000 ms client performance benchmark also
+passes at 16.7 ms frame p95 with constant 695 Phaser objects and 399 DOM
+nodes. Earlier user-validation gates remain separately labeled.
+
 ## Server milestone Steps 34–36 — implementation gates passed 2026-09-19
 
 Step 34 `npm run backup:restore` ran a real custom-format public-schema dump

@@ -13,8 +13,9 @@ non-blocking anonymous-auth call at boot (`ensureGuestSession`) — it is never
 awaited before the first frame, and a failed or absent call leaves the game
 exactly as playable as before this step.
 
-A separate server milestone (`memory-bank/server-milestone-plan.md`) is in
-progress. Its local Supabase stack lives in `supabase/` — committed
+A separate server milestone (`memory-bank/server-milestone-plan.md`) is
+implemented locally through Step 37. Its local Supabase stack lives in
+`supabase/` — committed
 `config.toml`, forward-only migrations, save-sync/auth/leaderboard/entitlement/
 deletion Edge Functions, and seven public application tables including the
 append-only account audit. No production deployment exists. `.github/workflows/ci.yml`

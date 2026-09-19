@@ -2,7 +2,7 @@
 
 ## Current Status
 
-All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game and the server milestone layered over it. Server Steps 34–36 now have runnable backup, monitoring, and load evidence; Step 37 is the remaining documentation close. The IndexedDB database schema version remains 1; the save-document schema is version 2; the local Supabase schema contains seven public tables, with Step 33 deletion/anonymization and a 30-day audit-retention purge.
+All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game and the server milestone layered over it. Server Steps 33–36 have passed their implementation gates, and Step 37 closed the server documentation/evidence milestone on 2026-09-19. Earlier server steps that await user validation remain labeled in `progress.md`; no hosted production deployment or credentials are claimed. The IndexedDB database schema version remains 1; the save-document schema is version 2; the local Supabase schema contains seven public tables, with Step 33 deletion/anonymization and a 30-day audit-retention purge.
 
 ## Implemented Foundation
 
@@ -2043,9 +2043,12 @@ server bundle. The benchmark budgets are p95 ≤ 500 ms, throughput ≥ 20 uploa
 per second, and long-absence re-simulation ≤ 250 ms.
 
 The 2026-09-19 run passed 60 uploads at 104/135/238/241 ms min/p50/p95/max,
-48.48 uploads per second, and 49 ms for the 7,200,000 ms re-simulation. Sync
-remains a background path; the existing client performance suite owns the
-Phaser frame-budget assertion and must be run with the server gate.
+48.48 uploads per second, and 49 ms for the 7,200,000 ms re-simulation. The
+same gate's `npm run test:perf` client run passed for 600,000 ms with 15 floors,
+695 constant Phaser objects, 399 constant DOM nodes, 16.7 ms frame p95, 317,376
+bytes live-heap growth, a -385 bytes/second sustained heap slope, and 73.7 ms
+scroll-input p95. Sync remains a background path and does not block the Phaser
+frame budget.
 
 ### Guest linking and the identity collision (Step 13)
 

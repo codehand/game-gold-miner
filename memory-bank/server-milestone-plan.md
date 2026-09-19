@@ -565,10 +565,11 @@ awaiting user validation as one batch. Steps 25–27 are implemented, validated,
 and merged; Step 28 is implemented and awaiting validation. Step 29 is
 implemented and awaiting validation. Step 30 is deferred with its reason
 recorded in `progress.md`; Steps 31 and 32 are implemented and awaiting
-validation. Step 33 is implemented with its focused deletion/anonymization
-gate passed. Steps 34–36 are implemented with local evidence; Step 37 is the
-documentation close. Work proceeded under the user's explicit instruction
-despite the open earlier validation gates.**
+validation. Steps 33–36 have passed their implementation gates, and Step 37
+closed the server milestone documentation and evidence on 2026-09-19. Work
+proceeded under the user's explicit instruction despite the open earlier
+validation gates; those gates remain clearly labeled rather than being claimed
+as user-validated.**
 Step 21's iOS Safari seven-day deletion measurement is outstanding and needs a
 real device plus a seven-day observation (finding F8); the
 `navigator.storage.persist()` half is measured and recorded in

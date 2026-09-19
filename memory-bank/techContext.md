@@ -6,19 +6,23 @@ All 37 implementation-plan steps are complete and user-validated; the user valid
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
-The post-milestone server milestone is in progress at the Step 34 implementation
-gate. Steps 34–36 now have runnable local evidence: a custom-format public-schema
-backup/restore drill, threshold-based health/error monitoring with a deliberate
-failure test, and a real concurrent save-sync load benchmark. The leaderboard
+The post-milestone server milestone's implementation is closed through Step 37
+on 2026-09-19. Steps 33–36 have runnable local evidence: account deletion and
+audit anonymization, a custom-format public-schema backup/restore drill,
+threshold-based health/error monitoring with a deliberate failure test, and a
+real concurrent save-sync load benchmark. The leaderboard
 display uses a read-only Edge Function boundary because
 the browser may read public board columns but cannot select
 `leaderboard_entries.user_id`; the UI formats the table's exact `GameNumber`
 strings through the existing `formatAmount` authority and degrades to a
 retryable offline state. Step 32 adds the server-only account audit timeline;
-Step 33 now adds authenticated account deletion, audit anonymization, and a
+Step 33 adds authenticated account deletion, audit anonymization, and a
 30-day purge boundary. Step 31 and Step 32 remain implemented but await user
-validation; Step 33's focused implementation gate is green. Step 37 still needs
-the final server documentation/README close.
+validation; Steps 33–37 have closed implementation gates. The repository has
+no hosted production deployment or production credentials. The final Step 36
+client benchmark ran for 600,000 ms under Pixel 5/Chrome 4× CPU emulation and
+passed with 16.7 ms frame p95, constant 695 Phaser objects, constant 399 DOM
+nodes, and 73.7 ms scroll-input p95.
 
 ## Approved Direction
 

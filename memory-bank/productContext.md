@@ -311,9 +311,10 @@ separate recovery domains. Step 35 adds health, server-error, save-rejection,
 and auth-failure alerts with a deliberate-failure test. Step 36 measures the
 server path at the recorded prototype scale without putting network work in
 the Phaser frame loop; the client remains responsive and offline-capable while
-sync is performed in the background. Step 37 will close the milestone by
-making these local operations and their production hand-off discoverable from
-the repository documentation.
+sync is performed in the background. Step 37 closes the implementation
+milestone by making these local operations and their production hand-off
+discoverable from the repository documentation; it does not claim that a
+hosted production project or credentials exist.
 
 ## Closed incident reports
 

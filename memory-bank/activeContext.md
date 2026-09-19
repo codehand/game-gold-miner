@@ -10,10 +10,13 @@ standard deviation is 0.00076. This remains asset-only and is not runtime
 integrated. `public/assets/marketplace/mofy.png` stays a single extracted idle
 frame for the existing portrait consumer.
 
-**Server milestone, at the Step 37 documentation close — Step 29 (leaderboard
-display), Step 31 (entitlements), and Step 32 (audit) remain implemented but
-await user validation. Step 33 account/data deletion is implemented and its
-focused local gate is green; Steps 34–36 have green local evidence.**
+**Server milestone implementation close, 2026-09-19.** Steps 33–37 are
+implemented and their local gates are green: account/data deletion, backup and
+restore, monitoring, load/performance, and the final documentation audit. The
+repository does not claim a hosted production deployment or production
+credentials. Earlier server steps that were explicitly implemented-but-awaiting
+user validation remain labeled below; that is a validation status, not an open
+implementation task.
 
 **Step 34 evidence (2026-09-19).** `npm run backup:restore` performed a real
 custom-format `pg_dump --schema=public` from `supabase_db_cat-mine-idle`,
@@ -37,6 +40,12 @@ min/p50/p95/max latency 104/135/238/241 ms, throughput 48.48 uploads/second,
 and 49 ms for the 7,200,000 ms maximum long-absence re-simulation. The script
 asserts p95 ≤ 500 ms, throughput ≥ 20 uploads/second, and re-simulation ≤ 250
 ms; sync remains outside the client Phaser frame loop.
+
+The same Step 36 gate's client benchmark also passed with `npm run test:perf`:
+the full 600,000 ms Pixel 5/Chrome 4×-CPU run held 15 unlocked floors, 695
+Phaser objects, 399 DOM nodes, 16.7 ms frame p95, 317,376 bytes live-heap
+growth, -385 bytes/second sustained slope, and 73.7 ms scroll-input p95. The
+budget assertions passed, including the two-vsync stall rate.
 
 Step 29 adds the public `leaderboard-read` Edge Function and the Rewards-tab
 leaderboard modal. Public requests receive the top lifetime-gold rows; an
@@ -621,11 +630,10 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Implement Step 34 backup/restore.** Step 33's deletion/anonymization
-   implementation gate is green locally; the next gate is a real backup restore
-   into a scratch database with measured duration and loss.
-2. Resolve the earlier Step 28/Step 29/Step 31/Step 32 validation status before advancing the
-   milestone's implementation sequence. **Step 24's L2 is closed by Step 25:** a `429` is
+1. No server implementation step remains open after the Step 37 close. The
+   remaining work is user validation of the earlier gates explicitly marked as
+   awaiting validation in `progress.md`.
+2. **Step 24's L2 is closed by Step 25:** a `429` is
    refused before any
    `save_audit` row exists on the path, and an oversized body writes none
    either, so the 1-request-to-1-audit-write amplification no longer grows the

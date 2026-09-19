@@ -6,7 +6,7 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 37 documentation close.** Steps 1–8
+**Server milestone implementation: complete through Step 37 (2026-09-19).** Steps 1–8
 are validated.
 Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–24 are implemented and await
 user validation together. Steps 25, 26, and 27 are each implemented, validated,
@@ -16,9 +16,8 @@ awaiting user validation. Step 30 is recorded as a documentation-only
 deferral: the verified leaderboard is sufficient for the current social goal,
 so no friend graph is needed. **Step 31 is implemented and awaiting user
 validation; Step 32 is implemented and awaiting validation under the user's
-explicit instruction to proceed. Step 33 is implemented with a green focused
-local gate. Steps 34–36 are implemented with green local evidence; Step 37 is
-the final documentation/README/CLAUDE close.**
+explicit instruction to proceed. **Steps 33–37 have completed implementation
+gates with recorded evidence; Step 37 is now closed.**
 Phase 4 (Steps 22–26) is complete, validated by Step 26's own gate evidence
 below.
 
@@ -157,7 +156,20 @@ seeds every account-owned path, invokes deletion with a malicious body id, and
 proves the correct Auth row and all ordinary rows are gone while anonymized
 audit rows remain for exactly 30 days. The six-test Edge Function unit suite,
 database reset, focused four-test integration suite, client RPC refusal, and
-schema invariant probe pass. Step 33's gate is closed; Step 34 is active.
+schema invariant probe pass. Step 33's implementation gate is closed.
+
+**Step 37 close evidence (2026-09-19).** The client gate passes with lint, 700
+unit tests, 52 Chromium E2E tests, production build, secret scan, and 10
+production smoke tests. The server gate passes with 198 Deno unit tests, 21
+integration files / 134 tests, and 9 server-E2E tests. The database schema
+blocks in `architecture.md` and `techContext.md` remain identical; `git
+diff --check` passes; and README/CLAUDE document local client/server startup,
+operations drills, and the explicit absence of production deployment. The
+final navigation E2E regression for the Leaderboard modal passes for both
+mouse and touch. The Step 36 client performance benchmark also passes its full
+600,000 ms Pixel 5/Chrome 4×-CPU run: 16.7 ms frame p95, 695 constant Phaser
+objects, 399 constant DOM nodes, 317,376 bytes live-heap growth, -385
+bytes/second sustained heap slope, and 73.7 ms input p95.
 
 Full history is archived, not deleted:
 
@@ -192,9 +204,9 @@ untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 34 — backup and restore.** Step 33's focused implementation gate passed 2026-09-19. |
-| Blocked on the gate | Step 34 onward until the restore drill is recorded; Step 31, Step 32, and earlier open gates remain recorded |
-| Last validated step | Step 8 (user validation on 2026-09-10) |
+| Current gate | No server implementation gate is open; Steps 33–37 are closed with local evidence. |
+| Blocked on the gate | Nothing in Steps 33–37; earlier implemented-but-awaiting-user-validation gates remain explicitly recorded. |
+| Last user-validated step | Step 8 (2026-09-10); implementation evidence continues through Step 37. |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
 
@@ -237,15 +249,15 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 26 — Adversarial suite | Implemented 2026-09-17; validated and merged — Step 27 released against it |
 | 27 — Leaderboard storage | Implemented 2026-09-18; validated and merged — Step 28 released against it |
 | 28 — Leaderboard writes | Implemented 2026-09-18; awaiting validation |
-| 29 — Leaderboard display | **Implemented 2026-09-19; awaiting validation — current gate** |
+| 29 — Leaderboard display | Implemented 2026-09-19; awaiting user validation |
 | 30 — Decide on friends | Deferred 2026-09-19; decision recorded |
 | 31 — Entitlements | Implemented 2026-09-19; awaiting validation |
 | 32 — Audit log | Implemented 2026-09-19; awaiting validation |
-| 33 — Account and data deletion | Implemented 2026-09-19; focused gate passed | account-delete, forward-only deletion migration, 30-day anonymized audit retention/purge, exhaustive seven-table deletion integration test, and direct Auth-cascade regression. |
-| 34 — Backup and restore | Implemented 2026-09-19; gate passed | `npm run backup:restore`: custom dump 35,888 bytes; seven public tables and row counts matched; backup 60 ms, restore 105 ms, total 2,833 ms; public schema restored, Auth internals/sessions/runtime caches/secrets explicitly excluded. |
-| 35 — Monitoring | Implemented 2026-09-19; gate passed | `monitoring-check.mjs` covers health, error rate, save-rejection rate, and auth-failure rate; healthy fixture exits 0 and deliberately induced failure exits 2 with all four alerts. |
-| 36 — Load and performance | Implemented 2026-09-19; gate passed | 20 concurrent real anonymous users × 3 rounds: 60 uploads, p95 238 ms, 48.48 uploads/second, 49 ms for 7,200,000 ms re-simulation; budgets are asserted. |
-| 37 — Close the milestone | In progress | README.md and CLAUDE.md now document the server stack and operational commands; finish full verification and archive the close. |
+| 33 — Account and data deletion | Implementation gate passed 2026-09-19; details are in `archive/step-implementation-map.md`. |
+| 34 — Backup and restore | Implementation gate passed 2026-09-19; details are in `archive/step-implementation-map.md`. |
+| 35 — Monitoring | Implementation gate passed 2026-09-19; details are in `archive/step-implementation-map.md`. |
+| 36 — Load and performance | Implementation gate passed 2026-09-19; details are in `archive/step-implementation-map.md`. |
+| 37 — Close the milestone | Complete 2026-09-19; full verification, schema identity, deferred scope, and documentation evidence are archived. |
 
 ## Known Risks
 

@@ -39,6 +39,15 @@ Not part of the contract. Open it when you need the provenance of one step.
   user link or detail. Migration reset, 6/6 unit tests, 4/4 focused integration
   tests, direct client-RPC refusal, and the schema invariant probe pass.
 
+- 2026-09-19 server-milestone Step 37: closed the implementation milestone
+  after Steps 33–36's recorded evidence and the final client/server gates
+  passed. README.md and CLAUDE.md document local startup and operations,
+  architecture.md and techContext.md retain identical complete schema blocks,
+  and the absence of hosted production credentials is explicit. The final
+  600,000 ms Pixel 5/Chrome 4×-CPU client benchmark passes its frame, memory,
+  scene-graph, and input budgets. Earlier user-validation gates remain labeled
+  as such rather than being overstated.
+
 ## Server milestone — per-step records
 
 - 2026-09-08 server-milestone Step 3: designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — and documented all 42 columns with every type, default, nullability, key, constraint, index, and relationship, plus the row-level-security matrix and the rule for storing a `GameNumber`. The same block is written byte-identically into both required files, which is what the step's test asks a reviewer to confirm. Nothing was created: no migration exists and no database holds it. Step 5 lands the migrations.
