@@ -561,11 +561,19 @@ documentation alone.
 ## Status
 
 **Steps 1–8 validated. Step 11 cut. Steps 9, 10, and 12–24 implemented and
-awaiting user validation as one batch. Step 24 is the current gate: Step 25
-must not begin until the user validates it.** Step 21's iOS Safari seven-day
-deletion measurement is outstanding and needs a real device plus a seven-day
-observation (finding F8); the `navigator.storage.persist()` half is measured
-and recorded in `techContext.md`.
+awaiting user validation as one batch. Steps 25–27 are implemented, validated,
+and merged; Step 28 is implemented and awaiting validation. Step 29 is
+implemented and awaiting validation. Step 30 is deferred with its reason
+recorded in `progress.md`; Steps 31 and 32 are implemented and awaiting
+validation. Steps 33–36 have passed their implementation gates, and Step 37
+closed the server milestone documentation and evidence on 2026-09-19. Work
+proceeded under the user's explicit instruction despite the open earlier
+validation gates; those gates remain clearly labeled rather than being claimed
+as user-validated.**
+Step 21's iOS Safari seven-day deletion measurement is outstanding and needs a
+real device plus a seven-day observation (finding F8); the
+`navigator.storage.persist()` half is measured and recorded in
+`techContext.md`.
 
 The canonical step-status table lives in `progress.md`
 (`## Server Milestone Step Status`) — this file no longer keeps a second copy
@@ -613,9 +621,11 @@ changing the economy, the absence of any XSS/CSP step, the unspecified cloud
 upload cadence that drives cost and rate limits (Steps 2, 19, 25, 36), the Apple
 Developer Program membership and verified domain that Step 11 needs and the
 budget did not contain, the seven-day observation window Step 21's measurement
-actually requires, and the absence of any concrete entitlement for Step 31 to
-grant. **F5, the missing XSS/CSP step, is the one item left genuinely open**,
-because closing it means adding a step and that is the user's decision.
+actually requires, and, before Step 31, the absence of any concrete entitlement
+for it to grant. Step 31 now settles that default as the server-owned
+`cosmetic.supporter_badge` entitlement. **F5, the missing XSS/CSP step, is the
+one item left genuinely open**, because closing it means adding a step and that
+is the user's decision.
 
 ## Related open item outside this plan
 

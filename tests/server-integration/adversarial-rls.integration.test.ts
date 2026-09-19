@@ -25,11 +25,11 @@ import { createServiceRoleClient } from './serviceRoleFixture';
  *
  * The existing `saves-rls` and `profiles-rls` suites are partial coverage —
  * two tables, and hand-written cases. This suite makes the matrix
- * **exhaustive and derived** (AC7): six tables × four verbs × two client
+ * **exhaustive and derived** (AC7): seven tables × four verbs × two client
  * roles, with the table list, the probe column per table, and the expected
  * outcome of every cell all computed from the migrations by
  * `rlsMatrixFixture.ts`. Nothing in this file names a table, a verb, or a
- * column by hand, which is what stops a seventh table from being silently
+ * column by hand, which is what stops an eighth table from being silently
  * uncovered.
  *
  * ## Why this must run against the real stack (constraint 4)
@@ -108,6 +108,8 @@ function seededRowFor(table: string, userId: string, randomHex: string): Record<
       };
     case 'entitlements':
       return { user_id: userId, entitlement_key: 'cosmetic.supporter_badge', granted_by: 'rls-probe' };
+    case 'account_audit':
+      return { user_id: userId, event_type: 'save_rejected', actor_type: 'user', detail: null };
     default:
       throw new Error(
         `adversarial-rls: no seed defined for public.${table}. A new table needs one here, or its matrix cells would be probed with no valid filter value.`,
@@ -207,14 +209,15 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
   /**
    * A regression guard for the derivation itself, not a substitute for it.
    *
-   * The matrix below is built from the migrations, so a seventh table is
+   * The matrix below is built from the migrations, so an eighth table is
    * covered automatically rather than missed. This asserts the reader still
-   * sees the six tables the schema defines today, so a migration that renames
+   * sees the seven tables the schema defines today, so a migration that renames
    * or drops one — or a parser gap that silently starts returning fewer
    * tables — goes red instead of shrinking the matrix without a word.
    */
-  it('the derived table list still holds the six tables the schema defines', () => {
+  it('the derived table list still holds the seven tables the schema defines', () => {
     expect(tables.map((table) => table.name).sort()).toEqual([
+      'account_audit',
       'entitlements',
       'leaderboard_entries',
       'profiles',
@@ -317,12 +320,12 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
   });
 
   /**
-   * The two tables the Step 3 matrix gives no policy at all — asserted by name
+   * The server-only tables the schema gives no policy at all — asserted by name
    * so the derived matrix above cannot pass merely by having no cells for
    * them.
    */
-  it('leaves save_audit and recovery_codes with no client access beyond a filtered empty read', async () => {
-    for (const table of ['save_audit', 'recovery_codes']) {
+  it('leaves account_audit, save_audit, and recovery_codes with no client access beyond a filtered empty read', async () => {
+    for (const table of ['account_audit', 'save_audit', 'recovery_codes']) {
       for (const role of CLIENT_ROLES) {
         const response = await postgrest(
           role,

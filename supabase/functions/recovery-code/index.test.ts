@@ -43,6 +43,9 @@ function noopDeps(overrides: Partial<RecoveryCodeDeps> = {}): RecoveryCodeDeps {
     mintSessionForUser: async () => {
       throw new Error('mintSessionForUser should not have been called');
     },
+    writeAuditEvent: async () => {
+      throw new Error('writeAuditEvent should not have been called');
+    },
     // Step 25: permissive by default, so every test that predates this step
     // keeps exercising its own subject rather than a bucket.
     checkRedemptionRateLimit: async () => ({ allowed: true, retryAfterSeconds: 0 }),
@@ -366,6 +369,44 @@ Deno.test('handleRedeem does not revert the redemption on a successful mint', as
 
   assert.equal(response.status, 200);
   assert.equal(revertCalled, false);
+});
+
+Deno.test('handleRedeem records a redemption only after a successful mint', async () => {
+  let seen: unknown = null;
+  const response = await handleRequest(
+    redeemRequest({ code: 'a'.repeat(32) }),
+    noopDeps({
+      redeemRecoveryCode: async () => ({ status: 'redeemed', userId: FIXTURE_USER_ID }),
+      mintSessionForUser: async () => ({ status: 'minted', tokenHash: 'a-real-token-hash' }),
+      writeAuditEvent: async (event) => {
+        seen = event;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(seen, {
+    eventType: 'recovery_code_redeemed',
+    userId: FIXTURE_USER_ID,
+    actorType: 'user',
+    detail: null,
+  });
+});
+
+Deno.test('handleRedeem keeps a successful recovery successful when audit logging fails', async () => {
+  const response = await handleRequest(
+    redeemRequest({ code: 'a'.repeat(32) }),
+    noopDeps({
+      redeemRecoveryCode: async () => ({ status: 'redeemed', userId: FIXTURE_USER_ID }),
+      mintSessionForUser: async () => ({ status: 'minted', tokenHash: 'a-real-token-hash' }),
+      writeAuditEvent: async () => {
+        throw new Error('simulated audit outage');
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { tokenHash: 'a-real-token-hash' });
 });
 
 Deno.test('handleRedeem answers 200 with only a tokenHash on a successful redemption', async () => {

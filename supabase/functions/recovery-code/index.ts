@@ -333,6 +333,16 @@ export type MintSessionForUser = (userId: string) => Promise<MintSessionResult>;
  */
 export type RevertRecoveryCodeRedemption = (canonicalCode: string) => Promise<void>;
 
+export interface AccountAuditEvent {
+  readonly eventType: 'recovery_code_redeemed';
+  readonly userId: string;
+  readonly actorType: 'user';
+  readonly detail: null;
+}
+
+/** The audit append is best-effort after a session has already been minted. */
+export type WriteAccountAuditEvent = (event: AccountAuditEvent) => Promise<void>;
+
 /**
  * Records one attempt and reports whether the caller may proceed, plus the
  * `Retry-After` to answer with when not. `address` is `null` when the caller
@@ -368,6 +378,7 @@ export interface RecoveryCodeDeps {
   readonly redeemRecoveryCode: RedeemRecoveryCode;
   readonly revertRecoveryCodeRedemption: RevertRecoveryCodeRedemption;
   readonly mintSessionForUser: MintSessionForUser;
+  readonly writeAuditEvent: WriteAccountAuditEvent;
   readonly checkRedemptionRateLimit: CheckRedemptionRateLimit;
   readonly checkGenerateRateLimit: CheckGenerateRateLimit;
   readonly readRedeemBody: ReadRedeemBody;
@@ -486,6 +497,22 @@ async function handleRedeem(
       console.error('recovery-code: reverting a failed redemption failed.', revertError);
     }
     return errorResponse(500, 'server_error', 'Could not mint a session.', { origin });
+  }
+
+  // The redemption row is claimed before the external GoTrue mint. Record the
+  // successful event only after that mint succeeds; a mint failure is reverted
+  // above and must not leave a false "redeemed" event behind. The session is
+  // already the player-facing result, so an audit outage must not turn a
+  // successful recovery into a response that invites an unrecoverable retry.
+  try {
+    await deps.writeAuditEvent({
+      eventType: 'recovery_code_redeemed',
+      userId: attempt.userId,
+      actorType: 'user',
+      detail: null,
+    });
+  } catch (error) {
+    console.error('recovery-code: writing redemption audit event failed.', error);
   }
 
   return jsonResponse(200, { tokenHash: minted.tokenHash }, origin);
@@ -656,6 +683,30 @@ async function revertRecoveryCodeRedemptionViaServiceRole(canonicalCode: string)
   }
 }
 
+async function writeAccountAuditEventViaServiceRole(event: AccountAuditEvent): Promise<void> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('recovery-code: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured.');
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { error } = await admin.rpc('record_account_audit_event', {
+    p_event_type: event.eventType,
+    p_user_id: event.userId,
+    p_actor_type: event.actorType,
+    p_detail: event.detail,
+  });
+
+  if (error) {
+    throw new Error(`recovery-code: writing account audit event failed: ${error.message}`);
+  }
+}
+
 /**
  * `generateLink({type:'magiclink', email})` finds-or-**creates** by email —
  * exactly what `telegram-sign-in` relies on, and exactly the trap here: a
@@ -796,6 +847,7 @@ const defaultDeps: RecoveryCodeDeps = {
   redeemRecoveryCode: redeemRecoveryCodeViaServiceRole,
   revertRecoveryCodeRedemption: revertRecoveryCodeRedemptionViaServiceRole,
   mintSessionForUser: mintSessionForUserViaGenerateLink,
+  writeAuditEvent: writeAccountAuditEventViaServiceRole,
   checkRedemptionRateLimit: (address) =>
     RECOVERY_CODE_RATE_LIMITERS.redemptionByAddress.check(addressRateLimitKey(address)),
   checkGenerateRateLimit: (userId) =>

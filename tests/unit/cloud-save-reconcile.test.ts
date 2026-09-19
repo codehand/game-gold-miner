@@ -305,6 +305,7 @@ describe('reconcileCloudSaveAtBoot', () => {
     expect(outcome.local.lastPlayedMs).toBe(localDocument.savedAtTimestampMs);
     expect(outcome.remote.document).toEqual(remoteDocument);
     expect(outcome.remote.lastPlayedMs).toBe(NOW_MS);
+    expect(outcome.remote.serverRevision).toBe(1);
     expect(storeActiveSave).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
   });

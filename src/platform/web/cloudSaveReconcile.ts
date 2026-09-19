@@ -255,7 +255,11 @@ export async function reconcileCloudSaveAtBoot(
       // IndexedDB, the remote document is carried back to the caller so the
       // player's eventual choice can apply it verbatim. §7.3: the save the
       // player did not choose is retained for the session.
-      return { kind: 'deferred-conflict', local: resolution.local, remote: resolution.remote };
+      return {
+        kind: 'deferred-conflict',
+        local: resolution.local,
+        remote: { ...resolution.remote, serverRevision: remote.revision },
+      };
     }
 
     // Step 21: no `onServerRevision` here. Arming the replica before this

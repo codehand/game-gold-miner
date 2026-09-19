@@ -6,13 +6,20 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 28 gate.** Steps 1–8 are validated.
+**Server milestone implementation: complete through Step 37 (2026-09-19).** Steps 1–8
+are validated.
 Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–24 are implemented and await
 user validation together. Steps 25, 26, and 27 are each implemented, validated,
-and merged in turn. Step 28 (leaderboard writes) is implemented and awaiting
-user validation; **Step 29 and the rest of Phase 5 are blocked until the user
-validates it.** Phase 4 (Steps 22–26) is complete, validated by Step 26's own
-gate evidence below.
+and merged in turn. Step 28 (leaderboard writes) remains implemented and
+awaiting user validation. Step 29 (leaderboard display) is implemented and
+awaiting user validation. Step 30 is recorded as a documentation-only
+deferral: the verified leaderboard is sufficient for the current social goal,
+so no friend graph is needed. **Step 31 is implemented and awaiting user
+validation; Step 32 is implemented and awaiting validation under the user's
+explicit instruction to proceed. **Steps 33–37 have completed implementation
+gates with recorded evidence; Step 37 is now closed.**
+Phase 4 (Steps 22–26) is complete, validated by Step 26's own gate evidence
+below.
 
 Step 26's own gate evidence is complete on a Docker-capable runner as of
 2026-09-18: `npm run verify` (682 unit, 52 e2e, build, secret scan, 10
@@ -59,8 +66,110 @@ implementer's sandbox could not run `npm install`, so `npm run verify` /
 `npm run verify:server` numbers are not recorded here — the validation gate's
 own run captures that evidence.**
 
+**Step 29 (leaderboard display), implemented 2026-09-19.** The new
+`leaderboard-read` Edge Function serves the public top lifetime-gold rows and,
+when a valid bearer token is supplied, the caller's own rank/value projection;
+the response never exposes `leaderboard_entries.user_id`. The authenticated rank
+uses paginated service-role reads and the established metric-desc/
+`updated_at`-asc ordering, avoiding an Edge Runtime discrepancy observed with
+PostgREST `count: 'exact', head: true` predicates. The client opens an accessible
+leaderboard modal from the Rewards navigation item, formats exact
+`GameNumber` values through the existing `formatAmount` authority, and shows a
+retryable offline state when the endpoint is unavailable. **The Step 29
+validation gate is open; Step 30 remains a documented deferral and Step 32 is
+implemented under the user's explicit instruction, with its validation gate
+open.**
+
+Evidence for this implementation: `npx --no-install deno test
+supabase/functions/leaderboard-read` (7 passing), the focused client unit run
+(85 passing), `npm run build`, `npm run lint`, and the focused Rewards-tab
+browser smoke all pass. The live `leaderboard-read` integration file passes
+3/3 tests against the restarted local Supabase stack.
+
 The playable game stays fully playable offline. The one network call on the boot
 path is `ensureGuestSession`, never awaited before the first frame.
+
+**2026-09-19 — asset catalog animation fidelity.** The approved presentation
+policy now uses 4-frame `2x2` sheets for `N`/`R` and 8-frame `4x2` sheets for
+`SR`/`SSR`/`UR`, with consistent 128×128 proportions and anchors. Mofy is the
+first applied SSR asset: its second row deliberately continues the ledger
+inspection, grip adjustment, breathing, and recovery motion instead of
+duplicating row 1. The 8-frame sheet passed strict raster QC, while the
+marketplace portrait remains a compatible single-frame extract. No runtime
+resolver or gameplay behavior changed.
+
+**2026-09-19 — player-facing account/settings feedback.** Added the HUD
+settings button and accessible account modal with guest/Google identity,
+version, login, logout-and-reset, and the cloud conflict policy's local-versus-
+cloud chooser. Local choice uses the conflict's server revision for one
+compare-and-swap upload; cloud choice adopts the remote document before reload.
+`npm run build`, `npm run lint`, `npm run test -- --run` (690 tests), and live
+in-app browser inspection pass.
+
+**Step 30 (decide on friends), documentation-only deferral, 2026-09-19.** The
+server milestone already provides asynchronous social competition through one
+verified all-time leaderboard. A friend graph is not required by the
+milestone's purpose or Definition of Done, so no friend table, relationship
+API, UI, or moderation surface is being added. Revisit only when a concrete
+product requirement defines discovery, privacy, blocking, and deletion
+semantics. **The Step 30 validation gate remains open; Step 29 and Step 32
+proceeded under the user's explicit instruction to continue. Step 32's own
+validation gate is open.**
+
+**Step 31 (entitlements), implemented 2026-09-19.** The existing
+`entitlements` table and own-row/no-write RLS policy from Step 3 are reused;
+there is no migration. `entitlement-check` verifies the caller's bearer token,
+reads active `cosmetic.supporter_badge` rows through the caller-scoped client,
+and returns `effects.supporterBadge`. Unit coverage has 8 tests; the live
+integration coverage has 4 tests proving client INSERT refusal, server-role
+grant visibility, and revocation. **The Step 31 validation gate is open.**
+
+**Step 32 (account audit), implemented 2026-09-19.** The new
+`public.account_audit` table is separate from high-volume `save_audit` and
+accepts only the seven specified event types. Database-owned triggers cover
+identity changes, recovery-code issuance, entitlement grants/revocations, and
+save rejections; successful recovery redemption is appended by `recovery-code`
+after external session minting through a service-only RPC. Client roles have no
+RLS policies, service-role insert excludes the timestamp column, and ordinary
+service-role update/delete are revoked. The integration test drives every event
+type and the derived RLS matrix covers both client roles across all four verbs.
+Available implementation checks pass: `supabase db reset`, `supabase db lint`,
+the migration privilege probe, and SQL transaction probes for the trigger
+events. The Deno/Vitest suites, lint, and build could not start in this
+workspace because `deno`, `vitest`, `eslint`, and `tsc` are not installed;
+therefore the validation gate remains open and no acceptance-gate entry has
+been added. A review regression also proves account deletion survives the
+cascaded identity-removal trigger, which records the event with a null link.
+
+**Step 33 (account and data deletion), implemented 2026-09-19.** The
+forward-only migration 20260919110000_account_deletion.sql adds the 30-day
+anonymized_at/retention_until invariant and indexed purge boundary. The
+authenticated account-delete Edge Function ignores body account ids and calls
+the service-only transactional delete_account(uuid) RPC. It scrubs audit
+detail and links, then deletes auth.users; existing cascades remove profiles,
+saves, save audits, recovery codes, leaderboard entries, and entitlements. A
+parent auth.users before-delete trigger also handles direct Auth-admin deletion
+ordering safely, and purge_expired_account_audit is service-only.
+
+The exhaustive integration test enumerates all seven public application tables,
+seeds every account-owned path, invokes deletion with a malicious body id, and
+proves the correct Auth row and all ordinary rows are gone while anonymized
+audit rows remain for exactly 30 days. The six-test Edge Function unit suite,
+database reset, focused four-test integration suite, client RPC refusal, and
+schema invariant probe pass. Step 33's implementation gate is closed.
+
+**Step 37 close evidence (2026-09-19).** The client gate passes with lint, 700
+unit tests, 52 Chromium E2E tests, production build, secret scan, and 10
+production smoke tests. The server gate passes with 198 Deno unit tests, 21
+integration files / 134 tests, and 9 server-E2E tests. The database schema
+blocks in `architecture.md` and `techContext.md` remain identical; `git
+diff --check` passes; and README/CLAUDE document local client/server startup,
+operations drills, and the explicit absence of production deployment. The
+final navigation E2E regression for the Leaderboard modal passes for both
+mouse and touch. The Step 36 client performance benchmark also passes its full
+600,000 ms Pixel 5/Chrome 4×-CPU run: 16.7 ms frame p95, 695 constant Phaser
+objects, 399 constant DOM nodes, 317,376 bytes live-heap growth, -385
+bytes/second sustained heap slope, and 73.7 ms input p95.
 
 Full history is archived, not deleted:
 
@@ -95,9 +204,9 @@ untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 28 — leaderboard writes.** Implemented 2026-09-18, awaiting user validation. |
-| Blocked on the gate | Step 29 (leaderboard display) and Steps 30–37 |
-| Last validated step | Step 8 (user validation on 2026-09-10) |
+| Current gate | No server implementation gate is open; Steps 33–37 are closed with local evidence. |
+| Blocked on the gate | Nothing in Steps 33–37; earlier implemented-but-awaiting-user-validation gates remain explicitly recorded. |
+| Last user-validated step | Step 8 (2026-09-10); implementation evidence continues through Step 37. |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
 
@@ -139,8 +248,16 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 25 — Abuse limits | Implemented 2026-09-17; validated and merged — Step 26 released against it |
 | 26 — Adversarial suite | Implemented 2026-09-17; validated and merged — Step 27 released against it |
 | 27 — Leaderboard storage | Implemented 2026-09-18; validated and merged — Step 28 released against it |
-| 28 — Leaderboard writes | Implemented 2026-09-18; awaiting validation — **current gate** |
-| 29–37 | Not started, blocked by the Step 28 gate |
+| 28 — Leaderboard writes | Implemented 2026-09-18; awaiting validation |
+| 29 — Leaderboard display | Implemented 2026-09-19; awaiting user validation |
+| 30 — Decide on friends | Deferred 2026-09-19; decision recorded |
+| 31 — Entitlements | Implemented 2026-09-19; awaiting validation |
+| 32 — Audit log | Implemented 2026-09-19; awaiting validation |
+| 33 — Account and data deletion | Implementation gate passed 2026-09-19; details are in `archive/step-implementation-map.md`. |
+| 34 — Backup and restore | Implementation gate passed 2026-09-19; details are in `archive/step-implementation-map.md`. |
+| 35 — Monitoring | Implementation gate passed 2026-09-19; details are in `archive/step-implementation-map.md`. |
+| 36 — Load and performance | Implementation gate passed 2026-09-19; details are in `archive/step-implementation-map.md`. |
+| 37 — Close the milestone | Complete 2026-09-19; full verification, schema identity, deferred scope, and documentation evidence are archived. |
 
 ## Known Risks
 
@@ -196,10 +313,6 @@ with the reason each one closed.
   event still needs the Step 14 recovery code.
   Recorded in `server-milestone-plan.md` as a base-game defect that the server
   milestone reduces but does not eliminate.
-- **The fork chooser has no production surface.** Protocol §7.3 assigns the
-  conflict-resolution chooser UI to Step 13, which shipped only a DEV hook;
-  Step 18 and Step 19 likewise park a genuine fork in `src/main.ts`'s
-  `pendingSaveConflict` session hook with no player-facing way to choose.
 - **Visual fidelity must not rely on copied art, audio, branding, or UI assets.**
   Standing rule for all future art work.
 - **Two verification items carried past the base-game milestone**, both

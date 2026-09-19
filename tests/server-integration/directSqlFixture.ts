@@ -91,6 +91,32 @@ export function runSqlAsSuperuser(sql: string): void {
   );
 }
 
+/** Runs a read-only query as the local Postgres superuser and returns `psql`'s
+ * unaligned, tuples-only output. This is intentionally a test-only escape
+ * hatch for catalog assertions and auth.users checks that PostgREST cannot
+ * express; application code must use the Edge Function path instead. */
+export function querySqlAsSuperuser(sql: string): string {
+  return execFileSync(
+    'docker',
+    [
+      'exec',
+      '-i',
+      readDbContainerName(),
+      'psql',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-q',
+      '-A',
+      '-t',
+      '-U',
+      'postgres',
+      '-d',
+      'postgres',
+    ],
+    { input: sql, encoding: 'utf8' },
+  ).trim();
+}
+
 /** Escapes a value for a single-quoted SQL literal. Test-fixture use only — never with untrusted input. */
 export function sqlLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;

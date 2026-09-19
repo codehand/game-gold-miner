@@ -7,6 +7,52 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Server milestone Steps 33–37 — implementation close 2026-09-19
+
+Steps 33–36 have recorded green implementation gates: exhaustive account/data
+deletion with 30-day audit anonymization, a real seven-table backup/restore
+drill, deliberate monitoring failure alerts, and a real 20-player save-sync
+load run with latency/throughput/re-simulation budgets. Step 37 closes the
+documentation audit: `npm run verify` passes with 700 unit tests, 52 E2E tests,
+build, secret scan, and 10 production smoke tests; `npm run verify:server`
+passes with 198 Deno unit tests, 21 integration files / 134 tests, and 9
+server-E2E tests. Both database-schema copies remain identical, and local
+documentation explicitly states that no hosted production deployment or
+credentials exist. The full 600,000 ms client performance benchmark also
+passes at 16.7 ms frame p95 with constant 695 Phaser objects and 399 DOM
+nodes. Earlier user-validation gates remain separately labeled.
+
+## Server milestone Steps 34–36 — implementation gates passed 2026-09-19
+
+Step 34 `npm run backup:restore` ran a real custom-format public-schema dump
+and restore into a fresh `postgres:17-alpine` container. All seven public table
+names and row counts matched. The dump was 35,888 bytes; backup took 60 ms,
+restore 105 ms, and the full drill took 2,833 ms including scratch startup.
+The evidence records public schema recovery and explicitly excludes Auth
+internals, sessions, identities, runtime caches, and secrets.
+
+Step 35's healthy monitoring fixture exited 0. Its deliberately failed fixture
+exited 2 and raised health, server-error-rate, save-rejection-rate, and
+auth-failure-rate alerts. Step 36's real local load drill used 20 concurrent
+anonymous players and 3 rounds each: 60 uploads, p95 238 ms, 48.48 uploads per
+second, and 49 ms for the maximum 7,200,000 ms re-simulation. The benchmark
+asserted p95 ≤ 500 ms, throughput ≥ 20 uploads/second, and re-simulation ≤ 250
+ms. These are implementation-gate results; earlier server user-validation
+gates remain recorded separately.
+
+## Server milestone Step 33 — implementation gate passed 2026-09-19
+
+The local Supabase database reset applied the new forward-only deletion
+migration. account-delete/index.test.ts passed 6/6. The focused
+account-audit.integration.test.ts passed 4/4 against the real Edge Runtime
+and database, including enumeration of all seven public application tables,
+seeding every account-owned table, malicious body-id isolation, complete Auth
+and ordinary-row deletion, anonymized audit retention, and direct Auth-cascade
+regression. A client token could not invoke the deletion RPC. The schema
+invariant probe found zero null-linked audit rows without retention metadata.
+This closes the Step 33 implementation gate; user validation of earlier open
+server gates remains separate.
+
 ## Implementation Step Status
 
 | Step | Status | Evidence |

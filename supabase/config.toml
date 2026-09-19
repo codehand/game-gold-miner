@@ -466,6 +466,22 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# Server-milestone Step 31: verifies the caller's bearer token by hand, reads
+# only active entitlement rows through that same caller-scoped token, and
+# derives the server-owned effect flags. It never carries the service-role key;
+# grants are written only by server-side code that bypasses RLS.
+[functions.entitlement-check]
+enabled = true
+verify_jwt = false
+
+# Server-milestone Step 29: returns the public lifetime-gold board and, when a
+# bearer token is supplied, the caller's own rank. The function keeps
+# `leaderboard_entries.user_id` server-side because the public table grant
+# deliberately withholds that column.
+[functions.leaderboard-read]
+enabled = true
+verify_jwt = false
+
 # Server-milestone Step 12: verifies Telegram Mini App `initData` by hand
 # (HMAC-SHA256 against `TELEGRAM_BOT_TOKEN`) and mints a session for the
 # caller — there is no bearer token to verify yet, since no caller is signed
@@ -481,6 +497,14 @@ verify_jwt = false
 # session is the entire point. `verify_jwt = false` means "this function
 # does its own auth per route," not "this function is open."
 [functions.recovery-code]
+enabled = true
+verify_jwt = false
+
+# Server-milestone Step 33: authenticates the bearer token inside the handler,
+# then invokes the service-only transactional deletion RPC. The request body
+# never supplies an account id, and the endpoint is not platform-JWT-gated so
+# it can return the shared JSON envelope for invalid credentials.
+[functions.account-delete]
 enabled = true
 verify_jwt = false
 

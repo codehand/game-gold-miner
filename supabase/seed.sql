@@ -18,7 +18,8 @@
 -- exists, so the fixture's `display_name` is applied with an `update`
 -- afterward instead.
 --
--- `saves`, `save_audit`, `leaderboard_entries`, and `entitlements` are left
+-- `saves`, `save_audit`, `leaderboard_entries`, `entitlements`, and
+-- `account_audit` are left
 -- unseeded on purpose: a fixture save document has to be a document the shared
 -- `src/persistence` validator would accept, which does not yet run on the
 -- server (Step 6), and inventing one by hand ahead of that code risks seeding

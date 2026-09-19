@@ -240,6 +240,7 @@ test('renders five icon buttons and acknowledges every click', async ({ page }) 
     (await canvas.getAttribute('data-bottom-navigation-items')) ?? '[]',
   ) as Array<{ key: string; bounds: Rect }>;
   let closes = 0;
+  let leaderboardCloses = 0;
 
   expect(items.map(({ key }) => key)).toEqual([
     'rewards',
@@ -275,7 +276,14 @@ test('renders five icon buttons and acknowledges every click', async ({ page }) 
       'data-bottom-navigation-press-count',
       String(index + 1),
     );
-    if (item.key === 'shop') {
+    if (item.key === 'rewards') {
+      await expect(page.getByTestId('leaderboard-offline')).toBeVisible();
+      await page.getByRole('button', { name: 'Close leaderboard' }).click();
+      await expect(canvas).toHaveAttribute(
+        'data-leaderboard-close-count',
+        String(++leaderboardCloses),
+      );
+    } else if (item.key === 'shop') {
       await page.getByRole('button', { name: 'Close marketplace' }).click();
       // `dialog.close()` queues its `close` event as a task, and
       // `MarketplaceModal`'s `#onClose()` callback — which re-enables

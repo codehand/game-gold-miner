@@ -2,9 +2,101 @@
 
 ## Current Focus
 
-**Server milestone, at the Step 28 validation gate — Step 28 (leaderboard
-writes) implemented 2026-09-18, awaiting user validation; Step 29 is blocked
-until the user validates it.**
+**Asset catalog update, 2026-09-19.** The SR+ animation policy is now applied
+to Mofy (`elevator-cargo-cat:SSR`): an exact 4×2 sheet with eight 128×128
+frames at 110 ms each. The processed sheet passed strict raster QC with zero
+empty, edge-touch, or clamped frames; body-scale CV is 0.01158 and anchor-Y
+standard deviation is 0.00076. This remains asset-only and is not runtime
+integrated. `public/assets/marketplace/mofy.png` stays a single extracted idle
+frame for the existing portrait consumer.
+
+**Server milestone implementation close, 2026-09-19.** Steps 33–37 are
+implemented and their local gates are green: account/data deletion, backup and
+restore, monitoring, load/performance, and the final documentation audit. The
+repository does not claim a hosted production deployment or production
+credentials. Earlier server steps that were explicitly implemented-but-awaiting
+user validation remain labeled below; that is a validation status, not an open
+implementation task.
+
+**Step 34 evidence (2026-09-19).** `npm run backup:restore` performed a real
+custom-format `pg_dump --schema=public` from `supabase_db_cat-mine-idle`,
+restored it with `pg_restore` into a fresh `postgres:17-alpine` container, and
+matched all seven public table names and row counts. The dump was 35,888 bytes;
+backup took 60 ms, restore 105 ms, and total drill time was 2,833 ms including
+scratch startup. Only the public application schema was restored: Auth
+internals, sessions, identities, runtime caches, and secrets are explicitly
+separate recovery domains in `ops/backup-policy.md`.
+
+**Step 35 evidence (2026-09-19).** `scripts/monitoring-check.mjs` checks the
+save-sync health endpoint and evaluates server-error, save-rejection, and
+auth-failure rates after a 20-event minimum. Thresholds are 5%, 10%, and 25%;
+the healthy fixture exits 0 and the deliberately failed fixture exits 2 with
+all four alerts. Production log/SQL adapter hand-off is documented, while no
+production deployment or credentials are claimed.
+
+**Step 36 evidence (2026-09-19).** `npm run load:server` created real anonymous
+GoTrue identities and drove 20 concurrent players through 60 accepted uploads:
+min/p50/p95/max latency 104/135/238/241 ms, throughput 48.48 uploads/second,
+and 49 ms for the 7,200,000 ms maximum long-absence re-simulation. The script
+asserts p95 ≤ 500 ms, throughput ≥ 20 uploads/second, and re-simulation ≤ 250
+ms; sync remains outside the client Phaser frame loop.
+
+The same Step 36 gate's client benchmark also passed with `npm run test:perf`:
+the full 600,000 ms Pixel 5/Chrome 4×-CPU run held 15 unlocked floors, 695
+Phaser objects, 399 DOM nodes, 16.7 ms frame p95, 317,376 bytes live-heap
+growth, -385 bytes/second sustained slope, and 73.7 ms scroll-input p95. The
+budget assertions passed, including the two-vsync stall rate.
+
+Step 29 adds the public `leaderboard-read` Edge Function and the Rewards-tab
+leaderboard modal. Public requests receive the top lifetime-gold rows; an
+optional valid bearer token also receives the caller's own rank without any
+`user_id` leaving the server. Because the local Edge Runtime produced incorrect
+results for `count: 'exact', head: true` rank predicates, the authenticated
+rank path now reads the indexed ranking rows in pages and applies the same
+metric-desc/updated-at-asc ordering in server code. The client preserves exact
+`GameNumber` strings for `formatAmount` and falls back to an offline state with
+retry when the read is unavailable.
+
+**Proof.** The function has 7 Deno unit tests; the live integration suite has
+3 passing tests for public exact values, authenticated rank outside the visible
+limit, and invalid-token rejection. Client unit tests cover all magnitude tiers,
+`npm run build` and `npm run lint` pass, and the focused browser smoke confirms
+the Rewards tab opens and closes the modal. The modal remains a validation-gate
+change; no acceptance-gate archive entry has been added.
+
+Step 31 reuses the `entitlements` table and RLS already landed in Step 3; no
+migration was needed. The server-owned key is `cosmetic.supporter_badge`.
+`entitlement-check` verifies the bearer token, reads only active own rows
+through the caller-scoped Supabase client, and returns the derived
+`effects.supporterBadge` flag. It never reads the service-role key, and there
+is no client-accessible grant route. Its validation gate remains open.
+
+Step 32 adds the separate append-only `account_audit` timeline. Database
+triggers record identity changes, recovery-code issuance, entitlement grants
+and revocations, and rejected saves; `recovery-code` records redemption only
+after session minting succeeds through a service-only RPC. Client roles have no
+policies, the service role cannot update or delete rows, and the account link is
+`on delete set null` for Step 33's anonymization work. The implementation gate
+is open; no acceptance-gate entry has been added. A review regression also
+proves that an identity-removal trigger during `auth.users` deletion preserves
+the event with a null link instead of aborting account deletion.
+
+**Step 33 adds authenticated account/data deletion (2026-09-19).** The
+account-delete Edge Function authenticates the bearer token and ignores any
+body-supplied id; its service-only delete_account(uuid) RPC anonymizes every
+account audit row, clears personal detail, retains it for exactly 30 days, and
+deletes auth.users so the ordinary six application tables cascade away. A
+parent auth.users before-delete trigger also protects direct Auth-admin
+deletions from the FK set-null ordering edge case. The integration test
+enumerates all seven public application tables, seeds every path, deletes the
+real test account, and verifies no ordinary row or personal audit field
+remains. purge_expired_account_audit is service-only. Unit (6), focused
+integration (4), migration reset, and schema invariant checks pass.
+
+**Previously, Step 30 (decide on friends) was handled as a documentation-only
+deferral on 2026-09-19.** The verified all-time leaderboard is enough for the
+current asynchronous social goal; a friend graph remains deferred until a
+product requirement defines discovery, privacy, moderation, and deletion.
 
 Step 28's own instructions: "Publish an entry only from a save that passed
 Step 23. A rejected or unvalidated save must never reach the board." The
@@ -58,6 +150,14 @@ gate's own run** — the implementing sandbox for this step could not run
 `npm install` (a hard sandbox restriction, not a project issue), so
 `npm run verify` / `npm run verify:server` numbers for Step 28 are not
 recorded here; they will be captured when this gate is actually validated.
+
+**Player-facing account/settings feedback (2026-09-19).** The top HUD now
+has a settings button. Its accessible modal shows guest or Google-linked
+identity details, app version, and the appropriate Google login or logout/reset
+action. Genuine local/cloud forks open the same modal with both save summaries;
+the selected branch is persisted safely before reload, while the replica stays
+stopped until the choice is complete. Local verification passes build, lint,
+690 unit tests, and the in-app browser smoke check.
 
 **Previously, at the Step 27 validation gate — Step 27 (leaderboard storage)
 implemented 2026-09-18, validated and merged; Step 28 was released against
@@ -118,7 +218,7 @@ real PostgREST with real client tokens, the real `recovery_codes` table) run
 inside `npm run verify:server`
 (`tests/server-integration/adversarial.integration.test.ts` and
 `adversarial-rls.integration.test.ts`). Attack 6's matrix is **derived** from
-`supabase/migrations/*.sql`, not hand-listed, so a seventh table cannot slip
+`supabase/migrations/*.sql`, not hand-listed, so an eighth table cannot slip
 through uncovered. See `architecture.md`'s Step 26 section for the attacks ×
 guards table and for the two honest gaps Step 26 records rather than papers
 over: redemption has no per-user limit before it resolves, and attack 8's
@@ -530,21 +630,18 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 28.** This is the gate; nothing below
-   starts before it. Step 28 (leaderboard writes) is implemented and awaiting
-   validation; **Step 29 (leaderboard display) is blocked** on that
-   validation. Step 27's own gate is closed — it was validated, merged, and
-   Step 28 was queued against it; Phase 4 is complete.
-2. Step 29 onward — leaderboard display, then friends, and the rest of
-   Phase 5, then Phases 6–7. **Step 24's L2 is closed by Step 25:** a `429` is
+1. No server implementation step remains open after the Step 37 close. The
+   remaining work is user validation of the earlier gates explicitly marked as
+   awaiting validation in `progress.md`.
+2. **Step 24's L2 is closed by Step 25:** a `429` is
    refused before any
    `save_audit` row exists on the path, and an oversized body writes none
    either, so the 1-request-to-1-audit-write amplification no longer grows the
    table per refused request. Step 26 pins both under attack
    (`attack 9 / AC9` in `adversarial.integration.test.ts`).
-3. Give the fork chooser a production surface. §7.3 assigns it to Step 13, which
-   shipped only a DEV hook; it remains the one protocol requirement with no
-   player-facing implementation.
+3. Validate the new account/settings and conflict chooser flow with a real
+   Google OAuth return and a two-device fork fixture. The local UI and choice
+   handlers are implemented; live identity redirects remain environment work.
 4. The Step 23 N1 limit (a fork older than ~2 minutes against an actively-syncing
    peer is refused) needs a real fix — retain fork points, or accept a
    verifiable fork revision. Not scheduled.

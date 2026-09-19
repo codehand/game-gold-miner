@@ -6,6 +6,9 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:server-core": "vite build --config vite.server-core.config.ts",
+    "backup:restore": "node scripts/backup-restore-drill.mjs",
+    "load:server": "node scripts/load-save-sync.mjs",
+    "monitor:check": "node scripts/monitoring-check.mjs",
     "dev": "vite",
     "dev:sim": "node scripts/dev-simulator.mjs",
     "lint": "eslint .",

@@ -1,5 +1,83 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Server milestone Steps 33–37 implementation close
+
+Closed the operations phase after the account deletion, backup/restore,
+monitoring, and load/performance gates passed. The final client and server
+verification evidence is recorded in `progress.md`; README, CLAUDE, the server
+plan, architecture, technical context, product context, and live progress now
+describe the same local server milestone. No production deployment or secret
+was introduced. The final Step 36 client benchmark ran for 600,000 ms under
+Pixel 5/Chrome 4× CPU emulation and passed its frame, memory, scene-graph, and
+input budgets.
+
+## 2026-09-19 — Server milestone Steps 34–36: operations evidence
+
+Step 34 added `scripts/backup-restore-drill.mjs`, `ops/backup-policy.md`, and
+the `backup:restore` package command. The drill uses real `pg_dump` and
+`pg_restore` against a fresh scratch PostgreSQL container, compares all public
+table names and row counts, and always removes its scratch container. The
+recorded run restored seven tables exactly from a 35,888-byte dump in 105 ms;
+the whole run took 2,833 ms. Auth internals, sessions, runtime caches, and
+secrets are documented as separate recovery domains.
+
+Step 35 added `scripts/monitoring-check.mjs`, `ops/monitoring.md`, healthy and
+failure fixtures, and a two-test unit gate. It monitors health, server errors,
+save rejections, and auth failures with minimum samples and documented
+thresholds; the induced failure exits with alert code 2.
+
+Step 36 added `scripts/load-save-sync.mjs` and `load:server`. It uses real
+anonymous GoTrue identities and real save-sync uploads, cleans them in
+`finally`, measures latency/throughput and maximum absence re-simulation, and
+asserts the documented budgets. The 20-player run passed 60 uploads at p95
+238 ms, 48.48 uploads/second, and 49 ms re-simulation.
+
+## 2026-09-19 — Server milestone Step 33: account and data deletion
+
+Added the forward-only migration 20260919110000_account_deletion.sql. It adds
+an anonymization invariant and indexed retention boundary to account_audit,
+sets account lifetime plus 30 days as the retention period, and provides
+service-only delete_account and purge_expired_account_audit functions. The
+account-delete Edge Function authenticates the bearer token, ignores body
+account ids, and invokes the transactional deletion RPC. Ordinary rows cascade
+from auth.users; retained audit rows lose their user link and detail.
+
+Added a parent before-delete trigger so direct Auth-admin deletion is safe
+against foreign-key set-null ordering, plus six unit tests and an exhaustive
+real-stack integration test. The integration test enumerates all seven public
+tables, seeds every account-owned path, proves the malicious body id is ignored,
+and verifies exact 30-day audit retention. Migration reset, focused integration,
+client RPC refusal, and schema invariant checks pass.
+
+## 2026-09-19 — Server milestone Step 32: account audit log
+
+Implemented the separate `public.account_audit` timeline. Database triggers
+record identity additions/removals, recovery-code issuance, entitlement grants
+and revocations, and rejected saves; the recovery-code function appends a
+redemption only after session minting succeeds. The table accepts seven known
+event types, owns its timestamp, uses `on delete set null` for the account link,
+and denies client access. Service-role insert omits the timestamp column and
+ordinary update/delete are revoked, while the server-only RPC is the function
+boundary for redemption.
+
+Added the real-stack account-audit integration test and extended the
+migration-derived RLS matrix to all seven tables. Step 32 is implemented but
+awaits its validation gate; it is intentionally absent from
+`archive/acceptance-gates.md` until the user validates it. A review found that
+the identity-removal trigger could block `auth.users` deletion after a cascade;
+it now records the removal with a null account link, with a regression covering
+the deletion path.
+
+## 2026-09-19 — Account settings and save-conflict UI
+
+Added the player-facing settings button and account modal. Guest players can
+start Google linking; linked players can inspect identity/version and log out,
+which clears the active local save before booting a fresh guest. Genuine cloud
+forks now show local/cloud summaries and let the player choose; local choice
+uploads against the retained server revision, while cloud choice adopts the
+remote document. Verified with build, lint, 690 unit tests, and the live
+in-app-browser smoke check.
+
 Finished work from the base-game milestone (Steps 1–37, closed 2026-09-08) and
 the server milestone through Step 22. Moved out of `progress.md` and
 `activeContext.md` on 2026-09-14 because it is closed history, not live state.

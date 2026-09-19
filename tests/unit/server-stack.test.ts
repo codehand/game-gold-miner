@@ -112,7 +112,7 @@ describe('local Supabase stack configuration', () => {
       // Read from disk rather than hardcoded per function (server-milestone
       // Step 7 review), the same fix Step 4's review applied to
       // `EXPECTED_MIGRATIONS`: a function added without its own config block
-      // would otherwise go unchecked rather than failing. All three functions
+      // would otherwise go unchecked rather than failing. All functions
       // that exist today set `verify_jwt = false` and verify by hand inside
       // the handler instead; a function that legitimately needs platform
       // verification is a deliberate exception this test must gain, not a
@@ -278,12 +278,23 @@ describe('every Edge Function', () => {
   // client write (Step 15), so accepting an upload needs it too.
   // `recovery-code` (Step 14) is the third: `recovery_codes` carries no
   // policy at all, and minting a session for a redeemed code's owner needs
-  // `admin.getUserById`/`updateUserById`/`generateLink`. All three are
+  // `admin.getUserById`/`updateUserById`/`generateLink`. `leaderboard-read`
+  // (Step 29) is the fourth: its service-role read can see `user_id` to
+  // calculate a caller's rank while its response deliberately withholds it.
+  // `account-delete` (Step 33) is the fifth: the transactional deletion RPC
+  // must run with the service role because every ordinary table denies client
+  // deletion and the Auth row is outside PostgREST's public schema. All five are
   // excluded from the blanket check below and given their own positive
   // assertion instead, exactly as this test's own prior comment
   // anticipated — a future function needing it must add its own exception
   // here too, not find this check silently no longer covering it.
-  const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = ['telegram-sign-in', 'save-sync', 'recovery-code'];
+  const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = [
+    'telegram-sign-in',
+    'save-sync',
+    'recovery-code',
+    'leaderboard-read',
+    'account-delete',
+  ];
 
   it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(
     '%s never reads the service-role key',
@@ -324,6 +335,19 @@ describe('every Edge Function', () => {
     // grants every client role a read of its allowed columns and no write at
     // all.
     expect(source).toMatch(/admin\s*\.from\('leaderboard_entries'\)\s*\.upsert\(/);
+  });
+
+  it('leaderboard-read uses the service role only for a read-side rank projection', () => {
+    const source = readProjectFile('supabase/functions/leaderboard-read/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    expect(source).toContain("admin\n      .from('leaderboard_entries')");
+    expect(source).not.toMatch(/admin\s*\.from\('leaderboard_entries'\)\s*\.(insert|update|upsert|delete)\(/);
+  });
+
+  it('account-delete uses the service role only for the transactional deletion RPC', () => {
+    const source = readProjectFile('supabase/functions/account-delete/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    expect(source).toContain("admin.rpc('delete_account'");
   });
 
   it('recovery-code does read the service-role key, and only to rotate/redeem codes and mint a session', () => {

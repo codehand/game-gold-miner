@@ -113,6 +113,9 @@ function unusedCollaborators() {
     mintSessionForUser: async () => {
       throw new Error('mintSessionForUser should not have been called');
     },
+    writeAuditEvent: async () => {
+      throw new Error('writeAuditEvent should not have been called');
+    },
     checkRedemptionRateLimit: async () => ({ allowed: true, retryAfterSeconds: 0 }),
     checkGenerateRateLimit: async () => ({ allowed: true, retryAfterSeconds: 0 }),
     readRedeemBody: async () => {

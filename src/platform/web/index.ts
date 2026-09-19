@@ -73,3 +73,14 @@ export {
   chooseOfflineReward,
   type OfflineRewardChoiceParams,
 } from './chooseOfflineReward';
+export {
+  LEADERBOARD_OFFLINE_MESSAGE,
+  loadLeaderboardViaFetch,
+  parseLeaderboardSnapshot,
+  type LeaderboardAuthClient,
+  type LeaderboardEntry,
+  type LeaderboardFetch,
+  type LeaderboardLoadResult,
+  type LeaderboardPlayer,
+  type LeaderboardSnapshot,
+} from './leaderboard';

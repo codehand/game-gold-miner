@@ -1,0 +1,35 @@
+use_case: stylized-concept
+asset_type: production 2D game NPC sprite sheet
+role: elevator cargo cat
+rarity: SSR
+character: Mofy
+
+Create an exact eight-frame idle animation sheet for the existing Mofy
+elevator-cargo-cat design. The sheet must be exactly 4 columns x 2 rows,
+with eight equal 128x128 cells, transparent subject after cleanup, the same
+camera, proportions, silhouette, feet baseline, and central framing as the
+existing Mofy reference. Keep the character large enough to read clearly at
+native game scale. The second row must be an intentional continuation of the
+first row, not a visual duplicate.
+
+Frame choreography, left-to-right then top-to-bottom:
+1. Neutral alert idle: ledger centered, eyes open, tail relaxed.
+2. Inhale/preparation: torso and shoulders lift slightly, tail opens outward.
+3. Attention shift: soft blink, head turns toward the ledger, one paw starts
+   sliding across it.
+4. Inspection peak: eyes look down, ledger tilts visibly, near ear angles
+   forward, tail draws inward.
+5. Exhale/recovery: torso lowers, ledger levels, tail moves to the opposite
+   side from frame 2.
+6. Grip adjustment: paw shifts across the ledger, wrists and ledger angle
+   change, cloak and ear accents follow the motion.
+7. Soft settle: relaxed blink and small head return, with a distinct tail and
+   shoulder position from frame 3.
+8. Return to neutral: approach frame 1 without being a pixel-perfect copy;
+   preserve a subtle breathing difference for a seamless loop.
+
+Keep the warm inked storybook style, navy cloak, cream fur, gold trim, round
+glasses, red scarf, blue belt accents, brown ledger, and SSR presentation. Do
+not add extra characters, props, effects, text, UI, panels, shadows detached
+from the character, or a different background. Use a flat vivid magenta
+background only as the generation matte for deterministic chroma-key cleanup.

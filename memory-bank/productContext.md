@@ -27,7 +27,7 @@ The player claims offline gold, inspects the mine, upgrades the slowest stage, o
 
 ## UX Principles
 
-Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback and keeps future features discoverable without pretending their screens already exist.
+Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback; the Rewards item now opens the Step 29 leaderboard, while the remaining future-feature items stay discoverable without pretending their screens already exist.
 
 ## Base-Game Delivery Boundary
 
@@ -56,12 +56,20 @@ rare/blue, `SSR` super-super rare/purple, and `UR` ultra rare/gold. The current
 role/tier art will be created from a user-supplied role name, tier, and design
 reference. Different tier attributes are future design work: this catalog does
 not yet change the playable product, economy, state, save format, or UI.
+Animation fidelity is now part of the asset-only presentation contract: `N`/`R`
+cat roles use four frames in a `2x2` sheet, while `SR`/`SSR`/`UR` roles use
+eight frames in a `4x2` sheet with consistent `128x128` proportions and feet
+anchors. Mofy is the first applied SSR example; its eight poses add deliberate
+ledger inspection, grip adjustment, breathing, and recovery motion without
+changing gameplay or runtime selection. The marketplace portrait remains a
+single extracted frame for compatibility.
 
 Server-milestone Steps 4 through 7 landed between 2026-09-08 and 2026-09-09,
 closing Phase 1, and change nothing a player can see or do. They are
 infrastructure: the whole backend now runs locally in Docker through the
 Supabase CLI, one Edge Function answers the save-sync protocol's health
-check, the local database holds all six designed tables with row-level
+check, the local database holds the six original designed tables plus the Step
+32 account audit table with row-level
 security enforced, a CI workflow gates every push and pull request, the
 repository has an enforced boundary between values that may ship in the
 browser bundle and credentials that may not, the exact simulation and
@@ -77,9 +85,8 @@ browser — start at Phase 2 and are only kept from Phase 3.
 
 
 Server-milestone Steps 8 through 17 and 13 landed between 2026-09-09 and
-2026-09-12 and change what is true about accounts and saves, even though — no
-production UI existing yet for any of it — a player cannot see or reach any
-of this in the shipped game today. An account now exists: every player gets
+2026-09-12 and change what is true about accounts and saves. An account now
+exists: every player gets
 a real anonymous session at boot, and can attach Google or Telegram to it
 (Apple was cut) while keeping the same identity and progress. A save can now
 genuinely leave the device: `saves` denies every client write, but the
@@ -87,16 +94,13 @@ genuinely leave the device: `saves` denies every client write, but the
 player who has no local progress on a new device silently restored from
 whatever their account already holds, and a player who *does* have local
 progress on a device that turns out to hold a genuinely different account
-save left completely untouched rather than either being silently merged or
-silently asked to lose one. Every path into this — Google/Telegram sign-in,
-the account-linking collision, the cloud upload/download — is reachable only
-through `import.meta.env.DEV`-only diagnostics and hooks today, the same
-"land the mechanism, defer the real entry point" pattern every identity step
-since Step 8 has followed; the player-facing promise this paragraph is
-building toward — a save that survives a new device, cleared storage, or a
-lost browser — is still not something any real player benefits from yet.
-That remains true until a production UI exists and, for an unlinked guest
-specifically, until Step 14's recovery code lands: script-writable storage
+ save left completely untouched rather than either being silently merged or
+silently asked to lose one. Google sign-in and cloud save are now reachable
+from the in-game settings popup; the DEV hooks remain for verification. The
+player-facing promise this paragraph is building toward — a save that survives
+a new device, cleared storage, or a lost browser — is available to a linked
+account; an unlinked guest still depends on Step 14's recovery code because
+script-writable storage
 (the session token included) is deleted by iOS Safari after seven days
 regardless of any of this milestone's work.
 
@@ -114,11 +118,10 @@ genuine fork reaches the player as a prompt. Making "keeps the ahead save loses
 nothing" true required counting *every* gold source, so an offline reward now
 also increments a new monotonic `warehouse.totalOfflineGoldClaimed` counter
 (save schema version 2, migrated from version 1 by defaulting it to zero) that
-the conflict rule compares. Like the rest of this milestone,
-no production UI surfaces it yet: the candidate saves are retained for the
-session through a DEV-only hook, and the chooser screen plus the upload path
-that produces a conflicting write are later steps. This changes nothing a
-current player can see or do.
+the conflict rule compares. Genuine forks now open the in-game account popup,
+which shows both candidates and lets the player keep the device save or the
+cloud save. The selected branch is settled safely before reload; the
+unselected branch is not silently applied.
 
 Server-milestone Step 19 (2026-09-13) makes the cloud save a real replica of
 the local one without changing how the game plays. IndexedDB is still the
@@ -252,9 +255,10 @@ evidence that the player-facing promises above — a save that cannot be
 fabricated, a reward that cannot be clock-hacked, an account that cannot be
 stolen by replaying a code — are enforced rather than merely intended.
 
-Server-milestone Step 27 (2026-09-18) is also not player-visible — there is no
-leaderboard screen yet (Step 29) and nothing writes an entry yet (Step 28).
-What it settles is what a leaderboard will mean once it appears: ranking by
+Server-milestone Step 27 (2026-09-18) settled what the leaderboard means, and
+Step 28 (2026-09-18) started recording accepted progress. Step 29 (2026-09-19)
+now exposes the first player-facing leaderboard screen from the Rewards tab;
+its validation gate remains open. The board ranks by
 **lifetime gold earned**, which only ever rises, rather than a player's
 current spendable balance, which falls every time they buy an upgrade — so a
 patient, heavily-invested player is never shown ranked below someone who
@@ -263,13 +267,54 @@ toward it is permanent, the way every other number in this game is. A tie
 ranks whoever reached that total first, which rewards being ahead of the
 curve rather than merely catching up to it later.
 
-Server-milestone Step 28 (2026-09-18) starts actually recording that ranking —
-every accepted cloud save now publishes the player's current standing — but
-is still not player-visible, because there is still no leaderboard screen
-(Step 29). The player-facing promise this settles for later: only progress the
-server has already verified (past Step 23's bound) can ever reach the board,
-so a rejected or tampered save can never inflate a rank the way it could never
-inflate a cloud save.
+Step 29's player-facing promise is that the board shows exact large-number
+values, the caller's own rank when signed in, and a retryable offline state
+without blocking the mine. Only progress the server has already verified (past
+Step 23's bound) can reach the board, so a rejected or tampered save can never
+inflate a rank the way it could never inflate a cloud save. The all-time
+verified leaderboard supplies asynchronous competition for the current social
+goal; Step 30 therefore defers a friend graph.
+
+Server-milestone Step 30 (2026-09-19) defers a friend graph. The all-time
+verified leaderboard already supplies asynchronous competition for the current
+milestone; adding friends would require a separate product requirement for
+discovery, privacy, blocking, moderation, and account-deletion behaviour. No
+friend relationship is implied by an account, and no friend UI or server
+surface is part of the current player experience.
+
+Server-milestone Step 31 adds only the server-side groundwork for a future
+supporter effect. A server-granted `cosmetic.supporter_badge` entitlement is
+visible through the authenticated entitlement check and resolves to
+`effects.supporterBadge`; the client cannot create or revoke it. No payment
+flow, price, store integration, or player-facing purchase UI is introduced in
+this step.
+
+Server-milestone Step 32 adds no player-facing surface. It keeps a sparse,
+server-owned account/security timeline separate from the high-volume save
+request audit: identity changes, recovery-code lifecycle, entitlement changes,
+and rejected saves are retained with an actor and server timestamp, while
+client roles cannot read or write the log. Account deletion remains responsible
+for anonymizing its account link and enforcing the recorded retention period.
+
+Server-milestone Step 33 makes that promise actionable: an authenticated player
+can request deletion of the account represented by their current session. The
+request removes ordinary game, identity, save, leaderboard, and entitlement
+data, while retaining only an anonymous operational audit row for 30 days. No
+client-supplied account id, name, recovery code, or audit detail can survive
+the deletion boundary, and the mine itself remains an offline-playable client
+experience while the request is sent.
+
+Server-milestone Step 34 makes the operational promise testable: the public
+application schema has a real custom-format backup and scratch restore drill,
+while Auth internals, sessions, runtime caches, and secrets remain explicitly
+separate recovery domains. Step 35 adds health, server-error, save-rejection,
+and auth-failure alerts with a deliberate-failure test. Step 36 measures the
+server path at the recorded prototype scale without putting network work in
+the Phaser frame loop; the client remains responsive and offline-capable while
+sync is performed in the background. Step 37 closes the implementation
+milestone by making these local operations and their production hand-off
+discoverable from the repository documentation; it does not claim that a
+hosted production project or credentials exist.
 
 ## Closed incident reports
 

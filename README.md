@@ -9,15 +9,15 @@ sequential floor unlocks, and receives a capped reward for time spent away.
 The game runs in a mobile browser at a fixed 360×640 portrait logical viewport.
 **The playable game stays fully playable offline** — no account or cloud save is
 required on any path; it boots, plays, and saves entirely in IndexedDB even with
-no network at all. A separate server milestone is under way in
-`memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
-`supabase/`, holds all six designed tables with row-level security, and its
-`save-sync` Edge Function now accepts a real upload and download
-(`PUT`/`GET /v1/save`), on top of its original health check — but nothing in
-this reaches a real player yet: every identity and cloud-save path (guest,
-Google, Telegram, the account-linking collision, the boot-time reconcile) is
-wired only through `import.meta.env.DEV`-only diagnostics and hooks, with no
-production UI. The one behavior every player already gets, since
+no network at all. The server milestone is implemented locally and documented
+in `memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
+`supabase/`, holds the six original designed tables plus the Step 32 account
+audit table and Step 33 deletion policy with row-level security, and its
+`save-sync` Edge Function accepts a real upload and download
+(`PUT`/`GET /v1/save`), on top of its original health check. The local
+milestone also contains the player-facing settings and leaderboard surfaces,
+but no hosted production deployment exists yet. The one behavior every player
+already gets, since
 server-milestone Step 8, is a single non-blocking anonymous-auth call at boot
 (`src/platform/web/guestSession.ts`) that gives a first-time player a real
 session with no prompt and no wait; it is never awaited before the first
@@ -62,6 +62,9 @@ already open; production runs automatically with no tapping required.
 | `npm run scan:secrets` | Fails if a built `dist/` carries a service-role key or any other non-public secret. Runs inside `verify`. |
 | `npm run supabase:start` | Start the local Supabase stack in Docker (`supabase:stop`, `supabase:reset`, `supabase:status` manage it). |
 | `npm run verify:server` | Server stack check: the stack starts, migrations apply from empty, health/portability/integration checks pass, and the guest-session browser suite passes. Requires Docker. |
+| `npm run backup:restore` | Real custom-format public-schema backup and restore into a fresh PostgreSQL scratch container; compares all table names and row counts. Requires Docker and the local stack. |
+| `npm run monitor:check` | Evaluate a monitoring snapshot and health check; exit `2` when a documented alert threshold is exceeded. See `ops/monitoring.md`. |
+| `npm run load:server` | Real local GoTrue/save-sync load drill: 20 concurrent players, 60 uploads, latency/throughput budgets, and long-absence re-simulation. Requires Docker. |
 | `npm run verify:all` | `verify` then `verify:server`, in sequence — what `.github/workflows/ci.yml` runs as two parallel jobs. |
 | `npm run test:server-e2e` | Playwright Chromium suite (`tests/server-e2e/`) against a dev server on port 4176, proving real anonymous sign-in against the live local stack. Assumes it is already running. |
 
@@ -169,7 +172,7 @@ IndexedDB transaction may not commit before teardown.
 **Any change to the save shape must bump the schema version and add a migration
 plus tests.**
 
-## Local server stack (server milestone, in progress)
+## Local server stack (server milestone implementation complete)
 
 The playable game does not use this. It exists for the milestone in
 `memory-bank/server-milestone-plan.md`, whose design documents are
@@ -187,17 +190,28 @@ npm run supabase:stop
 Ports are the Supabase CLI defaults — API 54321, database 54322, Studio 54323,
 mail 54324 — and do not collide with the client's 5173, 4173, 4174, 4175, or 4176.
 
-`supabase/migrations/` holds three forward-only migrations: a bootstrap file
+`supabase/migrations/` holds eight forward-only migrations: a bootstrap file
 that creates nothing (it only asserts the PostgreSQL 13+ premise the schema
-relies on for `gen_random_uuid()`), one that lands all six designed tables —
-`profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`,
-`entitlements` — with row-level security enabled and exactly the policies
-`memory-bank/architecture.md`'s RLS matrix names, and one that adds the
-sign-up trigger that creates every `profiles` row. `supabase/seed.sql` inserts
+relies on for `gen_random_uuid()`), one that lands the original six designed
+tables — `profiles`, `saves`, `save_audit`, `recovery_codes`,
+`leaderboard_entries`, `entitlements` — with row-level security enabled and
+exactly the policies `memory-bank/architecture.md`'s RLS matrix names, one
+that adds the sign-up trigger that creates every `profiles` row, three
+recovery-code RPC/grant migrations, one leaderboard decision migration, and
+the Step 32 migration that adds the server-only append-only `account_audit` log,
+and the Step 33 forward-only account-deletion/anonymization migration.
+`supabase/seed.sql` inserts
 one local-only fixture guest (`auth.users` row plus its `profiles` row) after
 every `supabase db reset`, never applied to a deployed database.
 `.github/workflows/ci.yml` runs `npm run verify` and `npm run verify:server` as
 two required jobs on every push and pull request.
+
+**Operations drills.** `ops/backup-policy.md` records the production daily
+managed-backup policy (24-hour RPO, seven-copy minimum, best-effort RTO) and
+the separate Auth/secrets recovery procedure. `ops/monitoring.md` defines the
+health, server-error, save-rejection, and auth-failure signals and thresholds.
+Production deployment and credentials do not exist yet; the committed scripts
+are local evidence and release hand-off tools, not a claim of hosted coverage.
 
 The save-sync endpoints that exist — `/v1/health`, and `/v1/save` accepting a
 bearer token from a real signed-in session:
