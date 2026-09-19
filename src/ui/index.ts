@@ -5,6 +5,15 @@ export {
 } from './MineShaftUpgradeModal';
 export { MarketplaceModal } from './MarketplaceModal';
 export {
+  getMarketplaceAsset,
+  listMarketplaceAssets,
+  MARKETPLACE_ASSETS,
+  MARKETPLACE_ASSET_IDS,
+  type MarketplaceAssetRecord,
+  type MarketplaceAssetRarity,
+  type MarketplaceAssetRole,
+} from './marketplaceAssetRegistry';
+export {
   OFFLINE_REWARD_SAVE_FAILURE_MESSAGE,
   formatOfflineRewardAmount,
   formatCreditedDuration,

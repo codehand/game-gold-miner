@@ -5,9 +5,9 @@ sequence, asset gates, role-taxonomy gate, and premium 8-frame requirements are
 approved as the working plan; individual asset approval remains subject to the
 phase validation gates.
 
-**Execution status:** Phase 0 — complete and verified 2026-09-19. Phase 1 —
-not started. No later phase may begin until its predecessor's validation gate
-passes.
+**Execution status:** Phase 0 and Phase 1 — complete and verified 2026-09-19.
+Phase 2 — not started. No later phase may begin until its predecessor's
+validation gate passes.
 
 **Scope:** Asset production and asset-facing integration for Marketplace v1.
 This plan covers portraits, role/attribute presentation, premium animation

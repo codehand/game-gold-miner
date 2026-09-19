@@ -150,14 +150,17 @@ start — the cold-start reading holds only for the rate-limit reset hook and th
 `hookTimeout` default. No step's state changed and the Step 24 gate is
 untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 
-**Marketplace asset implementation, Phase 0 — complete 2026-09-19.** The
+**Marketplace asset implementation.** Phase 0 completed 2026-09-19: the
 approved role matrix keeps Elevator, Warehouse, and Miner as Marketplace v1
 roles, keeps Unloader future-only, and pins the four v1 attribute keys, role
 weights, runtime display sizes, and 2×2/4-frame versus 4×2/8-frame animation
 contracts. The focused role-matrix suite (6 tests), full unit suite (702
-tests), lint, build, and Marketplace E2E (3 tests) pass. Phase 1 — canonical
-asset registry and technical normalization — is the next gate; later phases
-have not started.
+tests), lint, build, and Marketplace E2E (3 tests) passed. Phase 1 completed
+2026-09-19: four canonical preview portraits now have stable allowlisted asset
+IDs and `128×128` RGBA public paths. Its registry suite (4 tests), full unit
+suite (706 tests), lint, build, Marketplace E2E (3 tests), asset reports, and
+contact-sheet/native-scale review passed. Phase 2 — Marketplace presentation
+icon family — is the next gate; later phases have not started.
 
 ## Phase Status
 

@@ -17,8 +17,11 @@ Elevator, Warehouse, and a dedicated Miner family; Unloader remains a separate
 future role. The matrix pins the four v1 attributes, role weights, runtime
 display sizes, and the 2×2/4-frame versus 4×2/8-frame animation policy. Phase 0
 verification passed the focused role-matrix suite (6 tests), all 702 unit
-tests, lint, build, and the three Marketplace browser tests. Phase 1 has not
-started.
+tests, lint, build, and the three Marketplace browser tests. Phase 1 completed
+2026-09-19: four canonical preview portraits now have stable allowlisted asset
+IDs and `128×128` RGBA public paths; its registry suite (4 tests), full unit
+suite (706 tests), lint, build, Marketplace E2E (3 tests), asset reports, and
+contact-sheet/native-scale review all passed. Phase 2 has not started.
 
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31
