@@ -611,7 +611,8 @@ runtime sprites.
 - Every public asset has a matching manifest/provenance record.
 - Asset IDs resolve uniquely.
 - No source file contains secrets, user data, or private credentials.
-- Build, lint, Marketplace E2E, raster QC, and native-scale visual review pass.
+- Build, lint, full Marketplace E2E, full Playwright E2E, raster QC, and
+  native-scale visual review pass.
 
 ### Phase 8 execution record — verified 2026-09-19
 
@@ -622,6 +623,8 @@ runtime sprites.
   no catalog-only asset was promoted into runtime paths.
 - Added a release-audit test covering registry uniqueness, manifest/source/
   provenance links, icon completeness, and the asset-only boundary.
+- Full Playwright E2E now passes 55/55 after the navigation hit-target test was
+  updated to close and await the leaderboard modal introduced by Step 29.
 
 **Phase 8 gate:** closed for the catalog/UI release scope; Phase 7 runtime
 integration remains explicitly deferred pending separate approval.

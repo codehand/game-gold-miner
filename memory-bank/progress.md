@@ -200,7 +200,9 @@ completed 2026-09-19 for the catalog/UI scope: all nine public portraits
 resolve through registry, manifest, source, and provenance; the 16-icon family
 is complete; and every current variant remains `runtimeIntegrated: false`.
 Release-audit tests pass. Phase 7 remains deferred pending explicit approval to
-replace current mine-role runtime sprites.
+replace current mine-role runtime sprites. Full Playwright E2E now passes 55/55
+after the navigation hit-target regression test waits for the leaderboard
+modal's close callback.
 
 ## Phase Status
 

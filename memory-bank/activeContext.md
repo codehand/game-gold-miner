@@ -57,7 +57,9 @@ Phase 8 release audit completed 2026-09-19 for the catalog/UI scope: all nine
 public portraits resolve through registry, manifest, source, and provenance;
 the 16-icon family is complete; and every current variant remains
 `runtimeIntegrated: false`. Release-audit tests pass. Phase 7 remains deferred
-pending explicit approval to replace current mine-role runtime sprites.
+pending explicit approval to replace current mine-role runtime sprites. Full
+Playwright E2E now passes 55/55 after the navigation hit-target regression test
+waits for the leaderboard modal's close callback.
 
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31

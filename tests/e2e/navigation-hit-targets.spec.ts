@@ -9,6 +9,7 @@ for (const touch of [false, true]) {
     await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
     let presses = 0;
     let closes = 0;
+    let leaderboardCloses = 0;
     // Include a resize to catch CSS-to-canvas coordinate regressions.
     for (const viewport of [{ width: 553, height: 934 }, { width: 320, height: 568 }]) {
       await page.setViewportSize(viewport);
@@ -30,7 +31,14 @@ for (const touch of [false, true]) {
           else await page.mouse.click(x, y);
           await expect(canvas).toHaveAttribute('data-bottom-navigation-last-pressed', key);
           await expect(canvas).toHaveAttribute('data-bottom-navigation-press-count', String(++presses));
-          if (key === 'shop') {
+          if (key === 'rewards') {
+            await expect(page.getByTestId('leaderboard-offline')).toBeVisible();
+            await page.getByRole('button', { name: 'Close leaderboard' }).click();
+            await expect(canvas).toHaveAttribute(
+              'data-leaderboard-close-count',
+              String(++leaderboardCloses),
+            );
+          } else if (key === 'shop') {
             await expect(page.getByRole('dialog', { name: 'Marketplace' })).toBeVisible();
             await page.getByRole('button', { name: 'Close marketplace' }).click();
             // `dialog.close()` queues its `close` event as a task, and
