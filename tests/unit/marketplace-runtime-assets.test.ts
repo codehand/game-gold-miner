@@ -33,14 +33,20 @@ describe('Marketplace runtime asset contract', () => {
         runtimeIntegrated: true,
       }));
       expect(existsSync(resolve('public', asset.publicPath.slice(1))), asset.assetId).toBe(true);
+      expect(existsSync(resolve(asset.sourceSheetPath)), `${asset.assetId} source`).toBe(true);
+      expect(asset.frameSizePx).toBe(128);
       expect(asset.frameCount).toBe(8);
       expect(asset.frameDurationMs).toBe(110);
       expect(asset.fallbackTextureKey).toBeTruthy();
+      expect(asset.fallbackFrameCount).toBe(4);
     }
   });
 
   it('loads the same runtime contract exposed by the role map', () => {
-    expect(MARKETPLACE_RUNTIME_ANIMATION_ASSETS).toEqual([
+    expect(MARKETPLACE_RUNTIME_ANIMATION_ASSETS.map(({ textureKey, publicPath }) => [
+      textureKey,
+      publicPath,
+    ])).toEqual([
       [
         MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.textureKey,
         MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.publicPath,
@@ -67,6 +73,16 @@ describe('Marketplace runtime asset contract', () => {
       frameCount: 4,
       frameDurationMs: 220,
       displaySize: runtimeAsset.displaySize,
+    });
+    expect(fallback.fallbackFrameDurationMs).toBe(220);
+  });
+
+  it('preserves the warehouse fallback cadence from the placeholder presentation', () => {
+    const runtimeAsset = MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse;
+
+    expect(resolveMarketplaceRuntimeAsset(runtimeAsset, false)).toMatchObject({
+      frameCount: 4,
+      frameDurationMs: 240,
     });
   });
 });

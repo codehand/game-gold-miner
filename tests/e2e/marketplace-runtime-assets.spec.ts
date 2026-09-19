@@ -1,19 +1,12 @@
 import { expect, test } from '@playwright/test';
 
-const RUNTIME_ASSETS = [
-  {
-    assetId: 'elevator-cargo-cat:SSR:mofy:idle',
-    path: '/assets/marketplace/runtime/elevator/mofy-8f-sheet.png',
-  },
-  {
-    assetId: 'warehouse-manager:SR:baron:idle',
-    path: '/assets/marketplace/runtime/warehouse/baron-8f-sheet.png',
-  },
-  {
-    assetId: 'miner:SSR:forge:idle',
-    path: '/assets/marketplace/runtime/miner/forge-8f-sheet.png',
-  },
-] as const;
+import { MARKETPLACE_RUNTIME_ROLE_ASSETS } from '../../src/game/assets/marketplaceRuntimeAssets';
+
+const RUNTIME_ASSETS = Object.values(MARKETPLACE_RUNTIME_ROLE_ASSETS).map((asset) => ({
+  assetId: asset.assetId,
+  path: asset.publicPath,
+  frameSizePx: asset.frameSizePx,
+}));
 
 test('renders the approved Marketplace role assets in runtime presentation slots', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -35,14 +28,14 @@ test('renders the approved Marketplace role assets in runtime presentation slots
   expect(animation.elevatorCargoCat).toMatchObject({
     assetId: 'elevator-cargo-cat:SSR:mofy:idle',
     texture: 'marketplace-runtime-elevator-mofy',
-    width: 50,
-    height: 50,
+    width: MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.displaySize,
+    height: MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.displaySize,
   });
   expect(animation.warehouseManager).toMatchObject({
     assetId: 'warehouse-manager:SR:baron:idle',
     texture: 'marketplace-runtime-warehouse-baron',
-    width: 56,
-    height: 56,
+    width: MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.displaySize,
+    height: MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.displaySize,
   });
 
   const floorViews = await page.evaluate(() => (
@@ -56,7 +49,10 @@ test('renders the approved Marketplace role assets in runtime presentation slots
   }) => (
     floor.minerAssetId === 'miner:SSR:forge:idle' &&
     floor.minerTextureKey === 'marketplace-runtime-miner-forge' &&
-    floor.minerCrew.every((miner) => miner.width === 75 && miner.height === 75)
+    floor.minerCrew.every((miner) => (
+      miner.width === MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.displaySize &&
+      miner.height === MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.displaySize
+    ))
   ))).toBe(true);
 
   const runtimeDimensions = await page.evaluate(async (assets) => (
@@ -67,10 +63,10 @@ test('renders the approved Marketplace role assets in runtime presentation slots
       image.src = path;
     })))
   ), RUNTIME_ASSETS);
-  expect(runtimeDimensions).toEqual(RUNTIME_ASSETS.map(({ assetId }) => ({
+  expect(runtimeDimensions).toEqual(RUNTIME_ASSETS.map(({ assetId, frameSizePx }) => ({
     assetId,
-    width: 512,
-    height: 256,
+    width: frameSizePx * 4,
+    height: frameSizePx * 2,
   })));
 
   await page.screenshot({ path: 'test-results/marketplace-runtime-390.png' });

@@ -201,6 +201,10 @@ export class BootScene extends Phaser.Scene {
   #surfaceWarehouseUpgradeControl: PurchaseControlView | null = null;
   #animationSpeedMultiplier: number;
   #animationTimeMs = 0;
+  /** Resolved once after preload; hot paths only read these stable objects. */
+  #elevatorAnimation!: MarketplaceRuntimeAnimationAsset;
+  #warehouseAnimation!: MarketplaceRuntimeAnimationAsset;
+  #minerAnimation!: MarketplaceRuntimeAnimationAsset;
   #lastViewDiagnosticMs = Number.NEGATIVE_INFINITY;
   #lastPerformanceDiagnosticMs = Number.NEGATIVE_INFINITY;
   /** The camera the mine content is drawn through, needed to place presses. */
@@ -259,10 +263,10 @@ export class BootScene extends Phaser.Scene {
       });
     }
 
-    for (const [key, path] of MARKETPLACE_RUNTIME_ANIMATION_ASSETS) {
-      this.load.spritesheet(key, path, {
-        frameWidth: PLACEHOLDER_ANIMATION_FRAME_SIZE,
-        frameHeight: PLACEHOLDER_ANIMATION_FRAME_SIZE,
+    for (const asset of MARKETPLACE_RUNTIME_ANIMATION_ASSETS) {
+      this.load.spritesheet(asset.textureKey, asset.publicPath, {
+        frameWidth: asset.frameSizePx,
+        frameHeight: asset.frameSizePx,
       });
     }
   }
@@ -271,6 +275,7 @@ export class BootScene extends Phaser.Scene {
     // Before any view, because the material sprites are built from the loaded
     // artwork and every floor and stage binds one on its first snapshot.
     createBacklogTextures(this);
+    this.#resolveRuntimeAnimations();
 
     const layout = calculateMineLayout(this.scale.width, this.scale.height);
 
@@ -690,14 +695,11 @@ export class BootScene extends Phaser.Scene {
 
     this.#elevatorView?.applyAnimation(this.#animationTimeMs);
     this.#warehouseView?.applyAnimation(this.#animationTimeMs);
-    const warehouseAnimation = this.#resolveRuntimeAnimation(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse,
-    );
     this.#warehouseManager?.setFrame(
       calculateGeneratedAssetFrame(
         this.#animationTimeMs,
-        warehouseAnimation.frameCount,
-        warehouseAnimation.frameDurationMs,
+        this.#warehouseAnimation.frameCount,
+        this.#warehouseAnimation.frameDurationMs,
       ),
     );
 
@@ -865,14 +867,11 @@ export class BootScene extends Phaser.Scene {
       // diagonally even though the tower artwork has an asymmetric chute.
       const elevatorX = shaftCenterX;
       const cargoVisible = stage.isRunning || stage.queueSteps > 0;
-      const elevatorAnimation = this.#resolveRuntimeAnimation(
-        MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator,
-      );
       const cargoFrame = stage.isRunning
         ? calculateGeneratedAssetFrame(
             this.#animationTimeMs,
-            elevatorAnimation.frameCount,
-            elevatorAnimation.frameDurationMs,
+            this.#elevatorAnimation.frameCount,
+            this.#elevatorAnimation.frameDurationMs,
           )
         : 0;
       const surfaceAlpha = easeElevatorTravelProgress(
@@ -987,12 +986,6 @@ export class BootScene extends Phaser.Scene {
 
   #createSurface(region: LayoutRegion): Phaser.GameObjects.Container {
     const layer = this.add.container(region.x, region.y);
-    const elevatorRuntimeAnimation = this.#resolveRuntimeAnimation(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator,
-    );
-    const warehouseRuntimeAnimation = this.#resolveRuntimeAnimation(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse,
-    );
     const panelWidth =
       (region.width - SURFACE_PANEL_INSET * 2 - SURFACE_PANEL_GAP) / 2;
     const panelHeight =
@@ -1023,12 +1016,12 @@ export class BootScene extends Phaser.Scene {
       .sprite(
         SURFACE_ELEVATOR_STOP_X,
         SURFACE_ELEVATOR_STOP_Y + 3,
-        elevatorRuntimeAnimation.textureKey,
+        this.#elevatorAnimation.textureKey,
         0,
       )
       .setDisplaySize(
-        elevatorRuntimeAnimation.displaySize,
-        elevatorRuntimeAnimation.displaySize,
+        this.#elevatorAnimation.displaySize,
+        this.#elevatorAnimation.displaySize,
       )
       .setVisible(false);
     this.#surfaceElevatorTower = this.add
@@ -1132,12 +1125,12 @@ export class BootScene extends Phaser.Scene {
       .sprite(
         SURFACE_WAREHOUSE_MANAGER_X,
         SURFACE_WAREHOUSE_MANAGER_Y,
-        warehouseRuntimeAnimation.textureKey,
+        this.#warehouseAnimation.textureKey,
         0,
       )
       .setDisplaySize(
-        warehouseRuntimeAnimation.displaySize,
-        warehouseRuntimeAnimation.displaySize,
+        this.#warehouseAnimation.displaySize,
+        this.#warehouseAnimation.displaySize,
       )
       .setFlipX(true);
     layer.add(this.#warehouseManager);
@@ -1207,12 +1200,6 @@ export class BootScene extends Phaser.Scene {
 
   /** Mine content taller than its camera viewport, so the area must scroll. */
   #createMineContent(width: number): Phaser.GameObjects.Container {
-    const elevatorRuntimeAnimation = this.#resolveRuntimeAnimation(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator,
-    );
-    const minerRuntimeAnimation = this.#resolveRuntimeAnimation(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.miner,
-    );
     const content = this.add.container(0, 0);
     const contentHeight = calculateMineContentHeight(MINE_FLOOR_COUNT);
     const shaft = calculateMineShaftRegion(width, MINE_FLOOR_COUNT);
@@ -1250,12 +1237,12 @@ export class BootScene extends Phaser.Scene {
       .sprite(
         shaft.x + shaft.width / 2,
         shaft.y + MINE_SHAFT_CABIN_SIZE / 2 + 3,
-        elevatorRuntimeAnimation.textureKey,
+        this.#elevatorAnimation.textureKey,
         0,
       )
       .setDisplaySize(
-        elevatorRuntimeAnimation.displaySize,
-        elevatorRuntimeAnimation.displaySize,
+        this.#elevatorAnimation.displaySize,
+        this.#elevatorAnimation.displaySize,
       )
       .setVisible(false);
 
@@ -1275,7 +1262,7 @@ export class BootScene extends Phaser.Scene {
         onUnlock: () => {
           this.#requestPurchase(this.#viewModel.floors[index].unlockControl);
         },
-        minerAnimation: minerRuntimeAnimation,
+        minerAnimation: this.#minerAnimation,
       });
     });
     content.add(this.#floorViews.map((view) => view.root));
@@ -1285,12 +1272,18 @@ export class BootScene extends Phaser.Scene {
     return content;
   }
 
-  #resolveRuntimeAnimation(
-    asset: MarketplaceRuntimeAnimationAsset,
-  ): MarketplaceRuntimeAnimationAsset {
-    return resolveMarketplaceRuntimeAsset(
-      asset,
-      this.textures.exists(asset.textureKey),
+  #resolveRuntimeAnimations(): void {
+    this.#elevatorAnimation = resolveMarketplaceRuntimeAsset(
+      MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator,
+      this.textures.exists(MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.textureKey),
+    );
+    this.#warehouseAnimation = resolveMarketplaceRuntimeAsset(
+      MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse,
+      this.textures.exists(MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.textureKey),
+    );
+    this.#minerAnimation = resolveMarketplaceRuntimeAsset(
+      MARKETPLACE_RUNTIME_ROLE_ASSETS.miner,
+      this.textures.exists(MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.textureKey),
     );
   }
 
@@ -1465,15 +1458,6 @@ export class BootScene extends Phaser.Scene {
     this.#lastViewDiagnosticMs = this.time.now;
 
     const canvas = this.game.canvas;
-    const elevatorRuntimeAnimation = this.#resolveRuntimeAnimation(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator,
-    );
-    const warehouseRuntimeAnimation = this.#resolveRuntimeAnimation(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse,
-    );
-    const minerRuntimeAnimation = this.#resolveRuntimeAnimation(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.miner,
-    );
 
     // Published only once the view exists, so a reader that finds the attribute
     // can trust its shape instead of parsing a `null` and failing later, on a
@@ -1490,9 +1474,9 @@ export class BootScene extends Phaser.Scene {
         .map((view) => view.describeRenderedState()),
     );
     canvas.dataset.marketplaceRuntimeAssets = JSON.stringify({
-      elevator: elevatorRuntimeAnimation.assetId,
-      warehouse: warehouseRuntimeAnimation.assetId,
-      miner: minerRuntimeAnimation.assetId,
+      elevator: this.#elevatorAnimation.assetId,
+      warehouse: this.#warehouseAnimation.assetId,
+      miner: this.#minerAnimation.assetId,
     });
     canvas.dataset.surfaceViews = JSON.stringify([
       this.#elevatorView?.describeRenderedState() ?? null,
@@ -1530,7 +1514,7 @@ export class BootScene extends Phaser.Scene {
             centerY: this.#shaftCargoCat.y,
             width: this.#shaftCargoCat.displayWidth,
             height: this.#shaftCargoCat.displayHeight,
-            assetId: elevatorRuntimeAnimation.assetId,
+            assetId: this.#elevatorAnimation.assetId,
             texture: this.#shaftCargoCat.texture.key,
           },
       elevatorTower: this.#surfaceElevatorTower === null
@@ -1567,7 +1551,7 @@ export class BootScene extends Phaser.Scene {
             height: this.#warehouseManager.displayHeight,
             frame: Number(this.#warehouseManager.frame.name),
             flipX: this.#warehouseManager.flipX,
-            assetId: warehouseRuntimeAnimation.assetId,
+            assetId: this.#warehouseAnimation.assetId,
             texture: this.#warehouseManager.texture.key,
           },
       surfaceHauler: this.#surfaceHaulerCart === null ||

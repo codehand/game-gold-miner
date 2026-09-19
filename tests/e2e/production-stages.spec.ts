@@ -19,6 +19,7 @@ import {
   ELEVATOR_SHAFT_TEXTURE_WIDTH_PX,
   PLACEHOLDER_TEXTURES,
 } from '../../src/game/assets/placeholderAssets';
+import { MARKETPLACE_RUNTIME_ROLE_ASSETS } from '../../src/game/assets/marketplaceRuntimeAssets';
 import {
   calculateFloorSlotRegion,
   calculateMineFloorPanelLayout,
@@ -728,7 +729,9 @@ test('returns through the surface boundary and stops inside the elevator tower',
     height: SURFACE_WAREHOUSE_MANAGER_SIZE,
   });
   expect(animation.warehouseManager.frame).toBeGreaterThanOrEqual(0);
-  expect(animation.warehouseManager.frame).toBeLessThan(4);
+  expect(animation.warehouseManager.frame).toBeLessThan(
+    MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.frameCount,
+  );
   expect(animation.warehouseManager.flipX, 'warehouse cat looks toward the elevator').toBe(true);
 });
 

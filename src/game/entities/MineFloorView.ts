@@ -129,8 +129,8 @@ export interface MineFloorViewOptions {
   readonly onUpgrade: () => void;
   /** Called when the unlock control on a locked floor is pressed. */
   readonly onUnlock: () => void;
-  /** Optional Marketplace role animation; omitted keeps the Step 32A fallback. */
-  readonly minerAnimation?: MarketplaceRuntimeAnimationAsset;
+  /** Runtime-resolved Marketplace role animation, including its fallback. */
+  readonly minerAnimation: MarketplaceRuntimeAnimationAsset;
   /** Floors below floor one crop the ceiling seam to half its art thickness. */
   readonly hasThinSoilLayer?: boolean;
 }
@@ -203,11 +203,11 @@ export class MineFloorView {
     this.#minerStartX = panel.minerPatrol.x + 8;
     this.#minerEndX = panel.minerPatrol.x + panel.minerPatrol.width - 8;
     this.#minerRestY = panel.minerPatrol.y + panel.minerPatrol.height / 2;
-    this.#minerAssetId = options.minerAnimation?.assetId ?? null;
-    this.#minerTextureKey = options.minerAnimation?.textureKey ?? PLACEHOLDER_ANIMATION_TEXTURES.minerWalk;
-    this.#minerDisplaySize = options.minerAnimation?.displaySize ?? MINE_FLOOR_CHARACTER_DISPLAY_SIZE;
-    this.#minerFrameCount = options.minerAnimation?.frameCount ?? 4;
-    this.#minerFrameDurationMs = options.minerAnimation?.frameDurationMs ?? 220;
+    this.#minerAssetId = options.minerAnimation.assetId;
+    this.#minerTextureKey = options.minerAnimation.textureKey;
+    this.#minerDisplaySize = options.minerAnimation.displaySize;
+    this.#minerFrameCount = options.minerAnimation.frameCount;
+    this.#minerFrameDurationMs = options.minerAnimation.frameDurationMs;
     this.#goldContainerSize = {
       width: panel.goldContainer.width,
       height: panel.goldContainer.height,

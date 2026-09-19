@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -23,6 +24,10 @@ const manifest = JSON.parse(
 };
 
 const provenance = readFileSync(resolve('public/assets/marketplace/provenance.md'), 'utf8');
+
+function sha256(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
 
 describe('Marketplace release audit', () => {
   it('keeps every public portrait linked to a source, manifest ID, and provenance record', () => {
@@ -58,7 +63,14 @@ describe('Marketplace release audit', () => {
 
     expect(new Set(runtimeManifestIds)).toEqual(new Set(MARKETPLACE_RUNTIME_ASSET_IDS));
     for (const asset of Object.values(MARKETPLACE_RUNTIME_ROLE_ASSETS)) {
-      expect(existsSync(resolve('public', asset.publicPath.slice(1))), asset.assetId).toBe(true);
+      const runtimePath = resolve('public', asset.publicPath.slice(1));
+      const sourcePath = resolve(asset.sourceSheetPath);
+
+      expect(existsSync(runtimePath), asset.assetId).toBe(true);
+      expect(existsSync(sourcePath), `${asset.assetId} source`).toBe(true);
+      expect(sha256(runtimePath), `${asset.assetId} runtime/source hash`).toBe(
+        sha256(sourcePath),
+      );
     }
     expect(existsSync(resolve('public/assets/marketplace/icons/marketplace-icons.svg'))).toBe(true);
     expect(existsSync(resolve('public/assets/marketplace/icons/manifest.json'))).toBe(true);

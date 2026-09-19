@@ -31,6 +31,11 @@ describe('Marketplace asset registry', () => {
         .filter((asset) => !asset.runtimeIntegrated)
         .every((asset) => asset.catalogStatus === 'preview-canonical'),
     ).toBe(true);
+    expect(
+      MARKETPLACE_ASSETS.every(
+        (asset) => asset.runtimeIntegrated === (asset.catalogStatus === 'runtime-integrated'),
+      ),
+    ).toBe(true);
   });
 
   it('resolves known IDs and fails closed for unknown listing data', () => {

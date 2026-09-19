@@ -19,10 +19,13 @@ export interface MarketplaceAssetRecord {
   readonly portraitPath: string;
   readonly sourcePortraitPath: string;
   readonly catalogStatus: 'preview-canonical' | 'runtime-integrated';
+  /** Derived from catalogStatus; definitions cannot provide a conflicting value. */
   readonly runtimeIntegrated: boolean;
 }
 
-const MARKETPLACE_ASSET_ENTRIES = [
+type MarketplaceAssetDefinition = Omit<MarketplaceAssetRecord, 'runtimeIntegrated'>;
+
+const MARKETPLACE_ASSET_DEFINITIONS = [
   {
     assetId: 'elevator-cargo-cat:SSR:mofy:idle',
     roleId: 'elevator',
@@ -33,7 +36,6 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/elevator-cargo-cat/ssr/mofy/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/processed-8f-v2/idle-1.png',
     catalogStatus: 'runtime-integrated',
-    runtimeIntegrated: true,
   },
   {
     assetId: 'elevator-cargo-cat:SSR:elon:idle',
@@ -45,7 +47,6 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/elevator-cargo-cat/ssr/elon/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/elevator-cargo-cat/ssr/elon/processed/idle-1.png',
     catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
   },
   {
     assetId: 'elevator-cargo-cat:SSR:win:idle',
@@ -57,7 +58,6 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/elevator-cargo-cat/ssr/win/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/elevator-cargo-cat/ssr/win/processed/idle-1.png',
     catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
   },
   {
     assetId: 'warehouse-manager:SR:baron:idle',
@@ -69,7 +69,6 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/warehouse-manager/sr/baron/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/warehouse-manager/sr/baron/processed/idle-1.png',
     catalogStatus: 'runtime-integrated',
-    runtimeIntegrated: true,
   },
   {
     assetId: 'warehouse-manager:SR:cipher:idle',
@@ -81,7 +80,6 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/warehouse-manager/sr/cipher/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/warehouse-manager/sr/cipher/processed/idle-1.png',
     catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
   },
   {
     assetId: 'warehouse-manager:SR:gauge:idle',
@@ -93,7 +91,6 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/warehouse-manager/sr/gauge/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/warehouse-manager/sr/gauge/processed/idle-1.png',
     catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
   },
   {
     assetId: 'warehouse-manager:SSR:nautilus:idle',
@@ -105,7 +102,6 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/warehouse-manager/ssr/nautilus/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/warehouse-manager/ssr/nautilus/processed/idle-1.png',
     catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
   },
   {
     assetId: 'miner:N:mica:idle',
@@ -117,7 +113,6 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/miner/n/mica/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/miner/n/mica/processed/idle-1.png',
     catalogStatus: 'preview-canonical',
-    runtimeIntegrated: false,
   },
   {
     assetId: 'miner:SSR:forge:idle',
@@ -129,9 +124,14 @@ const MARKETPLACE_ASSET_ENTRIES = [
     portraitPath: '/assets/marketplace/catalog/miner/ssr/forge/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/miner/ssr/forge/processed/idle-1.png',
     catalogStatus: 'runtime-integrated',
-    runtimeIntegrated: true,
   },
-] as const satisfies readonly MarketplaceAssetRecord[];
+] as const satisfies readonly MarketplaceAssetDefinition[];
+
+const MARKETPLACE_ASSET_ENTRIES: readonly MarketplaceAssetRecord[] =
+  MARKETPLACE_ASSET_DEFINITIONS.map((asset) => ({
+    ...asset,
+    runtimeIntegrated: asset.catalogStatus === 'runtime-integrated',
+  }));
 
 export const MARKETPLACE_ASSET_IDS = MARKETPLACE_ASSET_ENTRIES.map(
   (asset) => asset.assetId,

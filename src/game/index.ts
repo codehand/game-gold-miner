@@ -6,7 +6,6 @@ import { BootScene } from './scenes/BootScene';
 
 export { GAME_HEIGHT, GAME_WIDTH };
 export {
-  getMarketplaceRuntimeAsset,
   resolveMarketplaceRuntimeAsset,
   MARKETPLACE_RUNTIME_ANIMATION_ASSETS,
   MARKETPLACE_RUNTIME_ASSET_IDS,
