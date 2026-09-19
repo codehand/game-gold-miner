@@ -1,5 +1,15 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Marketplace asset Phase 6 state presentation
+
+Added the UI-only lifecycle state contract for Idle, Assigned, Listed, Rented,
+Expired, and Locked. Each state maps to an approved icon, copy, and explicit
+assign/list/rent permissions; conflicting actions are suppressed and Expired
+returns to the idle action surface. Marketplace Listed cards/details consume
+the contract without writing ownership, save, or transaction state. State
+tests, 715 unit tests, lint, build, and six browser tests passed. Runtime
+integration remains an optional separately approved phase.
+
 ## 2026-09-19 — Marketplace asset Phase 5 registry and UI application
 
 Migrated the Marketplace preview from name-based image paths to the local

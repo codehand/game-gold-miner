@@ -45,7 +45,13 @@ cards/details now use the allowlisted asset registry, the nine canonical
 portraits, role/attribute/skill/state icons, preview stat fixtures, and a safe
 placeholder fallback. Browser flows pass at 390×844 and 320×568, including a
 failed-image fallback. Premium sheets remain source-only and are not decoded at
-modal open. Phase 6 — transaction state presentation — is next.
+modal open.
+Phase 6 completed 2026-09-19: a UI-only lifecycle contract now maps Idle,
+Assigned, Listed, Rented, Expired, and Locked to approved state icons,
+descriptions, and non-conflicting CTA permissions. The Listed card/detail path
+uses this contract; it never writes ownership, save, or transaction state.
+State contract tests, 715 full unit tests, lint, build, and six browser tests
+pass. Phase 7 runtime integration is optional and requires explicit approval.
 
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31

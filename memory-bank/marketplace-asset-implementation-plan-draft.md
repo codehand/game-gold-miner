@@ -5,9 +5,11 @@ sequence, asset gates, role-taxonomy gate, and premium 8-frame requirements are
 approved as the working plan; individual asset approval remains subject to the
 phase validation gates.
 
-**Execution status:** Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, and Phase 5
-— complete and verified 2026-09-19. Phase 6 — next. No later phase may begin until its
-predecessor's validation gate passes.
+**Execution status:** Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, and
+Phase 6 — complete and verified 2026-09-19. Phase 7 — optional and awaiting
+explicit runtime-integration approval. Phase 8 can follow the approved
+preview/catalog gates without enabling runtime integration. No later phase may
+begin until its predecessor's validation gate passes.
 
 **Scope:** Asset production and asset-facing integration for Marketplace v1.
 This plan covers portraits, role/attribute presentation, premium animation
@@ -531,6 +533,23 @@ data plus overlay UI; the cat identity asset remains stable.
 
 **Exit gate:** The visual language cannot suggest that a cat is simultaneously
   assigned, listed, or rented in violation of the story/system contract.
+
+### Phase 6 execution record — verified 2026-09-19
+
+- Added a UI-only lifecycle presentation contract for `Idle`, `Assigned`,
+  `Listed`, `Rented`, `Expired`, and `Locked`.
+- Each state maps to one approved icon, a player-facing label and explanation,
+  and explicit `canAssign`/`canList`/`canRent` flags. Assigned, listed, rented,
+  and locked states cannot expose conflicting actions; Expired returns to the
+  idle action surface.
+- Marketplace cards/details now consume the contract for their Listed badge;
+  the contract is explicitly non-authoritative and does not alter saves,
+  ownership, or transaction results.
+- Validation passed: 715 full unit tests, state/icon contract tests, lint,
+  build, and six Marketplace/icon/catalog browser tests.
+
+**Phase 6 gate:** closed for preview state presentation. Phase 7 remains an
+optional separate runtime-approval gate.
 
 ## 10. Phase 7 — Optional in-world runtime integration
 

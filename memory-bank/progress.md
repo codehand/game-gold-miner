@@ -189,7 +189,14 @@ portrait is missing or fails to load. The 390×844 and 320×568 Marketplace
 flows, detail stat/skill assertions, catalog HTTP checks, and failure fallback
 browser test pass; cards do not decode premium sheets at open. The UI remains
 preview-only and does not change authoritative ownership or transaction state.
-Phase 6 — listing and transaction state presentation — is next.
+Phase 6 — listing and transaction state presentation — completed 2026-09-19.
+Added the UI-only state contract for Idle, Assigned, Listed, Rented, Expired,
+and Locked, with approved icons, explanations, and explicit non-conflicting
+assign/list/rent permissions. Marketplace Listed cards/details consume it;
+authoritative ownership and transaction behavior remain untouched. State tests,
+715 unit tests, lint, build, and six browser tests pass. Phase 7 runtime
+integration is optional and awaits explicit approval; Phase 8 release audit can
+follow the catalog/UI gates without turning runtime integration on.
 
 ## Phase Status
 

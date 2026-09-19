@@ -3,11 +3,14 @@ import {
   type MarketplaceAssetRecord,
 } from './marketplaceAssetRegistry';
 import { getMarketplaceIcon } from './marketplaceIconRegistry';
+import {
+  getMarketplaceStatePresentation,
+  type MarketplaceAvailabilityState,
+} from './marketplaceStatePresentation';
 
 type RoleFilter = 'All roles' | 'Elevator' | 'Warehouse' | 'Miner';
 type RarityFilter = 'All rarities' | 'N' | 'R' | 'SR' | 'SSR' | 'UR';
 type AttributeKey = 'power' | 'speed' | 'capacity' | 'efficiency';
-type AvailabilityState = 'Listed';
 
 interface CatListing {
   readonly assetId: MarketplaceAssetRecord['assetId'];
@@ -21,7 +24,7 @@ interface CatListing {
   readonly roleScore: number;
   readonly primarySkill: string;
   readonly skillBonusPercent: number;
-  readonly availability: AvailabilityState;
+  readonly availability: MarketplaceAvailabilityState;
 }
 
 const ROLE_LABELS = {
@@ -517,9 +520,12 @@ export class MarketplaceModal {
     );
     const availability = document.createElement('span');
     availability.className = 'market-availability';
+    const state = getMarketplaceStatePresentation(cat.availability);
+    availability.dataset.state = state.state;
+    availability.title = state.description;
     availability.append(
-      this.#icon('state-listed', 'Listed'),
-      document.createTextNode(cat.availability),
+      this.#icon(state.iconId, state.label),
+      document.createTextNode(state.label),
     );
     const priceLine = document.createElement('strong');
     priceLine.className = 'market-price';
@@ -577,9 +583,12 @@ export class MarketplaceModal {
 
     const availability = document.createElement('p');
     availability.className = 'market-detail-availability';
+    const state = getMarketplaceStatePresentation(cat.availability);
+    availability.dataset.state = state.state;
+    availability.title = state.description;
     availability.append(
-      this.#icon('state-listed', 'Listed'),
-      document.createTextNode(`Availability: ${cat.availability}`),
+      this.#icon(state.iconId, state.label),
+      document.createTextNode(`Availability: ${state.label}`),
     );
     main.append(availability, this.#statGrid(cat));
 
