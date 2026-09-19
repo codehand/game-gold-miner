@@ -26,7 +26,17 @@ the SVG icon family and manifest now cover three roles, four attributes, three
 skills, and six color-independent lifecycle states. Its registry suite (4
 tests), full unit suite (710 tests), lint, build, Marketplace E2E (3 tests),
 icon-render E2E (1 test), and native 24/32px screenshot review all passed.
-Phase 3 has not started.
+Phase 3 completed 2026-09-19: the preview catalog now has nine stable
+allowlisted portraits across Elevator (Mofy, Elon, Win), Warehouse (Baron,
+Cipher, Gauge, Nautilus), and the new dedicated Miner family (Mica N and Forge
+SSR). Mica and Forge were generated as original 2×2/4-frame candidates,
+processed to exact 128×128 RGBA frames, and passed strict raster QC with zero
+empty, edge-touch, or clamped frames. The registry and manifest now carry role,
+rarity, provenance, and preview-only metadata; runtime integration remains
+false. The catalog contact sheet was reviewed at native scale, the asset report
+passed for all nine public portraits, and the full 710-test unit suite passed.
+Phase 4 is next and must generate the premium 4×2/8-frame families, including
+Forge's deferred SSR animation.
 
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31

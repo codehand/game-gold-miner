@@ -6,8 +6,8 @@
  * key exposed to future Marketplace data sources.
  */
 
-export type MarketplaceAssetRole = 'elevator' | 'warehouse';
-export type MarketplaceAssetRarity = 'SR' | 'SSR';
+export type MarketplaceAssetRole = 'elevator' | 'warehouse' | 'miner';
+export type MarketplaceAssetRarity = 'N' | 'SR' | 'SSR';
 
 export interface MarketplaceAssetRecord {
   readonly assetId: string;
@@ -48,6 +48,18 @@ const MARKETPLACE_ASSET_ENTRIES = [
     runtimeIntegrated: false,
   },
   {
+    assetId: 'elevator-cargo-cat:SSR:win:idle',
+    roleId: 'elevator',
+    assetFamilyId: 'elevator-cargo-cat',
+    rarityTier: 'SSR',
+    characterSlug: 'win',
+    characterName: 'Win',
+    portraitPath: '/assets/marketplace/catalog/elevator-cargo-cat/ssr/win/idle-1.png',
+    sourcePortraitPath: 'art-source/cat-role-catalog/elevator-cargo-cat/ssr/win/processed/idle-1.png',
+    catalogStatus: 'preview-canonical',
+    runtimeIntegrated: false,
+  },
+  {
     assetId: 'warehouse-manager:SR:baron:idle',
     roleId: 'warehouse',
     assetFamilyId: 'warehouse-manager',
@@ -68,6 +80,54 @@ const MARKETPLACE_ASSET_ENTRIES = [
     characterName: 'Cipher',
     portraitPath: '/assets/marketplace/catalog/warehouse-manager/sr/cipher/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/warehouse-manager/sr/cipher/processed/idle-1.png',
+    catalogStatus: 'preview-canonical',
+    runtimeIntegrated: false,
+  },
+  {
+    assetId: 'warehouse-manager:SR:gauge:idle',
+    roleId: 'warehouse',
+    assetFamilyId: 'warehouse-manager',
+    rarityTier: 'SR',
+    characterSlug: 'gauge',
+    characterName: 'Gauge',
+    portraitPath: '/assets/marketplace/catalog/warehouse-manager/sr/gauge/idle-1.png',
+    sourcePortraitPath: 'art-source/cat-role-catalog/warehouse-manager/sr/gauge/processed/idle-1.png',
+    catalogStatus: 'preview-canonical',
+    runtimeIntegrated: false,
+  },
+  {
+    assetId: 'warehouse-manager:SSR:nautilus:idle',
+    roleId: 'warehouse',
+    assetFamilyId: 'warehouse-manager',
+    rarityTier: 'SSR',
+    characterSlug: 'nautilus',
+    characterName: 'Nautilus',
+    portraitPath: '/assets/marketplace/catalog/warehouse-manager/ssr/nautilus/idle-1.png',
+    sourcePortraitPath: 'art-source/cat-role-catalog/warehouse-manager/ssr/nautilus/processed/idle-1.png',
+    catalogStatus: 'preview-canonical',
+    runtimeIntegrated: false,
+  },
+  {
+    assetId: 'miner:N:mica:idle',
+    roleId: 'miner',
+    assetFamilyId: 'miner',
+    rarityTier: 'N',
+    characterSlug: 'mica',
+    characterName: 'Mica',
+    portraitPath: '/assets/marketplace/catalog/miner/n/mica/idle-1.png',
+    sourcePortraitPath: 'art-source/cat-role-catalog/miner/n/mica/processed/idle-1.png',
+    catalogStatus: 'preview-canonical',
+    runtimeIntegrated: false,
+  },
+  {
+    assetId: 'miner:SSR:forge:idle',
+    roleId: 'miner',
+    assetFamilyId: 'miner',
+    rarityTier: 'SSR',
+    characterSlug: 'forge',
+    characterName: 'Forge',
+    portraitPath: '/assets/marketplace/catalog/miner/ssr/forge/idle-1.png',
+    sourcePortraitPath: 'art-source/cat-role-catalog/miner/ssr/forge/processed/idle-1.png',
     catalogStatus: 'preview-canonical',
     runtimeIntegrated: false,
   },

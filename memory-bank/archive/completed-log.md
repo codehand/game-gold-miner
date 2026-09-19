@@ -1,5 +1,18 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Marketplace asset Phase 3 listing catalog
+
+Expanded the preview-only Marketplace catalog to nine stable allowlisted
+portraits: Elevator Mofy/Elon/Win, Warehouse Baron/Cipher/Gauge/Nautilus, and
+the new dedicated Miner characters Mica (N) and Forge (SSR). Mica and Forge
+were generated as original 2×2/4-frame sheets, processed to 128×128 RGBA
+frames, and passed strict raster QC with zero empty, edge-touch, or clamped
+frames. Added registry IDs, public portraits, manifest metadata, context
+previews, prompts, and provenance. The nine-portrait asset report, focused
+tests, 710-test unit suite, lint, build, and five browser smoke tests passed.
+Premium 4×2/8-frame animation families remain Phase 4 work; no runtime or
+transaction behavior changed.
+
 ## 2026-09-19 — Account settings and save-conflict UI
 
 Added the player-facing settings button and account modal. Guest players can

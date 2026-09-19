@@ -1,0 +1,1 @@
+Clean-HD mobile-game 2D sprite sheet for original cat miner Mica, exact 2x2 grid with four idle frames, 3/4 view, warm russet-orange tabby, teal work vest, brass miner helmet lamp, compact pickaxe and ore pouch, dark navy outline, upper-left light, centered stable feet, no text or UI, flat chroma-key magenta #FF00FF background.

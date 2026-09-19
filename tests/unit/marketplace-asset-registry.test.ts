@@ -13,9 +13,9 @@ import {
 
 const PNG_SIGNATURE = '89504e470d0a1a0a';
 
-describe('Marketplace Phase 1 asset registry', () => {
-  it('exposes four stable preview assets without duplicate IDs or paths', () => {
-    expect(MARKETPLACE_ASSETS).toHaveLength(4);
+describe('Marketplace asset registry', () => {
+  it('exposes the expanded stable preview catalog without duplicate IDs or paths', () => {
+    expect(MARKETPLACE_ASSETS).toHaveLength(9);
     expect(new Set(MARKETPLACE_ASSET_IDS).size).toBe(MARKETPLACE_ASSET_IDS.length);
     expect(new Set(MARKETPLACE_ASSETS.map((asset) => asset.portraitPath)).size).toBe(
       MARKETPLACE_ASSETS.length,
@@ -35,6 +35,20 @@ describe('Marketplace Phase 1 asset registry', () => {
       expect.objectContaining({
         characterName: 'Cipher',
         roleId: 'warehouse',
+      }),
+    );
+    expect(getMarketplaceAsset('miner:N:mica:idle')).toEqual(
+      expect.objectContaining({
+        characterName: 'Mica',
+        roleId: 'miner',
+        rarityTier: 'N',
+      }),
+    );
+    expect(getMarketplaceAsset('miner:SSR:forge:idle')).toEqual(
+      expect.objectContaining({
+        characterName: 'Forge',
+        roleId: 'miner',
+        rarityTier: 'SSR',
       }),
     );
     expect(getMarketplaceAsset('unknown:SSR:attacker:idle')).toBeNull();

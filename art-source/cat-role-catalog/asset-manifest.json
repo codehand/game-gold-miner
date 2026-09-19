@@ -475,6 +475,88 @@
       ]
     },
     {
+      "roleId": "miner",
+      "roleName": "Underground extraction specialist",
+      "codeAlias": "miner",
+      "defaultRarityTier": "N",
+      "currentRuntimeAsset": "public/assets/placeholder/miner-cat.png",
+      "currentRuntimeTextureKey": "placeholder-miner-cat",
+      "runtimeBehavior": "Unchanged; the placeholder remains the runtime fallback while Marketplace portraits stay preview-only.",
+      "variants": [
+        {
+          "rarityTier": "N",
+          "characterName": "Mica",
+          "assetId": "miner:N:mica:idle",
+          "status": "phase-3-preview-canonical",
+          "designReference": "art-source/cat-role-catalog/miner/n/mica/reference/miner-n-mica-design-reference.png",
+          "rawCandidate": "art-source/cat-role-catalog/miner/n/mica/raw/miner-n-mica-idle-raw-v1.png",
+          "transparentSheet": "art-source/cat-role-catalog/miner/n/mica/processed/sheet-transparent.png",
+          "animationPreview": "art-source/cat-role-catalog/miner/n/mica/processed/animation.gif",
+          "contextPreview": "art-source/cat-role-catalog/miner/n/mica/miner-n-mica-context-preview.png",
+          "grid": "2x2",
+          "frameSize": "128x128",
+          "frameCount": 4,
+          "frameDurationMs": 220,
+          "outputOrigin": [64, 117],
+          "visualLocks": [
+            "warm russet-orange tabby fur with dark stripes",
+            "teal work vest and brass miner helmet lamp",
+            "compact pickaxe and ore pouch",
+            "friendly stationary extraction-specialist silhouette"
+          ],
+          "qc": {
+            "emptyFrames": 0,
+            "sourceEdgeTouchFrames": 0,
+            "outputEdgeTouchFrames": 0,
+            "pasteClampedFrames": 0,
+            "bodyScaleCv": 0.00341932147432352,
+            "anchorYStd": 0,
+            "alphaValidated": true,
+            "nativeScaleContextReviewed": true
+          },
+          "runtimeIntegrated": false,
+          "provenance": "art-source/cat-role-catalog/miner/n/mica/provenance.md"
+        },
+        {
+          "rarityTier": "SSR",
+          "characterName": "Forge",
+          "assetId": "miner:SSR:forge:idle",
+          "status": "phase-3-preview-canonical",
+          "designReference": "art-source/cat-role-catalog/miner/ssr/forge/reference/miner-ssr-forge-design-reference.png",
+          "rawCandidate": "art-source/cat-role-catalog/miner/ssr/forge/raw/miner-ssr-forge-idle-raw-v1.png",
+          "transparentSheet": "art-source/cat-role-catalog/miner/ssr/forge/processed/sheet-transparent.png",
+          "animationPreview": "art-source/cat-role-catalog/miner/ssr/forge/processed/animation.gif",
+          "contextPreview": "art-source/cat-role-catalog/miner/ssr/forge/miner-ssr-forge-context-preview.png",
+          "grid": "2x2",
+          "frameSize": "128x128",
+          "frameCount": 4,
+          "frameDurationMs": 220,
+          "outputOrigin": [64, 117],
+          "visualLocks": [
+            "deep charcoal-gray fur with white muzzle and emerald eyes",
+            "plum-purple reinforced mining coat with restrained gold trim",
+            "brass miner helmet and crystal-tipped ornate pickaxe",
+            "premium stationary extraction-specialist silhouette"
+          ],
+          "qc": {
+            "emptyFrames": 0,
+            "sourceEdgeTouchFrames": 0,
+            "outputEdgeTouchFrames": 0,
+            "pasteClampedFrames": 0,
+            "bodyScaleCv": 0.0030455624800551804,
+            "anchorYStd": 0,
+            "alphaValidated": true,
+            "nativeScaleContextReviewed": true
+          },
+          "runtimeIntegrated": false,
+          "provenance": "art-source/cat-role-catalog/miner/ssr/forge/provenance.md"
+        },
+        { "rarityTier": "R", "status": "awaiting-user-reference" },
+        { "rarityTier": "SR", "status": "awaiting-user-reference" },
+        { "rarityTier": "UR", "status": "awaiting-user-reference" }
+      ]
+    },
+    {
       "roleId": "surface-elevator-tower",
       "roleName": "Surface elevator headhouse",
       "codeAlias": "surfaceElevatorTower",

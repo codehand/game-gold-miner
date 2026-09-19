@@ -25,3 +25,19 @@ The Phase 1 registry exposes stable asset IDs and copies the canonical processed
 
 These outputs are `128×128` transparent RGBA preview portraits. They remain
 catalog/preview assets and are not runtime-integrated character assignments.
+
+## Phase 3 listing portrait expansion
+
+The preview catalog now includes additional distinct Elevator and Warehouse
+entries plus the first dedicated Miner family:
+
+- `elevator-cargo-cat:SSR:win:idle` → `catalog/elevator-cargo-cat/ssr/win/idle-1.png`
+- `warehouse-manager:SR:gauge:idle` → `catalog/warehouse-manager/sr/gauge/idle-1.png`
+- `warehouse-manager:SSR:nautilus:idle` → `catalog/warehouse-manager/ssr/nautilus/idle-1.png`
+- `miner:N:mica:idle` → `catalog/miner/n/mica/idle-1.png`
+- `miner:SSR:forge:idle` → `catalog/miner/ssr/forge/idle-1.png`
+
+Mica and Forge were generated as original 2×2/4-frame candidates and passed
+strict processor QC. Forge remains a Phase 3 preview portrait; its required
+premium 4×2/8-frame family is intentionally deferred to Phase 4. All five
+entries remain preview-only and `runtimeIntegrated: false`.

@@ -164,8 +164,17 @@ icon family — completed 2026-09-19 with three role icons, four attribute icons
 three skill icons, and six color-independent lifecycle icons. Its registry
 suite (4 tests), full unit suite (710 tests), lint, build, Marketplace E2E (3
 tests), icon-render E2E (1 test), and native 24/32px screenshot review passed.
-Phase 3 — listing portrait catalog expansion — is the next gate; later phases
-have not started.
+Phase 3 — listing portrait catalog expansion — completed 2026-09-19. The
+canonical preview registry now exposes nine stable IDs: three Elevator
+portraits, four Warehouse portraits, and two dedicated Miner portraits (Mica
+N and Forge SSR). Mica and Forge were generated as original 2×2/4-frame sheets
+and passed strict raster QC; all nine public portraits pass the 128×128 RGBA
+asset report. The catalog contact sheet was reviewed at native scale, and the
+browser catalog smoke confirms every canonical portrait loads at 128×128.
+Focused registry/role/icon tests pass (14), the full unit suite passes (710),
+lint and build pass, and the Marketplace/icon/catalog E2E smoke passes (5).
+Phase 4 — premium 8-frame animation families — is next; no runtime integration
+or transaction behavior changed.
 
 ## Phase Status
 

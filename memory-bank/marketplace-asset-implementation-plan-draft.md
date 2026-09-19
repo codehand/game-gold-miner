@@ -5,8 +5,8 @@ sequence, asset gates, role-taxonomy gate, and premium 8-frame requirements are
 approved as the working plan; individual asset approval remains subject to the
 phase validation gates.
 
-**Execution status:** Phase 0, Phase 1, and Phase 2 — complete and verified
-2026-09-19. Phase 3 — not started. No later phase may begin until its
+**Execution status:** Phase 0, Phase 1, Phase 2, and Phase 3 — complete and
+verified 2026-09-19. Phase 4 — next. No later phase may begin until its
 predecessor's validation gate passes.
 
 **Scope:** Asset production and asset-facing integration for Marketplace v1.
@@ -304,6 +304,26 @@ must not be used as the ownership identity.
 
 **Exit gate:** Marketplace has enough approved portraits to exercise role,
 rarity, search, filter, comparison, and rental scenarios.
+
+### Phase 3 execution record — verified 2026-09-19
+
+- Added canonical preview entries for Win, Gauge, and Nautilus, then created
+  the first dedicated Miner family: Mica (`N`) and Forge (`SSR`).
+- Generated Mica and Forge as original exact 2×2/4-frame sheets and processed
+  them through `generate2dsprite.py` with feet alignment, shared scale, and
+  strict QC. Both have zero empty, source/output edge-touch, and clamped
+  frames; their body-scale CVs are 0.00342 and 0.00305 respectively.
+- Added the nine stable registry IDs, public `idle-1` portraits, manifest
+  metadata, per-character prompts/provenance, and context previews. All entries
+  remain `runtimeIntegrated: false`.
+- Validation passed: 14 focused role/registry/icon tests, 710 full unit tests,
+  lint, build, five Marketplace/icon/catalog browser tests, the constrained
+  128×128 RGBA asset report for all nine public portraits, and native-scale
+  contact-sheet review.
+- Forge's premium 8-frame family is intentionally deferred to Phase 4, where
+  all SR/SSR/UR animation contracts are finalized together.
+
+**Phase 3 gate:** closed for the preview catalog; Phase 4 may start.
 
 ## 7. Phase 4 — Premium 8-frame animation families
 

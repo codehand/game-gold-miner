@@ -110,7 +110,13 @@ describe('Marketplace Phase 0 role matrix', () => {
     const manifestRoleIds = new Set(manifest.roles.map((role) => role.roleId));
 
     expect(manifestRoleIds).toEqual(
-      new Set(['unloader', 'warehouse-manager', 'elevator-cargo-cat', 'surface-elevator-tower']),
+      new Set([
+        'unloader',
+        'warehouse-manager',
+        'elevator-cargo-cat',
+        'miner',
+        'surface-elevator-tower',
+      ]),
     );
     expect(matrix.roles.find((role) => role.roleId === 'elevator')?.assetFamilyId).toBe(
       'elevator-cargo-cat',
