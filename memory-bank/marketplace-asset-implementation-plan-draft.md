@@ -7,9 +7,9 @@ phase validation gates.
 
 **Execution status:** Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, and
 Phase 6 — complete and verified 2026-09-19. Phase 7 — optional and awaiting
-explicit runtime-integration approval. Phase 8 can follow the approved
-preview/catalog gates without enabling runtime integration. No later phase may
-begin until its predecessor's validation gate passes.
+explicit runtime-integration approval. Phase 8 — complete and verified
+2026-09-19 for the catalog/UI release scope. No later phase may begin until its
+predecessor's validation gate passes.
 
 **Scope:** Asset production and asset-facing integration for Marketplace v1.
 This plan covers portraits, role/attribute presentation, premium animation
@@ -612,6 +612,19 @@ runtime sprites.
 - Asset IDs resolve uniquely.
 - No source file contains secrets, user data, or private credentials.
 - Build, lint, Marketplace E2E, raster QC, and native-scale visual review pass.
+
+### Phase 8 execution record — verified 2026-09-19
+
+- Audited all nine public portrait IDs against the allowlisted registry,
+  manifest entries, source files, and provenance records.
+- Confirmed the 16-symbol Marketplace icon family and its manifest are present.
+- Confirmed every current asset variant remains `runtimeIntegrated: false`;
+  no catalog-only asset was promoted into runtime paths.
+- Added a release-audit test covering registry uniqueness, manifest/source/
+  provenance links, icon completeness, and the asset-only boundary.
+
+**Phase 8 gate:** closed for the catalog/UI release scope; Phase 7 runtime
+integration remains explicitly deferred pending separate approval.
 
 ## 12. Dependency and gate summary
 

@@ -1,5 +1,14 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Marketplace asset Phase 8 release audit
+
+Audited the catalog/UI release scope: all nine public portraits resolve through
+unique registry IDs, manifest entries, source files, and provenance records;
+the 16-symbol icon family is complete; and all current assets remain
+`runtimeIntegrated: false`. Added a release-audit test covering those links and
+the asset-only boundary. Phase 7 runtime integration remains intentionally
+deferred pending explicit approval.
+
 ## 2026-09-19 — Marketplace asset Phase 6 state presentation
 
 Added the UI-only lifecycle state contract for Idle, Assigned, Listed, Rented,

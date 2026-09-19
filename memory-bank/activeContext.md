@@ -53,6 +53,12 @@ uses this contract; it never writes ownership, save, or transaction state.
 State contract tests, 715 full unit tests, lint, build, and six browser tests
 pass. Phase 7 runtime integration is optional and requires explicit approval.
 
+Phase 8 release audit completed 2026-09-19 for the catalog/UI scope: all nine
+public portraits resolve through registry, manifest, source, and provenance;
+the 16-icon family is complete; and every current variant remains
+`runtimeIntegrated: false`. Release-audit tests pass. Phase 7 remains deferred
+pending explicit approval to replace current mine-role runtime sprites.
+
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31
 is also implemented but remains unvalidated; Step 32 has not started and must
