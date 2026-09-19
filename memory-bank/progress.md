@@ -6,7 +6,7 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 29 validation gate.** Steps 1–8
+**Server milestone: in progress, at the Step 32 implementation gate.** Steps 1–8
 are validated.
 Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–24 are implemented and await
 user validation together. Steps 25, 26, and 27 are each implemented, validated,
@@ -15,7 +15,8 @@ awaiting user validation. Step 29 (leaderboard display) is implemented and
 awaiting user validation. Step 30 is recorded as a documentation-only
 deferral: the verified leaderboard is sufficient for the current social goal,
 so no friend graph is needed. **Step 31 is implemented and awaiting user
-validation; Step 32 has not started and remains blocked.**
+validation; Step 32 is implemented and awaiting validation under the user's
+explicit instruction to proceed.**
 Phase 4 (Steps 22–26) is complete, validated by Step 26's own gate evidence
 below.
 
@@ -75,7 +76,8 @@ leaderboard modal from the Rewards navigation item, formats exact
 `GameNumber` values through the existing `formatAmount` authority, and shows a
 retryable offline state when the endpoint is unavailable. **The Step 29
 validation gate is open; Step 30 remains a documented deferral and Step 32 is
-not started.**
+implemented under the user's explicit instruction, with its validation gate
+open.**
 
 Evidence for this implementation: `npx --no-install deno test
 supabase/functions/leaderboard-read` (7 passing), the focused client unit run
@@ -109,9 +111,9 @@ verified all-time leaderboard. A friend graph is not required by the
 milestone's purpose or Definition of Done, so no friend table, relationship
 API, UI, or moderation surface is being added. Revisit only when a concrete
 product requirement defines discovery, privacy, blocking, and deletion
-semantics. **The Step 30 validation gate remains open; Step 29 proceeded under
-the user's explicit instruction to continue. Step 32 remains blocked until the
-Step 31 validation gate is passed.**
+semantics. **The Step 30 validation gate remains open; Step 29 and Step 32
+proceeded under the user's explicit instruction to continue. Step 32's own
+validation gate is open.**
 
 **Step 31 (entitlements), implemented 2026-09-19.** The existing
 `entitlements` table and own-row/no-write RLS policy from Step 3 are reused;
@@ -119,8 +121,24 @@ there is no migration. `entitlement-check` verifies the caller's bearer token,
 reads active `cosmetic.supporter_badge` rows through the caller-scoped client,
 and returns `effects.supporterBadge`. Unit coverage has 8 tests; the live
 integration coverage has 4 tests proving client INSERT refusal, server-role
-grant visibility, and revocation. **The Step 31 validation gate is open; Step
-32 must not begin until the user validates this test.**
+grant visibility, and revocation. **The Step 31 validation gate is open.**
+
+**Step 32 (account audit), implemented 2026-09-19.** The new
+`public.account_audit` table is separate from high-volume `save_audit` and
+accepts only the seven specified event types. Database-owned triggers cover
+identity changes, recovery-code issuance, entitlement grants/revocations, and
+save rejections; successful recovery redemption is appended by `recovery-code`
+after external session minting through a service-only RPC. Client roles have no
+RLS policies, service-role insert excludes the timestamp column, and ordinary
+service-role update/delete are revoked. The integration test drives every event
+type and the derived RLS matrix covers both client roles across all four verbs.
+Available implementation checks pass: `supabase db reset`, `supabase db lint`,
+the migration privilege probe, and SQL transaction probes for the trigger
+events. The Deno/Vitest suites, lint, and build could not start in this
+workspace because `deno`, `vitest`, `eslint`, and `tsc` are not installed;
+therefore the validation gate remains open and no acceptance-gate entry has
+been added. A review regression also proves account deletion survives the
+cascaded identity-removal trigger, which records the event with a null link.
 
 Full history is archived, not deleted:
 
@@ -155,8 +173,8 @@ untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 29 — leaderboard display.** Implemented 2026-09-19, awaiting user validation. |
-| Blocked on the gate | Step 32 and later steps; no Step 32 work has started |
+| Current gate | **Step 32 — account audit.** Implemented 2026-09-19, awaiting validation. |
+| Blocked on the gate | Step 33 and later steps; Step 31 and earlier open gates remain recorded |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
@@ -203,7 +221,8 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 29 — Leaderboard display | **Implemented 2026-09-19; awaiting validation — current gate** |
 | 30 — Decide on friends | Deferred 2026-09-19; decision recorded |
 | 31 — Entitlements | Implemented 2026-09-19; awaiting validation |
-| 32–37 | Not started, blocked; no Step 32 work has started |
+| 32 — Audit log | Implemented 2026-09-19; awaiting validation |
+| 33–37 | Not started, blocked on the Step 32 validation gate |
 
 ## Known Risks
 

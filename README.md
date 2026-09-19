@@ -11,7 +11,8 @@ The game runs in a mobile browser at a fixed 360×640 portrait logical viewport.
 required on any path; it boots, plays, and saves entirely in IndexedDB even with
 no network at all. A separate server milestone is under way in
 `memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
-`supabase/`, holds all six designed tables with row-level security, and its
+`supabase/`, holds the six original designed tables plus the Step 32 account
+audit table with row-level security, and its
 `save-sync` Edge Function now accepts a real upload and download
 (`PUT`/`GET /v1/save`), on top of its original health check — but nothing in
 this reaches a real player yet: every identity and cloud-save path (guest,
@@ -187,13 +188,17 @@ npm run supabase:stop
 Ports are the Supabase CLI defaults — API 54321, database 54322, Studio 54323,
 mail 54324 — and do not collide with the client's 5173, 4173, 4174, 4175, or 4176.
 
-`supabase/migrations/` holds three forward-only migrations: a bootstrap file
+`supabase/migrations/` holds eight forward-only migrations: a bootstrap file
 that creates nothing (it only asserts the PostgreSQL 13+ premise the schema
-relies on for `gen_random_uuid()`), one that lands all six designed tables —
-`profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`,
-`entitlements` — with row-level security enabled and exactly the policies
-`memory-bank/architecture.md`'s RLS matrix names, and one that adds the
-sign-up trigger that creates every `profiles` row. `supabase/seed.sql` inserts
+relies on for `gen_random_uuid()`), one that lands the original six designed
+tables — `profiles`, `saves`, `save_audit`, `recovery_codes`,
+`leaderboard_entries`, `entitlements` — with row-level security enabled and
+exactly the policies `memory-bank/architecture.md`'s RLS matrix names, one
+that adds the sign-up trigger that creates every `profiles` row, three
+recovery-code RPC/grant migrations, one leaderboard decision migration, and
+the Step 32 migration that adds the server-only append-only `account_audit`
+log.
+`supabase/seed.sql` inserts
 one local-only fixture guest (`auth.users` row plus its `profiles` row) after
 every `supabase db reset`, never applied to a deployed database.
 `.github/workflows/ci.yml` runs `npm run verify` and `npm run verify:server` as

@@ -1,5 +1,24 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Server milestone Step 32: account audit log
+
+Implemented the separate `public.account_audit` timeline. Database triggers
+record identity additions/removals, recovery-code issuance, entitlement grants
+and revocations, and rejected saves; the recovery-code function appends a
+redemption only after session minting succeeds. The table accepts seven known
+event types, owns its timestamp, uses `on delete set null` for the account link,
+and denies client access. Service-role insert omits the timestamp column and
+ordinary update/delete are revoked, while the server-only RPC is the function
+boundary for redemption.
+
+Added the real-stack account-audit integration test and extended the
+migration-derived RLS matrix to all seven tables. Step 32 is implemented but
+awaits its validation gate; it is intentionally absent from
+`archive/acceptance-gates.md` until the user validates it. A review found that
+the identity-removal trigger could block `auth.users` deletion after a cascade;
+it now records the removal with a null account link, with a regression covering
+the deletion path.
+
 ## 2026-09-19 — Account settings and save-conflict UI
 
 Added the player-facing settings button and account modal. Guest players can

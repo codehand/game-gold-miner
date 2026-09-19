@@ -2,7 +2,7 @@
 
 ## Current Status
 
-All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game; it is the map any post-milestone work starts from. The IndexedDB database schema version remains 1; the save-document schema is version 2; there is no relational or server database.
+All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game and the server milestone layered over it. The IndexedDB database schema version remains 1; the save-document schema is version 2; the local Supabase schema contains seven public tables.
 
 ## Implemented Foundation
 
@@ -321,7 +321,12 @@ supabase/
 ├── seed.sql                        local-only fixture guest (Step 5)
 ├── migrations/                     forward-only, applied in filename order
 │   ├── 20260908120000_bootstrap_platform_requirements.sql
-│   └── 20260908130000_create_platform_tables.sql
+│   ├── 20260908130000_create_platform_tables.sql
+│   ├── 20260913090000_recovery_code_rotation_rpc.sql
+│   ├── 20260913090100_recovery_code_revert_rpc.sql
+│   ├── 20260913090200_recovery_code_rpc_grants.sql
+│   ├── 20260918100000_leaderboard_lifetime_gold_board.sql
+│   └── 20260919100000_account_audit_log.sql
 └── functions/
     ├── save-sync/                  the save-sync protocol's one HTTP surface
     │   ├── index.ts
@@ -386,17 +391,19 @@ outside the contract is a client bug.
 **The bootstrap migration creates nothing.** It asserts the PostgreSQL 13+
 premise the Step 3 schema relies on for `gen_random_uuid()`, resolving the
 function rather than trusting the version number, and gives the migration
-pipeline a real file to apply. **The second migration lands all six designed
-tables**, verbatim against the "Complete Database Schema" block below, with row-
-level security enabled on every one and exactly the policies that block's RLS
-matrix names — `profiles`/`entitlements` select-own, `profiles` update-own,
-`saves` select-own with no write policy anywhere, `leaderboard_entries`
-select-all, and `save_audit`/`recovery_codes` with no policy at all, which
-denies every non-service-role access outright. `supabase/seed.sql` inserts one
+pipeline a real file to apply. **The second migration lands the original six
+designed tables**, verbatim against the "Complete Database Schema" block below,
+with row-level security enabled on every one and exactly the policies that
+block's RLS matrix names — `profiles`/`entitlements` select-own, `profiles`
+update-own, `saves` select-own with no write policy anywhere,
+`leaderboard_entries` select-all, and `save_audit`/`recovery_codes` with no
+policy at all, which denies every non-service-role access outright. The
+Step 32 migration adds the seventh `account_audit` table, its triggers, and the
+service-only append path. `supabase/seed.sql` inserts one
 local-only fixture guest so Studio shows a real row without the Step 8 sign-in
-flow existing yet; `saves`, `save_audit`, `leaderboard_entries`, and
-`entitlements` stay unseeded until the steps that produce real rows for them
-(16, 26, 31) exist.
+flow existing yet; `saves`, `save_audit`, `leaderboard_entries`, `entitlements`,
+and `account_audit` stay unseeded until the steps that produce real rows for
+them (16, 24, 28, 31, 32) exist.
 
 **`src/core`, `src/config`, and the save-document boundary run on Deno,
 unmodified, via a generated bundle rather than a raw import.** Deno's edge
@@ -1580,9 +1587,9 @@ files per layer rather than one monster:
 `npm run verify:server`.
 
 **Attack 6's matrix is derived, not hand-listed.** `tests/server-integration/rlsMatrixFixture.ts`
-reads `supabase/migrations/*.sql` and builds the six tables × four verbs × two
+reads `supabase/migrations/*.sql` and builds the seven tables × four verbs × two
 client roles from the `create table` and `create policy` statements themselves,
-so a seventh table is covered without anyone editing the suite — and its first
+so an eighth table is covered without anyone editing the suite — and its first
 column is read from the same statement, so no probe column is hard-coded either.
 Three further things are read from the same files rather than listed: each
 table's `generated always as identity` columns, so the UPDATE probe never
@@ -1928,6 +1935,39 @@ method, CORS, effect, and resolver-failure branches. The live
 client PostgREST insert is refused, a service-role grant becomes visible with
 `supporterBadge: true`, and revocation removes the effect. The function does
 not read the service-role key.
+
+### Account audit log (Step 32)
+
+Step 32 adds `public.account_audit` in
+`supabase/migrations/20260919100000_account_audit_log.sql`. It is deliberately
+separate from `save_audit`: `save_audit` is the high-volume request record for
+save-sync, while this table is the sparse security timeline for identity
+changes, recovery-code issuance and redemption, entitlement changes, and save
+rejections. Every row has a database-owned `occurred_at` and an `actor_type`;
+`user_id` identifies the affected account and is set to null when the account
+is deleted, leaving Step 33 an explicit anonymization/retention task rather
+than silently losing the audit timeline through a cascade. `detail` is a
+server-authored JSON object capped at 4096 bytes and contains no recovery code,
+identity payload, email, or access token.
+
+The table has RLS enabled with no client policies. The service role may select
+and insert but may not update or delete; the server-only
+`record_account_audit_event` RPC accepts no caller timestamp and is executable
+only by `service_role`. Database triggers record `identity_added` and
+`identity_removed` from `auth.identities`, `recovery_code_issued` from
+`recovery_codes`, `entitlement_granted`/`entitlement_revoked` from
+`entitlements`, and `save_rejected` from `save_audit`. Redemption is appended
+by `recovery-code` only after the external session mint succeeds, because its
+claim may be reverted after a mint failure. If an account deletion cascades
+through `auth.identities` after the parent row is gone, the identity-removal
+event uses a null account link so the audit FK cannot block deletion.
+
+Coverage: `tests/server-integration/account-audit.integration.test.ts` drives
+all seven event types against the local stack, checks server timestamps and
+actors, and checks that a client token sees no rows and cannot insert. The
+migration-derived RLS matrix in
+`tests/server-integration/adversarial-rls.integration.test.ts` also covers the
+new table's select/insert/update/delete cells for both client roles.
 
 ### Guest linking and the identity collision (Step 13)
 
@@ -2360,10 +2400,11 @@ the local Supabase stack; Step 5 landed it on 2026-09-08 as
 Step 4's bootstrap migration
 (`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
 creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
-for `gen_random_uuid()`). All six tables and the row-level-security policies in
-the matrix below exist in the local development database after
-`supabase db reset`; **no deployed database contains them**, because no
-deployment exists yet. This block and its twin in the other document are
+for `gen_random_uuid()`). The original six tables and the Step 32
+`account_audit` table, with the row-level-security policies in the matrix
+below, exist in the local development database after `supabase db reset`;
+**no deployed database contains them**, because no deployment exists yet. This
+block and its twin in the other document are
 byte-identical by construction and must be changed together, in the same change
 as every future migration, exactly as `AGENTS.md` requires.
 
@@ -2666,6 +2707,191 @@ create table public.entitlements (
   constraint entitlements_granted_by_length
     check (char_length(granted_by) between 1 and 64)
 );
+
+-- -------------------------------------------------------- account_audit --
+create table public.account_audit (
+  id          bigint      generated always as identity primary key,
+  occurred_at timestamptz not null default now(),
+  event_type  text        not null,
+  user_id     uuid            null references auth.users(id) on delete set null,
+  actor_type  text        not null,
+  detail      jsonb           null,
+  constraint account_audit_event_type_known
+    check (event_type in (
+      'identity_added',
+      'identity_removed',
+      'recovery_code_issued',
+      'recovery_code_redeemed',
+      'entitlement_granted',
+      'entitlement_revoked',
+      'save_rejected'
+    )),
+  constraint account_audit_actor_type_known
+    check (actor_type in ('user', 'server', 'auth')),
+  constraint account_audit_detail_object
+    check (detail is null or jsonb_typeof(detail) = 'object'),
+  constraint account_audit_detail_size
+    check (detail is null or octet_length(detail::text) <= 4096)
+);
+
+create index account_audit_user_time_idx
+  on public.account_audit (user_id, occurred_at desc);
+
+create index account_audit_event_time_idx
+  on public.account_audit (event_type, occurred_at desc);
+
+alter table public.account_audit enable row level security;
+
+revoke insert, update, delete on public.account_audit from service_role;
+grant select on public.account_audit to service_role;
+grant insert (event_type, user_id, actor_type, detail)
+  on public.account_audit to service_role;
+
+create function public.record_account_audit_event(
+  p_event_type text,
+  p_user_id uuid,
+  p_actor_type text,
+  p_detail jsonb default null
+) returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.account_audit (event_type, user_id, actor_type, detail)
+  values (p_event_type, p_user_id, p_actor_type, p_detail);
+end;
+$$;
+
+revoke execute on function public.record_account_audit_event(text, uuid, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.record_account_audit_event(text, uuid, text, jsonb)
+  to service_role;
+
+create function public.audit_auth_identity_change() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    perform public.record_account_audit_event(
+      'identity_added',
+      new.user_id,
+      'auth',
+      jsonb_build_object('provider', new.provider)
+    );
+    return new;
+  end if;
+
+  perform public.record_account_audit_event(
+    'identity_removed',
+    case
+      when exists (select 1 from auth.users where auth.users.id = old.user_id)
+        then old.user_id
+      else null
+    end,
+    'auth',
+    jsonb_build_object('provider', old.provider)
+  );
+  return old;
+end;
+$$;
+
+create trigger auth_identity_account_audit
+  after insert or delete on auth.identities
+  for each row execute function public.audit_auth_identity_change();
+
+create function public.audit_recovery_code_issued() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.record_account_audit_event(
+    'recovery_code_issued',
+    new.user_id,
+    'user',
+    null
+  );
+  return new;
+end;
+$$;
+
+create trigger recovery_code_issued_account_audit
+  after insert on public.recovery_codes
+  for each row execute function public.audit_recovery_code_issued();
+
+create function public.audit_entitlement_change() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    perform public.record_account_audit_event(
+      'entitlement_granted',
+      new.user_id,
+      'server',
+      jsonb_build_object(
+        'entitlementKey', new.entitlement_key,
+        'source', new.source
+      )
+    );
+    return new;
+  end if;
+
+  if old.revoked_at is null and new.revoked_at is not null then
+    perform public.record_account_audit_event(
+      'entitlement_revoked',
+      new.user_id,
+      'server',
+      jsonb_build_object('entitlementKey', new.entitlement_key)
+    );
+  elsif old.revoked_at is not null and new.revoked_at is null then
+    perform public.record_account_audit_event(
+      'entitlement_granted',
+      new.user_id,
+      'server',
+      jsonb_build_object(
+        'entitlementKey', new.entitlement_key,
+        'source', new.source
+      )
+    );
+  end if;
+  return new;
+end;
+$$;
+
+create trigger entitlement_change_account_audit
+  after insert or update of revoked_at on public.entitlements
+  for each row execute function public.audit_entitlement_change();
+
+create function public.audit_rejected_save() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.outcome = 'rejected' then
+    perform public.record_account_audit_event(
+      'save_rejected',
+      new.user_id,
+      'user',
+      jsonb_build_object(
+        'errorCode', new.error_code,
+        'baseRevision', new.base_revision,
+        'documentBytes', new.document_bytes
+      )
+    );
+  end if;
+  return new;
+end;
+$$;
+
+create trigger rejected_save_account_audit
+  after insert on public.save_audit
+  for each row execute function public.audit_rejected_save();
 ```
 
 ### Column reference
@@ -2714,6 +2940,12 @@ create table public.entitlements (
 | `entitlements` | `granted_by` | text | no | — | 1–64 characters; no client path grants |
 | `entitlements` | `source` | text | yes | — | why it was granted |
 | `entitlements` | `revoked_at` | timestamptz | yes | — | — |
+| `account_audit` | `id` | bigint | no | identity | PK, generated always |
+| `account_audit` | `occurred_at` | timestamptz | no | `now()` | database-owned event time |
+| `account_audit` | `event_type` | text | no | — | one of the seven Step 32 event types |
+| `account_audit` | `user_id` | uuid | yes | — | FK → `auth.users(id)` on delete set null; affected account |
+| `account_audit` | `actor_type` | text | no | — | `user`, `server`, or `auth` |
+| `account_audit` | `detail` | jsonb | yes | — | server-authored object, ≤ 4096 bytes; no credentials or identity payload |
 
 ### Indexes, and the ones deliberately absent
 
@@ -2728,6 +2960,8 @@ create table public.entitlements (
 | `leaderboard_entries_rank_idx` | `leaderboard_entries` | `(board_key, metric_log10 desc, updated_at asc)` | The ranking query. The trailing column is the tie-break; Step 27 may choose a different one, which is an index change, not a table change. |
 | PK | `leaderboard_entries` | `(board_key, user_id)` | One entry per user per board. |
 | PK | `entitlements` | `(user_id, entitlement_key)` | Covers lookup by user as a prefix, so **no separate per-user index exists**. |
+| `account_audit_user_time_idx` | `account_audit` | `(user_id, occurred_at desc)` | Per-account investigation and deletion/anonymization work. |
+| `account_audit_event_time_idx` | `account_audit` | `(event_type, occurred_at desc)` | Event-type investigation and future operational alerts. |
 
 ### Row-level security
 
@@ -2743,6 +2977,7 @@ schema.
 | `recovery_codes` | none | none | none | none |
 | `leaderboard_entries` | all rows, every column but `user_id` | none | none | none |
 | `entitlements` | own row | none | none | none |
+| `account_audit` | none | none | none | none |
 
 `saves` denying every client write is the rule the whole anti-cheat design rests
 on: row-level security cannot re-simulate a save, so it cannot judge one, and a
@@ -2769,20 +3004,24 @@ withheld one, so a board query must name its columns.
 
 ### Relationships and deletion
 
-Every table holds exactly one foreign key, to `auth.users(id)`, with
-`on delete cascade`. There are no other relationships. That gives Step 33 a
-single deletion path: removing the `auth.users` row removes every row this
-schema holds for that person.
+Every table holds exactly one foreign key to `auth.users(id)`. The ordinary
+account-owned tables use `on delete cascade`; `account_audit.user_id` uses
+`on delete set null` so Step 33 can anonymize the affected-account link while
+retaining a bounded operational record. There are no other relationships.
 
-**Invariant for every future table:** it must carry a cascading foreign key to
-`auth.users(id)`, or declare its own explicit deletion path in the same change.
-Step 33's test enumerates the tables, so one added without a deletion path fails
-it.
+**Invariant for every future table:** it must carry a foreign key to
+`auth.users(id)` and declare whether deletion cascades or anonymizes the link
+in the same change. Step 33's test enumerates the tables, so one added without a
+deletion path fails it.
 
 Consequence recorded rather than discovered later: `save_audit` rows cascade
 away with the account, so deleting an account also erases the evidence of abuse
 from it. That is the right default while no money is at stake and GDPR is
 assumed to apply, and it is a trade, not an oversight.
+
+`account_audit` is the explicit exception: account deletion nulls `user_id`,
+and Step 33 must scrub any remaining personal detail and enforce the recorded
+life-of-account-plus-30-days retention period.
 
 ### Recovery-code hashing
 
@@ -2803,10 +3042,9 @@ Throttling belongs per caller and per address, in Step 25.
 
 ### What Step 3 does not design
 
-- The Step 32 account audit log covering identity changes, recovery issuance and
-  redemption, and entitlement grants. It is a separate table designed in its own
-  step; merging it with `save_audit` would put frequent save rows and rare
-  identity events in one table with opposing access patterns.
+- The Step 32 account audit log was not designed in Step 3. Step 32 now defines
+  it as a separate table; merging it with `save_audit` would put frequent save
+  rows and rare identity events in one table with opposing access patterns.
 - The leaderboard metric, reset period, and tie-break were left open here on
   purpose — decided in Step 27 (`## Server Stack Contract`'s "Leaderboard
   storage (Step 27)" section): lifetime gold earned, no reset (one board,

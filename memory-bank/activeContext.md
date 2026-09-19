@@ -10,10 +10,10 @@ standard deviation is 0.00076. This remains asset-only and is not runtime
 integrated. `public/assets/marketplace/mofy.png` stays a single extracted idle
 frame for the existing portrait consumer.
 
-**Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
-display) was implemented on 2026-09-19 and is awaiting user validation. Step 31
-is also implemented but remains unvalidated; Step 32 has not started and must
-remain blocked.**
+**Server milestone, at the Step 32 implementation gate — Step 29 (leaderboard
+display) and Step 31 (entitlements) remain implemented but await user
+validation. Step 32 is now implemented on 2026-09-19 and awaits validation;
+Step 33 remains blocked.**
 
 Step 29 adds the public `leaderboard-read` Edge Function and the Rewards-tab
 leaderboard modal. Public requests receive the top lifetime-gold rows; an
@@ -38,6 +38,16 @@ migration was needed. The server-owned key is `cosmetic.supporter_badge`.
 through the caller-scoped Supabase client, and returns the derived
 `effects.supporterBadge` flag. It never reads the service-role key, and there
 is no client-accessible grant route. Its validation gate remains open.
+
+Step 32 adds the separate append-only `account_audit` timeline. Database
+triggers record identity changes, recovery-code issuance, entitlement grants
+and revocations, and rejected saves; `recovery-code` records redemption only
+after session minting succeeds through a service-only RPC. Client roles have no
+policies, the service role cannot update or delete rows, and the account link is
+`on delete set null` for Step 33's anonymization work. The implementation gate
+is open; no acceptance-gate entry has been added. A review regression also
+proves that an identity-removal trigger during `auth.users` deletion preserves
+the event with a null link instead of aborting account deletion.
 
 **Previously, Step 30 (decide on friends) was handled as a documentation-only
 deferral on 2026-09-19.** The verified all-time leaderboard is enough for the
@@ -164,7 +174,7 @@ real PostgREST with real client tokens, the real `recovery_codes` table) run
 inside `npm run verify:server`
 (`tests/server-integration/adversarial.integration.test.ts` and
 `adversarial-rls.integration.test.ts`). Attack 6's matrix is **derived** from
-`supabase/migrations/*.sql`, not hand-listed, so a seventh table cannot slip
+`supabase/migrations/*.sql`, not hand-listed, so an eighth table cannot slip
 through uncovered. See `architecture.md`'s Step 26 section for the attacks ×
 guards table and for the two honest gaps Step 26 records rather than papers
 over: redemption has no per-user limit before it resolves, and attack 8's
@@ -576,10 +586,10 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Wait for the user to validate Step 31.** This is the current gate; Step 32
-   must not start before it. The entitlement table is already in the schema,
-   and the function is the only new server surface for this step.
-2. Resolve the earlier Step 28/Step 29 validation status before advancing the
+1. **Validate Step 32, then resolve the earlier open gates.** The account audit
+   migration and event-boundary tests are implemented; acceptance-gate status
+   remains open until the user validates the real-stack evidence.
+2. Resolve the earlier Step 28/Step 29/Step 31 validation status before advancing the
    milestone's implementation sequence. **Step 24's L2 is closed by Step 25:** a `429` is
    refused before any
    `save_audit` row exists on the path, and an oversized body writes none

@@ -34,7 +34,7 @@ import { createServiceRoleClient } from './serviceRoleFixture';
  *    the real REST API the way a leaderboard display would.
  *
  * A focused RLS check for this table also lives here; the exhaustive,
- * derived six-table × four-verb × two-role matrix is Step 26's
+ * derived seven-table × four-verb × two-role matrix is Step 26's
  * `adversarial-rls.integration.test.ts` (attack 6), which already covers
  * `leaderboard_entries` and is not duplicated.
  */

@@ -2,15 +2,18 @@
 
 ## Current State
 
-All 37 implementation-plan steps are complete and user-validated; the user validated Step 37 on 2026-09-08, closing the base-game milestone. Step 37 added `README.md`, corrected the documentation that still described a four-floor mine, and re-ran the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android pass and a human 30-second-comprehension playtest remain the two recorded open caveats; neither blocks the milestone. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
+All 37 implementation-plan steps are complete and user-validated; the user validated Step 37 on 2026-09-08, closing the base-game milestone. Step 37 added `README.md`, corrected the documentation that still described a four-floor mine, and re-ran the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android pass and a human 30-second-comprehension playtest remain the two recorded open caveats; neither blocks the milestone. Save document and IndexedDB schema versions remain 1; the local Supabase schema contains seven public tables.
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
-The post-milestone server milestone is in progress at Step 29. The leaderboard
-display uses a read-only Edge Function boundary because the browser may read
-public board columns but cannot select `leaderboard_entries.user_id`; the UI
-formats the table's exact `GameNumber` strings through the existing
-`formatAmount` authority and degrades to a retryable offline state.
+The post-milestone server milestone is in progress at the Step 32 implementation
+gate. The leaderboard display uses a read-only Edge Function boundary because
+the browser may read public board columns but cannot select
+`leaderboard_entries.user_id`; the UI formats the table's exact `GameNumber`
+strings through the existing `formatAmount` authority and degrades to a
+retryable offline state. Step 32 adds the server-only account audit timeline;
+Step 31 remains implemented but awaits user validation, and Step 32 has not
+been validated yet.
 
 ## Approved Direction
 
@@ -167,6 +170,17 @@ or schema version change is authorized in this phase.
   `tests/server-integration/entitlement-check.integration.test.ts` proves
   direct client INSERT refusal, server-role visibility, and revocation against
   the real local stack.
+- `account_audit` is the server-milestone Step 32 boundary. The table and its
+  no-client-policy RLS matrix are created by
+  `20260919100000_account_audit_log.sql`; database triggers cover identity
+  changes, recovery issuance, entitlement changes, and save rejection. The
+  `recovery-code` function appends a redemption only after session minting
+  succeeds through the service-only `record_account_audit_event` RPC. The
+  account link is `on delete set null` for Step 33 anonymization, and the
+  server-authored detail object never stores a code, identity payload, email,
+  or access token. The identity-removal trigger uses a null link when
+  `auth.users` deletion has already removed the parent, so it cannot block the
+  cascade.
 - `tests/server-integration/authFixture.ts` is Step 7's fixed "fixture pattern
   for an authenticated caller": `mintFixtureUserToken()` signs an HS256 JWT
   (`sub`/`role: authenticated`/`aud: authenticated`/`exp`) for the seeded
@@ -533,10 +547,11 @@ the local Supabase stack; Step 5 landed it on 2026-09-08 as
 Step 4's bootstrap migration
 (`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
 creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
-for `gen_random_uuid()`). All six tables and the row-level-security policies in
-the matrix below exist in the local development database after
-`supabase db reset`; **no deployed database contains them**, because no
-deployment exists yet. This block and its twin in the other document are
+for `gen_random_uuid()`). The original six tables and the Step 32
+`account_audit` table, with the row-level-security policies in the matrix
+below, exist in the local development database after `supabase db reset`;
+**no deployed database contains them**, because no deployment exists yet. This
+block and its twin in the other document are
 byte-identical by construction and must be changed together, in the same change
 as every future migration, exactly as `AGENTS.md` requires.
 
@@ -839,6 +854,191 @@ create table public.entitlements (
   constraint entitlements_granted_by_length
     check (char_length(granted_by) between 1 and 64)
 );
+
+-- -------------------------------------------------------- account_audit --
+create table public.account_audit (
+  id          bigint      generated always as identity primary key,
+  occurred_at timestamptz not null default now(),
+  event_type  text        not null,
+  user_id     uuid            null references auth.users(id) on delete set null,
+  actor_type  text        not null,
+  detail      jsonb           null,
+  constraint account_audit_event_type_known
+    check (event_type in (
+      'identity_added',
+      'identity_removed',
+      'recovery_code_issued',
+      'recovery_code_redeemed',
+      'entitlement_granted',
+      'entitlement_revoked',
+      'save_rejected'
+    )),
+  constraint account_audit_actor_type_known
+    check (actor_type in ('user', 'server', 'auth')),
+  constraint account_audit_detail_object
+    check (detail is null or jsonb_typeof(detail) = 'object'),
+  constraint account_audit_detail_size
+    check (detail is null or octet_length(detail::text) <= 4096)
+);
+
+create index account_audit_user_time_idx
+  on public.account_audit (user_id, occurred_at desc);
+
+create index account_audit_event_time_idx
+  on public.account_audit (event_type, occurred_at desc);
+
+alter table public.account_audit enable row level security;
+
+revoke insert, update, delete on public.account_audit from service_role;
+grant select on public.account_audit to service_role;
+grant insert (event_type, user_id, actor_type, detail)
+  on public.account_audit to service_role;
+
+create function public.record_account_audit_event(
+  p_event_type text,
+  p_user_id uuid,
+  p_actor_type text,
+  p_detail jsonb default null
+) returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.account_audit (event_type, user_id, actor_type, detail)
+  values (p_event_type, p_user_id, p_actor_type, p_detail);
+end;
+$$;
+
+revoke execute on function public.record_account_audit_event(text, uuid, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.record_account_audit_event(text, uuid, text, jsonb)
+  to service_role;
+
+create function public.audit_auth_identity_change() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    perform public.record_account_audit_event(
+      'identity_added',
+      new.user_id,
+      'auth',
+      jsonb_build_object('provider', new.provider)
+    );
+    return new;
+  end if;
+
+  perform public.record_account_audit_event(
+    'identity_removed',
+    case
+      when exists (select 1 from auth.users where auth.users.id = old.user_id)
+        then old.user_id
+      else null
+    end,
+    'auth',
+    jsonb_build_object('provider', old.provider)
+  );
+  return old;
+end;
+$$;
+
+create trigger auth_identity_account_audit
+  after insert or delete on auth.identities
+  for each row execute function public.audit_auth_identity_change();
+
+create function public.audit_recovery_code_issued() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.record_account_audit_event(
+    'recovery_code_issued',
+    new.user_id,
+    'user',
+    null
+  );
+  return new;
+end;
+$$;
+
+create trigger recovery_code_issued_account_audit
+  after insert on public.recovery_codes
+  for each row execute function public.audit_recovery_code_issued();
+
+create function public.audit_entitlement_change() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    perform public.record_account_audit_event(
+      'entitlement_granted',
+      new.user_id,
+      'server',
+      jsonb_build_object(
+        'entitlementKey', new.entitlement_key,
+        'source', new.source
+      )
+    );
+    return new;
+  end if;
+
+  if old.revoked_at is null and new.revoked_at is not null then
+    perform public.record_account_audit_event(
+      'entitlement_revoked',
+      new.user_id,
+      'server',
+      jsonb_build_object('entitlementKey', new.entitlement_key)
+    );
+  elsif old.revoked_at is not null and new.revoked_at is null then
+    perform public.record_account_audit_event(
+      'entitlement_granted',
+      new.user_id,
+      'server',
+      jsonb_build_object(
+        'entitlementKey', new.entitlement_key,
+        'source', new.source
+      )
+    );
+  end if;
+  return new;
+end;
+$$;
+
+create trigger entitlement_change_account_audit
+  after insert or update of revoked_at on public.entitlements
+  for each row execute function public.audit_entitlement_change();
+
+create function public.audit_rejected_save() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.outcome = 'rejected' then
+    perform public.record_account_audit_event(
+      'save_rejected',
+      new.user_id,
+      'user',
+      jsonb_build_object(
+        'errorCode', new.error_code,
+        'baseRevision', new.base_revision,
+        'documentBytes', new.document_bytes
+      )
+    );
+  end if;
+  return new;
+end;
+$$;
+
+create trigger rejected_save_account_audit
+  after insert on public.save_audit
+  for each row execute function public.audit_rejected_save();
 ```
 
 ### Column reference
@@ -887,6 +1087,12 @@ create table public.entitlements (
 | `entitlements` | `granted_by` | text | no | — | 1–64 characters; no client path grants |
 | `entitlements` | `source` | text | yes | — | why it was granted |
 | `entitlements` | `revoked_at` | timestamptz | yes | — | — |
+| `account_audit` | `id` | bigint | no | identity | PK, generated always |
+| `account_audit` | `occurred_at` | timestamptz | no | `now()` | database-owned event time |
+| `account_audit` | `event_type` | text | no | — | one of the seven Step 32 event types |
+| `account_audit` | `user_id` | uuid | yes | — | FK → `auth.users(id)` on delete set null; affected account |
+| `account_audit` | `actor_type` | text | no | — | `user`, `server`, or `auth` |
+| `account_audit` | `detail` | jsonb | yes | — | server-authored object, ≤ 4096 bytes; no credentials or identity payload |
 
 ### Indexes, and the ones deliberately absent
 
@@ -901,6 +1107,8 @@ create table public.entitlements (
 | `leaderboard_entries_rank_idx` | `leaderboard_entries` | `(board_key, metric_log10 desc, updated_at asc)` | The ranking query. The trailing column is the tie-break; Step 27 may choose a different one, which is an index change, not a table change. |
 | PK | `leaderboard_entries` | `(board_key, user_id)` | One entry per user per board. |
 | PK | `entitlements` | `(user_id, entitlement_key)` | Covers lookup by user as a prefix, so **no separate per-user index exists**. |
+| `account_audit_user_time_idx` | `account_audit` | `(user_id, occurred_at desc)` | Per-account investigation and deletion/anonymization work. |
+| `account_audit_event_time_idx` | `account_audit` | `(event_type, occurred_at desc)` | Event-type investigation and future operational alerts. |
 
 ### Row-level security
 
@@ -916,16 +1124,12 @@ schema.
 | `recovery_codes` | none | none | none | none |
 | `leaderboard_entries` | all rows, every column but `user_id` | none | none | none |
 | `entitlements` | own row | none | none | none |
+| `account_audit` | none | none | none | none |
 
 `saves` denying every client write is the rule the whole anti-cheat design rests
 on: row-level security cannot re-simulate a save, so it cannot judge one, and a
 client that could reach `saves` through PostgREST would make Phase 4 decoration.
-The table and this exact policy already existed from the Step 5 migration;
-Step 15 (implemented 2026-09-12) added the live-stack evidence
-(`tests/server-integration/saves-rls.integration.test.ts`) that select-own,
-insert, update, delete, and upsert all behave exactly as this matrix says —
-insert/upsert refused `403`/`42501`, update/delete affecting zero rows, own-row
-select working both before and after a row exists. Step 26 attacks it.
+Step 15 establishes it and Step 26 attacks it.
 
 `leaderboard_entries` is world-readable by design — that is what a leaderboard
 is. It carries its own `display_name` snapshot precisely so that publishing a
@@ -947,20 +1151,24 @@ withheld one, so a board query must name its columns.
 
 ### Relationships and deletion
 
-Every table holds exactly one foreign key, to `auth.users(id)`, with
-`on delete cascade`. There are no other relationships. That gives Step 33 a
-single deletion path: removing the `auth.users` row removes every row this
-schema holds for that person.
+Every table holds exactly one foreign key to `auth.users(id)`. The ordinary
+account-owned tables use `on delete cascade`; `account_audit.user_id` uses
+`on delete set null` so Step 33 can anonymize the affected-account link while
+retaining a bounded operational record. There are no other relationships.
 
-**Invariant for every future table:** it must carry a cascading foreign key to
-`auth.users(id)`, or declare its own explicit deletion path in the same change.
-Step 33's test enumerates the tables, so one added without a deletion path fails
-it.
+**Invariant for every future table:** it must carry a foreign key to
+`auth.users(id)` and declare whether deletion cascades or anonymizes the link
+in the same change. Step 33's test enumerates the tables, so one added without a
+deletion path fails it.
 
 Consequence recorded rather than discovered later: `save_audit` rows cascade
 away with the account, so deleting an account also erases the evidence of abuse
 from it. That is the right default while no money is at stake and GDPR is
 assumed to apply, and it is a trade, not an oversight.
+
+`account_audit` is the explicit exception: account deletion nulls `user_id`,
+and Step 33 must scrub any remaining personal detail and enforce the recorded
+life-of-account-plus-30-days retention period.
 
 ### Recovery-code hashing
 
@@ -979,64 +1187,38 @@ There is deliberately **no per-code failed-attempt counter**: a wrong code
 usually matches no row at all, so counting per code would miss the attack.
 Throttling belongs per caller and per address, in Step 25.
 
-A 2026-09-12 review of Step 14 fixed five issues in the Edge Function itself
-(the highest: a failed session mint after a successful redemption
-permanently burned the code with no session ever delivered — now reverted;
-see `architecture.md`'s Step 14 review entry for all five). One of them
-changed the address the interim rate limiter keys on: `extractCallerAddress`
-now reads the *last* `X-Forwarded-For` hop (the platform gateway's own,
-unforgeable one) rather than the first (client-suppliable) one, and the
-threshold rose from 10 to 30 attempts/minute — confirmed live that the local
-gateway supplies this trusted hop for every request regardless of what the
-client sends, so the higher threshold absorbs legitimate traffic sharing one
-observed address without weakening the real backstop, the code's own
-128-bit entropy.
-
-A 2026-09-13 follow-up review fixed five more issues: the rotation
-migration's own comment overstated what atomicity guarantees (corrected
-above, in the schema section); the atomicity fix had no committed
-behavioral test (added two); the revert path could itself collide with the
-one-active-code index in a narrow window (fixed with its own RPC,
-`revert_recovery_code_redemption`, also in the schema section); the
-rate-limit sweep ran on every request rather than being gated by map size;
-and — a consequence of the address fix above — the whole integration suite
-was found to share one real rate-limit bucket with no way to reset it,
-fixed with a token-gated `POST /v1/test-only-reset-rate-limit` route (see
-`architecture.md`'s Step 14 review entries for full detail on all five).
-
 ### What Step 3 does not design
 
-- The Step 32 account audit log covering identity changes, recovery issuance and
-  redemption, and entitlement grants. It is a separate table designed in its own
-  step; merging it with `save_audit` would put frequent save rows and rare
-  identity events in one table with opposing access patterns.
+- The Step 32 account audit log was not designed in Step 3. Step 32 now defines
+  it as a separate table; merging it with `save_audit` would put frequent save
+  rows and rare identity events in one table with opposing access patterns.
 - The leaderboard metric, reset period, and tie-break were left open here on
   purpose — decided in Step 27 (`## Server Stack Contract`'s "Leaderboard
   storage (Step 27)" section): lifetime gold earned, no reset (one board,
   `board_key = 'lifetime-gold'`), tie-break by ascending `updated_at`. No
   table, index, or RLS change was needed to decide them — a season or period
   is a `board_key` value, not a schema change, exactly as designed here.
-- Rate-limit counters — settled by Step 25, which chose **no table**: the shared
-  limiter keeps a fixed-window `Map` per worker
-  (`supabase/functions/_shared/rateLimit.ts`), pruned past a size threshold.
-  It is best-effort rather than a durable guarantee — see `architecture.md`'s
-  Step 25 section for why that is accepted at this scale — so no migration was
-  added for it.
+- Rate-limit counters — Step 25, which may use platform facilities rather than
+  tables.
 - `offlineGrant` and anything Step 22 needs beyond `received_at`, which already
   anchors it.
 
-**IndexedDB schema:** database `cat-mine-idle`, version `1`.
+**IndexedDB database:** `cat-mine-idle`, schema version `1`.
 
-| Store | Field | Type | Nullability/default | Key, index, relationship |
+| Object store | Field | Type | Required / nullable | Key / constraint |
 |---|---|---|---|---|
-| `saves` | `id` | string | Required; no default | Primary key/key path; fixed application value `active`; not auto-incremented. |
-| `saves` | `document` | `SaveDocumentV2` structured object | Required; no default | No index; validated/migrated application payload. |
+| `saves` | `id` | string | Required, non-null | Primary key via key path `id`; application writes only the literal `active`. |
+| `saves` | `document` | structured-clone-compatible `SaveDocumentV2` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
 
-There are no secondary indexes, foreign keys, relationships, or other object stores. One logical record is maintained by `put` at the fixed key. Dexie version 1 creates the store with schema `id`; no IndexedDB structural migration exists. The save-document boundary migrates a version-1 document (including the legacy four-floor-to-fifteen-floor expansion) to version 2 before strict validation, so existing prototype progress remains readable.
+The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, a legacy version-1 save (including the former four-floor prefix, expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults) is migrated to version 2 by defaulting `warehouse.totalOfflineGoldClaimed` to `"0"`; the IndexedDB database version remains `1`.
 
-**Lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1` stores at most one JSON-encoded, validated `SaveDocumentV2`. It is a synchronous pagehide recovery record, not an authoritative second save. A newer valid journal wins during load and is deleted after the same-or-newer snapshot commits to IndexedDB; malformed values are discarded.
+**Synchronous lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1`.
 
-If a database is introduced, replace this statement with the complete authoritative schema: every table, column, data type, default, nullable rule, primary/foreign key, unique/check constraint, index, and relationship. Update this section in the same change as each migration; do not leave schema details only in migration files.
+| Key | Value | Lifetime / relationship |
+|---|---|---|
+| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV2` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+
+The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
 
 ## Verified Commands
 

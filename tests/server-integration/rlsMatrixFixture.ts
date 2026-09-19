@@ -2,10 +2,10 @@
  * Server-milestone Step 26, attack 6: the row-level-security matrix, read from
  * the migrations rather than hand-listed.
  *
- * AC7 requires the matrix be **derived**, not enumerated: "the six tables ×
+ * AC7 requires the matrix be **derived**, not enumerated: "the seven tables ×
  * four verbs × two client roles, with the table list read from the migrations
  * (the same read-from-disk rule `readExpectedMigrations` and TASK-002's
- * warm-up list follow), so adding a seventh table fails the suite until it is
+ * warm-up list follow), so adding an eighth table fails the suite until it is
  * covered."
  *
  * The failure mode that rule exists to prevent is a hand-kept list: someone

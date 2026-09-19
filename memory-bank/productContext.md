@@ -68,7 +68,8 @@ Server-milestone Steps 4 through 7 landed between 2026-09-08 and 2026-09-09,
 closing Phase 1, and change nothing a player can see or do. They are
 infrastructure: the whole backend now runs locally in Docker through the
 Supabase CLI, one Edge Function answers the save-sync protocol's health
-check, the local database holds all six designed tables with row-level
+check, the local database holds the six original designed tables plus the Step
+32 account audit table with row-level
 security enforced, a CI workflow gates every push and pull request, the
 repository has an enforced boundary between values that may ship in the
 browser bundle and credentials that may not, the exact simulation and
@@ -287,6 +288,13 @@ visible through the authenticated entitlement check and resolves to
 `effects.supporterBadge`; the client cannot create or revoke it. No payment
 flow, price, store integration, or player-facing purchase UI is introduced in
 this step.
+
+Server-milestone Step 32 adds no player-facing surface. It keeps a sparse,
+server-owned account/security timeline separate from the high-volume save
+request audit: identity changes, recovery-code lifecycle, entitlement changes,
+and rejected saves are retained with an actor and server timestamp, while
+client roles cannot read or write the log. Account deletion remains responsible
+for anonymizing its account link and enforcing the recorded retention period.
 
 ## Closed incident reports
 
