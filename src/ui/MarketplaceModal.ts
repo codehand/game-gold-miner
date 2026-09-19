@@ -1,32 +1,178 @@
+import {
+  getMarketplaceAsset,
+  type MarketplaceAssetRecord,
+} from './marketplaceAssetRegistry';
+import { getMarketplaceIcon } from './marketplaceIconRegistry';
+
+type RoleFilter = 'All roles' | 'Elevator' | 'Warehouse' | 'Miner';
+type RarityFilter = 'All rarities' | 'N' | 'R' | 'SR' | 'SSR' | 'UR';
+type AttributeKey = 'power' | 'speed' | 'capacity' | 'efficiency';
+type AvailabilityState = 'Listed';
+
 interface CatListing {
+  readonly assetId: MarketplaceAssetRecord['assetId'];
   readonly name: string;
-  readonly role: string;
-  readonly rarity: string;
+  readonly role: Exclude<RoleFilter, 'All roles'>;
+  readonly rarity: Exclude<RarityFilter, 'All rarities'>;
   readonly price: number;
   readonly hourly: number;
+  readonly level: number;
+  readonly attributes: Readonly<Record<AttributeKey, number>>;
+  readonly roleScore: number;
+  readonly primarySkill: string;
+  readonly skillBonusPercent: number;
+  readonly availability: AvailabilityState;
 }
 
-const CATS: readonly CatListing[] = [
-  { name: 'Mofy', role: 'Elevator', rarity: 'SSR', price: 24000, hourly: 240 },
-  { name: 'Baron', role: 'Warehouse', rarity: 'SR', price: 12000, hourly: 120 },
-  { name: 'Elon', role: 'Elevator', rarity: 'SSR', price: 28000, hourly: 280 },
-  { name: 'Cipher', role: 'Warehouse', rarity: 'SR', price: 16000, hourly: 160 },
-];
+const ROLE_LABELS = {
+  elevator: 'Elevator',
+  warehouse: 'Warehouse',
+  miner: 'Miner',
+} as const satisfies Record<MarketplaceAssetRecord['roleId'], Exclude<RoleFilter, 'All roles'>>;
+
+const ROLE_SKILLS = {
+  elevator: 'Lift Mastery',
+  warehouse: 'Storage Mastery',
+  miner: 'Mining Mastery',
+} as const;
+
+const ROLE_ICON_IDS = {
+  elevator: 'role-elevator',
+  warehouse: 'role-warehouse',
+  miner: 'role-miner',
+} as const;
+
+const SKILL_ICON_IDS = {
+  elevator: 'skill-lift-mastery',
+  warehouse: 'skill-storage-mastery',
+  miner: 'skill-mining-mastery',
+} as const;
+
+const ATTRIBUTE_LABELS: Readonly<Record<AttributeKey, string>> = {
+  power: 'Power',
+  speed: 'Speed',
+  capacity: 'Capacity',
+  efficiency: 'Efficiency',
+};
+
+const ATTRIBUTE_ICON_IDS: Readonly<Record<AttributeKey, string>> = {
+  power: 'attribute-power',
+  speed: 'attribute-speed',
+  capacity: 'attribute-capacity',
+  efficiency: 'attribute-efficiency',
+};
+
+const MARKETPLACE_FALLBACK_PORTRAIT = '/assets/placeholder/miner-cat.png';
+
+const PREVIEW_FIXTURES = [
+  {
+    assetId: 'elevator-cargo-cat:SSR:mofy:idle',
+    price: 24000,
+    hourly: 240,
+    level: 8,
+    attributes: { power: 74, speed: 91, capacity: 80, efficiency: 83 },
+    roleScore: 81,
+    skillBonusPercent: 25,
+  },
+  {
+    assetId: 'warehouse-manager:SR:baron:idle',
+    price: 12000,
+    hourly: 120,
+    level: 6,
+    attributes: { power: 85, speed: 65, capacity: 90, efficiency: 78 },
+    roleScore: 79,
+    skillBonusPercent: 24,
+  },
+  {
+    assetId: 'elevator-cargo-cat:SSR:elon:idle',
+    price: 28000,
+    hourly: 280,
+    level: 9,
+    attributes: { power: 68, speed: 87, capacity: 84, efficiency: 79 },
+    roleScore: 78,
+    skillBonusPercent: 24,
+  },
+  {
+    assetId: 'warehouse-manager:SR:cipher:idle',
+    price: 16000,
+    hourly: 160,
+    level: 7,
+    attributes: { power: 62, speed: 84, capacity: 76, efficiency: 88 },
+    roleScore: 78,
+    skillBonusPercent: 24,
+  },
+  {
+    assetId: 'elevator-cargo-cat:SSR:win:idle',
+    price: 32000,
+    hourly: 320,
+    level: 10,
+    attributes: { power: 78, speed: 92, capacity: 88, efficiency: 80 },
+    roleScore: 83,
+    skillBonusPercent: 25,
+  },
+  {
+    assetId: 'warehouse-manager:SR:gauge:idle',
+    price: 14500,
+    hourly: 145,
+    level: 7,
+    attributes: { power: 72, speed: 70, capacity: 87, efficiency: 73 },
+    roleScore: 77,
+    skillBonusPercent: 24,
+  },
+  {
+    assetId: 'warehouse-manager:SSR:nautilus:idle',
+    price: 30000,
+    hourly: 300,
+    level: 11,
+    attributes: { power: 80, speed: 78, capacity: 93, efficiency: 90 },
+    roleScore: 84,
+    skillBonusPercent: 25,
+  },
+  {
+    assetId: 'miner:N:mica:idle',
+    price: 8500,
+    hourly: 85,
+    level: 4,
+    attributes: { power: 68, speed: 64, capacity: 58, efficiency: 70 },
+    roleScore: 67,
+    skillBonusPercent: 17,
+  },
+  {
+    assetId: 'miner:SSR:forge:idle',
+    price: 36000,
+    hourly: 360,
+    level: 12,
+    attributes: { power: 92, speed: 79, capacity: 72, efficiency: 86 },
+    roleScore: 85,
+    skillBonusPercent: 21,
+  },
+] as const;
+
+const CATS: readonly CatListing[] = PREVIEW_FIXTURES.map((fixture) => {
+  const asset = getMarketplaceAsset(fixture.assetId);
+  if (!asset) {
+    throw new Error(`Missing Marketplace preview asset: ${fixture.assetId}`);
+  }
+  return {
+    ...fixture,
+    name: asset.characterName,
+    role: ROLE_LABELS[asset.roleId],
+    rarity: asset.rarityTier,
+    primarySkill: ROLE_SKILLS[asset.roleId],
+    availability: 'Listed',
+  };
+});
 
 type MarketTab = 'Buy' | 'Rent' | 'My listings';
 const MARKET_TABS: readonly MarketTab[] = ['Buy', 'Rent', 'My listings'];
 
-type RoleFilter = 'All roles' | 'Elevator' | 'Warehouse' | 'Miner' | 'Unloader' | 'Hauler';
 const ROLE_FILTERS: readonly RoleFilter[] = [
   'All roles',
   'Elevator',
   'Warehouse',
   'Miner',
-  'Unloader',
-  'Hauler',
 ];
 
-type RarityFilter = 'All rarities' | 'N' | 'R' | 'SR' | 'SSR' | 'UR';
 const RARITY_FILTERS: readonly RarityFilter[] = ['All rarities', 'N', 'R', 'SR', 'SSR', 'UR'];
 
 type SortOption = 'Featured' | 'Price: low' | 'Price: high';
@@ -142,6 +288,40 @@ export class MarketplaceModal {
     preview.className = 'market-preview';
     preview.textContent = 'Preview';
     return preview;
+  }
+
+  #icon(iconId: string, label: string): SVGSVGElement {
+    const icon = getMarketplaceIcon(iconId);
+    if (!icon) {
+      throw new Error(`Missing Marketplace icon: ${iconId}`);
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('market-icon');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.dataset.icon = icon.id;
+    svg.setAttribute('title', label);
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', icon.symbolHref);
+    svg.append(use);
+    return svg;
+  }
+
+  #statGrid(cat: CatListing, compact = false): HTMLElement {
+    const grid = document.createElement('div');
+    grid.className = compact ? 'market-stat-strip' : 'market-stat-grid';
+    for (const key of Object.keys(ATTRIBUTE_LABELS) as AttributeKey[]) {
+      const stat = document.createElement('span');
+      stat.className = 'market-stat';
+      stat.title = ATTRIBUTE_LABELS[key];
+      stat.append(
+        this.#icon(ATTRIBUTE_ICON_IDS[key], ATTRIBUTE_LABELS[key]),
+        document.createTextNode(compact ? String(cat.attributes[key]) : `${ATTRIBUTE_LABELS[key]} ${cat.attributes[key]}`),
+      );
+      grid.append(stat);
+    }
+    return grid;
   }
 
   #render(): void {
@@ -330,13 +510,23 @@ export class MarketplaceModal {
     const name = document.createElement('h2');
     name.textContent = cat.name;
     const role = document.createElement('p');
-    role.textContent = cat.role;
+    role.className = 'market-role-line';
+    role.append(
+      this.#icon(ROLE_ICON_IDS[cat.role.toLowerCase() as keyof typeof ROLE_ICON_IDS], cat.role),
+      document.createTextNode(`${cat.role} · Role fit ${cat.roleScore}`),
+    );
+    const availability = document.createElement('span');
+    availability.className = 'market-availability';
+    availability.append(
+      this.#icon('state-listed', 'Listed'),
+      document.createTextNode(cat.availability),
+    );
     const priceLine = document.createElement('strong');
     priceLine.className = 'market-price';
     const priceUnit = document.createElement('small');
     priceUnit.textContent = rental ? '/ hr' : 'gold';
     priceLine.append(`● ${price.toLocaleString('en-US')} `, priceUnit);
-    info.append(name, role, priceLine);
+    info.append(name, role, this.#statGrid(cat, true), priceLine, availability);
 
     card.append(portrait, info);
     card.append(this.#button(rental ? 'Rent cat' : 'View cat', () => this.#details(cat, rental)));
@@ -344,15 +534,29 @@ export class MarketplaceModal {
   }
 
   #portraitImage(cat: CatListing): HTMLImageElement {
+    const asset = getMarketplaceAsset(cat.assetId);
     const image = document.createElement('img');
-    image.src = cat.name === 'Elon'
-      ? '/assets/marketplace/elon-v2/idle-1.png'
-      : `/assets/marketplace/${cat.name.toLowerCase()}.png`;
-    image.alt = cat.name;
+    image.src = asset?.portraitPath ?? MARKETPLACE_FALLBACK_PORTRAIT;
+    image.alt = `${cat.name}, ${cat.rarity} ${cat.role}`;
+    image.dataset.assetId = cat.assetId;
+    if (!asset) {
+      image.dataset.fallback = 'true';
+    }
+    image.onerror = () => {
+      if (image.src.endsWith(MARKETPLACE_FALLBACK_PORTRAIT)) {
+        return;
+      }
+      image.src = MARKETPLACE_FALLBACK_PORTRAIT;
+      image.dataset.fallback = 'true';
+    };
     return image;
   }
 
   #details(cat: CatListing, rental: boolean): void {
+    const asset = getMarketplaceAsset(cat.assetId);
+    if (!asset) {
+      throw new Error(`Missing Marketplace detail asset: ${cat.assetId}`);
+    }
     const main = this.#shell();
     const back = this.#button('← Back to cats', () => this.#render());
     main.append(back);
@@ -370,6 +574,26 @@ export class MarketplaceModal {
       : 'A new face for your mining crew.';
     detail.append(this.#portraitImage(cat), eyebrow, name, description);
     main.append(detail);
+
+    const availability = document.createElement('p');
+    availability.className = 'market-detail-availability';
+    availability.append(
+      this.#icon('state-listed', 'Listed'),
+      document.createTextNode(`Availability: ${cat.availability}`),
+    );
+    main.append(availability, this.#statGrid(cat));
+
+    const skill = document.createElement('div');
+    skill.className = 'market-skill';
+    const skillTitle = document.createElement('strong');
+    skillTitle.append(
+      this.#icon(SKILL_ICON_IDS[asset.roleId], cat.primarySkill),
+      document.createTextNode(cat.primarySkill),
+    );
+    const skillValue = document.createElement('span');
+    skillValue.textContent = `${cat.skillBonusPercent}% current bonus · Role fit ${cat.roleScore}/100`;
+    skill.append(skillTitle, skillValue);
+    main.append(skill);
 
     const total = document.createElement('p');
     total.className = 'market-total';

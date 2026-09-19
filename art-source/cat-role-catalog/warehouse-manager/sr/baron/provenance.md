@@ -17,3 +17,11 @@
   rights to ship or redistribute that source before production release.
 - Approval status: candidate generated; awaiting explicit user review.
 - Runtime integration: none.
+
+## Premium 8-frame reconstruction — Phase 4
+
+- Reconstructed from the approved 4-frame processed candidate with deterministic
+  ping-pong order `1,2,3,4,3,2,1,2`.
+- Output: `processed-8f/`, exact 4×2 grid, eight 128×128 RGBA frames, 110 ms,
+  strict QC passed with zero empty, edge-touch, or clamped frames.
+- This remains preview/source art; runtime integration is deferred.

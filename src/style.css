@@ -966,6 +966,64 @@ body {
   padding: 10px 12px;
 }
 
+.market-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
+.market-role-line,
+.market-availability,
+.market-detail-availability,
+.market-skill strong,
+.market-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.market-role-line {
+  color: #b5cbe0;
+}
+
+.market-role-line .market-icon {
+  color: #8ee5e3;
+}
+
+.market-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin: 8px 0;
+  color: #d7e5f1;
+}
+
+.market-stat-strip .market-stat {
+  justify-content: center;
+  min-width: 0;
+  padding: 3px 1px;
+  border-radius: 5px;
+  background: #10243a;
+  font-size: 10px;
+}
+
+.market-stat-strip .market-icon {
+  width: 14px;
+  height: 14px;
+  color: #f4bd3e;
+}
+
+.market-availability {
+  color: #93d9c1;
+  font-size: 11px;
+}
+
+.market-availability .market-icon,
+.market-detail-availability .market-icon {
+  color: #93d9c1;
+}
+
 .market-card h2 {
   margin: 0;
   font-size: 19px;
@@ -1040,6 +1098,58 @@ body {
 
 .market-detail p {
   color: #aec6d9;
+}
+
+.market-detail-availability {
+  justify-content: center;
+  margin: 6px 0 12px;
+  color: #93d9c1;
+  font-size: 13px;
+}
+
+.market-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid #3c5771;
+  border-radius: 10px;
+  background: #0c1c2f;
+}
+
+.market-stat-grid .market-stat {
+  justify-content: space-between;
+  color: #d7e5f1;
+  font-size: 12px;
+}
+
+.market-stat-grid .market-icon {
+  color: #f4bd3e;
+}
+
+.market-skill {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #536b8a;
+  border-radius: 10px;
+  background: #182d46;
+  text-align: left;
+}
+
+.market-skill strong {
+  color: #d6bcff;
+}
+
+.market-skill strong .market-icon {
+  color: #c8a2ff;
+}
+
+.market-skill span {
+  color: #aac0d4;
+  font-size: 12px;
 }
 
 .market-content > button:first-child {

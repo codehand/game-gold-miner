@@ -35,8 +35,17 @@ empty, edge-touch, or clamped frames. The registry and manifest now carry role,
 rarity, provenance, and preview-only metadata; runtime integration remains
 false. The catalog contact sheet was reviewed at native scale, the asset report
 passed for all nine public portraits, and the full 710-test unit suite passed.
-Phase 4 is next and must generate the premium 4×2/8-frame families, including
-Forge's deferred SSR animation.
+Phase 4 completed 2026-09-19: all approved v1 premium rows now have exact
+4×2/8-frame 128×128 families at 110 ms (Mofy, Win, Elon, Baron, Cipher, Gauge,
+Nautilus, and Forge). The seven missing families were deterministic
+ping-pong reconstructions from QC-passed 4-frame candidates; every strict
+processor run has zero empty, edge-touch, and clamped frames. Mica remains the
+deliberate N baseline on 2×2/4. Phase 5 completed 2026-09-19: Marketplace
+cards/details now use the allowlisted asset registry, the nine canonical
+portraits, role/attribute/skill/state icons, preview stat fixtures, and a safe
+placeholder fallback. Browser flows pass at 390×844 and 320×568, including a
+failed-image fallback. Premium sheets remain source-only and are not decoded at
+modal open. Phase 6 — transaction state presentation — is next.
 
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31

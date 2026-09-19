@@ -173,8 +173,23 @@ asset report. The catalog contact sheet was reviewed at native scale, and the
 browser catalog smoke confirms every canonical portrait loads at 128×128.
 Focused registry/role/icon tests pass (14), the full unit suite passes (710),
 lint and build pass, and the Marketplace/icon/catalog E2E smoke passes (5).
-Phase 4 — premium 8-frame animation families — is next; no runtime integration
-or transaction behavior changed.
+Phase 4 — premium 8-frame animation families — completed 2026-09-19. All eight
+approved premium rows (Mofy, Win, Elon, Baron, Cipher, Gauge, Nautilus, Forge)
+now have exact 4×2/8-frame 128×128 families at 110 ms. Seven were deterministic
+ping-pong reconstructions from QC-passed 4-frame candidates; Mofy was preserved
+as the authored 8-frame reference. Every strict processor run has zero empty,
+edge-touch, or clamped frames; the eight-sheet 512×256 RGBA asset report and
+manifest test pass. Mica remains the separate N 2×2/4 baseline, Unloader stays
+future-only, and no runtime integration or transaction behavior changed.
+Phase 5 — Marketplace registry/UI application — completed 2026-09-19.
+`MarketplaceModal` now resolves every portrait through the local allowlisted
+asset registry, presents role/rarity/4-stat/role-fit/skill/availability data
+with the Phase 2 icon family, and falls back to the safe placeholder when a
+portrait is missing or fails to load. The 390×844 and 320×568 Marketplace
+flows, detail stat/skill assertions, catalog HTTP checks, and failure fallback
+browser test pass; cards do not decode premium sheets at open. The UI remains
+preview-only and does not change authoritative ownership or transaction state.
+Phase 6 — listing and transaction state presentation — is next.
 
 ## Phase Status
 

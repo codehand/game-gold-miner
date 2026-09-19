@@ -5,8 +5,8 @@ sequence, asset gates, role-taxonomy gate, and premium 8-frame requirements are
 approved as the working plan; individual asset approval remains subject to the
 phase validation gates.
 
-**Execution status:** Phase 0, Phase 1, Phase 2, and Phase 3 — complete and
-verified 2026-09-19. Phase 4 — next. No later phase may begin until its
+**Execution status:** Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, and Phase 5
+— complete and verified 2026-09-19. Phase 6 — next. No later phase may begin until its
 predecessor's validation gate passes.
 
 **Scope:** Asset production and asset-facing integration for Marketplace v1.
@@ -407,6 +407,27 @@ For every sheet:
 **Exit gate:** Every approved premium catalog row has a canonical 8-frame
 sheet, extracted portrait, manifest record, and provenance record.
 
+### Phase 4 execution record — verified 2026-09-19
+
+- Finalized the premium 4×2/8-frame families for Mofy, Win, and Elon;
+  Warehouse Baron, Cipher, Gauge, and Nautilus; and Miner Forge. Mofy's
+  existing authored 8-frame result was preserved.
+- Reconstructed the seven remaining families deterministically from their
+  QC-passed 4-frame candidates with the explicit ping-pong sequence
+  `1,2,3,4,3,2,1,2`; no new gameplay semantics or runtime integration was
+  introduced.
+- Every final sheet is exactly 512×256 (4×2 cells at 128×128), transparent
+  RGBA, 110 ms, with zero empty, source/output edge-touch, or clamped frames.
+- Updated manifest paths, frame contracts, and per-asset provenance. Mica
+  remains the deliberate N baseline on the separate 2×2/4-frame contract.
+- Unloader remains future-only and was not promoted by this phase.
+- Validation passed: premium manifest tests, eight-sheet 512×256 RGBA asset
+  report, strict processor metadata review, and native-scale/contact-sheet
+  review.
+
+**Phase 4 gate:** closed for the approved v1 premium catalog; Phase 5 may
+start.
+
 ## 8. Phase 5 — Marketplace asset registry and UI application
 
 ### Goal
@@ -454,6 +475,27 @@ listing data to filesystem paths or character names.
 
 **Exit gate:** Marketplace preview can display the approved catalog and explain
 role/rarity/skill without changing authoritative game state.
+
+### Phase 5 execution record — verified 2026-09-19
+
+- Migrated `MarketplaceModal` from display-name-derived image paths to the
+  allowlisted `assetId` registry. The preview now renders all nine canonical
+  portraits, while the fallback placeholder handles a missing or failed
+  portrait without breaking the card or close path.
+- Applied the Phase 2 icon family to role, four attributes, primary skill, and
+  `Listed` availability. Listing detail shows level-independent preview
+  fixtures for the four `0–100` attributes, role fit, and current skill bonus;
+  these fixtures are not authoritative game state.
+- Kept premium animation sheets source-only and out of the initial card render;
+  the detail surface remains portrait-first until a public animation URL and
+  lazy-loading contract are approved. No premium sheet is decoded at modal
+  open.
+- Validation passed: all prior unit tests plus the registry/manifest contract,
+  all nine catalog portrait HTTP checks, Marketplace/icon/catalog browser
+  flows at 390×844 and 320×568, detail stat/skill checks, and the failed-image
+  fallback test. Native-scale screenshots show no horizontal overflow.
+
+**Phase 5 gate:** closed for the preview UI; Phase 6 may start.
 
 ## 9. Phase 6 — Listing and transaction state presentation
 

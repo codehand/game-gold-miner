@@ -12,11 +12,19 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     await page.mouse.click(box.x + (bounds.x + bounds.width / 2) * box.width / 360, box.y + (bounds.y + bounds.height / 2) * box.height / 640);
     const dialog = page.getByRole('dialog', { name: 'Marketplace' });
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator('.market-card')).toHaveCount(4);
+    await expect(dialog.locator('.market-card')).toHaveCount(9);
+    expect(await dialog.locator('.market-card img').evaluateAll((images) => (
+      images.every((image) => image.getAttribute('src')?.includes('/assets/marketplace/catalog/'))
+    ))).toBe(true);
+    await expect(dialog.locator('[data-icon^="role-"]')).toHaveCount(9);
     await page.getByRole('searchbox', { name: 'Search cats' }).fill('Mofy');
     await expect(dialog.locator('.market-card')).toHaveCount(1);
     await page.getByRole('button', { name: 'Rent', exact: true }).click();
     await page.getByRole('button', { name: 'Rent cat', exact: true }).click();
+    await expect(dialog).toContainText('Availability: Listed');
+    await expect(dialog).toContainText('Power 74');
+    await expect(dialog).toContainText('Lift Mastery');
+    await expect(dialog.locator('[data-icon="skill-lift-mastery"]')).toHaveCount(1);
     await page.getByLabel('Rental duration').selectOption('3');
     await expect(dialog).toContainText('Total: 720 gold for 3 hr');
     await expect(page.getByRole('button', { name: 'Trading coming soon' })).toBeDisabled();
@@ -32,9 +40,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     await page.getByRole('button', { name: 'Buy', exact: true }).click();
     await page.getByRole('searchbox').fill('');
     await page.getByLabel('Role', { exact: true }).selectOption('Miner');
-    await expect(dialog).toContainText('No cats match');
-    await page.getByRole('button', { name: 'Clear filters' }).click();
-    await expect(dialog.locator('.market-card')).toHaveCount(4);
+    await expect(dialog.locator('.market-card')).toHaveCount(2);
+    await page.getByLabel('Role', { exact: true }).selectOption('All roles');
+    await expect(dialog.locator('.market-card')).toHaveCount(9);
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.screenshot({ path: `test-results/marketplace-${viewport.width}.png` });
     await page.keyboard.press('Escape');
@@ -71,4 +79,22 @@ test('runs the close callback exactly once per dismissal path', async ({ page })
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
   await expect(canvas).toHaveAttribute('data-marketplace-close-count', '2');
+});
+
+test('falls back to the safe placeholder when a catalog portrait fails', async ({ page }) => {
+  await page.route('**/assets/marketplace/catalog/elevator-cargo-cat/ssr/mofy/idle-1.png', (route) => route.abort());
+  await page.goto('/');
+  const canvas = page.locator('canvas');
+  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
+  const items = JSON.parse((await canvas.getAttribute('data-bottom-navigation-items'))!);
+  const bounds = items.find((item: { key: string }) => item.key === 'shop').bounds;
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.click(
+    box.x + (bounds.x + bounds.width / 2) * box.width / 360,
+    box.y + (bounds.y + bounds.height / 2) * box.height / 640,
+  );
+
+  const fallback = page.locator('img[data-fallback="true"]').first();
+  await expect(fallback).toBeVisible();
+  await expect(fallback).toHaveAttribute('src', /\/assets\/placeholder\/miner-cat\.png$/);
 });

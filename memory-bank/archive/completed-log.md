@@ -1,5 +1,27 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Marketplace asset Phase 5 registry and UI application
+
+Migrated the Marketplace preview from name-based image paths to the local
+allowlisted asset registry. All nine canonical portraits now render with role,
+rarity, four-attribute, role-fit, skill, and Listed-state presentation using
+the Phase 2 icon family. Added a safe placeholder fallback for missing or
+failed portraits. Preview fixtures remain non-authoritative, and premium
+animation sheets stay source-only so the modal does not decode them at open.
+Marketplace, catalog, icon, detail, responsive, and failed-image fallback
+browser tests pass; no ownership or transaction behavior changed.
+
+## 2026-09-19 — Marketplace asset Phase 4 premium animation families
+
+Finalized exact 4×2/8-frame premium families at 128×128 per frame and 110 ms
+for all approved v1 premium rows: Elevator Mofy/Win/Elon, Warehouse
+Baron/Cipher/Gauge/Nautilus, and Miner Forge. Mofy's authored family was
+preserved; the other seven were deterministic ping-pong reconstructions from
+their QC-passed 4-frame candidates. Strict processor metadata and the 512×256
+RGBA asset report show zero empty, edge-touch, or clamped frames. Mica remains
+the N 2×2/4 baseline and Unloader remains future-only. No runtime or
+transaction behavior changed.
+
 ## 2026-09-19 — Marketplace asset Phase 3 listing catalog
 
 Expanded the preview-only Marketplace catalog to nine stable allowlisted

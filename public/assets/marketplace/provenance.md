@@ -41,3 +41,12 @@ Mica and Forge were generated as original 2×2/4-frame candidates and passed
 strict processor QC. Forge remains a Phase 3 preview portrait; its required
 premium 4×2/8-frame family is intentionally deferred to Phase 4. All five
 entries remain preview-only and `runtimeIntegrated: false`.
+
+## Phase 4 premium animation families
+
+The approved premium catalog now has exact 4×2/8-frame families at 128×128
+per frame and 110 ms for Mofy, Win, Elon, Baron, Cipher, Gauge, Nautilus, and
+Forge. Mofy's authored 8-frame family was preserved; the other seven were
+reconstructed from QC-passed 4-frame candidates with the deterministic
+ping-pong sequence `1,2,3,4,3,2,1,2`. The sheets remain source/preview art and
+are not runtime-integrated. Mica stays on the N-tier 2×2/4-frame contract.
