@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+  <symbol id="role-elevator" viewBox="0 0 24 24">
+    <path d="M7 4h10v16H7z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <path d="M10 8l2-2 2 2M14 16l-2 2-2-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M9.5 11.5h5v3h-5z" fill="currentColor" opacity=".22"/>
+  </symbol>
+  <symbol id="role-warehouse" viewBox="0 0 24 24">
+    <path d="M4 9l8-5 8 5v10H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M7 12h4v4H7zM13 12h4v4h-4z" fill="currentColor" opacity=".24" stroke="currentColor" stroke-width="1.4"/>
+    <path d="M4 19h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="role-miner" viewBox="0 0 24 24">
+    <path d="M5 18l11-11M10 5l9 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+    <path d="M8 16l3 3-2 2-3-3z" fill="currentColor" opacity=".28"/>
+    <path d="M16 16l2-2 3 3-2 2z" fill="currentColor" opacity=".42"/>
+    <path d="M4 20h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+
+  <symbol id="attribute-power" viewBox="0 0 24 24">
+    <path d="M12 3l1.6 5.4L19 7l-3.4 4.5L21 13l-5.4 1.7L18 20l-5-3.1L10 21l-.3-5.9L4 17l2.6-5L3 9l5.8.3L8 4l4 4z" fill="currentColor" opacity=".22" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <circle cx="12" cy="12" r="2.2" fill="currentColor"/>
+  </symbol>
+  <symbol id="attribute-speed" viewBox="0 0 24 24">
+    <path d="M13.5 2.8L5 13h5.2L9 21.2 19 9.5h-5.1z" fill="currentColor" opacity=".28" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="attribute-capacity" viewBox="0 0 24 24">
+    <path d="M4 8l8-4 8 4-8 4zM4 8v9l8 4 8-4V8M12 12v9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    <path d="M7 9.5l5 2.5 5-2.5" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".8"/>
+  </symbol>
+  <symbol id="attribute-efficiency" viewBox="0 0 24 24">
+    <path d="M9 4h6l.8 2.1 2 .9 2.1-.5 2 3.5-1.5 1.6.2 2.2 1.3 1.7-2.5 3.2-2-.8-1.9 1.1-.6 2.1H9.1l-.7-2.1-1.9-1.1-2 .8L2 15.5l1.3-1.7.2-2.2L2 10l2-3.5 2.1.5 2-.9z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>
+    <path d="M8.5 12.4l2.2 2.2 4.8-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <symbol id="skill-lift-mastery" viewBox="0 0 24 24">
+    <path d="M7 5h10v14H7z" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M10 9l2-2 2 2M14 15l-2 2-2-2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M3 5h2M19 5h2M3 19h2M19 19h2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="skill-storage-mastery" viewBox="0 0 24 24">
+    <path d="M4 7h7v5H4zM13 7h7v5h-7zM4 14h7v5H4zM13 14h7v5h-7z" fill="currentColor" opacity=".22" stroke="currentColor" stroke-width="1.4"/>
+    <path d="M8 9.5l1.2 1.2L11 8.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="skill-mining-mastery" viewBox="0 0 24 24">
+    <path d="M5 17L16 6M10 5l9 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M17.5 15.5l1-2 .8 2 2 .8-2 .8-1 2-.8-2-2-.8z" fill="currentColor" opacity=".8"/>
+    <path d="M4 20h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+  </symbol>
+
+  <symbol id="state-idle" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <circle cx="12" cy="12" r="2.3" fill="currentColor"/>
+  </symbol>
+  <symbol id="state-assigned" viewBox="0 0 24 24">
+    <path d="M12 21s6-5.1 6-10.3A6 6 0 0 0 6 10.7C6 15.9 12 21 12 21z" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.7"/>
+    <circle cx="12" cy="10.5" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  </symbol>
+  <symbol id="state-listed" viewBox="0 0 24 24">
+    <path d="M4 7.5V5h2.5L19 17.5 16.5 20 4 7.5z" fill="currentColor" opacity=".22" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    <circle cx="7.1" cy="7.1" r="1" fill="currentColor"/>
+  </symbol>
+  <symbol id="state-rented" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="state-locked" viewBox="0 0 24 24">
+    <rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor" opacity=".22" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    <circle cx="12" cy="15" r="1.2" fill="currentColor"/>
+  </symbol>
+  <symbol id="state-rental-expiring" viewBox="0 0 24 24">
+    <circle cx="10.5" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M10.5 8v4l2.5 1.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18.5 3.5v4M16.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+  </symbol>
+</svg>

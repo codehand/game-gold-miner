@@ -14,6 +14,13 @@ export {
   type MarketplaceAssetRole,
 } from './marketplaceAssetRegistry';
 export {
+  getMarketplaceIcon,
+  MARKETPLACE_ICONS,
+  MARKETPLACE_ICON_IDS,
+  type MarketplaceIconCategory,
+  type MarketplaceIconRecord,
+} from './marketplaceIconRegistry';
+export {
   OFFLINE_REWARD_SAVE_FAILURE_MESSAGE,
   formatOfflineRewardAmount,
   formatCreditedDuration,

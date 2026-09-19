@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "status": "approved-phase-2",
+  "path": "/assets/marketplace/icons/marketplace-icons.svg",
+  "viewBox": "0 0 24 24",
+  "source": "Original in-repository SVG symbols authored for Cat Miners Guild Marketplace.",
+  "rights": {
+    "thirdPartyAssets": false,
+    "externalBranding": false,
+    "bakedText": false
+  },
+  "icons": [
+    { "id": "role-elevator", "category": "role", "label": "Elevator" },
+    { "id": "role-warehouse", "category": "role", "label": "Warehouse" },
+    { "id": "role-miner", "category": "role", "label": "Miner" },
+    { "id": "attribute-power", "category": "attribute", "label": "Power" },
+    { "id": "attribute-speed", "category": "attribute", "label": "Speed" },
+    { "id": "attribute-capacity", "category": "attribute", "label": "Capacity" },
+    { "id": "attribute-efficiency", "category": "attribute", "label": "Efficiency" },
+    { "id": "skill-lift-mastery", "category": "skill", "label": "Lift Mastery" },
+    { "id": "skill-storage-mastery", "category": "skill", "label": "Storage Mastery" },
+    { "id": "skill-mining-mastery", "category": "skill", "label": "Mining Mastery" },
+    { "id": "state-idle", "category": "state", "label": "Idle", "colorIndependent": true },
+    { "id": "state-assigned", "category": "state", "label": "Assigned", "colorIndependent": true },
+    { "id": "state-listed", "category": "state", "label": "Listed", "colorIndependent": true },
+    { "id": "state-rented", "category": "state", "label": "Rented", "colorIndependent": true },
+    { "id": "state-locked", "category": "state", "label": "Locked", "colorIndependent": true },
+    { "id": "state-rental-expiring", "category": "state", "label": "Rental expiring", "colorIndependent": true }
+  ]
+}

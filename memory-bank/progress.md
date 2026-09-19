@@ -160,7 +160,12 @@ tests), lint, build, and Marketplace E2E (3 tests) passed. Phase 1 completed
 IDs and `128×128` RGBA public paths. Its registry suite (4 tests), full unit
 suite (706 tests), lint, build, Marketplace E2E (3 tests), asset reports, and
 contact-sheet/native-scale review passed. Phase 2 — Marketplace presentation
-icon family — is the next gate; later phases have not started.
+icon family — completed 2026-09-19 with three role icons, four attribute icons,
+three skill icons, and six color-independent lifecycle icons. Its registry
+suite (4 tests), full unit suite (710 tests), lint, build, Marketplace E2E (3
+tests), icon-render E2E (1 test), and native 24/32px screenshot review passed.
+Phase 3 — listing portrait catalog expansion — is the next gate; later phases
+have not started.
 
 ## Phase Status
 

@@ -21,7 +21,12 @@ tests, lint, build, and the three Marketplace browser tests. Phase 1 completed
 2026-09-19: four canonical preview portraits now have stable allowlisted asset
 IDs and `128×128` RGBA public paths; its registry suite (4 tests), full unit
 suite (706 tests), lint, build, Marketplace E2E (3 tests), asset reports, and
-contact-sheet/native-scale review all passed. Phase 2 has not started.
+contact-sheet/native-scale review all passed. Phase 2 completed 2026-09-19:
+the SVG icon family and manifest now cover three roles, four attributes, three
+skills, and six color-independent lifecycle states. Its registry suite (4
+tests), full unit suite (710 tests), lint, build, Marketplace E2E (3 tests),
+icon-render E2E (1 test), and native 24/32px screenshot review all passed.
+Phase 3 has not started.
 
 **Server milestone, at the Step 29 validation gate — Step 29 (leaderboard
 display) was implemented on 2026-09-19 and is awaiting user validation. Step 31
