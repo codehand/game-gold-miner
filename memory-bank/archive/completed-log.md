@@ -1,5 +1,43 @@
 # Archive — Completed work log
 
+## 2026-09-19 — Server milestone Steps 34–36: operations evidence
+
+Step 34 added `scripts/backup-restore-drill.mjs`, `ops/backup-policy.md`, and
+the `backup:restore` package command. The drill uses real `pg_dump` and
+`pg_restore` against a fresh scratch PostgreSQL container, compares all public
+table names and row counts, and always removes its scratch container. The
+recorded run restored seven tables exactly from a 35,888-byte dump in 105 ms;
+the whole run took 2,833 ms. Auth internals, sessions, runtime caches, and
+secrets are documented as separate recovery domains.
+
+Step 35 added `scripts/monitoring-check.mjs`, `ops/monitoring.md`, healthy and
+failure fixtures, and a two-test unit gate. It monitors health, server errors,
+save rejections, and auth failures with minimum samples and documented
+thresholds; the induced failure exits with alert code 2.
+
+Step 36 added `scripts/load-save-sync.mjs` and `load:server`. It uses real
+anonymous GoTrue identities and real save-sync uploads, cleans them in
+`finally`, measures latency/throughput and maximum absence re-simulation, and
+asserts the documented budgets. The 20-player run passed 60 uploads at p95
+238 ms, 48.48 uploads/second, and 49 ms re-simulation.
+
+## 2026-09-19 — Server milestone Step 33: account and data deletion
+
+Added the forward-only migration 20260919110000_account_deletion.sql. It adds
+an anonymization invariant and indexed retention boundary to account_audit,
+sets account lifetime plus 30 days as the retention period, and provides
+service-only delete_account and purge_expired_account_audit functions. The
+account-delete Edge Function authenticates the bearer token, ignores body
+account ids, and invokes the transactional deletion RPC. Ordinary rows cascade
+from auth.users; retained audit rows lose their user link and detail.
+
+Added a parent before-delete trigger so direct Auth-admin deletion is safe
+against foreign-key set-null ordering, plus six unit tests and an exhaustive
+real-stack integration test. The integration test enumerates all seven public
+tables, seeds every account-owned path, proves the malicious body id is ignored,
+and verifies exact 30-day audit retention. Migration reset, focused integration,
+client RPC refusal, and schema invariant checks pass.
+
 ## 2026-09-19 — Server milestone Step 32: account audit log
 
 Implemented the separate `public.account_audit` timeline. Database triggers

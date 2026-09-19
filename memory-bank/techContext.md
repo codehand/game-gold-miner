@@ -6,14 +6,19 @@ All 37 implementation-plan steps are complete and user-validated; the user valid
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
-The post-milestone server milestone is in progress at the Step 32 implementation
-gate. The leaderboard display uses a read-only Edge Function boundary because
+The post-milestone server milestone is in progress at the Step 34 implementation
+gate. Steps 34–36 now have runnable local evidence: a custom-format public-schema
+backup/restore drill, threshold-based health/error monitoring with a deliberate
+failure test, and a real concurrent save-sync load benchmark. The leaderboard
+display uses a read-only Edge Function boundary because
 the browser may read public board columns but cannot select
 `leaderboard_entries.user_id`; the UI formats the table's exact `GameNumber`
 strings through the existing `formatAmount` authority and degrades to a
 retryable offline state. Step 32 adds the server-only account audit timeline;
-Step 31 remains implemented but awaits user validation, and Step 32 has not
-been validated yet.
+Step 33 now adds authenticated account deletion, audit anonymization, and a
+30-day purge boundary. Step 31 and Step 32 remain implemented but await user
+validation; Step 33's focused implementation gate is green. Step 37 still needs
+the final server documentation/README close.
 
 ## Approved Direction
 
@@ -547,8 +552,9 @@ the local Supabase stack; Step 5 landed it on 2026-09-08 as
 Step 4's bootstrap migration
 (`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
 creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
-for `gen_random_uuid()`). The original six tables and the Step 32
-`account_audit` table, with the row-level-security policies in the matrix
+for `gen_random_uuid()`). The original six tables, the Step 32
+`account_audit` table, and Step 33's anonymization/retention columns and
+deletion functions, with the row-level-security policies in the matrix
 below, exist in the local development database after `supabase db reset`;
 **no deployed database contains them**, because no deployment exists yet. This
 block and its twin in the other document are
@@ -862,6 +868,8 @@ create table public.account_audit (
   event_type  text        not null,
   user_id     uuid            null references auth.users(id) on delete set null,
   actor_type  text        not null,
+  anonymized_at timestamptz null,
+  retention_until timestamptz null,
   detail      jsonb           null,
   constraint account_audit_event_type_known
     check (event_type in (
@@ -875,6 +883,16 @@ create table public.account_audit (
     )),
   constraint account_audit_actor_type_known
     check (actor_type in ('user', 'server', 'auth')),
+  constraint account_audit_anonymization_pair
+    check (
+      (user_id is not null and anonymized_at is null and retention_until is null)
+      or (
+        user_id is null
+        and anonymized_at is not null
+        and retention_until is not null
+        and retention_until >= anonymized_at
+      )
+    ),
   constraint account_audit_detail_object
     check (detail is null or jsonb_typeof(detail) = 'object'),
   constraint account_audit_detail_size
@@ -886,6 +904,10 @@ create index account_audit_user_time_idx
 
 create index account_audit_event_time_idx
   on public.account_audit (event_type, occurred_at desc);
+
+create index account_audit_retention_idx
+  on public.account_audit (retention_until)
+  where user_id is null;
 
 alter table public.account_audit enable row level security;
 
@@ -948,6 +970,28 @@ $$;
 create trigger auth_identity_account_audit
   after insert or delete on auth.identities
   for each row execute function public.audit_auth_identity_change();
+create function public.anonymize_account_audit_before_user_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  deletion_at timestamptz := pg_catalog.clock_timestamp();
+begin
+  update public.account_audit
+  set user_id = null,
+      anonymized_at = deletion_at,
+      retention_until = deletion_at + interval '30 days',
+      detail = null
+  where user_id = old.id;
+  return old;
+end;
+$$;
+
+create trigger auth_user_account_audit_anonymization
+  before delete on auth.users
+  for each row execute function public.anonymize_account_audit_before_user_delete();
 
 create function public.audit_recovery_code_issued() returns trigger
 language plpgsql
@@ -1039,6 +1083,56 @@ $$;
 create trigger rejected_save_account_audit
   after insert on public.save_audit
   for each row execute function public.audit_rejected_save();
+create function public.delete_account(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  deletion_at timestamptz := pg_catalog.clock_timestamp();
+begin
+  if p_user_id is null then
+    raise exception 'account deletion requires a user id';
+  end if;
+  update public.account_audit
+  set user_id = null,
+      anonymized_at = deletion_at,
+      retention_until = deletion_at + interval '30 days',
+      detail = null
+  where user_id = p_user_id;
+  delete from auth.users where id = p_user_id;
+end;
+$$;
+
+revoke execute on function public.delete_account(uuid)
+  from public, anon, authenticated;
+grant execute on function public.delete_account(uuid) to service_role;
+
+create function public.purge_expired_account_audit(
+  p_before timestamptz default pg_catalog.clock_timestamp()
+)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  removed_count bigint;
+begin
+  delete from public.account_audit
+  where user_id is null
+    and retention_until is not null
+    and retention_until <= p_before;
+  get diagnostics removed_count = row_count;
+  return removed_count;
+end;
+$$;
+
+revoke execute on function public.purge_expired_account_audit(timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.purge_expired_account_audit(timestamptz)
+  to service_role;
 ```
 
 ### Column reference
@@ -1092,6 +1186,8 @@ create trigger rejected_save_account_audit
 | `account_audit` | `event_type` | text | no | — | one of the seven Step 32 event types |
 | `account_audit` | `user_id` | uuid | yes | — | FK → `auth.users(id)` on delete set null; affected account |
 | `account_audit` | `actor_type` | text | no | — | `user`, `server`, or `auth` |
+| `account_audit` | `anonymized_at` | timestamptz | yes | — | set at deletion; paired with `retention_until` |
+| `account_audit` | `retention_until` | timestamptz | yes | — | exactly 30 days after anonymization; purge boundary |
 | `account_audit` | `detail` | jsonb | yes | — | server-authored object, ≤ 4096 bytes; no credentials or identity payload |
 
 ### Indexes, and the ones deliberately absent
@@ -1109,6 +1205,7 @@ create trigger rejected_save_account_audit
 | PK | `entitlements` | `(user_id, entitlement_key)` | Covers lookup by user as a prefix, so **no separate per-user index exists**. |
 | `account_audit_user_time_idx` | `account_audit` | `(user_id, occurred_at desc)` | Per-account investigation and deletion/anonymization work. |
 | `account_audit_event_time_idx` | `account_audit` | `(event_type, occurred_at desc)` | Event-type investigation and future operational alerts. |
+| `account_audit_retention_idx` | `account_audit` | `(retention_until) where user_id is null` | Efficient scheduled purge after the 30-day retention window. |
 
 ### Row-level security
 
@@ -1167,8 +1264,11 @@ from it. That is the right default while no money is at stake and GDPR is
 assumed to apply, and it is a trade, not an oversight.
 
 `account_audit` is the explicit exception: account deletion nulls `user_id`,
-and Step 33 must scrub any remaining personal detail and enforce the recorded
-life-of-account-plus-30-days retention period.
+scrubs `detail`, records `anonymized_at`, and retains the row until
+`retention_until`, exactly 30 days later. The `delete_account(uuid)` and
+`purge_expired_account_audit(timestamptz)` functions are executable only by
+`service_role`; a `before delete` trigger on `auth.users` also protects
+operator/admin deletion paths that bypass the Edge Function.
 
 ### Recovery-code hashing
 
@@ -1192,6 +1292,10 @@ Throttling belongs per caller and per address, in Step 25.
 - The Step 32 account audit log was not designed in Step 3. Step 32 now defines
   it as a separate table; merging it with `save_audit` would put frequent save
   rows and rare identity events in one table with opposing access patterns.
+- Step 33 deletion/anonymization and the 30-day retention purge were not
+  designed in Step 3. The forward-only
+  `20260919110000_account_deletion.sql` migration adds them without editing
+  the already-applied Step 32 migration.
 - The leaderboard metric, reset period, and tie-break were left open here on
   purpose — decided in Step 27 (`## Server Stack Contract`'s "Leaderboard
   storage (Step 27)" section): lifetime gold earned, no reset (one board,
@@ -1221,6 +1325,16 @@ The store has no auto-increment key, secondary indexes, foreign keys, relationsh
 The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
 
 ## Verified Commands
+
+- `npm run backup:restore`: passed 2026-09-19; real custom dump 35,888 bytes,
+  seven public tables and matching row counts, 60 ms backup, 105 ms restore,
+  2,833 ms total including scratch-container startup.
+- `npm run monitor:check -- --input tests/fixtures/monitoring-healthy.json`:
+  passed; the deliberately failed fixture exits `2` with health, error-rate,
+  save-rejection-rate, and auth-failure alerts.
+- `npm run load:server`: passed 2026-09-19 at 20 concurrent players × 3
+  rounds: 60 uploads, p95 238 ms, 48.48 uploads/second, and 49 ms for the
+  7,200,000 ms long-absence re-simulation; budgets are asserted by the script.
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)

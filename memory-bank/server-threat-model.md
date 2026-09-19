@@ -12,8 +12,9 @@ It records three things, and nothing in the server milestone may contradict it:
 3. The assumption audit — assumptions the plan's steps depend on that were not
    written down anywhere, each now given a recorded default.
 
-No server code exists. This step changed no code, no balance value, and no
-schema version.
+This document remains the threat-model contract for the implemented server
+milestone. It changed no balance value or client save schema version; server
+implementation status is tracked in progress.md and the archive.
 
 ## Status
 
@@ -289,7 +290,7 @@ Step 1 gate, and §10 says what that costs.
 
 ### 7.1 Expected scale and infrastructure budget — Steps 3, 36
 
-**Status:** open — default recorded.
+**Status:** default exercised by Steps 34–35; production deployment still absent.
 **Default:** Prototype scale. Up to 10,000 registered accounts, 1,000 daily
 active players, and 20 save uploads per second at peak. Supabase Free for
 development and Pro (~USD 25/month) at launch. The Apple Developer Program
@@ -390,9 +391,10 @@ domain registered, so this default stood unrevisited.
 **Default:** The repository owner, as sole operator. No on-call rotation, no
 paging, no availability commitment.
 **Consequence:** Step 34's restore drill is a documented manual procedure with
-RPO 24 hours (daily backup) and best-effort RTO. Step 35's alerts go to one
-channel the operator actually reads; alert volume must be low enough that they
-keep reading it.
+RPO 24 hours (daily backup) and best-effort RTO. Step 35's alerts are emitted by
+a deterministic evaluator for one operator's channel; alert volume must be low
+enough that they keep reading it. The local drills passed, but no production
+backup service, log sink, credentials, or alert destination exists yet.
 **If wrong:** A team or an SLO changes Step 35's alerting design and Step 34's
 drill cadence. Nothing earlier.
 

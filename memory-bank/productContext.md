@@ -296,6 +296,25 @@ and rejected saves are retained with an actor and server timestamp, while
 client roles cannot read or write the log. Account deletion remains responsible
 for anonymizing its account link and enforcing the recorded retention period.
 
+Server-milestone Step 33 makes that promise actionable: an authenticated player
+can request deletion of the account represented by their current session. The
+request removes ordinary game, identity, save, leaderboard, and entitlement
+data, while retaining only an anonymous operational audit row for 30 days. No
+client-supplied account id, name, recovery code, or audit detail can survive
+the deletion boundary, and the mine itself remains an offline-playable client
+experience while the request is sent.
+
+Server-milestone Step 34 makes the operational promise testable: the public
+application schema has a real custom-format backup and scratch restore drill,
+while Auth internals, sessions, runtime caches, and secrets remain explicitly
+separate recovery domains. Step 35 adds health, server-error, save-rejection,
+and auth-failure alerts with a deliberate-failure test. Step 36 measures the
+server path at the recorded prototype scale without putting network work in
+the Phaser frame loop; the client remains responsive and offline-capable while
+sync is performed in the background. Step 37 will close the milestone by
+making these local operations and their production hand-off discoverable from
+the repository documentation.
+
 ## Closed incident reports
 
 Four base-game defect reports (marketplace popup, navigation hit-target,

@@ -67,6 +67,7 @@ Persistence and Platform Adapters
 - Let the renderer pull, never let the core push: the scene asks a driver for the newest snapshot each frame, and the driver advances the core from an injected wall clock. Frame rate, frame delta, and animation speed must never reach that calculation, so a frozen clock pauses production while the screen keeps drawing.
 - Record server decisions in an append-only audit the client cannot touch: one row per attempt with the outcome, the reason, the size, and the client's own claimed time beside the server's, so a bug is distinguishable from an attack later. Write it best-effort — logging must never reject an honest save or lose the player's game — and never fall back to a stricter decision because the log or a stored field was unreadable. When a save is refused, keep the player whole: the local save is written first and never touched, the session keeps playing, the refusal surfaces as plain copy (not a code), and the client retries later so a false positive recovers on its own.
 - Keep the sparse account/security timeline separate from the high-volume save-request audit. Database triggers record events at identity, recovery-code, entitlement, and save-audit boundaries; an external side effect such as recovery session minting is logged only after it succeeds. Use a database-owned timestamp, server-authored bounded detail, no client RLS policies, and append-only privileges so the audit cannot become a second client write path or store credentials.
+- Treat account deletion as a transaction boundary owned by the server: resolve the bearer identity, ignore any body-supplied account id, anonymize audit rows and scrub their details before deleting `auth.users`, then rely on explicit foreign-key cascades for ordinary account data. Keep the audit rows for account lifetime plus 30 days, protect direct Auth-admin deletion with a parent `before delete` trigger, and expose expiry only through a service-role purge function. Enumerate every public account table in the integration test so a future table without a deletion rule fails loudly.
 - Memoize the derived snapshot in the driver and re-derive it only when a fixed tick completed, so the frames that change no displayed value hand back the same object and the scene skips rebinding by identity. State replaced by a command always re-derives, because a command changes displayed values without completing a tick.
 - Order a renderable guard behind the identity check it protects, so a per-frame path that changes nothing costs nothing while every distinct snapshot is still checked once.
 - Keep read-back diagnostics out of shipped builds behind a statically substituted flag, so the serialization drops out of the bundle rather than merely going unread.
@@ -214,6 +215,18 @@ Persistence and Platform Adapters
   functional text out of the raster, preserve a 44×50 touch region behind the
   smaller chrome, and publish the visible badge bounds rather than the hidden
   legacy control bounds.
+- Treat a backup as a tested recovery path: run the real database dump and
+  restore into a fresh scratch database, compare table names and row counts,
+  and record the excluded Auth/secrets state rather than implying it was
+  recovered.
+- Keep monitoring thresholds in a deterministic, secret-free evaluator fed by
+  a normalized log/SQL snapshot. Require a minimum sample, emit machine-
+  readable alert codes, and test a deliberately failed health/rate window so
+  the alert path cannot be documentation-only.
+- Load-test the server path with real authenticated requests at the recorded
+  scale, assert latency/throughput/re-simulation budgets in the benchmark, and
+  clean all fixture identities in `finally`; network sync stays outside the
+  client render loop.
 
 ## Critical Flow
 

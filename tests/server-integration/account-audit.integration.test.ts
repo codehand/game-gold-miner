@@ -7,7 +7,12 @@ import {
   LOCAL_ANON_KEY,
   mintFixtureUserToken,
 } from './authFixture';
-import { deleteAuthUsers, runSqlAsSuperuser, sqlLiteral } from './directSqlFixture';
+import {
+  deleteAuthUsers,
+  querySqlAsSuperuser,
+  runSqlAsSuperuser,
+  sqlLiteral,
+} from './directSqlFixture';
 import { createServiceRoleClient } from './serviceRoleFixture';
 
 /**
@@ -22,6 +27,24 @@ import { createServiceRoleClient } from './serviceRoleFixture';
 const API_URL = 'http://127.0.0.1:54321';
 const REST_URL = `${API_URL}/rest/v1`;
 const RECOVERY_URL = `${API_URL}/functions/v1/recovery-code`;
+const ACCOUNT_DELETE_URL = `${API_URL}/functions/v1/account-delete/v1/account/delete`;
+const PUBLIC_APPLICATION_TABLES = [
+  'account_audit',
+  'entitlements',
+  'leaderboard_entries',
+  'profiles',
+  'recovery_codes',
+  'save_audit',
+  'saves',
+] as const;
+const ACCOUNT_SCOPED_COLUMNS: Readonly<Record<string, string>> = {
+  entitlements: 'user_id',
+  leaderboard_entries: 'user_id',
+  profiles: 'id',
+  recovery_codes: 'user_id',
+  save_audit: 'user_id',
+  saves: 'user_id',
+};
 const AUDIT_EVENT_TYPES = [
   'identity_added',
   'identity_removed',
@@ -38,6 +61,8 @@ interface AccountAuditRow {
   readonly user_id: string | null;
   readonly actor_type: string;
   readonly occurred_at: string;
+  readonly anonymized_at: string | null;
+  readonly retention_until: string | null;
   readonly detail: Record<string, unknown> | null;
 }
 
@@ -46,7 +71,7 @@ const admin = createServiceRoleClient(API_URL);
 async function allAccountAuditRows(): Promise<AccountAuditRow[]> {
   const { data, error } = await admin
     .from('account_audit')
-    .select('id, event_type, user_id, actor_type, occurred_at, detail')
+    .select('id, event_type, user_id, actor_type, occurred_at, anonymized_at, retention_until, detail')
     .order('id', { ascending: true });
 
   if (error) {
@@ -244,6 +269,14 @@ describe('account_audit (server-milestone Step 32)', () => {
     });
     expect(write.status).toBe(403);
     expect((await write.json()).code).toBe('42501');
+
+    const directDelete = await fetch(`${REST_URL}/rpc/delete_account`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ p_user_id: FIXTURE_USER_ID }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    expect([401, 403, 404]).toContain(directDelete.status);
   });
 
   it('does not make account deletion fail when identity removal is cascaded', async () => {
@@ -273,8 +306,151 @@ describe('account_audit (server-milestone Step 32)', () => {
         (row) =>
           row.event_type === 'identity_removed' &&
           row.user_id === null &&
-          row.detail?.provider === 'email',
+          row.anonymized_at !== null &&
+          row.retention_until !== null &&
+          row.detail === null,
       ),
     ).toBe(true);
+  });
+
+  it('deletes every current application table and retains only anonymized audit rows', async () => {
+    const tableNames = querySqlAsSuperuser(
+      "select table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by table_name;",
+    )
+      .split('\n')
+      .filter((name) => name.length > 0);
+    expect(tableNames).toEqual([...PUBLIC_APPLICATION_TABLES].sort());
+
+    const deletionEmail = `step33-${randomUUID()}@example.invalid`;
+    const { data, error } = await admin.auth.admin.createUser({
+      email: deletionEmail,
+      password: `Step33-${randomUUID()}-password`,
+      email_confirm: true,
+    });
+    expect(error).toBeNull();
+    const userId = data.user?.id;
+    expect(userId).toBeDefined();
+    if (userId === undefined) {
+      throw new Error('Step 33 fixture user was not created.');
+    }
+    deletionUserId = userId ?? null;
+
+    const { error: saveError } = await admin.from('saves').insert({
+      user_id: userId,
+      revision: 1,
+      schema_version: 1,
+      document_json: '{}',
+    });
+    expect(saveError).toBeNull();
+
+    const { error: saveAuditError } = await admin.from('save_audit').insert({
+      user_id: userId,
+      outcome: 'accepted',
+      error_code: null,
+      base_revision: null,
+      resulting_revision: 1,
+      document_bytes: 2,
+    });
+    expect(saveAuditError).toBeNull();
+
+    const recoveryHash = `${randomUUID().replaceAll('-', '')}${randomUUID().replaceAll('-', '')}`;
+    const { error: recoveryError } = await admin.from('recovery_codes').insert({
+      user_id: userId,
+      code_hash: recoveryHash,
+    });
+    expect(recoveryError).toBeNull();
+
+    const { error: leaderboardError } = await admin.from('leaderboard_entries').insert({
+      board_key: 'lifetime-gold',
+      user_id: userId,
+      display_name: 'To be deleted',
+      metric_exact: '1',
+      metric_log10: 0,
+      source_revision: 1,
+    });
+    expect(leaderboardError).toBeNull();
+
+    const { error: entitlementError } = await admin.from('entitlements').insert({
+      user_id: userId,
+      entitlement_key: 'cosmetic.supporter_badge',
+      granted_by: 'step-33-test',
+      source: 'deletion-test',
+    });
+    expect(entitlementError).toBeNull();
+
+    const { data: auditData, error: auditError } = await admin
+      .from('account_audit')
+      .insert({
+        user_id: userId,
+        event_type: 'save_rejected',
+        actor_type: 'user',
+        detail: { errorCode: 'seeded-for-deletion' },
+      })
+      .select('id')
+      .single();
+    expect(auditError).toBeNull();
+    const seededAuditId = auditData?.id as number;
+
+    const beforeDeletionRows = await allAccountAuditRows();
+    const identityAdded = beforeDeletionRows.find(
+      (row) => row.user_id === userId && row.event_type === 'identity_added',
+    );
+    expect(identityAdded).toBeDefined();
+
+    const response = await fetch(ACCOUNT_DELETE_URL, {
+      method: 'POST',
+      headers: {
+        apikey: LOCAL_ANON_KEY,
+        authorization: `Bearer ${mintFixtureUserToken({ userId })}`,
+        'content-type': 'application/json',
+      },
+      // The endpoint must ignore this attacker-controlled id and delete only
+      // the account represented by the bearer token.
+      body: JSON.stringify({ userId: FIXTURE_USER_ID }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: true });
+    deletionUserId = null;
+
+    expect(querySqlAsSuperuser(
+      `select count(*) from auth.users where id = ${sqlLiteral(userId)};`,
+    )).toBe('0');
+
+    for (const [tableName, column] of Object.entries(ACCOUNT_SCOPED_COLUMNS)) {
+      const { data: rows, error: rowError } = await admin
+        .from(tableName)
+        .select('*')
+        .eq(column, userId);
+      expect(rowError, `${tableName} query failed`).toBeNull();
+      expect(rows, `${tableName} retained a personal row`).toEqual([]);
+    }
+
+    const afterDeletionRows = await allAccountAuditRows();
+    const seededAudit = afterDeletionRows.find((row) => row.id === seededAuditId);
+    expect(seededAudit).toMatchObject({
+      user_id: null,
+      detail: null,
+    });
+    expect(seededAudit?.anonymized_at).not.toBeNull();
+    expect(seededAudit?.retention_until).not.toBeNull();
+    expect(Date.parse(seededAudit?.retention_until ?? '') - Date.parse(seededAudit?.anonymized_at ?? ''))
+      .toBe(30 * 24 * 60 * 60 * 1000);
+
+    const cascadedIdentityRemoval = afterDeletionRows.find(
+      (row) =>
+        row.event_type === 'identity_removed' &&
+        row.id > (identityAdded?.id ?? 0) &&
+        row.anonymized_at !== null,
+    );
+    expect(cascadedIdentityRemoval).toMatchObject({
+      user_id: null,
+      detail: null,
+    });
+    expect(cascadedIdentityRemoval?.retention_until).not.toBeNull();
+
+    deletionAuditIds = afterDeletionRows
+      .filter((row) => row.anonymized_at !== null)
+      .map((row) => row.id);
   });
 });

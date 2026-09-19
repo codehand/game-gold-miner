@@ -10,10 +10,33 @@ standard deviation is 0.00076. This remains asset-only and is not runtime
 integrated. `public/assets/marketplace/mofy.png` stays a single extracted idle
 frame for the existing portrait consumer.
 
-**Server milestone, at the Step 32 implementation gate — Step 29 (leaderboard
-display) and Step 31 (entitlements) remain implemented but await user
-validation. Step 32 is now implemented on 2026-09-19 and awaits validation;
-Step 33 remains blocked.**
+**Server milestone, at the Step 37 documentation close — Step 29 (leaderboard
+display), Step 31 (entitlements), and Step 32 (audit) remain implemented but
+await user validation. Step 33 account/data deletion is implemented and its
+focused local gate is green; Steps 34–36 have green local evidence.**
+
+**Step 34 evidence (2026-09-19).** `npm run backup:restore` performed a real
+custom-format `pg_dump --schema=public` from `supabase_db_cat-mine-idle`,
+restored it with `pg_restore` into a fresh `postgres:17-alpine` container, and
+matched all seven public table names and row counts. The dump was 35,888 bytes;
+backup took 60 ms, restore 105 ms, and total drill time was 2,833 ms including
+scratch startup. Only the public application schema was restored: Auth
+internals, sessions, identities, runtime caches, and secrets are explicitly
+separate recovery domains in `ops/backup-policy.md`.
+
+**Step 35 evidence (2026-09-19).** `scripts/monitoring-check.mjs` checks the
+save-sync health endpoint and evaluates server-error, save-rejection, and
+auth-failure rates after a 20-event minimum. Thresholds are 5%, 10%, and 25%;
+the healthy fixture exits 0 and the deliberately failed fixture exits 2 with
+all four alerts. Production log/SQL adapter hand-off is documented, while no
+production deployment or credentials are claimed.
+
+**Step 36 evidence (2026-09-19).** `npm run load:server` created real anonymous
+GoTrue identities and drove 20 concurrent players through 60 accepted uploads:
+min/p50/p95/max latency 104/135/238/241 ms, throughput 48.48 uploads/second,
+and 49 ms for the 7,200,000 ms maximum long-absence re-simulation. The script
+asserts p95 ≤ 500 ms, throughput ≥ 20 uploads/second, and re-simulation ≤ 250
+ms; sync remains outside the client Phaser frame loop.
 
 Step 29 adds the public `leaderboard-read` Edge Function and the Rewards-tab
 leaderboard modal. Public requests receive the top lifetime-gold rows; an
@@ -48,6 +71,18 @@ policies, the service role cannot update or delete rows, and the account link is
 is open; no acceptance-gate entry has been added. A review regression also
 proves that an identity-removal trigger during `auth.users` deletion preserves
 the event with a null link instead of aborting account deletion.
+
+**Step 33 adds authenticated account/data deletion (2026-09-19).** The
+account-delete Edge Function authenticates the bearer token and ignores any
+body-supplied id; its service-only delete_account(uuid) RPC anonymizes every
+account audit row, clears personal detail, retains it for exactly 30 days, and
+deletes auth.users so the ordinary six application tables cascade away. A
+parent auth.users before-delete trigger also protects direct Auth-admin
+deletions from the FK set-null ordering edge case. The integration test
+enumerates all seven public application tables, seeds every path, deletes the
+real test account, and verifies no ordinary row or personal audit field
+remains. purge_expired_account_audit is service-only. Unit (6), focused
+integration (4), migration reset, and schema invariant checks pass.
 
 **Previously, Step 30 (decide on friends) was handled as a documentation-only
 deferral on 2026-09-19.** The verified all-time leaderboard is enough for the
@@ -586,10 +621,10 @@ Decisions that still constrain code not yet written. Settled base-game decisions
 
 ## Next Steps
 
-1. **Validate Step 32, then resolve the earlier open gates.** The account audit
-   migration and event-boundary tests are implemented; acceptance-gate status
-   remains open until the user validates the real-stack evidence.
-2. Resolve the earlier Step 28/Step 29/Step 31 validation status before advancing the
+1. **Implement Step 34 backup/restore.** Step 33's deletion/anonymization
+   implementation gate is green locally; the next gate is a real backup restore
+   into a scratch database with measured duration and loss.
+2. Resolve the earlier Step 28/Step 29/Step 31/Step 32 validation status before advancing the
    milestone's implementation sequence. **Step 24's L2 is closed by Step 25:** a `429` is
    refused before any
    `save_audit` row exists on the path, and an oversized body writes none

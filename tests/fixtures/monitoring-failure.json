@@ -1,0 +1,6 @@
+{
+  "health": { "status": "down" },
+  "requests": { "total": 100, "serverErrors": 20 },
+  "saves": { "attempts": 40, "rejections": 20 },
+  "auth": { "attempts": 40, "failures": 20 }
+}

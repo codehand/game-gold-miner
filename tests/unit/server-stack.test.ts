@@ -281,7 +281,9 @@ describe('every Edge Function', () => {
   // `admin.getUserById`/`updateUserById`/`generateLink`. `leaderboard-read`
   // (Step 29) is the fourth: its service-role read can see `user_id` to
   // calculate a caller's rank while its response deliberately withholds it.
-  // All four are
+  // `account-delete` (Step 33) is the fifth: the transactional deletion RPC
+  // must run with the service role because every ordinary table denies client
+  // deletion and the Auth row is outside PostgREST's public schema. All five are
   // excluded from the blanket check below and given their own positive
   // assertion instead, exactly as this test's own prior comment
   // anticipated — a future function needing it must add its own exception
@@ -291,6 +293,7 @@ describe('every Edge Function', () => {
     'save-sync',
     'recovery-code',
     'leaderboard-read',
+    'account-delete',
   ];
 
   it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(
@@ -339,6 +342,12 @@ describe('every Edge Function', () => {
     expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
     expect(source).toContain("admin\n      .from('leaderboard_entries')");
     expect(source).not.toMatch(/admin\s*\.from\('leaderboard_entries'\)\s*\.(insert|update|upsert|delete)\(/);
+  });
+
+  it('account-delete uses the service role only for the transactional deletion RPC', () => {
+    const source = readProjectFile('supabase/functions/account-delete/index.ts');
+    expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+    expect(source).toContain("admin.rpc('delete_account'");
   });
 
   it('recovery-code does read the service-role key, and only to rotate/redeem codes and mint a session', () => {

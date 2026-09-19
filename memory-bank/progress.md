@@ -6,7 +6,7 @@
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.
 
-**Server milestone: in progress, at the Step 32 implementation gate.** Steps 1–8
+**Server milestone: in progress, at the Step 37 documentation close.** Steps 1–8
 are validated.
 Step 11 (Apple sign-in) is cut. Steps 9, 10, and 12–24 are implemented and await
 user validation together. Steps 25, 26, and 27 are each implemented, validated,
@@ -16,7 +16,9 @@ awaiting user validation. Step 30 is recorded as a documentation-only
 deferral: the verified leaderboard is sufficient for the current social goal,
 so no friend graph is needed. **Step 31 is implemented and awaiting user
 validation; Step 32 is implemented and awaiting validation under the user's
-explicit instruction to proceed.**
+explicit instruction to proceed. Step 33 is implemented with a green focused
+local gate. Steps 34–36 are implemented with green local evidence; Step 37 is
+the final documentation/README/CLAUDE close.**
 Phase 4 (Steps 22–26) is complete, validated by Step 26's own gate evidence
 below.
 
@@ -140,6 +142,23 @@ therefore the validation gate remains open and no acceptance-gate entry has
 been added. A review regression also proves account deletion survives the
 cascaded identity-removal trigger, which records the event with a null link.
 
+**Step 33 (account and data deletion), implemented 2026-09-19.** The
+forward-only migration 20260919110000_account_deletion.sql adds the 30-day
+anonymized_at/retention_until invariant and indexed purge boundary. The
+authenticated account-delete Edge Function ignores body account ids and calls
+the service-only transactional delete_account(uuid) RPC. It scrubs audit
+detail and links, then deletes auth.users; existing cascades remove profiles,
+saves, save audits, recovery codes, leaderboard entries, and entitlements. A
+parent auth.users before-delete trigger also handles direct Auth-admin deletion
+ordering safely, and purge_expired_account_audit is service-only.
+
+The exhaustive integration test enumerates all seven public application tables,
+seeds every account-owned path, invokes deletion with a malicious body id, and
+proves the correct Auth row and all ordinary rows are gone while anonymized
+audit rows remain for exactly 30 days. The six-test Edge Function unit suite,
+database reset, focused four-test integration suite, client RPC refusal, and
+schema invariant probe pass. Step 33's gate is closed; Step 34 is active.
+
 Full history is archived, not deleted:
 
 - Finished work → `archive/completed-log.md`
@@ -173,8 +192,8 @@ untouched; the details are in `techContext.md`'s 2026-09-16 finding.
 | | |
 |---|---|
 | Current milestone | Server milestone (`server-milestone-plan.md`, 37 steps) |
-| Current gate | **Step 32 — account audit.** Implemented 2026-09-19, awaiting validation. |
-| Blocked on the gate | Step 33 and later steps; Step 31 and earlier open gates remain recorded |
+| Current gate | **Step 34 — backup and restore.** Step 33's focused implementation gate passed 2026-09-19. |
+| Blocked on the gate | Step 34 onward until the restore drill is recorded; Step 31, Step 32, and earlier open gates remain recorded |
 | Last validated step | Step 8 (user validation on 2026-09-10) |
 | Client gate | `npm run verify` passes end to end |
 | Server gate | `npm run verify:server` passes end to end |
@@ -222,7 +241,11 @@ Compact status only. Per-step evidence, packages, and review findings are in
 | 30 — Decide on friends | Deferred 2026-09-19; decision recorded |
 | 31 — Entitlements | Implemented 2026-09-19; awaiting validation |
 | 32 — Audit log | Implemented 2026-09-19; awaiting validation |
-| 33–37 | Not started, blocked on the Step 32 validation gate |
+| 33 — Account and data deletion | Implemented 2026-09-19; focused gate passed | account-delete, forward-only deletion migration, 30-day anonymized audit retention/purge, exhaustive seven-table deletion integration test, and direct Auth-cascade regression. |
+| 34 — Backup and restore | Implemented 2026-09-19; gate passed | `npm run backup:restore`: custom dump 35,888 bytes; seven public tables and row counts matched; backup 60 ms, restore 105 ms, total 2,833 ms; public schema restored, Auth internals/sessions/runtime caches/secrets explicitly excluded. |
+| 35 — Monitoring | Implemented 2026-09-19; gate passed | `monitoring-check.mjs` covers health, error rate, save-rejection rate, and auth-failure rate; healthy fixture exits 0 and deliberately induced failure exits 2 with all four alerts. |
+| 36 — Load and performance | Implemented 2026-09-19; gate passed | 20 concurrent real anonymous users × 3 rounds: 60 uploads, p95 238 ms, 48.48 uploads/second, 49 ms for 7,200,000 ms re-simulation; budgets are asserted. |
+| 37 — Close the milestone | In progress | README.md and CLAUDE.md now document the server stack and operational commands; finish full verification and archive the close. |
 
 ## Known Risks
 

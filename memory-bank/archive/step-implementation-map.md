@@ -8,6 +8,37 @@ live status table.
 
 Not part of the contract. Open it when you need the provenance of one step.
 
+- 2026-09-19 server-milestone Step 34: added `scripts/backup-restore-drill.mjs`,
+  `ops/backup-policy.md`, and `backup:restore`. The real custom-format public
+  dump restored into a fresh PostgreSQL scratch container, matched seven table
+  names and row counts, and recorded 35,888 bytes / 60 ms backup / 105 ms
+  restore / 2,833 ms total plus the excluded Auth and secrets state.
+
+- 2026-09-19 server-milestone Step 35: added `scripts/monitoring-check.mjs`,
+  `ops/monitoring.md`, two monitoring fixtures, and
+  `tests/unit/monitoring.test.ts`. Health, server-error, save-rejection, and
+  auth-failure signals have minimum-sample thresholds; a deliberate failed
+  window exits 2 with all four alert codes.
+
+- 2026-09-19 server-milestone Step 36: added `scripts/load-save-sync.mjs` and
+  `load:server`. Real anonymous GoTrue identities drive 20 concurrent players
+  through 60 uploads; the recorded run passes p95 238 ms, 48.48 uploads/s,
+  and 49 ms maximum long-absence re-simulation, with cleanup and budgets in
+  the script.
+
+- 2026-09-19 server-milestone Step 33: added the forward-only
+  20260919110000_account_deletion.sql migration, authenticated
+  supabase/functions/account-delete, and its six-test unit suite. The
+  migration adds the account_audit anonymization/retention invariant,
+  account-lifetime-plus-30-days policy, service-only delete/purge functions,
+  and a parent Auth before-delete trigger that protects direct admin deletion.
+  The real-stack account-audit integration test now enumerates all seven public
+  tables, seeds saves/save_audit/recovery/leaderboard/entitlements/audit plus
+  the profile and identity, then proves the verified bearer account is the only
+  account deleted, every ordinary row is gone, and retained audit rows have no
+  user link or detail. Migration reset, 6/6 unit tests, 4/4 focused integration
+  tests, direct client-RPC refusal, and the schema invariant probe pass.
+
 ## Server milestone — per-step records
 
 - 2026-09-08 server-milestone Step 3: designed six tables — `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`, `entitlements` — and documented all 42 columns with every type, default, nullability, key, constraint, index, and relationship, plus the row-level-security matrix and the rule for storing a `GameNumber`. The same block is written byte-identically into both required files, which is what the step's test asks a reviewer to confirm. Nothing was created: no migration exists and no database holds it. Step 5 lands the migrations.

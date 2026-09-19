@@ -500,6 +500,14 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# Server-milestone Step 33: authenticates the bearer token inside the handler,
+# then invokes the service-only transactional deletion RPC. The request body
+# never supplies an account id, and the endpoint is not platform-JWT-gated so
+# it can return the shared JSON envelope for invalid credentials.
+[functions.account-delete]
+enabled = true
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

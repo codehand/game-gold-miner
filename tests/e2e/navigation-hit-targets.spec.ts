@@ -9,6 +9,7 @@ for (const touch of [false, true]) {
     await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
     let presses = 0;
     let closes = 0;
+    let leaderboardCloses = 0;
     // Include a resize to catch CSS-to-canvas coordinate regressions.
     for (const viewport of [{ width: 553, height: 934 }, { width: 320, height: 568 }]) {
       await page.setViewportSize(viewport);
@@ -44,6 +45,13 @@ for (const touch of [false, true]) {
             await expect(canvas).toHaveAttribute(
               'data-marketplace-close-count',
               String(++closes),
+            );
+          } else if (key === 'rewards') {
+            await expect(page.getByRole('dialog', { name: 'Leaderboard' })).toBeVisible();
+            await page.getByRole('button', { name: 'Close leaderboard' }).click();
+            await expect(canvas).toHaveAttribute(
+              'data-leaderboard-close-count',
+              String(++leaderboardCloses),
             );
           }
         }

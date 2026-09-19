@@ -15,15 +15,11 @@ exactly as playable as before this step.
 
 A separate server milestone (`memory-bank/server-milestone-plan.md`) is in
 progress. Its local Supabase stack lives in `supabase/` — committed
-`config.toml`, forward-only migrations, and one `save-sync` Edge Function that
-currently serves only a health check. All six designed database tables exist in
-the local development database, with row-level security matching the matrix
-documented byte-identically in `memory-bank/architecture.md` and
-`memory-bank/techContext.md`; no deployment exists, and nothing in `src/` reads
-or writes any of those tables yet — the one guest-session call above talks only
-to Supabase Auth, not to `saves`/`profiles`/etc. `.github/workflows/ci.yml` gates
-every push and pull request with a `client` job (`npm run verify`) and a `server`
-job (`npm run verify:server`).
+`config.toml`, forward-only migrations, save-sync/auth/leaderboard/entitlement/
+deletion Edge Functions, and seven public application tables including the
+append-only account audit. No production deployment exists. `.github/workflows/ci.yml`
+gates every push and pull request with a `client` job (`npm run verify`) and a
+`server` job (`npm run verify:server`).
 
 `src/core`, `src/config`, and `src/persistence/saveSchema.ts` also run
 unmodified inside a Deno Edge Function, `supabase/functions/core-portability-check`
@@ -71,6 +67,9 @@ npm run build:server-core       # bundle src/core+config+saveSchema.ts for the D
 npm run test:server-unit        # deno test supabase/functions — pure handlers, no Docker needed
 npm run test:server-integration # vitest against the live stack — assumes it is already running
 npm run test:server-e2e         # playwright (chromium) on :4176 against the live stack — assumes it is already running
+npm run backup:restore          # real public-schema pg_dump/pg_restore scratch drill (needs Docker + stack)
+npm run monitor:check -- --input tests/fixtures/monitoring-healthy.json
+npm run load:server             # 20-player save-sync load and long-absence benchmark (needs Docker + stack)
 npm run test:perf      # optional ten-minute Chrome benchmark (Pixel 5 emulation, 4x CPU throttle)
 npm run dev:sim        # boot iPhone Simulator + Safari + serve-sim stream (macOS/Xcode)
 npm run sim:list       # list active simulator streams
@@ -86,6 +85,13 @@ npx playwright test tests/e2e/scaffold.spec.ts -g 'offline'
 ```
 
 Every Playwright config starts its own server (`reuseExistingServer: false`), so free ports 4173 (E2E), 4174 (performance), and 4175 (production) first. E2E reports land in `playwright-report/`; benchmark reports in `performance-results/`.
+
+Step 34–36 operational evidence lives in `ops/`: the backup policy explicitly
+separates public application recovery from Auth/session/secrets recovery, the
+monitoring evaluator alerts on health/error/save-rejection/auth-failure
+thresholds, and the load script asserts upload, throughput, and long-absence
+re-simulation budgets. These are local/release tools until a hosted project and
+its credentials exist.
 
 `README.md` is the human-facing entry point: install, commands, architecture summary, and scope.
 
