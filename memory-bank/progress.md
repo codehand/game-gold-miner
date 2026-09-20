@@ -2,6 +2,29 @@
 
 ## Status Summary
 
+**Cat collection and role assignment implementation:** the ordered phase/gate
+plan is in
+`memory-bank/cat-collection-and-role-assignment-implementation-plan-v1-draft.md`.
+Phases 0–9 passed on 2026-09-19/20. The pure core domain, V3 save/migration,
+server ownership/purchase/assignment API, eleven-table RLS coverage, typed web
+adapter, active-save hydration, non-blocking boot hydration, and responsive
+Collection list/detail UI, assigned-cat replacement flow, runtime role-slot
+binding, simulation production effects, and the conflict/offline/recovery/
+release audit are complete. The full feature acceptance gate passed, including
+manual browser review and the sync-banner click-through regression fix.
+
+**Cat collection and role assignment:** the draft product contract was added
+on 2026-09-19 in
+`memory-bank/cat-collection-and-role-assignment-spec-v1-draft.md`. It covers
+purchase-to-collection, owned-cat detail, same-role replacement in mine slots,
+production modifiers, and reload/re-login persistence. Phases 0–9 now implement
+the V3 projection, server ownership/assignment path, hydration, Collection UI,
+expected-revision assignment adapter, runtime slot binding, and role-based
+production modifiers. The current Marketplace remains preview-only for
+transaction UI; its future purchase handoff still needs to call the ownership
+API, but the collection and assignment feature itself is authoritative and
+complete.
+
 **Base game: complete.** All 37 `implementation-plan.md` steps are implemented
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
 open.

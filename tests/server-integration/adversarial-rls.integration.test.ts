@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { LOCAL_ANON_KEY } from './authFixture';
@@ -56,6 +56,9 @@ function randomHexHash(): string {
   return randomBytes(32).toString('hex');
 }
 
+/** The cat-instance seed is reused by the dependent assignment/purchase probes. */
+const seededCatInstanceByUser = new Map<string, string>();
+
 interface AuthenticatedGuest {
   readonly userId: string;
   readonly accessToken: string;
@@ -108,6 +111,47 @@ function seededRowFor(table: string, userId: string, randomHex: string): Record<
       };
     case 'entitlements':
       return { user_id: userId, entitlement_key: 'cosmetic.supporter_badge', granted_by: 'rls-probe' };
+    case 'cat_blueprints':
+      // The migration owns the catalogue seed. The beforeAll hook reads this
+      // row instead of inserting a duplicate so the matrix can probe the
+      // table-level revoke with a real asset id.
+      return { asset_id: 'miner:N:mica:idle' };
+    case 'cat_collection_accounts':
+      return { user_id: userId };
+    case 'cat_instances': {
+      const catInstanceId = randomUUID();
+      seededCatInstanceByUser.set(userId, catInstanceId);
+      return {
+        cat_instance_id: catInstanceId,
+        owner_user_id: userId,
+        asset_id: 'miner:N:mica:idle',
+        display_name: 'Rls Probe Cat',
+        role_id: 'miner',
+        rarity_tier: 'N',
+        level: 1,
+        power: 50,
+        speed: 50,
+        capacity: 50,
+        efficiency: 50,
+        calculation_version: 1,
+        availability_state: 'Assigned',
+        assigned_slot_key: 'miner:rls-probe',
+      };
+    }
+    case 'cat_assignments':
+      return {
+        owner_user_id: userId,
+        slot_key: 'miner:rls-probe',
+        cat_instance_id: seededCatInstanceByUser.get(userId),
+        assignment_revision: 1,
+      };
+    case 'cat_purchase_requests':
+      return {
+        owner_user_id: userId,
+        idempotency_key: `rls-probe-${randomHex.slice(0, 48)}`,
+        cat_instance_id: seededCatInstanceByUser.get(userId),
+        price_exact: '1',
+      };
     default:
       throw new Error(
         `adversarial-rls: no seed defined for public.${table}. A new table needs one here, or its matrix cells would be probed with no valid filter value.`,
@@ -161,13 +205,13 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
     const admin = createServiceRoleClient(API_URL);
 
     for (const table of tables) {
-      if (table.name === 'profiles') {
+      if (table.name === 'profiles' || table.name === 'cat_blueprints') {
         // Already exists, created by the Step 9 sign-up trigger — inserting a
         // second one would violate the primary key. Its row is the guest's own.
         const { data, error } = await admin
           .from(table.name)
           .select('*')
-          .eq('id', guest.userId)
+          .eq(table.name === 'profiles' ? 'id' : 'asset_id', table.name === 'profiles' ? guest.userId : 'miner:N:mica:idle')
           .single();
         if (error || data === null) {
           throw new Error(
@@ -213,8 +257,13 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
    * or drops one — or a parser gap that silently starts returning fewer
    * tables — goes red instead of shrinking the matrix without a word.
    */
-  it('the derived table list still holds the six tables the schema defines', () => {
-    expect(tables.map((table) => table.name).sort()).toEqual([
+    it('the derived table list still holds the eleven tables the schema defines', () => {
+      expect(tables.map((table) => table.name).sort()).toEqual([
+      'cat_assignments',
+      'cat_blueprints',
+      'cat_collection_accounts',
+      'cat_instances',
+      'cat_purchase_requests',
       'entitlements',
       'leaderboard_entries',
       'profiles',

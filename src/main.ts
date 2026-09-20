@@ -1,7 +1,13 @@
 import './style.css';
 
 import { BASE_GAME_BALANCE, validateBaseGameBalance } from './config';
-import { claimOfflineReward, createPendingOfflineReward, GameNumber, type PendingOfflineReward } from './core';
+import {
+  claimOfflineReward,
+  createEmptyCatRoster,
+  createPendingOfflineReward,
+  GameNumber,
+  type PendingOfflineReward,
+} from './core';
 import { createGame, formatAmount, MineSimulationDriver } from './game';
 import {
   createSaveDocument,
@@ -29,6 +35,8 @@ import {
   generateRecoveryCode,
   LifecycleSafeActiveSaveRepository,
   loadLeaderboardViaFetch,
+  loadCatCollectionViaFetch,
+  replaceCatAssignmentViaFetch,
   markOfflineGrantApplied,
   MISSING_LOCAL_SAVE_CODE,
   MISSING_LOCAL_SAVE_MESSAGE,
@@ -54,6 +62,8 @@ import {
 import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
 import {
   AccountSettingsModal,
+  CatAssignmentModal,
+  CollectionModal,
   LeaderboardModal,
   createSaveDiagnosticBanner,
   showOfflineRewardModal,
@@ -61,6 +71,8 @@ import {
   type AccountConflictCandidateView,
   type AccountConflictView,
   type AccountIdentityView,
+  type CatAssignmentCommand,
+  type CatAssignmentCommandResult,
   type OfflineRewardModal,
 } from './ui';
 
@@ -341,6 +353,8 @@ const backendConfigured = Boolean(
 
 /** The running driver, owned by `startApplication` and shared with the Step 22 grant application. */
 let activeDriver: MineSimulationDriver | null = null;
+type CatCollectionUiStatus = 'loading' | 'ready' | 'stale' | 'error';
+let catCollectionUiStatus: CatCollectionUiStatus = 'loading';
 let pendingReward: PendingOfflineReward | null = null;
 let rewardClaimed = false;
 
@@ -620,6 +634,7 @@ function presentOfflineReward(reward: PendingOfflineReward): void {
         driver.state,
         BASE_GAME_BALANCE,
         Date.now(),
+        driver.catRoster,
       );
 
       if (localSavesSuspended) {
@@ -929,6 +944,8 @@ let game: ReturnType<typeof createGame> | null = null;
 let offlineRewardModal: OfflineRewardModal | null = null;
 let accountSettingsModal: AccountSettingsModal | null = null;
 let leaderboardModal: LeaderboardModal | null = null;
+let collectionModal: CollectionModal | null = null;
+let catAssignmentModal: CatAssignmentModal | null = null;
 let unbindSaveLifecycle: (() => void) | null = null;
 let saveHeartbeatId: number | null = null;
 let disposed = false;
@@ -975,6 +992,22 @@ leaderboardModal = new LeaderboardModal({
       client?.auth ?? null,
     );
   },
+});
+collectionModal = new CollectionModal({
+  parent: app,
+  getRoster: () => activeDriver?.catRoster ?? createEmptyCatRoster(),
+  getStatus: () => catCollectionUiStatus,
+  onRetry: () => {
+    const driver = activeDriver;
+    if (driver !== null) {
+      void hydrateCatRoster(driver);
+    }
+  },
+});
+catAssignmentModal = new CatAssignmentModal({
+  parent: app,
+  getRoster: () => activeDriver?.catRoster ?? createEmptyCatRoster(),
+  assign: replaceAssignedCat,
 });
 
 void startApplication();
@@ -1220,6 +1253,97 @@ function toAccountConflictCandidate(
   };
 }
 
+/** Sends the minimum assignment command and applies only an authoritative projection. */
+async function replaceAssignedCat(
+  command: CatAssignmentCommand,
+): Promise<CatAssignmentCommandResult> {
+  const driver = activeDriver;
+  if (driver === null) {
+    return { kind: 'unavailable', reason: 'offline' };
+  }
+
+  const client = await supabaseClientPromise;
+  const result = await replaceCatAssignmentViaFetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cat-collection`,
+    client?.auth ?? null,
+    command,
+  );
+
+  if (result.kind !== 'applied' || disposed || activeDriver !== driver) {
+    return result;
+  }
+
+  driver.replaceCatRoster(result.roster);
+  catCollectionUiStatus = 'ready';
+  collectionModal?.refresh();
+  catAssignmentModal?.refresh();
+  if (!localSavesSuspended) {
+    persistence.queueSave(
+      createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster),
+    );
+    // Assignment is a player-visible identity change. Wait for the local
+    // snapshot to commit before reporting success so a reload cannot race the
+    // debounced writer and resurrect the previous assigned cat.
+    await persistence.flush();
+  }
+
+  return result;
+}
+
+/** Hydrates the server-authoritative cat projection without delaying first paint. */
+async function hydrateCatRoster(driver: MineSimulationDriver): Promise<void> {
+  catCollectionUiStatus = 'loading';
+  collectionModal?.refresh();
+  let client: SupabaseClient | null;
+  try {
+    client = await supabaseClientPromise;
+  } catch {
+    // The SDK is lazy-loaded and a stale or unavailable chunk must not turn
+    // the best-effort Collection hydration into an unhandled page error. The
+    // local roster remains the safe projection for this session.
+    if (disposed || activeDriver !== driver) {
+      return;
+    }
+    catCollectionUiStatus = driver.catRoster.cats.length > 0 ? 'stale' : 'error';
+    collectionModal?.refresh();
+    return;
+  }
+  const result = await loadCatCollectionViaFetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cat-collection/v1/collection`,
+    client?.auth ?? null,
+  );
+
+  if (disposed || activeDriver !== driver) {
+    return;
+  }
+
+  if (result.kind !== 'ready') {
+    catCollectionUiStatus = result.reason === 'unconfigured'
+      ? 'ready'
+      : driver.catRoster.cats.length > 0
+        ? 'stale'
+        : 'error';
+    collectionModal?.refresh();
+    return;
+  }
+
+  driver.replaceCatRoster(result.roster);
+  catCollectionUiStatus = 'ready';
+  collectionModal?.refresh();
+  if (localSavesSuspended) {
+    return;
+  }
+
+  const hydratedDocument = createSaveDocument(
+    driver.state,
+    BASE_GAME_BALANCE,
+    Date.now(),
+    driver.catRoster,
+  );
+  persistence.queueSave(hydratedDocument);
+  void persistence.flush();
+}
+
 async function startApplication(): Promise<void> {
   await Promise.all([
     document.fonts.load('600 16px Fredoka'),
@@ -1252,6 +1376,7 @@ async function startApplication(): Promise<void> {
   // snapshots from the driver rather than pushing frames into the core.
   const driver = new MineSimulationDriver({
     state: loadResult.state,
+    catRoster: loadResult.catRoster,
     balance: BASE_GAME_BALANCE,
     now: () => Date.now(),
     // A purchase changes authoritative state without any tick completing, and
@@ -1264,7 +1389,7 @@ async function startApplication(): Promise<void> {
       }
 
       persistence.queueSave(
-        createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now()),
+        createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster),
       );
     },
   });
@@ -1273,6 +1398,8 @@ async function startApplication(): Promise<void> {
   // the server grant if one arrived, the local projection otherwise, exactly
   // once, once the source is decided.
   activeDriver = driver;
+  catCollectionUiStatus = 'ready';
+  void hydrateCatRoster(driver);
   localProjectionReward = createPendingOfflineReward(loadResult.offlineIncome);
   maybePresentOfflineReward();
 
@@ -1293,6 +1420,22 @@ async function startApplication(): Promise<void> {
 
       leaderboardModal.open(onClosed);
     },
+    onCollection: (onClosed) => {
+      if (collectionModal === null) {
+        onClosed();
+        return;
+      }
+
+      collectionModal.open(onClosed);
+    },
+    onCatSlot: (slotKey, onClosed) => {
+      if (catAssignmentModal === null) {
+        onClosed();
+        return;
+      }
+
+      catAssignmentModal.open(slotKey, onClosed);
+    },
   });
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
@@ -1304,7 +1447,7 @@ async function startApplication(): Promise<void> {
       // making it eligible for offline income after a reload.
       driver.advance();
 
-      return createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now());
+      return createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster);
     },
     {
       journal: lifecycleJournal,
@@ -1328,7 +1471,7 @@ async function startApplication(): Promise<void> {
 
     lastPersistedState = driver.state;
     persistence.queueSave(
-      createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now()),
+      createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster),
     );
   }, SAVE_HEARTBEAT_MS);
 }
@@ -1339,6 +1482,8 @@ if (import.meta.hot) {
     saveDiagnostics.destroy();
     offlineRewardModal?.destroy();
     accountSettingsModal?.destroy();
+    collectionModal?.destroy();
+    catAssignmentModal?.destroy();
     unbindSaveLifecycle?.();
 
     if (saveHeartbeatId !== null) {

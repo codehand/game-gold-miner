@@ -45,6 +45,22 @@ export function createSaveDiagnosticBanner(
   let dismissedCode: string | null = null;
   let destroyed = false;
 
+  // Phaser's input manager observes pointer events at the window level. A
+  // banner button can therefore still activate the HUD control beneath it
+  // unless the pointer sequence is stopped before Phaser receives it.
+  const stopUnderlyingPointer = (event: Event): void => {
+    const target = event.target;
+    if (
+      elements?.banner.contains(target instanceof Node ? target : null) === true
+    ) {
+      event.stopImmediatePropagation();
+    }
+  };
+  window.addEventListener('pointerdown', stopUnderlyingPointer, true);
+  window.addEventListener('pointerup', stopUnderlyingPointer, true);
+  window.addEventListener('mousedown', stopUnderlyingPointer, true);
+  window.addEventListener('mouseup', stopUnderlyingPointer, true);
+
   const dismiss = (): void => {
     dismissedCode = displayedCode;
     displayedCode = null;
@@ -69,7 +85,19 @@ export function createSaveDiagnosticBanner(
     dismissButton.dataset.testid = 'save-diagnostic-dismiss';
     dismissButton.type = 'button';
     dismissButton.textContent = 'Dismiss';
-    dismissButton.addEventListener('click', dismiss);
+    // Keep a DOM dismissal from leaking through to the Phaser canvas below.
+    // Phaser listens for pointer events at the window level, so bubbling-only
+    // handlers are too late when the banner sits over a HUD control. Capture
+    // the complete pointer sequence on the button before the canvas sees it.
+    const stopPointerLeak = (event: Event): void => {
+      event.stopPropagation();
+    };
+    dismissButton.addEventListener('pointerdown', stopPointerLeak, true);
+    dismissButton.addEventListener('pointerup', stopPointerLeak, true);
+    dismissButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      dismiss();
+    }, true);
 
     banner.append(message, dismissButton);
 
@@ -100,6 +128,10 @@ export function createSaveDiagnosticBanner(
       destroyed = true;
       displayedCode = null;
       elements?.banner.remove();
+      window.removeEventListener('pointerdown', stopUnderlyingPointer, true);
+      window.removeEventListener('pointerup', stopUnderlyingPointer, true);
+      window.removeEventListener('mousedown', stopUnderlyingPointer, true);
+      window.removeEventListener('mouseup', stopUnderlyingPointer, true);
     },
   };
 }

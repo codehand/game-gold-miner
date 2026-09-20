@@ -9,6 +9,7 @@ import {
   MARKETPLACE_RUNTIME_ASSET_IDS,
   MARKETPLACE_RUNTIME_ROLE_ASSETS,
   resolveMarketplaceRuntimeAsset,
+  resolveMarketplaceRuntimeSlot,
 } from '../../src/game/assets/marketplaceRuntimeAssets';
 
 describe('Marketplace runtime asset contract', () => {
@@ -83,6 +84,44 @@ describe('Marketplace runtime asset contract', () => {
     expect(resolveMarketplaceRuntimeAsset(runtimeAsset, false)).toMatchObject({
       frameCount: 4,
       frameDurationMs: 240,
+    });
+  });
+
+  it('resolves an assigned instance through the slot without changing its identity', () => {
+    const binding = resolveMarketplaceRuntimeSlot(
+      'miner:floor-1',
+      'miner',
+      { catInstanceId: 'cat-forge', assetId: 'miner:SSR:forge:idle' },
+      () => true,
+    );
+
+    expect(binding).toMatchObject({
+      slotKey: 'miner:floor-1',
+      catInstanceId: 'cat-forge',
+      assignedAssetId: 'miner:SSR:forge:idle',
+      usesFallback: false,
+      fallbackReason: 'none',
+      animation: { assetId: 'miner:SSR:forge:idle' },
+    });
+  });
+
+  it('uses the role placeholder while diagnosing an assigned cat with no local sheet', () => {
+    const binding = resolveMarketplaceRuntimeSlot(
+      'miner:floor-1',
+      'miner',
+      { catInstanceId: 'cat-mica', assetId: 'miner:N:mica:idle' },
+      () => false,
+    );
+
+    expect(binding).toMatchObject({
+      catInstanceId: 'cat-mica',
+      assignedAssetId: 'miner:N:mica:idle',
+      usesFallback: true,
+      fallbackReason: 'missing-runtime-asset',
+      animation: {
+        assetId: null,
+        textureKey: MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.fallbackTextureKey,
+      },
     });
   });
 });

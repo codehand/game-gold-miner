@@ -1,4 +1,12 @@
 import type { GameState } from '../state/GameState';
+import {
+  BASE_GAME_BALANCE,
+  type BaseGameBalanceConfig,
+} from '../../config';
+import {
+  EMPTY_CAT_PRODUCTION_MODIFIERS,
+  type CatProductionModifiers,
+} from '../cats';
 import { advanceSimulation, MAX_FOREGROUND_DELTA_MS } from './advanceSimulation';
 
 /**
@@ -41,10 +49,22 @@ export const MAX_CATCH_UP_MS = 2 * 60 * 60 * 1_000;
  * sub-tick remainder in authoritative state, so a run of slices is
  * indistinguishable from the same time arriving continuously.
  */
+export function catchUpSimulation(state: GameState, elapsedMs: number): GameState;
 export function catchUpSimulation(
   state: GameState,
   elapsedMs: number,
+  config: BaseGameBalanceConfig,
+  modifiers?: CatProductionModifiers,
+): GameState;
+export function catchUpSimulation(
+  state: GameState,
+  elapsedMs: number,
+  ...options: [config?: BaseGameBalanceConfig, modifiers?: CatProductionModifiers]
 ): GameState {
+  const config = typeof options[0] === 'object' && options[0] !== null
+    ? options[0]
+    : BASE_GAME_BALANCE;
+  const modifiers = options[1] ?? EMPTY_CAT_PRODUCTION_MODIFIERS;
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
     throw new Error('Elapsed time must be a finite, non-negative number.');
   }
@@ -60,6 +80,8 @@ export function catchUpSimulation(
     nextState = advanceSimulation(
       nextState,
       Math.min(MAX_FOREGROUND_DELTA_MS, creditedMs - consumedMs),
+      config,
+      modifiers,
     );
   }
 

@@ -2,6 +2,20 @@ import type { BaseGameBalanceConfig } from '../config';
 import { calculateMineProductionRates } from '../core/economy/calculateProductionRates';
 import { GameNumber, type SerializedGameNumber } from '../core/numbers/GameNumber';
 import { calculateLevelEffect } from '../core/progression/calculateLevelEffect';
+import {
+  CAT_CALCULATION_VERSION,
+  createCatProductionModifiers,
+  createEmptyCatRoster,
+  validateCatRoster,
+  type CatAssignment,
+  type CatAttributes,
+  type CatAvailabilityState,
+  type CatInstance,
+  type CatRarityTier,
+  type CatRole,
+  type CatRosterState,
+  type CatSlotKey,
+} from '../core/cats';
 import type {
   ElevatorState,
   GameState,
@@ -10,14 +24,16 @@ import type {
 } from '../core/state/GameState';
 import { INITIAL_SAVE_VERSION } from '../core/state/createInitialGameState';
 
-export const CURRENT_SAVE_SCHEMA_VERSION = 2;
+export const CURRENT_SAVE_SCHEMA_VERSION = 3;
 
 /**
  * The immediately preceding save schema. Version 1 has no
  * `warehouse.totalOfflineGoldClaimed`; `migrateSaveDocument` upgrades it by
- * defaulting that counter to zero.
+ * defaulting that counter to zero. Version 2 predates the cat projection and
+ * migrates to an empty collection with no assignments.
  */
 const SAVE_SCHEMA_VERSION_1 = 1;
+const SAVE_SCHEMA_VERSION_2 = 2;
 
 /**
  * Whether a `schemaVersion` value is one this build can read — either the
@@ -27,7 +43,9 @@ const SAVE_SCHEMA_VERSION_1 = 1;
  * reported as an incompatible save rather than a corrupt one.
  */
 export function isSupportedSaveSchemaVersion(value: unknown): boolean {
-  return value === SAVE_SCHEMA_VERSION_1 || value === CURRENT_SAVE_SCHEMA_VERSION;
+  return value === SAVE_SCHEMA_VERSION_1 ||
+    value === SAVE_SCHEMA_VERSION_2 ||
+    value === CURRENT_SAVE_SCHEMA_VERSION;
 }
 const SERIALIZED_GAME_NUMBER_PATTERN =
   /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
@@ -71,18 +89,46 @@ export interface SerializedGameState {
   readonly warehouse: SerializedWarehouseState;
 }
 
-export interface SaveDocumentV2 {
+export interface SerializedCatInstance {
+  readonly catInstanceId: string;
+  readonly ownerUserId: string;
+  readonly assetId: string;
+  readonly displayName: string;
+  readonly roleId: CatRole;
+  readonly rarityTier: CatRarityTier;
+  readonly level: number;
+  readonly attributes: CatAttributes;
+  readonly calculationVersion: number;
+  readonly availabilityState: CatAvailabilityState;
+  readonly assignedSlotKey: string | null;
+  readonly updatedAt: number;
+}
+
+export interface SerializedCatAssignment {
+  readonly slotKey: string;
+  readonly catInstanceId: string;
+}
+
+export interface SaveDocumentV3 {
   readonly schemaVersion: typeof CURRENT_SAVE_SCHEMA_VERSION;
   readonly savedAtTimestampMs: number;
   readonly effectiveProductionRatePerSecond: SerializedGameNumber;
   readonly state: SerializedGameState;
+  readonly cats: readonly SerializedCatInstance[];
+  readonly assignments: readonly SerializedCatAssignment[];
+  readonly assignmentRevision: number;
+  readonly collectionRevision: number;
 }
+
+/** Compatibility name retained while the existing repository adapters migrate. */
+export type SaveDocumentV2 = SaveDocumentV3;
 
 export interface LoadedSaveDocument {
   readonly schemaVersion: typeof CURRENT_SAVE_SCHEMA_VERSION;
   readonly savedAtTimestampMs: number;
   readonly effectiveProductionRatePerSecond: GameNumber;
   readonly state: GameState;
+  readonly catRoster: CatRosterState;
 }
 
 export class SaveDocumentError extends Error {
@@ -96,15 +142,18 @@ export function createSaveDocument(
   state: GameState,
   config: BaseGameBalanceConfig,
   savedAtTimestampMs: number,
-): SaveDocumentV2 {
-  const document: SaveDocumentV2 = {
+  catRoster: CatRosterState = createEmptyCatRoster(),
+): SaveDocumentV3 {
+  const document: SaveDocumentV3 = {
     schemaVersion: CURRENT_SAVE_SCHEMA_VERSION,
     savedAtTimestampMs,
     effectiveProductionRatePerSecond: calculateMineProductionRates(
       state,
       config,
+      createCatProductionModifiers(catRoster),
     ).effectiveProductionPerSecond.serialize(),
     state: serializeGameState(state),
+    ...serializeCatRoster(catRoster),
   };
 
   return validateSaveDocument(document, config);
@@ -122,10 +171,7 @@ export function migrateSaveDocument(
 
   const schemaVersion = document.schemaVersion;
 
-  if (
-    schemaVersion !== SAVE_SCHEMA_VERSION_1 &&
-    schemaVersion !== CURRENT_SAVE_SCHEMA_VERSION
-  ) {
+  if (!isSupportedSaveSchemaVersion(schemaVersion)) {
     throw new SaveDocumentError(
       `Unsupported save schema version ${String(schemaVersion)}.`,
     );
@@ -135,10 +181,13 @@ export function migrateSaveDocument(
   // field records a gold source the old shape could not distinguish, and a
   // version-1 save by definition never recorded an offline claim in it, so the
   // upgrade default is zero and every other value is carried across exactly.
-  const upgraded =
+  const upgradedToV2 =
     schemaVersion === SAVE_SCHEMA_VERSION_1
       ? upgradeVersionOneDocument(document)
       : document;
+  const upgraded = schemaVersion === SAVE_SCHEMA_VERSION_1 || schemaVersion === SAVE_SCHEMA_VERSION_2
+    ? upgradeVersionTwoDocument(upgradedToV2)
+    : upgradedToV2;
 
   if (config === undefined) {
     return upgraded;
@@ -188,10 +237,23 @@ function upgradeVersionOneDocument(
   };
 }
 
+function upgradeVersionTwoDocument(
+  document: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...document,
+    schemaVersion: CURRENT_SAVE_SCHEMA_VERSION,
+    cats: [],
+    assignments: [],
+    assignmentRevision: 0,
+    collectionRevision: 0,
+  };
+}
+
 export function validateSaveDocument(
   candidate: unknown,
   config: BaseGameBalanceConfig,
-): SaveDocumentV2 {
+): SaveDocumentV3 {
   const migrated = migrateSaveDocument(candidate, config);
   const document = assertRecord(migrated, 'save');
   assertExactKeys(
@@ -201,6 +263,10 @@ export function validateSaveDocument(
       'savedAtTimestampMs',
       'effectiveProductionRatePerSecond',
       'state',
+      'cats',
+      'assignments',
+      'assignmentRevision',
+      'collectionRevision',
     ],
     'save',
   );
@@ -211,6 +277,7 @@ export function validateSaveDocument(
   );
 
   const state = validateSerializedGameState(document.state, config);
+  validateSerializedCatRoster(document, 'save');
 
   if (document.savedAtTimestampMs < state.lastUpdateTimestampMs) {
     throw new SaveDocumentError(
@@ -218,7 +285,7 @@ export function validateSaveDocument(
     );
   }
 
-  return migrated as SaveDocumentV2;
+  return migrated as SaveDocumentV3;
 }
 
 /**
@@ -286,6 +353,7 @@ export function deserializeSaveDocument(
       document.effectiveProductionRatePerSecond,
     ),
     state: deserializeGameState(document.state),
+    catRoster: deserializeCatRoster(document),
   };
 }
 
@@ -335,6 +403,143 @@ function serializeWarehouse(
     conversionProgress: warehouse.conversionProgress,
     totalGoldDelivered: warehouse.totalGoldDelivered.serialize(),
     totalOfflineGoldClaimed: warehouse.totalOfflineGoldClaimed.serialize(),
+  };
+}
+
+function serializeCatRoster(
+  roster: CatRosterState,
+): Pick<SaveDocumentV3, 'cats' | 'assignments' | 'assignmentRevision' | 'collectionRevision'> {
+  validateCatRoster(roster);
+
+  return {
+    cats: roster.cats.map((cat) => ({
+      ...cat,
+      attributes: { ...cat.attributes },
+    })),
+    assignments: roster.assignments.map((assignment) => ({ ...assignment })),
+    assignmentRevision: roster.assignmentRevision,
+    collectionRevision: roster.collectionRevision,
+  };
+}
+
+function validateSerializedCatRoster(
+  document: Record<string, unknown>,
+  path: string,
+): void {
+  const catsValue = document.cats;
+  const assignmentsValue = document.assignments;
+  if (!Array.isArray(catsValue)) {
+    throw new SaveDocumentError(`${path}.cats must be an array.`);
+  }
+  if (!Array.isArray(assignmentsValue)) {
+    throw new SaveDocumentError(`${path}.assignments must be an array.`);
+  }
+
+  assertNonNegativeSafeInteger(document.assignmentRevision, `${path}.assignmentRevision`);
+  assertNonNegativeSafeInteger(document.collectionRevision, `${path}.collectionRevision`);
+
+  const cats = catsValue.map((value, index) => validateSerializedCat(value, `${path}.cats[${index}]`));
+  const assignments = assignmentsValue.map((value, index) => {
+    const assignment = assertRecord(value, `${path}.assignments[${index}]`);
+    assertExactKeys(assignment, ['slotKey', 'catInstanceId'], `${path}.assignments[${index}]`);
+    const slotKey = parseSlotKey(assignment.slotKey, `${path}.assignments[${index}].slotKey`);
+    const catInstanceId = assertNonEmptyString(
+      assignment.catInstanceId,
+      `${path}.assignments[${index}].catInstanceId`,
+    );
+    return { slotKey, catInstanceId } satisfies CatAssignment;
+  });
+
+  try {
+    validateCatRoster({
+      cats,
+      assignments,
+      assignmentRevision: document.assignmentRevision as number,
+      collectionRevision: document.collectionRevision as number,
+    });
+  } catch (error) {
+    throw new SaveDocumentError(
+      `${path} is inconsistent: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+  }
+}
+
+function validateSerializedCat(value: unknown, path: string): CatInstance {
+  const cat = assertRecord(value, path);
+  assertExactKeys(
+    cat,
+    [
+      'catInstanceId',
+      'ownerUserId',
+      'assetId',
+      'displayName',
+      'roleId',
+      'rarityTier',
+      'level',
+      'attributes',
+      'calculationVersion',
+      'availabilityState',
+      'assignedSlotKey',
+      'updatedAt',
+    ],
+    path,
+  );
+
+  const roleId = assertEnum(cat.roleId, ['elevator', 'warehouse', 'miner'], `${path}.roleId`) as CatRole;
+  const rarityTier = assertEnum(cat.rarityTier, ['N', 'R', 'SR', 'SSR', 'UR'], `${path}.rarityTier`) as CatRarityTier;
+  const availabilityState = assertEnum(
+    cat.availabilityState,
+    ['Idle', 'Assigned', 'Listed', 'Rented', 'Expired', 'Locked'],
+    `${path}.availabilityState`,
+  ) as CatAvailabilityState;
+  const attributesRecord = assertRecord(cat.attributes, `${path}.attributes`);
+  assertExactKeys(attributesRecord, ['power', 'speed', 'capacity', 'efficiency'], `${path}.attributes`);
+
+  const attributes = {
+    power: assertAttribute(attributesRecord.power, `${path}.attributes.power`),
+    speed: assertAttribute(attributesRecord.speed, `${path}.attributes.speed`),
+    capacity: assertAttribute(attributesRecord.capacity, `${path}.attributes.capacity`),
+    efficiency: assertAttribute(attributesRecord.efficiency, `${path}.attributes.efficiency`),
+  };
+  const assignedSlotKey = cat.assignedSlotKey === null
+    ? null
+    : parseSlotKey(cat.assignedSlotKey, `${path}.assignedSlotKey`);
+
+  if (cat.calculationVersion !== CAT_CALCULATION_VERSION) {
+    throw new SaveDocumentError(`${path}.calculationVersion is unsupported.`);
+  }
+
+  return {
+    catInstanceId: assertNonEmptyString(cat.catInstanceId, `${path}.catInstanceId`),
+    ownerUserId: assertNonEmptyString(cat.ownerUserId, `${path}.ownerUserId`),
+    assetId: assertNonEmptyString(cat.assetId, `${path}.assetId`),
+    displayName: assertNonEmptyString(cat.displayName, `${path}.displayName`),
+    roleId,
+    rarityTier,
+    level: assertPositiveSafeIntegerValue(cat.level, `${path}.level`),
+    attributes,
+    calculationVersion: cat.calculationVersion,
+    availabilityState,
+    assignedSlotKey,
+    updatedAt: assertTimestampValue(cat.updatedAt, `${path}.updatedAt`),
+  };
+}
+
+function deserializeCatRoster(document: SaveDocumentV3): CatRosterState {
+  return {
+    cats: document.cats.map((cat) => ({
+      ...cat,
+      assignedSlotKey: cat.assignedSlotKey === null
+        ? null
+        : parseSlotKey(cat.assignedSlotKey, 'save.cats.assignedSlotKey'),
+      attributes: { ...cat.attributes },
+    })),
+    assignments: document.assignments.map((assignment) => ({
+      slotKey: parseSlotKey(assignment.slotKey, 'save.assignments.slotKey'),
+      catInstanceId: assignment.catInstanceId,
+    })),
+    assignmentRevision: document.assignmentRevision,
+    collectionRevision: document.collectionRevision,
   };
 }
 
@@ -666,6 +871,58 @@ function parseGameNumber(
   }
 
   return parsed;
+}
+
+function assertNonEmptyString(value: unknown, path: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new SaveDocumentError(`${path} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function assertEnum(
+  value: unknown,
+  choices: readonly string[],
+  path: string,
+): string {
+  if (typeof value !== 'string' || !choices.includes(value)) {
+    throw new SaveDocumentError(`${path} must be one of ${choices.join(', ')}.`);
+  }
+  return value;
+}
+
+function assertAttribute(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
+    throw new SaveDocumentError(`${path} must be in [0, 100].`);
+  }
+  return value;
+}
+
+function assertPositiveSafeIntegerValue(value: unknown, path: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw new SaveDocumentError(`${path} must be a positive safe integer.`);
+  }
+  return value as number;
+}
+
+function assertTimestampValue(value: unknown, path: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new SaveDocumentError(`${path} must be a non-negative safe integer.`);
+  }
+  return value as number;
+}
+
+function parseSlotKey(value: unknown, path: string): CatSlotKey {
+  if (typeof value !== 'string') {
+    throw new SaveDocumentError(`${path} must be a supported role slot key.`);
+  }
+  if (value === 'elevator:main' || value === 'warehouse:main') {
+    return value;
+  }
+  if (value.startsWith('miner:') && value.length > 'miner:'.length) {
+    return value as CatSlotKey;
+  }
+  throw new SaveDocumentError(`${path} must be a supported role slot key.`);
 }
 
 function assertRecord(value: unknown, path: string): Record<string, unknown> {

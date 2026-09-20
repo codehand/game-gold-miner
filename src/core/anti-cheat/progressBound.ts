@@ -7,6 +7,7 @@ import {
   calculateMineShaftUpgradeBatchCost,
   calculateWarehouseUpgradeBatchCost,
 } from '../progression/upgrades';
+import { createCatProductionModifiers, type CatRosterState } from '../cats';
 import type { GameState } from '../state/GameState';
 
 /**
@@ -78,6 +79,9 @@ export interface ProgressBoundInput {
   readonly candidate: GameState;
   readonly elapsedMs: number;
   readonly config: BaseGameBalanceConfig;
+  /** Optional for legacy callers; V3 server bounds pass both projections. */
+  readonly previousCatRoster?: CatRosterState;
+  readonly candidateCatRoster?: CatRosterState;
   readonly tolerance?: number;
 }
 
@@ -91,11 +95,20 @@ export function evaluateProgressBound(
 
   const seconds = Math.max(0, input.elapsedMs) / 1_000;
   const headroom = 1 + tolerance;
-  const rates = calculateMineProductionRates(input.candidate, input.config);
+  const modifiers = input.candidateCatRoster === undefined
+    ? undefined
+    : createCatProductionModifiers(input.candidateCatRoster);
+  const rates = modifiers === undefined
+    ? calculateMineProductionRates(input.candidate, input.config)
+    : calculateMineProductionRates(input.candidate, input.config, modifiers);
   const earnedGold = rates.effectiveProductionPerSecond
     .multiply(seconds)
     .multiply(headroom);
-  const inFlightYield = sumInFlightCycleYield(input.candidate, input.config);
+  const inFlightYield = sumInFlightCycleYield(
+    input.candidate,
+    input.config,
+    modifiers,
+  );
 
   const maxDelivered = input.previous.warehouse.totalGoldDelivered
     .add(undeliveredMaterial(input.previous))
@@ -135,6 +148,9 @@ export function evaluateProgressBound(
     const floorYield = inFlightCycleYieldForFloor(
       floor,
       findFloorConfig(input.config, floor.id),
+      modifiers === undefined
+        ? 1
+        : modifiers.miningOutputMultiplierByFloor[floor.id] ?? 1,
     );
 
     const maxExtracted = previousFloor.totalExtracted
@@ -202,6 +218,7 @@ function undeliveredMaterial(state: GameState): GameNumber {
 function sumInFlightCycleYield(
   state: GameState,
   config: BaseGameBalanceConfig,
+  modifiers?: ReturnType<typeof createCatProductionModifiers>,
 ): GameNumber {
   return state.floors.reduce((total, floor) => {
     if (!floor.isUnlocked) {
@@ -209,7 +226,13 @@ function sumInFlightCycleYield(
     }
 
     return total.add(
-      inFlightCycleYieldForFloor(floor, findFloorConfig(config, floor.id)),
+      inFlightCycleYieldForFloor(
+        floor,
+        findFloorConfig(config, floor.id),
+        modifiers === undefined
+          ? 1
+          : modifiers.miningOutputMultiplierByFloor[floor.id] ?? 1,
+      ),
     );
   }, GameNumber.from(0));
 }
@@ -217,8 +240,10 @@ function sumInFlightCycleYield(
 function inFlightCycleYieldForFloor(
   floor: GameState['floors'][number],
   config: MineFloorConfig,
+  miningOutputMultiplier = 1,
 ): GameNumber {
-  return calculateLevelEffect(config.baseYield, floor.mineShaftLevel, config.upgrade);
+  return calculateLevelEffect(config.baseYield, floor.mineShaftLevel, config.upgrade)
+    .multiply(miningOutputMultiplier);
 }
 
 /** Total gold required to move `previous` to `candidate`: upgrades plus floor unlocks. */

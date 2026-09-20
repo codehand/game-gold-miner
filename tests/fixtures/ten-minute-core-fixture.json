@@ -180,9 +180,13 @@
     }
   },
   "expectedOutputDocument": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "savedAtTimestampMs": 1735690200000,
     "effectiveProductionRatePerSecond": "5",
+    "cats": [],
+    "assignments": [],
+    "assignmentRevision": 0,
+    "collectionRevision": 0,
     "state": {
       "saveVersion": 1,
       "lastUpdateTimestampMs": 1735690200000,

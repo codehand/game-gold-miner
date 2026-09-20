@@ -6,6 +6,11 @@ import type {
 import { GameNumber } from '../numbers/GameNumber';
 import { calculateLevelEffect } from '../progression/calculateLevelEffect';
 import type { GameState, MineFloorState } from '../state/GameState';
+import {
+  EMPTY_CAT_PRODUCTION_MODIFIERS,
+  getMiningOutputMultiplier,
+  type CatProductionModifiers,
+} from '../cats';
 
 const MILLISECONDS_PER_SECOND = 1_000;
 
@@ -33,6 +38,7 @@ export interface MineProductionRates {
 export function calculateTheoreticalFloorExtractionRate(
   floor: MineFloorState,
   config: MineFloorConfig,
+  miningOutputMultiplier = 1,
 ): GameNumber {
   if (floor.id !== config.id) {
     throw new Error(
@@ -47,13 +53,14 @@ export function calculateTheoreticalFloorExtractionRate(
   );
 
   return outputPerCycle.multiply(
-    MILLISECONDS_PER_SECOND / config.cycleDurationMs,
+    (MILLISECONDS_PER_SECOND / config.cycleDurationMs) * miningOutputMultiplier,
   );
 }
 
 export function calculateMineProductionRates(
   state: GameState,
   config: BaseGameBalanceConfig,
+  modifiers: CatProductionModifiers = EMPTY_CAT_PRODUCTION_MODIFIERS,
 ): MineProductionRates {
   const floors = state.floors.map((floor) => {
     const floorConfig = findFloorConfig(config, floor.id);
@@ -63,7 +70,11 @@ export function calculateMineProductionRates(
       floorNumber: floor.floorNumber,
       isUnlocked: floor.isUnlocked,
       theoreticalExtractionPerSecond:
-        calculateTheoreticalFloorExtractionRate(floor, floorConfig),
+        calculateTheoreticalFloorExtractionRate(
+          floor,
+          floorConfig,
+          getMiningOutputMultiplier(modifiers, floor.id),
+        ),
     };
   });
   const aggregateExtractionPerSecond = floors.reduce(
@@ -77,10 +88,12 @@ export function calculateMineProductionRates(
   const elevatorCapacityPerSecond = calculateStageCapacityPerSecond(
     state.elevator.capacity,
     config.elevator,
+    modifiers.elevatorThroughputMultiplier,
   );
   const warehouseCapacityPerSecond = calculateStageCapacityPerSecond(
     state.warehouse.capacity,
     config.warehouse,
+    modifiers.warehouseProcessingMultiplier,
   );
   const { bottleneck, rate: effectiveProductionPerSecond } = findBottleneck(
     aggregateExtractionPerSecond,
@@ -101,9 +114,10 @@ export function calculateMineProductionRates(
 function calculateStageCapacityPerSecond(
   capacity: GameNumber,
   config: SharedStageConfig,
+  throughputMultiplier = 1,
 ): GameNumber {
   return capacity.multiply(
-    MILLISECONDS_PER_SECOND / config.cycleDurationMs,
+    (MILLISECONDS_PER_SECOND / config.cycleDurationMs) * throughputMultiplier,
   );
 }
 

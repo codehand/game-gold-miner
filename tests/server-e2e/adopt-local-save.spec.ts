@@ -2,7 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
+import {
+  CURRENT_SAVE_SCHEMA_VERSION,
+  createSaveDocument,
+  type SaveDocumentV2,
+} from '../../src/persistence';
 import { readCloudSave } from './cloudSaveFixture';
 
 /**
@@ -160,7 +164,7 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
       message: 'the local save is adopted as the account cloud save',
       timeout: 20_000,
     })
-    .toBe(2);
+    .toBe(CURRENT_SAVE_SCHEMA_VERSION);
 
   const adopted = await readCloudSave(SAVE_URL, accessToken);
   expect(adopted).not.toBeNull();

@@ -84,3 +84,13 @@ export {
   type LeaderboardPlayer,
   type LeaderboardSnapshot,
 } from './leaderboard';
+export {
+  loadCatCollectionViaFetch,
+  purchaseCatViaFetch,
+  replaceCatAssignmentViaFetch,
+  type CatCollectionAuthClient,
+  type CatCollectionCommandResult,
+  type CatCollectionFetch,
+  type CatCollectionLoadResult,
+  type CatCollectionUnavailableReason,
+} from './catCollection';

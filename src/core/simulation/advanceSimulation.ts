@@ -8,15 +8,40 @@ import { calculateLevelEffect } from '../progression/calculateLevelEffect';
 import type { GameState, MineFloorState } from '../state/GameState';
 import { advanceElevator } from './advanceElevator';
 import { advanceWarehouse } from './advanceWarehouse';
+import {
+  EMPTY_CAT_PRODUCTION_MODIFIERS,
+  getMiningOutputMultiplier,
+  type CatProductionModifiers,
+} from '../cats';
 
 export const SIMULATION_STEP_MS = 100;
 export const MAX_FOREGROUND_DELTA_MS = 1_000;
 const PROGRESS_EPSILON = 1e-12;
 
+export function advanceSimulation(state: GameState, elapsedMs: number): GameState;
 export function advanceSimulation(
   state: GameState,
   elapsedMs: number,
+  config: BaseGameBalanceConfig,
+  modifiers?: CatProductionModifiers,
+): GameState;
+export function advanceSimulation(
+  state: GameState,
+  elapsedMs: number,
+  ...options: [config?: BaseGameBalanceConfig, modifiers?: CatProductionModifiers]
 ): GameState {
+  // `advanceSimulation` is also passed directly to Array.reduce by the
+  // existing deterministic tests; reduce supplies its numeric index as the
+  // third argument. Ignore that callback metadata while still accepting the
+  // explicit config/modifier overload used by the live driver.
+  const config = typeof options[0] === 'object' && options[0] !== null
+    ? options[0]
+    : BASE_GAME_BALANCE;
+  const modifiers = options[1] !== undefined &&
+      typeof options[1] === 'object' &&
+      'miningOutputMultiplierByFloor' in options[1]
+    ? options[1]
+    : EMPTY_CAT_PRODUCTION_MODIFIERS;
   validateElapsedMs(elapsedMs);
 
   const creditedElapsedMs = Math.min(elapsedMs, MAX_FOREGROUND_DELTA_MS);
@@ -28,7 +53,7 @@ export function advanceSimulation(
   let nextState = state;
 
   for (let tick = 0; tick < completedTicks; tick += 1) {
-    nextState = advanceFixedStep(nextState, BASE_GAME_BALANCE);
+    nextState = advanceFixedStep(nextState, config, modifiers);
   }
 
   return {
@@ -41,6 +66,7 @@ export function advanceSimulation(
 function advanceFixedStep(
   state: GameState,
   config: BaseGameBalanceConfig,
+  modifiers: CatProductionModifiers,
 ): GameState {
   const simulationTick = state.simulationTick + 1;
 
@@ -55,6 +81,7 @@ function advanceFixedStep(
         floor,
         findFloorConfig(config, floor.id),
         SIMULATION_STEP_MS,
+        getMiningOutputMultiplier(modifiers, floor.id),
       );
     }),
   };
@@ -62,11 +89,13 @@ function advanceFixedStep(
     extractedState,
     config.elevator,
     SIMULATION_STEP_MS,
+    modifiers.elevatorThroughputMultiplier,
   );
   const convertedState = advanceWarehouse(
     transportedState,
     config.warehouse,
     SIMULATION_STEP_MS,
+    modifiers.warehouseProcessingMultiplier,
   );
 
   return {
@@ -79,6 +108,7 @@ function advanceExtraction(
   floor: MineFloorState,
   config: MineFloorConfig,
   elapsedMs: number,
+  miningOutputMultiplier: number,
 ): MineFloorState {
   if (!floor.isUnlocked) {
     return floor;
@@ -99,7 +129,7 @@ function advanceExtraction(
   }
 
   const completedOutput = calculateExtractionYield(floor, config).multiply(
-    completedCycles,
+    completedCycles * miningOutputMultiplier,
   );
 
   return {

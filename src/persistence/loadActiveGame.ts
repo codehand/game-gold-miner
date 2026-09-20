@@ -3,6 +3,8 @@ import {
   calculateOfflineIncome,
   createInitialGameState,
   type GameState,
+  createEmptyCatRoster,
+  type CatRosterState,
   type OfflineIncomeCalculation,
 } from '../core';
 import type { SavePersistenceCoordinator } from './SavePersistenceCoordinator';
@@ -33,6 +35,7 @@ export type ActiveGameLoadResult =
   | {
       readonly source: 'saved';
       readonly state: GameState;
+      readonly catRoster: CatRosterState;
       readonly loadedSave: LoadedSaveDocument;
       readonly offlineIncome: OfflineIncomeCalculation;
       readonly offlineIncomeSettlementPersisted: boolean;
@@ -41,6 +44,7 @@ export type ActiveGameLoadResult =
   | {
       readonly source: 'fresh';
       readonly state: GameState;
+      readonly catRoster: CatRosterState;
       readonly loadedSave: null;
       readonly offlineIncome: null;
       readonly offlineIncomeSettlementPersisted: null;
@@ -97,6 +101,7 @@ export async function loadActiveGame(
     offlineIncome.state,
     config,
     currentTimestampMs,
+    loadedSave.catRoster,
   );
 
   persistence.queueSave(settledDocument);
@@ -111,6 +116,7 @@ export async function loadActiveGame(
   return {
     source: 'saved',
     state: offlineIncome.state,
+    catRoster: loadedSave.catRoster,
     loadedSave,
     offlineIncome: availableOfflineIncome,
     offlineIncomeSettlementPersisted,
@@ -126,6 +132,7 @@ function createFreshResult(
   return {
     source: 'fresh',
     state: createInitialGameState(config, currentTimestampMs),
+    catRoster: createEmptyCatRoster(),
     loadedSave: null,
     offlineIncome: null,
     offlineIncomeSettlementPersisted: null,

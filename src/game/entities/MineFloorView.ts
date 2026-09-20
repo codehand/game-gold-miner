@@ -129,6 +129,8 @@ export interface MineFloorViewOptions {
   readonly onUpgrade: () => void;
   /** Called when the unlock control on a locked floor is pressed. */
   readonly onUnlock: () => void;
+  /** Opens the authoritative assigned-cat panel for this miner slot. */
+  readonly onCatClick?: () => void;
   /** Runtime-resolved Marketplace role animation, including its fallback. */
   readonly minerAnimation: MarketplaceRuntimeAnimationAsset;
   /** Floors below floor one crop the ceiling seam to half its art thickness. */
@@ -179,11 +181,11 @@ export class MineFloorView {
   readonly #minerStartX: number;
   readonly #minerEndX: number;
   readonly #minerRestY: number;
-  readonly #minerAssetId: string | null;
-  readonly #minerTextureKey: string;
-  readonly #minerDisplaySize: number;
-  readonly #minerFrameCount: number;
-  readonly #minerFrameDurationMs: number;
+  #minerAssetId: string | null;
+  #minerTextureKey: string;
+  #minerDisplaySize: number;
+  #minerFrameCount: number;
+  #minerFrameDurationMs: number;
   #extractionProgress = 0;
   #extractionProgressFrom = 0;
   #extractionTransitionStartMs = 0;
@@ -298,7 +300,9 @@ export class MineFloorView {
       .setDisplaySize(
         this.#minerDisplaySize,
         this.#minerDisplaySize,
-      );
+      )
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => options.onCatClick?.());
     this.#minerAssistants = Array.from(
       { length: MINE_FLOOR_MINER_ASSISTANT_COUNT },
       () => scene.add
@@ -312,7 +316,9 @@ export class MineFloorView {
           this.#minerDisplaySize,
           this.#minerDisplaySize,
         )
-        .setVisible(false),
+        .setVisible(false)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerup', () => options.onCatClick?.()),
     );
     this.#unloader = scene.add
       .sprite(
@@ -456,6 +462,21 @@ export class MineFloorView {
 
   public get root(): Phaser.GameObjects.Container {
     return this.#root;
+  }
+
+  /** Rebinds the role-slot art without recreating the floor or its controls. */
+  public applyMinerAnimation(animation: MarketplaceRuntimeAnimationAsset): void {
+    this.#minerAssetId = animation.assetId;
+    this.#minerTextureKey = animation.textureKey;
+    this.#minerDisplaySize = animation.displaySize;
+    this.#minerFrameCount = animation.frameCount;
+    this.#minerFrameDurationMs = animation.frameDurationMs;
+
+    for (const miner of [this.#miner, ...this.#minerAssistants]) {
+      miner
+        .setTexture(animation.textureKey, 0)
+        .setDisplaySize(animation.displaySize, animation.displaySize);
+    }
   }
 
   /** Rebinds every displayed value to a newer read-only snapshot. */

@@ -20,6 +20,16 @@ export interface MarketplaceRuntimeAnimationAsset {
   readonly fallbackFrameDurationMs: number;
 }
 
+export interface MarketplaceRuntimeSlotBinding {
+  readonly slotKey: string;
+  readonly roleId: MarketplaceRuntimeRole;
+  readonly catInstanceId: string | null;
+  readonly assignedAssetId: string | null;
+  readonly animation: MarketplaceRuntimeAnimationAsset;
+  readonly usesFallback: boolean;
+  readonly fallbackReason: 'none' | 'unassigned' | 'missing-runtime-asset';
+}
+
 export const MARKETPLACE_RUNTIME_ROLE_ASSETS = {
   elevator: {
     assetId: 'elevator-cargo-cat:SSR:mofy:idle',
@@ -94,5 +104,46 @@ export function resolveMarketplaceRuntimeAsset(
     textureKey: asset.fallbackTextureKey,
     frameCount: asset.fallbackFrameCount,
     frameDurationMs: asset.fallbackFrameDurationMs,
+  };
+}
+
+/**
+ * Resolves the presentation for one authoritative role slot. The role's
+ * configured asset remains the backwards-compatible default when a slot has
+ * no owned assignment; an assigned cat with no local runtime sheet gets that
+ * role's safe placeholder while its owned asset identity stays in the binding.
+ */
+export function resolveMarketplaceRuntimeSlot(
+  slotKey: string,
+  roleId: MarketplaceRuntimeRole,
+  cat: { readonly catInstanceId: string; readonly assetId: string } | null,
+  isAvailable: (asset: MarketplaceRuntimeAnimationAsset) => boolean,
+): MarketplaceRuntimeSlotBinding {
+  const defaultAsset = MARKETPLACE_RUNTIME_ROLE_ASSETS[roleId];
+  const requestedAsset = cat === null
+    ? defaultAsset
+    : MARKETPLACE_RUNTIME_ANIMATION_ASSETS.find((asset) => {
+        return asset.roleId === roleId && asset.assetId === cat.assetId;
+      }) ?? null;
+  const usesFallback = requestedAsset === null || !isAvailable(requestedAsset);
+  const animation = resolveMarketplaceRuntimeAsset(
+    requestedAsset ?? defaultAsset,
+    !usesFallback,
+  );
+
+  return {
+    slotKey,
+    roleId,
+    catInstanceId: cat?.catInstanceId ?? null,
+    assignedAssetId: cat?.assetId ?? null,
+    animation,
+    usesFallback,
+    fallbackReason: requestedAsset === null
+      ? 'missing-runtime-asset'
+      : usesFallback
+        ? 'missing-runtime-asset'
+        : cat === null
+          ? 'unassigned'
+          : 'none',
   };
 }

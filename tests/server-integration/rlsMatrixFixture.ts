@@ -119,7 +119,7 @@ export function readPlatformTables(directory = MIGRATIONS_DIRECTORY): PlatformTa
   // column revoke and must not match, because it leaves the table privilege
   // intact and so does not refuse a `RETURNING` readback.
   const tableSelectRevokePattern =
-    /revoke\s+select\s+on\s+public\.([a-z_][a-z0-9_]*)\s+from\s+[^;]+;/gi;
+    /revoke\s+(?:select|all)\s+on\s+public\.([a-z_][a-z0-9_]*)\s+from\s+[^;]+;/gi;
 
   const revokedSelectTables = new Set<string>();
   for (const { sql } of readMigrationSql(directory)) {

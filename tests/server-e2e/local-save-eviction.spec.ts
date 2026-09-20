@@ -2,7 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
+import {
+  CURRENT_SAVE_SCHEMA_VERSION,
+  createSaveDocument,
+  type SaveDocumentV2,
+} from '../../src/persistence';
 import { LIFECYCLE_SAVE_JOURNAL_KEY } from '../../src/platform/web';
 import { readCloudSave } from './cloudSaveFixture';
 import { tolerateNavigation } from './navigationFixture';
@@ -228,7 +232,7 @@ test('restores a signed-in player from the cloud after the local save is evicted
       message: 'the seeded save is adopted as the account cloud save',
       timeout: 20_000,
     })
-    .toBe(2);
+    .toBe(CURRENT_SAVE_SCHEMA_VERSION);
 
   const adopted = await readCloudSave(SAVE_URL, accessToken);
   const restoredLevel = adopted!.document.state.elevator.level;

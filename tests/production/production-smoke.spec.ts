@@ -329,6 +329,7 @@ for (const recovery of [
     // behind the notice, and the notice can be dismissed.
     await page.getByTestId('save-diagnostic-dismiss').click();
     await expect(banner).toHaveCount(0);
+    await expect(page.getByTestId('account-settings-modal')).toBeHidden();
 
     const freshDocument = createSaveDocument(
       catchUpSimulation(

@@ -2,7 +2,18 @@
 
 ## Current State
 
-All 37 implementation-plan steps are complete and user-validated; the user validated Step 37 on 2026-09-08, closing the base-game milestone. Step 37 added `README.md`, corrected the documentation that still described a four-floor mine, and re-ran the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android pass and a human 30-second-comprehension playtest remain the two recorded open caveats; neither blocks the milestone. Save document and IndexedDB schema versions remain 1; no relational/server database or physics system exists.
+All 37 base-game implementation-plan steps are complete and user-validated;
+cat collection Phases 0–9 are complete under the living post-milestone plan;
+the full feature acceptance gate passed.
+IndexedDB remains schema version 1, the data-only save document is V3, and the
+Supabase relational cat tables are documented in the complete schema below. The
+physical mid-range Android pass and a human 30-second-comprehension playtest
+remain base-game caveats; neither blocks the cat implementation. Phases 7–9 use
+the runtime slot resolver and pure cat production modifiers; Phase 6 uses
+`CatAssignmentModal` for current-slot detail, exact-role candidate filtering,
+comparison, pending/rejection handling, and an expected-revision command; the
+browser adapter receives the function base URL so it appends each mutation
+route exactly once.
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
@@ -61,6 +72,12 @@ variants and the future Unloader role remain preview/source assets.
   the dev-server suites rewrite `/src/main.ts`, and it seeds invalid save
   records during a navigation whose bundle is blocked so nothing boots to
   overwrite them.
+- `src/ui/CollectionModal.ts` is the read-only owned-cat list/detail surface.
+  It consumes the validated roster projection, supports responsive
+  search/filter/sort and detail navigation, and reuses the Marketplace
+  registry only for portrait/icon presentation. It never claims ownership or
+  changes an assignment; that mutation belongs to `CatAssignmentModal` and the
+  server-authoritative adapter.
 - `src/ui/SaveDiagnosticBanner.ts` is the one visible surface for recoverable
   persistence problems. `src/main.ts` supplies it as `loadActiveGame`'s
   `onWarning` and the save coordinator's `onDiagnostic`; before Step 36 neither
@@ -467,7 +484,7 @@ variants and the future Unloader role remain preview/source assets.
 - Upgrade prices use `baseCost × costGrowthRate^currentLevel` with `GameNumber` exponentiation and no rounding. Separate mine-shaft, elevator, and warehouse commands return discriminated success/failure results and preserve the original state on expected failures. Success deducts gold and increments the selected level; the shared level-effect calculation applies growth plus every reached milestone to shaft yield and shared-stage capacity. Milestone effects are derived from level, not stored as grant state, so reloads cannot apply them twice. Cycle durations, queues, carried material, totals, cursors, timestamps, and normalized progress remain unchanged.
 - The floor-unlock command requires an existing locked target, an unlocked immediately previous floor at the configured shaft level, and sufficient `GameNumber` gold. Success deducts the configured cost once and initializes the target from balance data with its starting level and zero progress, queues, and totals. Expected failures preserve the original state object.
 - The economy progression harness advances a fresh base-game state in one-second decisions for ten minutes. It unlocks an eligible next floor first, reserves gold when that unlock prerequisite is met, and otherwise selects the affordable upgrade with the largest hypothetical improvement to effective production per second. Deterministic ties favor the next unlock prerequisite and then configured order. Its report records exact action timing, target, cost, modeled improvement, final state, unlocked-floor count, highest level, and milestone status; it is analysis-only and does not automate player runtime.
-- Save schema version 2 is a strict plain-JSON document with exactly `schemaVersion`, `savedAtTimestampMs`, `effectiveProductionRatePerSecond`, and `state`. `state` contains version/timing counters, serialized gold, exactly fifteen configured floor records, elevator state, and warehouse state (including `totalOfflineGoldClaimed`, added in version 2). Every `GameNumber` is a finite decimal/scientific string. Validation rejects unknown properties, missing/unsupported versions, unsafe or inconsistent timestamps, invalid counters/progress, non-positive levels/capacities, unknown/reordered/missing floors, broken unlock order/gates, locked-floor production, negative quantities, transported totals above extracted totals, mismatched level-derived capacities, and active progress without corresponding material. Migration dispatch upgrades a version-1 document to version 2 by defaulting `totalOfflineGoldClaimed` to `"0"`, then expands a valid legacy four-floor prefix with locked defaults for floors 5–15; runtime deserialization follows strict validation before restored state can enter the game.
+- Save schema version 3 is a strict plain-JSON document with exactly `schemaVersion`, `savedAtTimestampMs`, `effectiveProductionRatePerSecond`, `state`, `cats`, `assignments`, `assignmentRevision`, and `collectionRevision`. `state` contains version/timing counters, serialized gold, exactly fifteen configured floor records, elevator state, and warehouse state (including `totalOfflineGoldClaimed`, added in version 2). `cats` contains only validated account-visible cat instance data and `assignments` contains explicit slot-to-instance pairs; renderer objects, textures, frames, and animation state are excluded. Every `GameNumber` is a finite decimal/scientific string. Validation rejects unknown properties, missing/unsupported versions, unsafe or inconsistent timestamps, invalid counters/progress, non-positive levels/capacities, unknown/reordered/missing floors, broken unlock order/gates, locked-floor production, negative quantities, transported totals above extracted totals, mismatched level-derived capacities, invalid cat attributes/roles/states, wrong-role slots, duplicate cats/slots, and inconsistent assignment projections. Migration dispatch upgrades version 1's offline counter and version 1/2 documents to version 3 with an empty collection, then expands a valid legacy four-floor prefix with locked defaults for floors 5–15; runtime deserialization follows strict validation before restored state can enter the game.
 - `ActiveSaveRepository` keeps storage replaceable. `DexieActiveSaveRepository` stores only `{ id: 'active', document }`, and reopening the same database restores the full serialized snapshot. `SavePersistenceCoordinator` keeps only the newest pending document, debounces routine writes by 500 ms, retains a failed write for retry, resolves load/save failures without throwing into the session, and exposes stable diagnostic messages/callbacks. The web adapter forces the latest document on hidden visibility and page-hide events when those targets exist.
 - `loadActiveGame` accepts only a completely deserialized valid save. Empty storage returns fresh state without warning. Failed migration or validation returns fresh state at the supplied timestamp plus either a `corrupt-save` or `incompatible-save` warning, including a detached copy of the invalid payload when structured cloning succeeds. Neither warning callbacks nor persistence diagnostic callbacks may escape into the load/save flow.
 - Balance configuration includes `offlineIncome.capDurationMs = 7_200_000` and `offlineIncome.efficiency = 0.5`; startup validation requires a positive safe-integer cap and finite efficiency in `[0, 1]`.
@@ -506,7 +523,7 @@ variants and the future Unloader role remain preview/source assets.
 
 | Path | Type and constraint |
 |---|---|
-| `schemaVersion` | Integer exactly `2`. A version-`1` document is upgraded by the migration dispatcher, which defaults `state.warehouse.totalOfflineGoldClaimed` to `"0"`. |
+| `schemaVersion` | Integer exactly `3`. Version-1 and version-2 documents are upgraded by the migration dispatcher; version 1 also defaults `state.warehouse.totalOfflineGoldClaimed` to `"0"`. |
 | `savedAtTimestampMs` | Non-negative safe integer, at least `state.lastUpdateTimestampMs`. |
 | `effectiveProductionRatePerSecond` | Non-negative finite numeric string. |
 | `state.saveVersion` | Integer exactly `1`. |
@@ -524,6 +541,9 @@ variants and the future Unloader role remain preview/source assets.
 | `state.warehouse.level`, `capacity` | Positive safe integer plus positive finite numeric string matching the configured level effect. |
 | `state.warehouse.inputQueue`, `conversionProgress`, `totalGoldDelivered` | Non-negative finite numeric strings around progress in `[0, 1)`; empty input requires zero progress. |
 | `state.warehouse.totalOfflineGoldClaimed` | Non-negative finite numeric string; lifetime `claimOfflineReward` grants. Monotonic and in the save-conflict progress vector; absent in version 1, defaulted to `"0"` on migration. |
+| `cats` | Plain cat instance records with opaque `catInstanceId`, stable `assetId`, role, rarity, level, Power/Speed/Capacity/Efficiency in `[0,100]`, calculation version, availability, optional `assignedSlotKey`, and `updatedAt`. |
+| `assignments` | Unique plain `{ slotKey, catInstanceId }` pairs. The slot role must equal the cat role, and each cat/slot can occur at most once. |
+| `assignmentRevision`, `collectionRevision` | Non-negative safe integers; server projection/retry metadata, not renderer state. |
 
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
@@ -536,14 +556,16 @@ the local Supabase stack; Step 5 landed it on 2026-09-08 as
 Step 4's bootstrap migration
 (`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
 creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
-for `gen_random_uuid()`). All six tables and the row-level-security policies in
+for `gen_random_uuid()`). The six base tables and five cat-collection tables, plus their row-level-security policies, in
 the matrix below exist in the local development database after
 `supabase db reset`; **no deployed database contains them**, because no
 deployment exists yet. This block and its twin in the other document are
 byte-identical by construction and must be changed together, in the same change
 as every future migration, exactly as `AGENTS.md` requires.
 
-Full protocol context is in `memory-bank/server-save-sync-protocol.md`; the
+The cat collection extension is a second forward-only migration,
+`supabase/migrations/20260919100000_create_cat_collection.sql`, adding five
+service-role-owned tables and two transactional RPCs. Full protocol context is in `memory-bank/server-save-sync-protocol.md`; the
 threat model and recorded defaults it obeys are in
 `memory-bank/server-threat-model.md`.
 
@@ -553,7 +575,7 @@ Three rules, and they differ by location.
 
 1. **Inside a save document, nothing changes.** `GameNumber` values stay
    serialized decimal/scientific strings inside the document text, exactly as
-   the version-2 save schema already defines them. The server neither reformats
+   the version-3 save schema already defines them. The server neither reformats
    nor re-serializes them.
 2. **Anywhere SQL must sort or rank a `GameNumber`, store two columns.**
    `*_exact text` holds the canonical serialized form and is the only value ever
@@ -855,7 +877,7 @@ create table public.entitlements (
 | `saves` | `user_id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade; one row per user |
 | `saves` | `revision` | bigint | no | — | `> 0`; monotonic, `+1` per accepted upload; the D2 concurrency token |
 | `saves` | `schema_version` | integer | no | — | `> 0`; denormalized from the document for migration sweeps |
-| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV2` |
+| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV3` |
 | `saves` | `received_at` | timestamptz | no | `now()` | server clock; the D3 anchor for every elapsed-time calculation |
 | `saves` | `previous_revision` | bigint | yes | — | `< revision`; null-together with the other two `previous_*` columns |
 | `saves` | `previous_document_json` | text | yes | — | ≤ 65536 bytes; one generation of rollback |
@@ -1033,13 +1055,37 @@ fixed with a token-gated `POST /v1/test-only-reset-rate-limit` route (see
 | Store | Field | Type | Nullability/default | Key, index, relationship |
 |---|---|---|---|---|
 | `saves` | `id` | string | Required; no default | Primary key/key path; fixed application value `active`; not auto-incremented. |
-| `saves` | `document` | `SaveDocumentV2` structured object | Required; no default | No index; validated/migrated application payload. |
+| `saves` | `document` | `SaveDocumentV3` structured object | Required; no default | No index; validated/migrated application payload. |
 
-There are no secondary indexes, foreign keys, relationships, or other object stores. One logical record is maintained by `put` at the fixed key. Dexie version 1 creates the store with schema `id`; no IndexedDB structural migration exists. The save-document boundary migrates a version-1 document (including the legacy four-floor-to-fifteen-floor expansion) to version 2 before strict validation, so existing prototype progress remains readable.
+There are no secondary indexes, foreign keys, relationships, or other object stores. One logical record is maintained by `put` at the fixed key. Dexie version 1 creates the store with schema `id`; no IndexedDB structural migration exists. The save-document boundary migrates a version-1 or version-2 document (including the legacy four-floor-to-fifteen-floor expansion) to version 3 before strict validation, so existing prototype progress remains readable and gains an empty cat projection.
 
-**Lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1` stores at most one JSON-encoded, validated `SaveDocumentV2`. It is a synchronous pagehide recovery record, not an authoritative second save. A newer valid journal wins during load and is deleted after the same-or-newer snapshot commits to IndexedDB; malformed values are discarded.
+**Lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1` stores at most one JSON-encoded, validated `SaveDocumentV3`. It is a synchronous pagehide recovery record, not an authoritative second save. A newer valid journal wins during load and is deleted after the same-or-newer snapshot commits to IndexedDB; malformed values are discarded.
 
 If a database is introduced, replace this statement with the complete authoritative schema: every table, column, data type, default, nullable rule, primary/foreign key, unique/check constraint, index, and relationship. Update this section in the same change as each migration; do not leave schema details only in migration files.
+
+### Cat collection schema extension — 2026-09-19
+
+The forward-only migration `20260919100000_create_cat_collection.sql` adds
+`cat_blueprints` (allowlisted asset, role, rarity, price, and default
+attributes), `cat_collection_accounts` (per-owner assignment and collection
+revisions), `cat_instances` (one server-owned cat instance per purchase),
+`cat_assignments` (unique owner/slot and unique cat constraints), and
+`cat_purchase_requests` (owner/idempotency replay protection). All five tables
+have RLS enabled, no client policies, and service-role-only mutation. The
+`cat_instances` check constraints enforce approved roles, four attributes in
+`[0,100]`, calculation version `1`, known lifecycle states, and the
+`Assigned`/`assigned_slot_key` relationship. Assignment uniqueness prevents
+one cat from occupying two slots.
+
+`purchase_cat_instance(user, assetId, idempotencyKey)` locks the caller's
+existing V3 save, derives the blueprint price and role from the server
+allowlist, debits serialized save gold, creates an Idle instance, and records
+the idempotency result in one transaction. `replace_cat_assignment(user,
+catInstanceId, slotKey, expectedAssignmentRevision)` locks the owner revision
+and candidate, validates ownership/state/exact role, returns the prior cat to
+Idle, assigns the candidate, and increments the revision atomically. The
+`cat-collection` Edge Function is the only public API; it derives the caller
+from the bearer token and returns a caller-scoped projection.
 
 ## Verified Commands
 
@@ -1358,7 +1404,7 @@ chain.
 
 Server-milestone Step 20 added `adoptExistingLocalSave` in
 `src/platform/web/cloudSaveReconcile.ts`: it reads the local document, runs it
-through `validateSaveDocument` (which migrates version 1 to version 2 via
+through `validateSaveDocument` (which migrates version 1 through V3 via
 `migrateSaveDocument`, expanding a legacy four-floor payload and defaulting
 `warehouse.totalOfflineGoldClaimed` to `"0"`), and calls the Step 19 replica's
 `forceCloudUpload`. `src/main.ts`'s boot-reconcile trigger uses it on

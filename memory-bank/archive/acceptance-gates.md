@@ -7,6 +7,71 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Cat collection Phase 9 — 2026-09-20
+
+- **Full feature acceptance — Passed:** client unit 64 files / 739 tests,
+  lint, production build, secret scan, diff check, full client browser 60/60,
+  and production smoke 10/10 passed. `npm run verify:server` passed migration
+  reset, core portability, Edge Function warm-up, 195 Deno unit tests, 21
+  integration files / 132 tests, and 11 server browser tests.
+- **Manual release audit — Passed:** the browser showed the ready empty
+  Collection (`0 owned cats · Collection #0`), the role-specific Miner slot
+  panel with no compatible candidates, and a playable mine after dismissing a
+  sync diagnostic. The Dismiss click-through into Account & Settings was fixed
+  by guarding Phaser's window-level pointer/mouse input and covered by a
+  production smoke assertion.
+- **Acceptance boundary:** Collection, detail, authoritative compatible
+  replacement, runtime role binding, production effects, persistence, and
+  recovery are implemented. Marketplace preview cards remain non-owned until a
+  future purchase handoff calls the ownership API.
+
+## Cat collection and role assignment gates — 2026-09-19
+
+- **Phase 0 contract lock — Passed:** the spec and ordered implementation plan
+  freeze the three v1 roles, data-only save boundary, server authority,
+  expected-revision assignment, and post-confirmation production semantics.
+- **Phase 1 pure domain — Passed:** role score/effect v1, lifecycle and slot
+  validation, atomic replacement, filtering, and comparison are covered by the
+  focused domain suite; 6/6 tests and build passed.
+- **Phase 2 V3 save/migration — Passed:** V1/V2 migration, cat projection
+  validation, renderer-data rejection, round-trip, full unit suite (728),
+  lint, build, and server-core bundle build passed.
+- **Phase 3 server authority — Passed:** local Supabase reset applied the new
+  migration; focused cat API integration passed; the eleven-table RLS matrix
+  passed; full server integration passed 21 files / 132 tests.
+- **Phase 4 client hydration — Passed:** typed collection adapter, auth refresh,
+  defensive projection validation, active-save roster restoration, and
+  non-blocking hydration passed focused tests; build and lint passed. UI
+  clear-on-account-switch and replacement interaction remain open in Phases
+  5–6.
+- **Phase 5 Collection UI — Passed:** the read-only Collection modal consumes
+  the V3 roster and covers empty/owned list states, portrait fallback, search,
+  role filtering, detail attributes/effect/assignment context, focus/close
+  behavior, and no-overflow responsive layout at 390×844 and 320×568. The new
+  browser spec passes 2/2; the full Chromium suite passes 58/58, the full unit
+  suite passes 64 files / 734 tests, and lint/build are green. Replacement
+  mutation remains intentionally deferred to Phase 6.
+- **Phase 6 assignment flow — Passed:** slot-specific current-cat panels,
+  exact-role candidate filtering, comparison, pending-state protection,
+  expected-revision minimal commands, rejection preservation, and authoritative
+  success projection are covered. Offline browser tests pass at 390×844 and
+  320×568; server-backed fixture tests pass at both viewports and assert the
+  exact three-field payload. The adapter path duplication found by the gate was
+  fixed before acceptance; runtime asset/economy changes remain Phases 7–8.
+
+## Cat collection Phases 7–8 — 2026-09-20
+
+- **Phase 7 runtime role-slot binding — Passed:** the resolver follows
+  `slot → instance → asset → runtime sheet`, preserves the existing semantic
+  presentation contract, keeps missing assets playable with diagnostics, and
+  proves assignment/reload identity in browser fixtures. Focused runtime E2E
+  passes 3/3 and server-backed assignment/reload passes 2/2.
+- **Phase 8 simulation production effects — Passed:** pure roster-derived
+  modifiers affect only the assigned miner/elevator/warehouse metric at fixed
+  simulation boundaries; save-rate, offline, and server progress-bound paths
+  use the same inputs. Full unit passes 64 files / 739 tests, server unit 195,
+  server integration 21 files / 132, and lint/build/focused browser gates pass.
+
 ## Marketplace asset gates — 2026-09-19
 
 - **Phase 7 runtime integration — Passed:** Explicit approval was recorded;

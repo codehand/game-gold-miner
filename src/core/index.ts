@@ -6,6 +6,38 @@ export {
   type ProductionBottleneck,
 } from './economy/calculateProductionRates';
 export {
+  CAT_CALCULATION_VERSION,
+  assignCatToSlot,
+  calculateCatRoleEffect,
+  calculateRoleScore,
+  compareCatForSlot,
+  createEmptyCatRoster,
+  getAssignableCats,
+  getCatForSlot,
+  getRoleForSlot,
+  isCatAssignable,
+  validateCatRoster,
+  type CatAssignment,
+  type CatAssignmentFailureReason,
+  type CatAssignmentResult,
+  type CatAttributes,
+  type CatAvailabilityState,
+  type CatBenefitMetric,
+  type CatComparison,
+  type CatInstance,
+  type CatRarityTier,
+  type CatRole,
+  type CatRoleEffect,
+  type CatRosterState,
+  type CatSlotKey,
+} from './cats';
+export {
+  createCatProductionModifiers,
+  EMPTY_CAT_PRODUCTION_MODIFIERS,
+  getMiningOutputMultiplier,
+  type CatProductionModifiers,
+} from './cats';
+export {
   DEFAULT_ECONOMY_SIMULATION_DURATION_MS,
   ECONOMY_DECISION_INTERVAL_MS,
   chooseBestAffordableUpgrade,

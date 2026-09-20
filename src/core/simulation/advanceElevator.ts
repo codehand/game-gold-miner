@@ -55,6 +55,7 @@ export function advanceElevator(
   state: GameState,
   config: SharedStageConfig,
   elapsedMs: number,
+  throughputMultiplier = 1,
 ): GameState {
   const route = describeElevatorRoute(state.elevator, state.floors);
 
@@ -67,10 +68,10 @@ export function advanceElevator(
       direction: 'descending',
       floorIndex: 0,
       progress: 0,
-    });
+    }, throughputMultiplier);
   }
 
-  return advanceRouteLeg(state, config, elapsedMs, route);
+  return advanceRouteLeg(state, config, elapsedMs, route, throughputMultiplier);
 }
 
 function advanceRouteLeg(
@@ -78,6 +79,7 @@ function advanceRouteLeg(
   config: SharedStageConfig,
   elapsedMs: number,
   route: ElevatorRoute,
+  throughputMultiplier: number,
 ): GameState {
   if (route.floorIndex === null || route.direction === 'idle') {
     return state;
@@ -91,7 +93,7 @@ function advanceRouteLeg(
     state.elevator.capacity,
     distanceInFloors,
   );
-  const transitProgress = route.progress + elapsedMs / legDurationMs;
+  const transitProgress = route.progress + elapsedMs * throughputMultiplier / legDurationMs;
 
   if (transitProgress + PROGRESS_EPSILON < 1) {
     return {

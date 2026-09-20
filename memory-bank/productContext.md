@@ -25,13 +25,32 @@ Many management games obscure cause and effect or require constant tapping. This
 
 The player claims offline gold, inspects the mine, upgrades the slowest stage, opens deeper floors, assigns managers, activates a boost, and leaves while production continues. Short-term goals are the next upgrade and floor; the prototype's long-term goal is fully automating and optimizing all fifteen floors.
 
+### Cat collection and role assignment journey
+
+After a signed-in player purchases a cat in Marketplace, the server creates an
+owned cat instance in the player's Collection. Collection cards and detail show
+the instance's portrait, role, rarity, level, attributes, lifecycle state, and
+assignment location. Clicking a cat already active in the mine opens its
+current information and a role-filtered `Change cat` flow. A confirmed
+replacement is server-authoritative and persists the slot across reload and
+re-login; the old instance returns to `Idle`, the new instance becomes
+`Assigned`, and the role's score/skill modifier changes the affected production
+metric. Offline or stale sessions keep the last safe read-only projection and
+cannot claim a replacement success without authority.
+
+Phases 5–8 now deliver the owned-cat Collection/detail surface, the
+server-authoritative mine replacement flow, runtime role-slot binding, and the
+role-based production effect. The existing Managers navigation entry opens the
+Collection; Marketplace remains a preview/catalog surface for transaction UI
+until its future purchase handoff is connected to the same ownership API.
+
 ## UX Principles
 
-Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback; the Rewards item now opens the Step 29 leaderboard, while the remaining future-feature items stay discoverable without pretending their screens already exist.
+Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback; the Rewards item opens the Step 29 leaderboard, and Managers opens the current owned-cat Collection list/detail surface. The remaining future-feature items stay discoverable without pretending their screens already exist.
 
 ## Base-Game Delivery Boundary
 
-The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation shell now reserves the bottom 58 logical pixels for five clickable, individually illustrated controls (Rewards, Shop, Boost, Managers, Map); each complete visible tile is scaled to 60% while the thumb-safe hit region stays unchanged. These controls provide press feedback only. Their screens and all manager, boost, gift, shop, task, social, Telegram, monetization, audio, and final-art systems remain deferred.
+The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation shell now reserves the bottom 58 logical pixels for five clickable, individually illustrated controls (Rewards, Shop, Boost, Managers, Map); each complete visible tile is scaled to 60% while the thumb-safe hit region stays unchanged. Managers now leads to the owned-cat Collection list/detail surface and the mine role-slot assignment flow; boost, gift, shop, task, social, Telegram, monetization, audio, and final-art systems remain deferred.
 
 The user-review revision completed on 2026-09-08 reduces the fixed HUD to 52 logical pixels and defines its centre number as the authoritative warehouse input queue (`warehouse.inputQueue`), not gold still travelling inside the elevator cabin. A warehouse icon makes that ownership explicit. The tower hopper, gold pour, loaded cats, and filled surface carts now all empty with that queue; elevator cargo remains visually in transit until surface delivery. The elevator preserves top-down priority by returning whenever a visited floor still has gold, and the surface delivery crew shares one straight baseline.
 
@@ -116,7 +135,8 @@ choose. The rule lives in `src/persistence/saveConflictPolicy.ts`; only a
 genuine fork reaches the player as a prompt. Making "keeps the ahead save loses
 nothing" true required counting *every* gold source, so an offline reward now
 also increments a new monotonic `warehouse.totalOfflineGoldClaimed` counter
-(save schema version 2, migrated from version 1 by defaulting it to zero) that
+(then-current save schema version 2, now migrated through V3 from version 1 by
+defaulting it to zero) that
 the conflict rule compares. Genuine forks now open the in-game account popup,
 which shows both candidates and lets the player keep the device save or the
 cloud save. The selected branch is settled safely before reload; the

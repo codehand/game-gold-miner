@@ -2,7 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { createInitialGameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
+import {
+  CURRENT_SAVE_SCHEMA_VERSION,
+  createSaveDocument,
+  type SaveDocumentV2,
+} from '../../src/persistence';
 
 /**
  * Server-milestone Step 24: rejection handling, the player-facing half.
@@ -142,7 +146,7 @@ test('a rejected upload keeps the save, keeps playing, and shows one notice', as
   // The local save is intact: a rejected upload never touches local storage.
   await expect
     .poll(async () => (await readStoredDocument(page))?.schemaVersion ?? null)
-    .toBe(2);
+    .toBe(CURRENT_SAVE_SCHEMA_VERSION);
 
   // The session stays playable: the mine keeps producing gold after the refusal.
   const goldBefore = await readGoldLabel(page);

@@ -482,6 +482,12 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# Cat Collection v1 authenticates the bearer token inside the handler and
+# performs ownership/assignment writes through service-role RPCs.
+[functions.cat-collection]
+enabled = true
+verify_jwt = false
+
 # Server-milestone Step 12: verifies Telegram Mini App `initData` by hand
 # (HMAC-SHA256 against `TELEGRAM_BOT_TOKEN`) and mints a session for the
 # caller — there is no bearer token to verify yet, since no caller is signed

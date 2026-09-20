@@ -53,6 +53,10 @@ for (const touch of [false, true]) {
               'data-marketplace-close-count',
               String(++closes),
             );
+          } else if (key === 'managers') {
+            await expect(page.getByRole('dialog', { name: 'Cat Collection' })).toBeVisible();
+            await page.getByRole('button', { name: 'Close collection' }).click();
+            await expect(page.getByRole('dialog', { name: 'Cat Collection' })).not.toBeVisible();
           }
         }
       }

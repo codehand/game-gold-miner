@@ -286,11 +286,15 @@ describe('every Edge Function', () => {
   // assertion instead, exactly as this test's own prior comment
   // anticipated — a future function needing it must add its own exception
   // here too, not find this check silently no longer covering it.
+  // `cat-collection` is the fifth: ownership and assignment tables revoke all
+  // client grants, so its authenticated projection and RPC calls need the
+  // service role behind the Edge Function boundary.
   const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = [
     'telegram-sign-in',
     'save-sync',
     'recovery-code',
     'leaderboard-read',
+    'cat-collection',
   ];
 
   it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(

@@ -899,7 +899,7 @@ function findProgressBoundViolation(
   }
 
   try {
-    const candidate = deserializeState(candidateDocumentJson);
+    const candidate = deserializeProjection(candidateDocumentJson);
     const nowMs = Date.now();
 
     const receivedAtMs = Date.parse(current.receivedAt);
@@ -911,10 +911,12 @@ function findProgressBoundViolation(
     }
 
     const tight = evaluateProgressBound({
-      previous: deserializeState(current.documentJson),
-      candidate,
+      previous: deserializeProjection(current.documentJson).state,
+      candidate: candidate.state,
       elapsedMs: nowMs - receivedAtMs,
       config: BASE_GAME_BALANCE,
+      previousCatRoster: deserializeProjection(current.documentJson).catRoster,
+      candidateCatRoster: candidate.catRoster,
     });
     if (tight === null) {
       return null;
@@ -927,10 +929,12 @@ function findProgressBoundViolation(
       const previousReceivedAtMs = Date.parse(current.previousReceivedAt);
       if (Number.isFinite(previousReceivedAtMs)) {
         const loose = evaluateProgressBound({
-          previous: deserializeState(current.previousDocumentJson),
-          candidate,
+          previous: deserializeProjection(current.previousDocumentJson).state,
+          candidate: candidate.state,
           elapsedMs: nowMs - previousReceivedAtMs,
           config: BASE_GAME_BALANCE,
+          previousCatRoster: deserializeProjection(current.previousDocumentJson).catRoster,
+          candidateCatRoster: candidate.catRoster,
         });
         if (loose === null) {
           return null;
@@ -945,9 +949,12 @@ function findProgressBoundViolation(
   }
 }
 
+function deserializeProjection(documentJson: string) {
+  return deserializeSaveDocument(JSON.parse(documentJson), BASE_GAME_BALANCE);
+}
+
 function deserializeState(documentJson: string) {
-  return deserializeSaveDocument(JSON.parse(documentJson), BASE_GAME_BALANCE)
-    .state;
+  return deserializeProjection(documentJson).state;
 }
 
 function revisionConflictResponse(current: StoredSaveRow | null, origin: string | null): Response {

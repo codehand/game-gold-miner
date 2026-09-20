@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 
+import type { CatSlotKey } from '../core';
 import { GAME_HEIGHT, GAME_WIDTH, MINE_BACKGROUND } from './layout';
 import type { MineRuntimePort } from './runtime';
 import { BootScene } from './scenes/BootScene';
@@ -10,8 +11,10 @@ export {
   MARKETPLACE_RUNTIME_ANIMATION_ASSETS,
   MARKETPLACE_RUNTIME_ASSET_IDS,
   MARKETPLACE_RUNTIME_ROLE_ASSETS,
+  resolveMarketplaceRuntimeSlot,
   type MarketplaceRuntimeAnimationAsset,
   type MarketplaceRuntimeRole,
+  type MarketplaceRuntimeSlotBinding,
 } from './assets/marketplaceRuntimeAssets';
 export {
   MineSimulationDriver,
@@ -39,6 +42,8 @@ export interface CreateGameOptions {
   readonly animationSpeedMultiplier?: number;
   readonly onSettings?: (onClosed: () => void) => void;
   readonly onLeaderboard?: (onClosed: () => void) => void;
+  readonly onCollection?: (onClosed: () => void) => void;
+  readonly onCatSlot?: (slotKey: CatSlotKey, onClosed: () => void) => void;
 }
 
 export function createGame(
@@ -64,6 +69,8 @@ export function createGame(
         animationSpeedMultiplier: options.animationSpeedMultiplier,
         onSettings: options.onSettings,
         onLeaderboard: options.onLeaderboard,
+        onCollection: options.onCollection,
+        onCatSlot: options.onCatSlot,
       }),
     ],
     scale: {

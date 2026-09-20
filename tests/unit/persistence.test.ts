@@ -300,7 +300,7 @@ describe('corrupt and incompatible save recovery', () => {
   it('starts fresh and records an incompatible-version warning', async () => {
     const unsupportedPayload = {
       ...createProgressedDocument(),
-      schemaVersion: 3,
+      schemaVersion: 99,
     };
     const repository = new MemoryActiveSaveRepository();
     repository.loadedValue = unsupportedPayload;

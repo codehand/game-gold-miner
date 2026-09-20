@@ -1,5 +1,70 @@
 # Archive — Completed work log
 
+## 2026-09-20 — Cat collection Phase 9 and full feature acceptance
+
+Closed the conflict/offline/recovery/release audit for the cat collection and
+role-assignment feature. Full client unit, lint, build, secret, browser, and
+production smoke gates passed; server verification passed migrations, core
+portability, 195 Deno unit tests, 21 integration files / 132 tests, and 11
+server browser tests. Manual browser review confirmed the ready empty Collection
+state, role-specific assignment empty state, and no cross-account or renderer
+state leakage in the tested path. The review found and fixed a sync diagnostic
+Dismiss click-through into the HUD Settings control by capturing mouse/pointer
+input before Phaser's window-level handlers; a production regression assertion
+now protects the fix.
+
+## 2026-09-19 — Cat collection Phase 5
+
+Implemented the responsive owned-cat Collection list/detail surface. The stable
+Managers navigation entry now opens a read-only Collection modal without
+changing the existing five-button shell or the preview-only Marketplace. The
+screen consumes the V3 validated roster, renders portraits, role/rarity/level,
+lifecycle and assignment state, supports search/filter/sort, shows attributes
+and role effects in detail, and fails back to the safe portrait. Browser tests
+pass at 390×844 and 320×568 with seeded owned instances; manual browser review
+confirmed focus, empty state, and modal layout. The complete Chromium suite
+passes 58/58 and the unit suite passes 734 tests. Replacement actions remain
+in Phase 6.
+
+## 2026-09-20 — Cat collection Phase 6
+
+Implemented the assigned-cat panel and authoritative replacement flow. Mine
+role sprites open slot-specific current-cat detail; the replacement picker
+filters to the exact role and Idle candidates, compares role score and the
+affected production metric, and blocks duplicate confirmation while waiting
+for the server. The client sends only the cat instance, slot, and expected
+assignment revision, then replaces local roster state only from a valid
+authoritative projection. Offline rejection and server-backed success flows
+pass at 390×844 and 320×568; the endpoint was corrected to avoid appending the
+assignment route twice.
+
+## 2026-09-20 — Cat collection Phases 7–8
+
+Implemented runtime role-slot binding and deterministic production effects.
+Each supported slot resolves through the authoritative cat instance and stable
+`assetId`; approved local sheets render directly, missing sheets retain the
+owned identity while using a playable role placeholder, and canvas diagnostics
+publish fallback/scale/slot data. The pure core derives miner, elevator, and
+warehouse modifiers from the same role-effect formula used by the comparison
+UI, applies them at fixed simulation boundaries, and carries them through rate
+snapshots, offline persistence, and the server progress bound. Full unit,
+server unit/integration, focused runtime/assignment browser, lint, and build
+gates passed.
+
+## 2026-09-19 — Cat collection Phases 0–4
+
+Implemented the first four phases of the cat collection and role-assignment
+plan. The engine-independent cat domain now owns role scores, effects, slot
+eligibility, lifecycle validation, comparison, and atomic replacement. Save
+schema V3 carries only data-only cat projections and migrates V1/V2 saves to an
+empty collection. The Supabase migration and `cat-collection` Edge Function
+make purchase and assignment server-authoritative with idempotency, expected
+revisions, wallet deduction, and direct-write refusal across the eleven-table
+RLS matrix. The client preserves cat data through active-save settlement and
+hydrates a validated server projection after the first playable frame. Focused
+and full unit/server integration gates passed; collection UI and runtime
+effects remain in the next phases.
+
 ## 2026-09-19 — Marketplace asset Phase 7 runtime integration
 
 After explicit approval, integrated the approved runtime sheets for Mofy

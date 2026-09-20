@@ -7,7 +7,12 @@
  */
 
 import type { BaseGameBalanceConfig } from '../../config';
-import { calculateMineProductionRates, type GameState } from '../../core';
+import {
+  calculateMineProductionRates,
+  EMPTY_CAT_PRODUCTION_MODIFIERS,
+  type CatProductionModifiers,
+  type GameState,
+} from '../../core';
 import { formatAmount } from './formatAmount';
 
 export interface HudViewModel {
@@ -24,8 +29,9 @@ export interface HudViewModel {
 export function createHudViewModel(
   state: GameState,
   balance: BaseGameBalanceConfig,
+  modifiers: CatProductionModifiers = EMPTY_CAT_PRODUCTION_MODIFIERS,
 ): HudViewModel {
-  const rates = calculateMineProductionRates(state, balance);
+  const rates = calculateMineProductionRates(state, balance, modifiers);
 
   return {
     goldLabel: '',

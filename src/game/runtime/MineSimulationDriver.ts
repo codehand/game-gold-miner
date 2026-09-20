@@ -23,6 +23,11 @@ import {
   purchaseMineShaftUpgrades,
   purchaseWarehouseUpgrade,
   purchaseWarehouseUpgrades,
+  createEmptyCatRoster,
+  createCatProductionModifiers,
+  validateCatRoster,
+  type CatProductionModifiers,
+  type CatRosterState,
   type FloorUnlockFailureReason,
   type GameState,
   type UpgradePurchaseFailureReason,
@@ -60,10 +65,15 @@ export interface MineCommandSink {
 }
 
 /** Everything the scene needs: snapshots to pull, commands to send. */
-export interface MineRuntimePort extends MineSnapshotSource, MineCommandSink {}
+export interface MineRuntimePort extends MineSnapshotSource, MineCommandSink {
+  /** Optional for lightweight scene fixtures; the production driver exposes the live projection. */
+  readonly catRoster?: CatRosterState;
+}
 
 export interface MineSimulationDriverOptions {
   readonly state: GameState;
+  /** Account-owned cat projection loaded with the active save. */
+  readonly catRoster?: CatRosterState;
   /** Balance data the HUD's income estimate is derived from. */
   readonly balance: BaseGameBalanceConfig;
   /** Injected wall clock in milliseconds, normally `Date.now`. */
@@ -80,6 +90,8 @@ export class MineSimulationDriver implements MineRuntimePort {
   readonly #balance: BaseGameBalanceConfig;
   readonly #onCommandApplied: (() => void) | null;
   #state: GameState;
+  #catRoster: CatRosterState;
+  #productionModifiers: CatProductionModifiers;
   #snapshot: MineViewModel;
 
   public constructor(options: MineSimulationDriverOptions) {
@@ -87,11 +99,18 @@ export class MineSimulationDriver implements MineRuntimePort {
     this.#balance = options.balance;
     this.#onCommandApplied = options.onCommandApplied ?? null;
     this.#state = options.state;
-    this.#snapshot = createMineViewModel(options.state, options.balance);
+    this.#catRoster = options.catRoster ?? createEmptyCatRoster();
+    validateCatRoster(this.#catRoster);
+    this.#productionModifiers = createCatProductionModifiers(this.#catRoster);
+    this.#snapshot = createMineViewModel(options.state, options.balance, this.#productionModifiers);
   }
 
   public get state(): GameState {
     return this.#state;
+  }
+
+  public get catRoster(): CatRosterState {
+    return this.#catRoster;
   }
 
   /**
@@ -116,7 +135,12 @@ export class MineSimulationDriver implements MineRuntimePort {
     // Caught up rather than advanced once: the browser stops the render loop
     // for a hidden tab, so this delta is routinely a whole absence rather than
     // a frame, and a single bounded advance would consume it uncredited.
-    const nextState = catchUpSimulation(this.#state, elapsedMs);
+    const nextState = catchUpSimulation(
+      this.#state,
+      elapsedMs,
+      this.#balance,
+      this.#productionModifiers,
+    );
 
     // Only a completed fixed tick can change a displayed value. A frame shorter
     // than `SIMULATION_STEP_MS` — which at sixty frames a second is most of
@@ -200,6 +224,18 @@ export class MineSimulationDriver implements MineRuntimePort {
     this.#setState(state);
   }
 
+  /** Rehydrates the account-owned cat projection without resetting mine progress. */
+  public replaceCatRoster(catRoster: CatRosterState): void {
+    validateCatRoster(catRoster);
+    this.#catRoster = catRoster;
+    this.#productionModifiers = createCatProductionModifiers(catRoster);
+    this.#snapshot = createMineViewModel(
+      this.#state,
+      this.#balance,
+      this.#productionModifiers,
+    );
+  }
+
   #purchaseUpgrade(
     target: Exclude<PurchaseTarget, { type: 'floor-unlock' }>,
   ): UpgradePurchaseResult {
@@ -238,7 +274,11 @@ export class MineSimulationDriver implements MineRuntimePort {
 
   #setState(state: GameState): void {
     this.#state = state;
-    this.#snapshot = createMineViewModel(state, this.#balance);
+    this.#snapshot = createMineViewModel(
+      state,
+      this.#balance,
+      this.#productionModifiers,
+    );
   }
 }
 

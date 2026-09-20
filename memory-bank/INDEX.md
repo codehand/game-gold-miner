@@ -29,6 +29,8 @@ A `PreToolUse` hook blocks whole-file reads of Memory Bank files over
 | `tech-stack.md` | 1k | Choosing or changing a dependency. |
 | `productContext.md` | 3k | Player-facing intent, why a feature exists. |
 | `marketplace-spec-v1-draft.md` | ~5k | Approved Marketplace v1 story, ownership states, attributes, role scores, skills, and derived benefits. Read when designing or implementing Marketplace behavior. |
+| `cat-collection-and-role-assignment-spec-v1-draft.md` | ~8k | Draft contract for post-purchase collection, cat detail, role-compatible mine assignment, replacement flow, production effects, and reload/re-login persistence. Read when designing owned-cat or assignment behavior. |
+| `cat-collection-and-role-assignment-implementation-plan-v1-draft.md` | ~12k | Ordered implementation phases for the Collection/Assignment feature, with inputs, outputs, validation gates, migrations, server authority, UI, runtime, simulation, and release audit. Read before implementing this feature. |
 | `marketplace-asset-implementation-plan-draft.md` | ~6k | Approved Marketplace asset phases, role taxonomy, asset registry, portrait catalog, 8-frame animation work, and validation gates. Read when producing or integrating Marketplace assets. |
 | `game-design-document.md` | 6k | Gameplay loop, systems, UI, economy, MVP scope. **Source of truth for scope.** |
 | `implementation-plan.md` | 6k | The 37 base-game steps and their gates. **Source of truth for scope.** |
@@ -51,7 +53,7 @@ Data Flow · Authoritative State Model
 Warehouse Conversion · Production Rate · Upgrade Purchase · Milestone · Floor
 Unlock · Economy Progression Simulation
 
-**Persistence contracts:** Save Document Schema — Version 2 · Save Recovery ·
+**Persistence contracts:** Save Document Schema — Version 3 · Save Recovery ·
 Offline Income · Lifecycle Persistence · Save Diagnostic Surface
 
 **Presentation contracts:** Portrait Layout · Mine Scroll and Input · Mine View ·

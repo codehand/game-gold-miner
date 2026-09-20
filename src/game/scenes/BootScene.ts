@@ -1,5 +1,9 @@
 import Phaser from 'phaser';
 
+import {
+  getCatForSlot,
+  type CatSlotKey,
+} from '../../core';
 import { MarketplaceModal } from '../../ui/MarketplaceModal';
 import { MineShaftUpgradeModal } from '../../ui/MineShaftUpgradeModal';
 
@@ -7,8 +11,10 @@ import { createBacklogTextures } from '../assets/backlogTextures';
 import {
   MARKETPLACE_RUNTIME_ANIMATION_ASSETS,
   MARKETPLACE_RUNTIME_ROLE_ASSETS,
-  resolveMarketplaceRuntimeAsset,
+  resolveMarketplaceRuntimeSlot,
   type MarketplaceRuntimeAnimationAsset,
+  type MarketplaceRuntimeRole,
+  type MarketplaceRuntimeSlotBinding,
 } from '../assets/marketplaceRuntimeAssets';
 import {
   ELEVATOR_SHAFT_TEXTURE_HEIGHT_PX,
@@ -168,6 +174,8 @@ export interface BootSceneOptions {
   readonly animationSpeedMultiplier?: number;
   readonly onSettings?: (onClosed: () => void) => void;
   readonly onLeaderboard?: (onClosed: () => void) => void;
+  readonly onCollection?: (onClosed: () => void) => void;
+  readonly onCatSlot?: (slotKey: CatSlotKey, onClosed: () => void) => void;
 }
 
 /**
@@ -188,6 +196,8 @@ export class BootScene extends Phaser.Scene {
   readonly #source: MineRuntimePort;
   readonly #onSettings: ((onClosed: () => void) => void) | null;
   readonly #onLeaderboard: ((onClosed: () => void) => void) | null;
+  readonly #onCollection: ((onClosed: () => void) => void) | null;
+  readonly #onCatSlot: ((slotKey: CatSlotKey, onClosed: () => void) => void) | null;
   /** Live press results, keyed by control, cleared as each one expires. */
   readonly #purchaseFeedback = new Map<string, PurchaseFeedback>();
   /** The snapshot currently bound to the views, compared by identity. */
@@ -205,6 +215,8 @@ export class BootScene extends Phaser.Scene {
   #elevatorAnimation!: MarketplaceRuntimeAnimationAsset;
   #warehouseAnimation!: MarketplaceRuntimeAnimationAsset;
   #minerAnimation!: MarketplaceRuntimeAnimationAsset;
+  #runtimeSlotBindings: readonly MarketplaceRuntimeSlotBinding[] = [];
+  #boundAssignmentRevision = -1;
   #lastViewDiagnosticMs = Number.NEGATIVE_INFINITY;
   #lastPerformanceDiagnosticMs = Number.NEGATIVE_INFINITY;
   /** The camera the mine content is drawn through, needed to place presses. */
@@ -244,6 +256,8 @@ export class BootScene extends Phaser.Scene {
     this.#source = options.source;
     this.#onSettings = options.onSettings ?? null;
     this.#onLeaderboard = options.onLeaderboard ?? null;
+    this.#onCollection = options.onCollection ?? null;
+    this.#onCatSlot = options.onCatSlot ?? null;
     this.#viewModel = options.source.snapshot;
     this.#visibleFloorCount = countVisibleFloors(options.source.snapshot);
     this.#animationSpeedMultiplier =
@@ -309,6 +323,7 @@ export class BootScene extends Phaser.Scene {
     });
 
     this.#bindSnapshot(this.#source.snapshot, true);
+    this.#syncRuntimeCatAssignments(true);
     this.#applyAnimation();
     this.#applyPurchaseFeedback(this.time.now);
 
@@ -348,6 +363,7 @@ export class BootScene extends Phaser.Scene {
    */
   public override update(time: number, delta: number): void {
     this.#bindSnapshot(this.#source.advance(), false);
+    this.#syncRuntimeCatAssignments(false);
     this.#animationTimeMs = advanceAnimationTimeMs(
       this.#animationTimeMs,
       delta,
@@ -503,6 +519,18 @@ export class BootScene extends Phaser.Scene {
 
   #openSharedStageUpgrade(target: Extract<UpgradeTarget, { type: 'elevator' | 'warehouse' }>): void {
     this.#openUpgradeModal(target);
+  }
+
+  #openCatSlot(slotKey: CatSlotKey): void {
+    if (this.#onCatSlot === null) {
+      return;
+    }
+
+    this.#floorUpgradeModal?.close();
+    this.input.enabled = false;
+    this.#onCatSlot(slotKey, () => {
+      this.input.enabled = true;
+    });
   }
 
   #openUpgradeModal(target: UpgradeTarget): void {
@@ -937,6 +965,14 @@ export class BootScene extends Phaser.Scene {
         if (key === 'shop' && this.#marketplace !== null) {
           this.input.enabled = false;
           this.#marketplace.open();
+          return;
+        }
+
+        if (key === 'managers' && this.#onCollection !== null) {
+          this.input.enabled = false;
+          this.#onCollection(() => {
+            this.input.enabled = true;
+          });
         }
       },
     });
@@ -1023,7 +1059,9 @@ export class BootScene extends Phaser.Scene {
         this.#elevatorAnimation.displaySize,
         this.#elevatorAnimation.displaySize,
       )
-      .setVisible(false);
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.#openCatSlot('elevator:main'));
     this.#surfaceElevatorTower = this.add
       .image(
         SURFACE_ELEVATOR_TOWER_CENTER_X,
@@ -1132,7 +1170,9 @@ export class BootScene extends Phaser.Scene {
         this.#warehouseAnimation.displaySize,
         this.#warehouseAnimation.displaySize,
       )
-      .setFlipX(true);
+      .setFlipX(true)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.#openCatSlot('warehouse:main'));
     layer.add(this.#warehouseManager);
     this.#surfaceElevatorUpgradeControl = new PurchaseControlView(this, {
       region: SURFACE_ELEVATOR_LEVEL_CONTROL,
@@ -1262,7 +1302,12 @@ export class BootScene extends Phaser.Scene {
         onUnlock: () => {
           this.#requestPurchase(this.#viewModel.floors[index].unlockControl);
         },
-        minerAnimation: this.#minerAnimation,
+        onCatClick: () => {
+          this.#openCatSlot(`miner:${this.#viewModel.floors[index].id}`);
+        },
+        minerAnimation: this.#runtimeSlotBindings.find((binding) => {
+          return binding.slotKey === `miner:${this.#viewModel.floors[index].id}`;
+        })?.animation ?? this.#minerAnimation,
       });
     });
     content.add(this.#floorViews.map((view) => view.root));
@@ -1273,18 +1318,89 @@ export class BootScene extends Phaser.Scene {
   }
 
   #resolveRuntimeAnimations(): void {
-    this.#elevatorAnimation = resolveMarketplaceRuntimeAsset(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator,
-      this.textures.exists(MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.textureKey),
-    );
-    this.#warehouseAnimation = resolveMarketplaceRuntimeAsset(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse,
-      this.textures.exists(MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.textureKey),
-    );
-    this.#minerAnimation = resolveMarketplaceRuntimeAsset(
-      MARKETPLACE_RUNTIME_ROLE_ASSETS.miner,
-      this.textures.exists(MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.textureKey),
-    );
+    this.#runtimeSlotBindings = this.#resolveRuntimeSlotBindings();
+    this.#elevatorAnimation = this.#runtimeSlotBindings.find((binding) => {
+      return binding.slotKey === 'elevator:main';
+    })?.animation ?? MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator;
+    this.#warehouseAnimation = this.#runtimeSlotBindings.find((binding) => {
+      return binding.slotKey === 'warehouse:main';
+    })?.animation ?? MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse;
+    this.#minerAnimation = this.#runtimeSlotBindings.find((binding) => {
+      return binding.slotKey === 'miner:floor-1';
+    })?.animation ?? MARKETPLACE_RUNTIME_ROLE_ASSETS.miner;
+    this.#boundAssignmentRevision = this.#source.catRoster?.assignmentRevision ?? 0;
+  }
+
+  /** Rebinds runtime identity only after the source exposes a new projection. */
+  #syncRuntimeCatAssignments(force: boolean): void {
+    const assignmentRevision = this.#source.catRoster?.assignmentRevision ?? 0;
+    if (!force && assignmentRevision === this.#boundAssignmentRevision) {
+      return;
+    }
+
+    const bindings = this.#resolveRuntimeSlotBindings();
+    this.#runtimeSlotBindings = bindings;
+    this.#boundAssignmentRevision = assignmentRevision;
+
+    const elevator = bindings.find((binding) => binding.slotKey === 'elevator:main');
+    const warehouse = bindings.find((binding) => binding.slotKey === 'warehouse:main');
+    if (elevator !== undefined) {
+      this.#elevatorAnimation = elevator.animation;
+      this.#applyRuntimeSprite(this.#shaftCargoCat, elevator.animation);
+      this.#applyRuntimeSprite(this.#surfaceCargoCat, elevator.animation);
+    }
+    if (warehouse !== undefined) {
+      this.#warehouseAnimation = warehouse.animation;
+      this.#applyRuntimeSprite(this.#warehouseManager, warehouse.animation);
+    }
+
+    this.#floorViews.forEach((view, index) => {
+      const slotKey = `miner:${this.#viewModel.floors[index].id}`;
+      const binding = bindings.find((candidate) => candidate.slotKey === slotKey);
+      if (binding !== undefined) {
+        view.applyMinerAnimation(binding.animation);
+      }
+    });
+
+    this.#minerAnimation = bindings.find((binding) => {
+      return binding.slotKey === 'miner:floor-1';
+    })?.animation ?? this.#minerAnimation;
+  }
+
+  #resolveRuntimeSlotBindings(): readonly MarketplaceRuntimeSlotBinding[] {
+    const roster = this.#source.catRoster;
+    const resolve = (
+      slotKey: string,
+      roleId: MarketplaceRuntimeRole,
+    ): MarketplaceRuntimeSlotBinding => {
+      const cat = roster === undefined
+        ? null
+        : getCatForSlot(roster, slotKey as CatSlotKey);
+      return resolveMarketplaceRuntimeSlot(
+        slotKey,
+        roleId,
+        cat === null ? null : {
+          catInstanceId: cat.catInstanceId,
+          assetId: cat.assetId,
+        },
+        (asset) => this.textures.exists(asset.textureKey),
+      );
+    };
+
+    return [
+      resolve('elevator:main', 'elevator'),
+      resolve('warehouse:main', 'warehouse'),
+      ...this.#viewModel.floors.map(({ id }) => resolve(`miner:${id}`, 'miner')),
+    ];
+  }
+
+  #applyRuntimeSprite(
+    sprite: Phaser.GameObjects.Sprite | null,
+    animation: MarketplaceRuntimeAnimationAsset,
+  ): void {
+    sprite
+      ?.setTexture(animation.textureKey, 0)
+      .setDisplaySize(animation.displaySize, animation.displaySize);
   }
 
   /**
@@ -1478,6 +1594,21 @@ export class BootScene extends Phaser.Scene {
       warehouse: this.#warehouseAnimation.assetId,
       miner: this.#minerAnimation.assetId,
     });
+    canvas.dataset.catRuntimeBindings = JSON.stringify(
+      this.#runtimeSlotBindings.map((binding) => ({
+        slotKey: binding.slotKey,
+        roleId: binding.roleId,
+        catInstanceId: binding.catInstanceId,
+        assignedAssetId: binding.assignedAssetId,
+        runtimeAssetId: binding.animation.assetId,
+        textureKey: binding.animation.textureKey,
+        usesFallback: binding.usesFallback,
+        fallbackReason: binding.fallbackReason,
+        displaySize: binding.animation.displaySize,
+        frameCount: binding.animation.frameCount,
+        frameDurationMs: binding.animation.frameDurationMs,
+      })),
+    );
     canvas.dataset.surfaceViews = JSON.stringify([
       this.#elevatorView?.describeRenderedState() ?? null,
       this.#warehouseView?.describeRenderedState() ?? null,

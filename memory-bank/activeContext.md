@@ -2,6 +2,26 @@
 
 ## Current Focus
 
+**Cat collection and role assignment implementation, 2026-09-20.** Phases 0–9
+are complete and the full feature acceptance gate passed. The pure domain, V3
+local save/migration, server ownership and assignment API, RLS/integration
+gates, typed web adapter, active-save hydration, non-blocking boot hydration,
+responsive Collection list/detail UI, authoritative assigned-cat replacement,
+runtime role-slot binding, production modifiers, and conflict/offline/recovery
+audit are implemented. The authoritative server projection is data-only;
+renderer assets remain outside save state. Manual browser review also closed the
+sync-banner click-through issue by guarding Phaser's window-level mouse input.
+
+**Cat collection and role assignment draft, 2026-09-19.** The new
+`cat-collection-and-role-assignment-spec-v1-draft.md` defines the post-purchase
+collection/detail journey, role-compatible mine replacement, authoritative
+assignment, role-based production effects, and reload/re-login persistence.
+The implementation plan and Phase 0–9 gate results are recorded in
+`cat-collection-and-role-assignment-implementation-plan-v1-draft.md`. The
+existing Marketplace remains a preview/catalog surface; the Collection UI now
+consumes the typed account projection, while replacement mutations remain in the
+server-authoritative path and role effects flow through the deterministic core.
+
 **Marketplace runtime presentation, 2026-09-19.** Phase 7 is complete after
 explicit approval. Mofy (`elevator-cargo-cat:SSR`), Baron
 (`warehouse-manager:SR`), and Forge (`miner:SSR`) now use their approved exact

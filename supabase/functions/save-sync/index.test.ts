@@ -306,7 +306,7 @@ Deno.test('handleSaveUpload answers 400 when baseRevision is neither a number no
 });
 
 Deno.test('handleSaveUpload answers 422 schema_unsupported for a schemaVersion the server does not understand', async () => {
-  const document = { ...(validSaveDocument() as Record<string, unknown>), schemaVersion: 3 };
+  const document = { ...(validSaveDocument() as Record<string, unknown>), schemaVersion: 4 };
   const request = putSaveRequest({ baseRevision: null, document });
   const response = await handleRequest(
     request,

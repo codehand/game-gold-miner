@@ -297,6 +297,10 @@ test('renders five icon buttons and acknowledges every click', async ({ page }) 
         'data-marketplace-close-count',
         String(++closes),
       );
+    } else if (item.key === 'managers') {
+      await expect(page.getByRole('dialog', { name: 'Cat Collection' })).toBeVisible();
+      await page.getByRole('button', { name: 'Close collection' }).click();
+      await expect(page.getByRole('dialog', { name: 'Cat Collection' })).not.toBeVisible();
     }
   }
 });

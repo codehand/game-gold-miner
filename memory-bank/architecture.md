@@ -2,7 +2,14 @@
 
 ## Current Status
 
-All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game; it is the map any post-milestone work starts from. The IndexedDB database schema version remains 1; the save-document schema is version 2; there is no relational or server database.
+All 37 base-game implementation-plan steps are complete and user-validated;
+post-milestone cat collection Phases 0–9 are also complete and the full feature
+acceptance gate passed. The IndexedDB
+database schema version remains 1; the data-only save-document schema is V3;
+Supabase now owns the relational cat blueprint, collection, instance,
+assignment, and purchase-request tables described below. The physical
+mid-range Android Chrome pass and a human 30-second-comprehension playtest
+remain open base-game caveats rather than blocking the cat implementation.
 
 ## Implemented Foundation
 
@@ -11,7 +18,7 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `index.html`, `src/main.ts`, `src/style.css` | Browser entry point, self-hosted Fredoka 600/700 loading before Phaser startup, `viewport-fit=cover` opt-in, safe-area-inset host padding around the `#game-viewport` Phaser parent, game startup, and hot-reload cleanup. |
 | `src/game/layout/mineLayout.ts`, `src/game/layout/palette.ts`, `src/game/layout/index.ts` | Pure Phaser-free portrait geometry and palette: logical viewport constants, HUD/surface/mine regions, scrollable mine content height, floor-slot regions, diagnostic region serialization, and the `#rrggbb` colors both the scene and the browser pixel probes read. |
 | `src/game/view-model/mineViewModel.ts`, `src/game/view-model/mineShaftUpgradeModal.ts`, `src/game/view-model/hudViewModel.ts`, `src/game/view-model/purchaseControl.ts`, `src/game/view-model/formatAmount.ts`, `src/game/view-model/stageAnimation.ts`, `src/game/view-model/index.ts` | Pure Phaser-free presentation logic. The snapshot view model derives per-floor heading, level, visibility, lock status, progress ratio and label, queued-amount label, discrete pile height and backlog state, plus each shared stage's level, capacity, held amount, queue blocks, running/backed-up status, and cycle progress, and carries both HUD and open-floor detail models. The floor-modal module derives output/cycle, cycle time, waiting material, next output, and x1/x5/MAX batch choices from authoritative state and core quotes. The HUD module derives icon-led spendable gold, the authoritative warehouse input queue from `warehouse.inputQueue`, and income values from authoritative state and the core's effective production rate, with empty duplicate captions. The purchase-control module derives each priced control's action caption, price, enabled state, command target, and stable key, plus the lifetime of a press result; it covers shared-stage upgrades, floor selection badges, and floor unlocks. The format module is the single abbreviated-amount formatter every displayed quantity goes through. The animation module holds the cosmetic clock maths and workforce rules. |
-| `src/game/runtime/MineSimulationDriver.ts`, `src/game/runtime/index.ts` | Phaser-free live bridge between the core and the screen: holds authoritative state and the balance data prices and the HUD estimate are derived from, advances state to an injected wall clock on each pull, memoizes the derived snapshot, routes upgrade presses to the matching core command, and accepts state replaced by a command. |
+| `src/game/runtime/MineSimulationDriver.ts`, `src/game/runtime/index.ts` | Phaser-free live bridge between the core and the screen: holds authoritative state and the balance data prices, HUD estimate, and cat-derived production modifiers are derived from, advances state to an injected wall clock on each pull, memoizes the derived snapshot, routes upgrade presses to the matching core command, and accepts state or cat roster projections replaced by authoritative commands. |
 | `src/game/entities/HudView.ts`, `src/game/entities/BottomNavigationView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar. `BottomNavigationView` owns the fixed icon-only five-button shell, thumb-safe hit regions, and press animation; activation is presentation-only and changes no authoritative state. `PurchaseControlView` is the one pressable purchase button shared by floor panels and both shared stages. |
 | `src/game/assets/placeholderAssets.ts` | Semantic Phaser texture keys, public paths, and native shaft-texture dimensions for the original Step 32 family plus the Step 32A floor, filled/empty elevator-tower, warehouse, and supervisor pack loaded by `BootScene.preload`. |
 | `src/game/assets/backlogTextures.ts` | Generates the solid backlog-colour silhouette once at boot from the source sprite, so the cue survives a Canvas fallback that would drop a WebGL-only tint. |
@@ -27,7 +34,7 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `playwright.performance.config.ts`, `tests/performance/mobile-performance.spec.ts`, `performance-results/` | Step 35 optimized-build Google Chrome benchmark, Pixel 5 mobile emulation plus 4× CPU throttling, constant-memory frame histogram, post-GC heap/DOM/listener sampling, live-sampled Phaser object and unlocked-floor counts, alternating scroll-latency probes, asset/startup measurement, budget assertions, and retained raw/human-readable reports. |
 | `tests/unit/architecture.test.ts` | Regression coverage proving the core, layout, view-model, and simulation-driver boundaries accept pure TypeScript and reject renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
-| `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer with both stage views, and the mine content layer with fifteen pooled floor views revealed in groups of five; repeats the shaft artwork through a native-height `TileSprite` rather than stretching it across the full mine; keeps the elevator's top-of-shaft world endpoint independent of mine-camera scroll and maps its surface twin from that same physical route; pulls the newest snapshot from its source on every frame, binds the filled/empty tower, gold pour, every surface cart, and every loaded-hauler pose exclusively to the warehouse input queue, advances the separate cosmetic animation clock from the frame delta, clips the mine through a dedicated camera viewport, and records startup, renderer, layout, rendered-view, HUD, and animation diagnostics on the game canvas. |
+| `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer with both stage views, and the mine content layer with fifteen pooled floor views revealed in groups of five; repeats the shaft artwork through a native-height `TileSprite` rather than stretching it across the full mine; keeps the elevator's top-of-shaft world endpoint independent of mine-camera scroll and maps its surface twin from that same physical route; pulls the newest snapshot from its source on every frame, binds the filled/empty tower, gold pour, every surface cart, and every loaded-hauler pose exclusively to the warehouse input queue, resolves `slot → cat instance → asset → runtime sheet` for every role, hot-rebinds only after a new authoritative assignment revision, advances the separate cosmetic animation clock from the frame delta, clips the mine through a dedicated camera viewport, and records runtime fallback/identity diagnostics on the game canvas. |
 | `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional fifteen-floor/shared-stage data, its public types, and fail-fast startup validation. |
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, string serialization, and normalized `mantissa`/`exponent` parts for display code. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
@@ -42,6 +49,7 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/core/simulation/catchUpSimulation.ts` | Bounded slice-by-slice advancement across a gap in the render loop, so a hidden tab is simulated rather than consumed. |
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited sequential floor route, load-sensitive leg timing, signed route description, and surface delivery to the warehouse input queue. |
 | `src/core/simulation/advanceWarehouse.ts` | Timed capacity-limited warehouse conversion from input material into spendable and cumulative delivered gold. |
+| `src/core/cats/` | Renderer-free cat ownership/assignment invariants, role score/effect calculation, slot comparison, and derived miner/elevator/warehouse production modifiers. |
 | `src/persistence/saveSchema.ts`, `src/persistence/index.ts` | Version-1 plain-JSON save schema, serializer, strict validator, migration dispatcher, runtime deserializer, and persistence exports. |
 | `src/persistence/ActiveSaveRepository.ts` | Storage-agnostic interface for loading and replacing the one active save document. |
 | `src/persistence/DexieActiveSaveRepository.ts` | Dexie 4.4.5 adapter for the version-1 `cat-mine-idle` IndexedDB database and fixed `active` record. |
@@ -55,6 +63,8 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/platform/web/supabaseClient.ts` | Server-milestone Step 8: builds the browser's Supabase client from `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, or returns `null` without attempting any network call when either is unset. |
 | `src/platform/web/guestSession.ts` | Server-milestone Step 8: `ensureGuestSession` reuses an existing session or signs in anonymously through an injected `GuestAuthClient` collaborator, never throwing — every failure resolves to a typed `sign-in-failed`/`unconfigured` result instead. |
 | `src/ui/OfflineRewardModal.ts`, `src/ui/MineShaftUpgradeModal.ts` | Accessible DOM overlays: offline reward claim/save/retry, and the live mine-floor detail with attributes plus x1/x5/MAX CTAs. The floor overlay blocks background Phaser input until dismissed and rebinds after each purchase. |
+| `src/ui/CollectionModal.ts` | Read-only owned-cat list/detail overlay. It consumes the validated roster projection, supports search/filter/sort, shows role/effect/assignment context, and keeps portrait fallback plus focus/close behavior local to the UI layer. |
+| `src/ui/CatAssignmentModal.ts` | Authoritative current-role panel and replacement picker. It filters candidates by exact slot role and assignable state, owns only transient selection/pending UI state, submits the minimal expected-revision command, and applies a returned roster projection only after success. |
 | `src/ui/SaveDiagnosticBanner.ts` | Non-blocking DOM notice that surfaces save-recovery warnings and persistence diagnostics, de-duplicated by code and dismissible. |
 
 ## Current File Responsibilities
@@ -81,7 +91,7 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, pending-reward claim transitions, and the server-side progress bound on an uploaded save (`src/core/anti-cheat/progressBound.ts`). |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration, semantic placeholder-asset manifest, pure portrait geometry, pure presentation models and cosmetic animation maths, live simulation driver, reusable HUD/floor/shared-stage/purchase views, generated-sprite presentation, interactive controls, scroll input, and the single scene that pulls snapshots into them. |
-| `src/ui/` | Owns the offline-reward modal, live mine-floor upgrade modal, and save-diagnostic notice. The HUD remains a Phaser view. |
+| `src/ui/` | Owns the offline-reward modal, live mine-floor upgrade modal, read-only owned-cat Collection list/detail modal, and save-diagnostic notice. The HUD remains a Phaser view. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding and, since server-milestone Step 8, the Supabase client factory and anonymous guest-session bootstrap — the first `src/` code that makes a network call, never awaited before boot and never throwing. Broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Runtime original placeholder sprites, art-direction brief, and provenance manifest. Generated source and processor outputs live in `art-source/placeholder/` so production builds ship only the semantic runtime files. |
@@ -161,15 +171,15 @@ The newest debounced save must equal the policy-derived authoritative document e
 
 ## Lifecycle Persistence Contract
 
-Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-2 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
+Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-3 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
 
-## Save Document Schema — Version 2
+## Save Document Schema — Version 3
 
-Version 2 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation. Version 2 added `state.warehouse.totalOfflineGoldClaimed` (Server-milestone Step 18); a version-1 document is upgraded by defaulting that counter to `"0"`, which is exact because no version-1 save recorded an offline claim in it.
+Version 3 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation. Version 2 added `state.warehouse.totalOfflineGoldClaimed`; Version 3 adds the plain-data cat projection (`cats`, `assignments`, and revisions). Version-1 and version-2 documents migrate to an empty collection with no assignments; renderer state is never serialized.
 
 | Path | JSON type | Constraints / relationship |
 |---|---|---|
-| `schemaVersion` | integer | Required; exactly `2`. A version-`1` document is upgraded by the migration dispatcher. Missing and unsupported versions fail. |
+| `schemaVersion` | integer | Required; exactly `3`. Version-1 and version-2 documents are upgraded by the migration dispatcher. Missing and unsupported versions fail. |
 | `savedAtTimestampMs` | number | Non-negative safe integer; cannot precede `state.lastUpdateTimestampMs`. |
 | `effectiveProductionRatePerSecond` | string | Finite non-negative serialized `GameNumber`; authoritative rate snapshot used by offline-income calculation. |
 | `state` | object | Exact serialized authoritative state described below. |
@@ -198,8 +208,12 @@ Version 2 is a strict plain-JSON document. Unknown properties are rejected. Runt
 | `state.warehouse.conversionProgress` | number | Finite value in `[0, 1)`; zero when input is zero. |
 | `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`; lifetime warehouse deliveries. |
 | `state.warehouse.totalOfflineGoldClaimed` | string | Finite non-negative serialized `GameNumber`; lifetime `claimOfflineReward` grants. Monotonic, and part of the save-conflict progress vector. Defaults to `"0"` when a version-1 document is migrated. |
+| `cats` | array | Validated account-visible cat instances with opaque instance identity, stable `assetId`, role, rarity, level, four attributes, calculation version, availability, optional slot, and timestamp. No texture, frame, or Phaser object is allowed. |
+| `assignments` | array | Unique explicit `slotKey` → `catInstanceId` pairs with exact role compatibility and one-cat/one-slot invariants. |
+| `assignmentRevision` | integer | Non-negative revision for optimistic assignment concurrency. |
+| `collectionRevision` | integer | Non-negative collection projection revision for stale-data diagnostics. |
 
-`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point (upgrading a version-1 document by defaulting `state.warehouse.totalOfflineGoldClaimed` to `"0"` and stamping version 2), `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
+`createSaveDocument` derives the rate snapshot and serializes state plus an optional validated cat roster, `migrateSaveDocument` is the single version-dispatch entry point (upgrading version 1's offline counter and version 1/2 documents' empty cat projection), `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances and the plain cat roster only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
 
 ## Save Recovery Contract
 
@@ -211,7 +225,7 @@ Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. One pur
 
 `calculateOfflineIncome` clamps credited time to the cap, returns `rate × creditedSeconds × efficiency` as a `GameNumber`, awards zero for a receipt at or after the current time, and immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
 
-The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The version-2 save schema and the version-1 IndexedDB schema are unchanged by a claim beyond the two counters it legitimately moves: only the post-claim authoritative snapshot is stored.
+The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The V3 save schema and the version-1 IndexedDB schema are unchanged by a claim beyond the counters and data-only cat projection they legitimately carry: only the post-claim authoritative snapshot is stored.
 
 ## Portrait Layout Contract
 
@@ -274,7 +288,7 @@ remote repository with §9's upload cadence and §7's `409` half (19).
 
 `GET /v1/save` and `PUT /v1/save` on a Supabase Edge Function are the only save
 path; `saves` denies client writes entirely, so PostgREST is never used for a
-save. A `SaveDocumentV2` crosses the wire byte-for-byte — the protocol adds no
+save. A `SaveDocumentV3` crosses the wire byte-for-byte — the protocol adds no
 field to it and rewrites none of it. A server-owned monotonic `revision`
 provides optimistic concurrency: an upload carries the `baseRevision` it started
 from, and a stale one is refused with the server's current revision and
@@ -296,7 +310,7 @@ distinction Step 23 makes. Excluding `gold` is sound only because every gold
 *source* is vectored: Step 18 added `warehouse.totalOfflineGoldClaimed` so an
 offline reward can no longer move `gold` without moving the vector (see the
 Step 18 section below). The predicate is pure, operates on two
-`SaveDocumentV2` values, and belongs in `src/persistence` — `src/core` must not
+`SaveDocumentV3` values, and belongs in `src/persistence` — `src/core` must not
 learn that saves exist. It holds only while those fields are monotonic, so a
 prestige or reset mechanic would have to revise it in the same change, and a new
 gold source would have to join the vector.
@@ -1077,7 +1091,7 @@ cloud save on first sign-in rather than let a fresh one replace it.
 `src/platform/web/cloudSaveReconcile.ts`'s `adoptExistingLocalSave` is the
 named operation. It reads whichever document the lifecycle-safe repository
 would load, runs it through the shared `validateSaveDocument` — which migrates
-version 1 to version 2, expanding a legacy four-floor payload and defaulting
+version 1 through V3, expanding a legacy four-floor payload and defaulting
 `warehouse.totalOfflineGoldClaimed` to `"0"` — and hands the migrated document
 to the Step 19 replica's `forceCloudUpload`. It never throws: a missing local
 record resolves `no-local-save`, a corrupt or unreadable one `unreadable`, and a
@@ -1087,7 +1101,7 @@ forced-upload collaborator that breaks its non-throwing contract `upload-failed`
 `src/main.ts`'s boot-reconcile trigger (`forceCloudUploadLatestLocalDocument`)
 delegates to it on `no-cloud-save` and `kept-local`. `no-cloud-save` is the
 first-sign-in path: the account has no cloud save, so the local save becomes
-the cloud save. The adopted document is therefore the **migrated** version-2
+the cloud save. The adopted document is therefore the **migrated** version-3
 document, not the original version-1 bytes — the plan's Step 18 interaction
 note records that, and the tests compare against the migrated document rather
 than pretending the v1 bytes come back. The upload path already carries the
@@ -2367,13 +2381,15 @@ Step 4's bootstrap migration
 (`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
 creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
 for `gen_random_uuid()`). All six tables and the row-level-security policies in
-the matrix below exist in the local development database after
+the six base tables and five cat-collection tables, plus their row-level-security policies, in the matrix below exist in the local development database after
 `supabase db reset`; **no deployed database contains them**, because no
 deployment exists yet. This block and its twin in the other document are
 byte-identical by construction and must be changed together, in the same change
 as every future migration, exactly as `AGENTS.md` requires.
 
-Full protocol context is in `memory-bank/server-save-sync-protocol.md`; the
+The cat collection extension is a second forward-only migration,
+`supabase/migrations/20260919100000_create_cat_collection.sql`, adding five
+service-role-owned tables and two transactional RPCs. Full protocol context is in `memory-bank/server-save-sync-protocol.md`; the
 threat model and recorded defaults it obeys are in
 `memory-bank/server-threat-model.md`.
 
@@ -2383,7 +2399,7 @@ Three rules, and they differ by location.
 
 1. **Inside a save document, nothing changes.** `GameNumber` values stay
    serialized decimal/scientific strings inside the document text, exactly as
-   the version-2 save schema already defines them. The server neither reformats
+   the V3 save schema already defines them. The server neither reformats
    nor re-serializes them.
 2. **Anywhere SQL must sort or rank a `GameNumber`, store two columns.**
    `*_exact text` holds the canonical serialized form and is the only value ever
@@ -2685,7 +2701,7 @@ create table public.entitlements (
 | `saves` | `user_id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade; one row per user |
 | `saves` | `revision` | bigint | no | — | `> 0`; monotonic, `+1` per accepted upload; the D2 concurrency token |
 | `saves` | `schema_version` | integer | no | — | `> 0`; denormalized from the document for migration sweeps |
-| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV2` |
+| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV3` |
 | `saves` | `received_at` | timestamptz | no | `now()` | server clock; the D3 anchor for every elapsed-time calculation |
 | `saves` | `previous_revision` | bigint | yes | — | `< revision`; null-together with the other two `previous_*` columns |
 | `saves` | `previous_document_json` | text | yes | — | ≤ 65536 bytes; one generation of rollback |
@@ -2829,17 +2845,41 @@ Throttling belongs per caller and per address, in Step 25.
 | Object store | Field | Type | Required / nullable | Key / constraint |
 |---|---|---|---|---|
 | `saves` | `id` | string | Required, non-null | Primary key via key path `id`; application writes only the literal `active`. |
-| `saves` | `document` | structured-clone-compatible `SaveDocumentV2` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
+| `saves` | `document` | structured-clone-compatible `SaveDocumentV3` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
 
-The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, a legacy version-1 save (including the former four-floor prefix, expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults) is migrated to version 2 by defaulting `warehouse.totalOfflineGoldClaimed` to `"0"`; the IndexedDB database version remains `1`.
+The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, a legacy version-1 or version-2 save (including the former four-floor prefix, expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults) is migrated to version 3, with version 1 defaulting `warehouse.totalOfflineGoldClaimed` to `"0"` and both older shapes gaining an empty cat projection; the IndexedDB database version remains `1`.
 
 **Synchronous lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1`.
 
 | Key | Value | Lifetime / relationship |
 |---|---|---|
-| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV2` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV3` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
 
 The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
+
+### Cat collection schema extension — 2026-09-19
+
+The forward-only migration `20260919100000_create_cat_collection.sql` adds
+`cat_blueprints` (allowlisted asset, role, rarity, price, and default
+attributes), `cat_collection_accounts` (per-owner assignment and collection
+revisions), `cat_instances` (one server-owned cat instance per purchase),
+`cat_assignments` (unique owner/slot and unique cat constraints), and
+`cat_purchase_requests` (owner/idempotency replay protection). All five tables
+have RLS enabled, no client policies, and service-role-only mutation. The
+`cat_instances` check constraints enforce approved roles, four attributes in
+`[0,100]`, calculation version `1`, known lifecycle states, and the
+`Assigned`/`assigned_slot_key` relationship. Assignment uniqueness prevents
+one cat from occupying two slots.
+
+`purchase_cat_instance(user, assetId, idempotencyKey)` locks the caller's
+existing V3 save, derives the blueprint price and role from the server
+allowlist, debits serialized save gold, creates an Idle instance, and records
+the idempotency result in one transaction. `replace_cat_assignment(user,
+catInstanceId, slotKey, expectedAssignmentRevision)` locks the owner revision
+and candidate, validates ownership/state/exact role, returns the prior cat to
+Idle, assigns the candidate, and increments the revision atomically. The
+`cat-collection` Edge Function is the only public API; it derives the caller
+from the bearer token and returns a caller-scoped projection.
 
 ## Closed incident reports
 

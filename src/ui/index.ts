@@ -5,6 +5,17 @@ export {
 } from './MineShaftUpgradeModal';
 export { MarketplaceModal } from './MarketplaceModal';
 export {
+  CollectionModal,
+  type CollectionModalOptions,
+  type CollectionModalStatus,
+} from './CollectionModal';
+export {
+  CatAssignmentModal,
+  type CatAssignmentCommand,
+  type CatAssignmentCommandResult,
+  type CatAssignmentModalOptions,
+} from './CatAssignmentModal';
+export {
   getMarketplaceAsset,
   listMarketplaceAssets,
   MARKETPLACE_ASSETS,
