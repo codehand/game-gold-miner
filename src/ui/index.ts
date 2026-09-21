@@ -3,7 +3,11 @@ export {
   type MineShaftUpgradeModalOptions,
   type RenderedMineShaftUpgradeModalState,
 } from './MineShaftUpgradeModal';
-export { MarketplaceModal } from './MarketplaceModal';
+export {
+  MarketplaceModal,
+  type MarketplaceModalOptions,
+  type MarketplacePurchaseResult,
+} from './MarketplaceModal';
 export {
   CollectionModal,
   type CollectionModalOptions,

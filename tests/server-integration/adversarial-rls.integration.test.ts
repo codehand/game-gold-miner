@@ -25,11 +25,11 @@ import { createServiceRoleClient } from './serviceRoleFixture';
  *
  * The existing `saves-rls` and `profiles-rls` suites are partial coverage —
  * two tables, and hand-written cases. This suite makes the matrix
- * **exhaustive and derived** (AC7): six tables × four verbs × two client
+ * **exhaustive and derived** (AC7): fourteen tables × four verbs × two client
  * roles, with the table list, the probe column per table, and the expected
  * outcome of every cell all computed from the migrations by
  * `rlsMatrixFixture.ts`. Nothing in this file names a table, a verb, or a
- * column by hand, which is what stops a seventh table from being silently
+ * column by hand, which is what stops a fifteenth table from being silently
  * uncovered.
  *
  * ## Why this must run against the real stack (constraint 4)
@@ -58,6 +58,8 @@ function randomHexHash(): string {
 
 /** The cat-instance seed is reused by the dependent assignment/purchase probes. */
 const seededCatInstanceByUser = new Map<string, string>();
+let seededMarketplaceListingId: string | null = null;
+let seededRenterUserId: string | null = null;
 
 interface AuthenticatedGuest {
   readonly userId: string;
@@ -152,6 +154,40 @@ function seededRowFor(table: string, userId: string, randomHex: string): Record<
         cat_instance_id: seededCatInstanceByUser.get(userId),
         price_exact: '1',
       };
+    case 'cat_marketplace_listings': {
+      seededMarketplaceListingId = randomUUID();
+      return {
+        listing_id: seededMarketplaceListingId,
+        seller_user_id: userId,
+        cat_instance_id: seededCatInstanceByUser.get(userId),
+        listing_type: 'sale',
+        price_exact: '1',
+        status: 'Active',
+      };
+    }
+    case 'cat_marketplace_requests':
+      return {
+        requester_user_id: userId,
+        idempotency_key: `rls-probe-market-${randomHex.slice(0, 40)}`,
+        operation: 'buy_listing',
+        result_id: seededMarketplaceListingId ?? randomUUID(),
+      };
+    case 'cat_rentals':
+      if (seededMarketplaceListingId === null || seededRenterUserId === null) {
+        throw new Error('adversarial-rls: dependent marketplace seed rows were not created yet');
+      }
+      return {
+        listing_id: seededMarketplaceListingId,
+        cat_instance_id: seededCatInstanceByUser.get(userId),
+        owner_user_id: userId,
+        renter_user_id: seededRenterUserId,
+        hourly_price_exact: '1',
+        duration_hours: 1,
+        total_price_exact: '1',
+        started_at: new Date(Date.now() - 60_000).toISOString(),
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'Active',
+      };
     default:
       throw new Error(
         `adversarial-rls: no seed defined for public.${table}. A new table needs one here, or its matrix cells would be probed with no valid filter value.`,
@@ -202,6 +238,7 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
     tables = readPlatformTables();
     identityColumns = readGeneratedIdentityColumns();
     guest = await createGuestIdentity();
+    seededRenterUserId = (await createGuestIdentity()).userId;
     const admin = createServiceRoleClient(API_URL);
 
     for (const table of tables) {
@@ -253,17 +290,20 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
    *
    * The matrix below is built from the migrations, so a seventh table is
    * covered automatically rather than missed. This asserts the reader still
-   * sees the six tables the schema defines today, so a migration that renames
+   * sees the fourteen tables the schema defines today, so a migration that renames
    * or drops one — or a parser gap that silently starts returning fewer
    * tables — goes red instead of shrinking the matrix without a word.
    */
-    it('the derived table list still holds the eleven tables the schema defines', () => {
+    it('the derived table list still holds the fourteen tables the schema defines', () => {
       expect(tables.map((table) => table.name).sort()).toEqual([
       'cat_assignments',
       'cat_blueprints',
       'cat_collection_accounts',
       'cat_instances',
+      'cat_marketplace_listings',
+      'cat_marketplace_requests',
       'cat_purchase_requests',
+      'cat_rentals',
       'entitlements',
       'leaderboard_entries',
       'profiles',

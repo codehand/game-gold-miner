@@ -7,8 +7,8 @@ and playtesting before production lock.
 
 **Purpose:** Define the first product and simulation contract for cats listed
 on the marketplace. This document covers the story, attributes, role skills,
-derived benefits, and the basic availability rules needed before implementing
-authoritative buy, sell, and rental transactions.
+derived benefits, availability rules, and server-authoritative Buy, Sell, and
+Rent transactions for the seeded v1 catalog and player-owned listings.
 
 This is a design draft, not a balance lock. The coefficients and caps below are
 starting hypotheses and require deterministic tests plus playtesting before
@@ -32,9 +32,11 @@ The v1 marketplace supports three product actions:
 - **Rent:** transfer temporary usage rights while ownership remains with the
   original owner.
 
-The current UI preview already has `Buy`, `Rent`, and `My listings` tabs, a
-1–24 hour rental selector, and sample listings. Those screens remain preview
-surfaces until a server-backed listing and transaction model is implemented.
+The current UI has `Buy`, `Rent`, `Sell`, and `My listings` tabs, a 1–24 hour
+rental selector, and the nine seeded catalog rows. All four surfaces are live:
+Buy signs a seeded contract; Rent browses active player rental listings and
+deducts the selected hourly total; Sell browses active player sale listings;
+and My listings creates, cancels, and tracks the seller's own listings.
 
 ## 2. Story and product framing
 
@@ -91,7 +93,9 @@ Required rules:
 - A rented cat cannot be sold, re-rented, or assigned by the owner.
 - Rental expiry is automatic and returns the cat to the owner's `Idle` roster.
 - Listing, purchase, rental acceptance, cancellation, and expiry must be
-  atomic server operations once live transactions exist.
+  atomic server operations. Sale and rental listings are created only from an
+  owner's `Idle` cat, and a successful transaction returns a caller-scoped
+  projection plus the wallet/save revision needed by the client CAS path.
 
 Special roles may add limits later, such as `maxActivePerMine` or
 `maxOwnedPerAccount`. Those limits belong to role configuration and do not
@@ -365,18 +369,53 @@ At minimum, a live transaction must revalidate:
 - The role/account/mine limits permit the result.
 - The transaction has not already been applied under the same idempotency key.
 
-## 13. Deliberately deferred from v1
+For every live transaction that changes a caller's wallet or roster, the
+server must return the post-transaction wallet gold and save revision. The
+client adopts both before persisting the updated local V3 projection, so a
+later cloud compare-and-swap does not overwrite the server-side transaction.
+
+## 13. Live listing and transaction contract
+
+The live v1 listing model is deliberately fixed-price and server-backed:
+
+- A sale listing has one total `priceExact` in gold. A buyer pays that amount;
+  the seller receives the same amount; the cat moves to the buyer's `Idle`
+  roster and the listing becomes `Sold`.
+- A rental listing has one `hourlyPriceExact` in gold. A renter chooses an
+  integer duration from `1` through `24`; the renter pays
+  `hourlyPriceExact × hours`, the owner receives that total, and the cat gets
+  a server-tracked usage right until `expiresAt` without changing ownership.
+- An owner may cancel only an `Active` listing before it is transacted. The cat
+  returns to `Idle` and no wallet movement occurs.
+- A cat cannot have more than one active listing, and an `Assigned` cat cannot
+  be listed. A listed cat cannot be assigned until the listing is cancelled or
+  the transaction completes.
+- Rental expiry is lazy-but-authoritative: collection, listing, assignment,
+  and transaction commands first settle due rentals. An expired rental is
+  removed from the renter's usable roster, any renter assignment is released,
+  and the owner's cat returns to `Idle`.
+- All create, cancel, buy, and rent commands require a caller-scoped
+  idempotency key. Replaying a key returns the original result and never moves
+  gold twice.
+
+The API exposes authenticated projections for active `sale`/`rent` listings,
+the caller's own listing history, and mutation results. Listing projections
+include the cat's exact current attributes, role score/skill presentation,
+price, seller display name where available, state, and rental expiry when
+applicable. The browser never writes listing or rental tables directly.
+
+## 14. Deliberately deferred from v1
 
 - `Fortune` and critical/rare reward mechanics.
 - Multiple simultaneous active cats in one role slot.
 - Secondary passive skills with separate multipliers.
 - Shared ownership.
 - Cat stat rerolls or stat training.
-- Dynamic auction pricing.
+- Dynamic auction pricing, bidding, and offers.
 - Real-money payments, tokens, or blockchain ownership.
 - Special-role limits before those roles have an approved profile.
 
-## 14. Draft acceptance criteria
+## 15. Draft acceptance criteria
 
 The v1 design is ready for implementation planning when the following are
 accepted:
@@ -387,5 +426,9 @@ accepted:
 - The primary skill and benefit for each role are defined.
 - Rarity and level responsibilities are separated as described above.
 - The cat state rules prevent simultaneous assignment and listing.
+- An owner can create/cancel sale and rental listings only for an idle cat;
+  another authenticated account can complete each transaction exactly once.
+- Seller and renter/buyer wallet projections reconcile through save revision;
+  a rental expires and releases the usage right without transferring title.
 - The product accepts the proposed maximum bonus range as a balance starting
   point for playtesting.

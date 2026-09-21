@@ -4,6 +4,11 @@
 the full feature acceptance gate passed. The plan remains draft only because the
 product/spec documents are still versioned drafts.
 
+The Collection/Assignment scope is closed. The seeded-catalog Marketplace Buy
+handoff is now tracked separately in
+`marketplace-purchase-and-cat-assignment-implementation-plan-v1.md`; only
+Rent, Sell, and My listings remain preview-only.
+
 **Goal:** Implement the post-purchase cat journey defined by
 `cat-collection-and-role-assignment-spec-v1-draft.md`: a signed-in user can
 see owned cat instances, inspect each cat, replace the cat assigned to a
@@ -40,9 +45,9 @@ but it must not silently widen the contract or bypass an earlier gate.
   repository callers.
 - The approved Marketplace role set for this work is `Elevator`, `Warehouse`,
   and `Miner`. `Unloader` remains future-only.
-- `src/ui/MarketplaceModal.ts` is a preview-only screen. Its cards come from
-  hardcoded preview fixtures, its `My listings` tab contains local drafts, and
-  it does not represent ownership or assignment.
+- `src/ui/MarketplaceModal.ts` uses the seeded fixtures for catalog display;
+  Buy now delegates to the live purchase handoff, while its My listings and
+  Rent surfaces remain preview-only and never represent ownership.
 - The current V3 save state contains gold, floors, elevator, warehouse, cat
   instances, and an explicit assignment map; V1/V2 documents migrate to an
   empty cat projection.
@@ -66,8 +71,8 @@ but it must not silently widen the contract or bypass an earlier gate.
 - UI updates are event-driven, not per-frame polling.
 - Renderer objects, sprite frames, textures, and animation state never enter
   the save document.
-- Existing Marketplace preview behavior stays playable until the new server
-  and collection contracts are implemented and validated.
+- Existing Marketplace preview behavior stays playable for Rent/Sell/My
+  listings; the seeded Buy handoff is implemented by the follow-up plan.
 
 ## 2. Phase summary and dependencies
 
@@ -464,7 +469,8 @@ until the collection accurately distinguishes preview, owned, and rented data.
 
 `CollectionModal` is now a dedicated owned-cat list/detail surface wired from
 the stable `managers` navigation key, so the existing five-button canvas shell
-and its browser contract remain unchanged while Marketplace stays preview-only.
+and its browser contract remain unchanged while the seeded Buy handoff is
+tracked by the follow-up plan.
 The list reads the validated `MineSimulationDriver.catRoster` projection and
 renders portrait, instance name, role, rarity, level, lifecycle state, and
 assignment location. Search, role/rarity/state filters, deterministic sorting,
@@ -755,9 +761,9 @@ fixtures remain non-owned sample data.
 
 **Acceptance:** passed. The cat collection, detail, authoritative compatible
 replacement, runtime role binding, production effects, persistence/recovery,
-and release-audit scope is implemented. Marketplace preview fixtures remain a
-non-owned catalog/transaction boundary until the future purchase handoff is
-connected to the ownership API.
+and release-audit scope is implemented. The seeded Buy handoff is no longer a
+non-owned boundary; its remaining live validation is tracked by the follow-up
+plan. Rent/Sell/My listings remain non-owned preview surfaces.
 
 ## 13. Required test matrix
 

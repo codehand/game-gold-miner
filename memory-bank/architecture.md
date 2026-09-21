@@ -3,13 +3,25 @@
 ## Current Status
 
 All 37 base-game implementation-plan steps are complete and user-validated;
-post-milestone cat collection Phases 0–9 are also complete and the full feature
-acceptance gate passed. The IndexedDB
+post-milestone cat collection Phases 0–9 and the live seeded-catalog
+Marketplace Buy/Sell/Rent/My listings flows are implemented. The IndexedDB
 database schema version remains 1; the data-only save-document schema is V3;
 Supabase now owns the relational cat blueprint, collection, instance,
 assignment, and purchase-request tables described below. The physical
 mid-range Android Chrome pass and a human 30-second-comprehension playtest
 remain open base-game caveats rather than blocking the cat implementation.
+The 2026-09-21 browser feedback pass also closes three presentation defects:
+Marketplace purchase confirmation keeps listing-specific actions in one
+responsive row, and Collection distinguishes a failed load from a valid empty
+roster.
+The same review now replaces the code-drawn bottom-navigation illustrations
+with a generated, QC-processed transparent menu strip that matches the
+approved reference: one continuous navy/gold shell, five tiles, and a raised
+active Boost tile. The asset integration is presentation-only: the existing
+keys, hit regions, callbacks, and Boost/Map future behavior remain unchanged.
+The runtime menu texture is a high-quality 2× resample of the alpha-cropped
+source and draws at an exact 0.5 scale in the logical viewport, reducing
+browser-side softness without changing the global renderer.
 
 ## Implemented Foundation
 
@@ -19,8 +31,9 @@ remain open base-game caveats rather than blocking the cat implementation.
 | `src/game/layout/mineLayout.ts`, `src/game/layout/palette.ts`, `src/game/layout/index.ts` | Pure Phaser-free portrait geometry and palette: logical viewport constants, HUD/surface/mine regions, scrollable mine content height, floor-slot regions, diagnostic region serialization, and the `#rrggbb` colors both the scene and the browser pixel probes read. |
 | `src/game/view-model/mineViewModel.ts`, `src/game/view-model/mineShaftUpgradeModal.ts`, `src/game/view-model/hudViewModel.ts`, `src/game/view-model/purchaseControl.ts`, `src/game/view-model/formatAmount.ts`, `src/game/view-model/stageAnimation.ts`, `src/game/view-model/index.ts` | Pure Phaser-free presentation logic. The snapshot view model derives per-floor heading, level, visibility, lock status, progress ratio and label, queued-amount label, discrete pile height and backlog state, plus each shared stage's level, capacity, held amount, queue blocks, running/backed-up status, and cycle progress, and carries both HUD and open-floor detail models. The floor-modal module derives output/cycle, cycle time, waiting material, next output, and x1/x5/MAX batch choices from authoritative state and core quotes. The HUD module derives icon-led spendable gold, the authoritative warehouse input queue from `warehouse.inputQueue`, and income values from authoritative state and the core's effective production rate, with empty duplicate captions. The purchase-control module derives each priced control's action caption, price, enabled state, command target, and stable key, plus the lifetime of a press result; it covers shared-stage upgrades, floor selection badges, and floor unlocks. The format module is the single abbreviated-amount formatter every displayed quantity goes through. The animation module holds the cosmetic clock maths and workforce rules. |
 | `src/game/runtime/MineSimulationDriver.ts`, `src/game/runtime/index.ts` | Phaser-free live bridge between the core and the screen: holds authoritative state and the balance data prices, HUD estimate, and cat-derived production modifiers are derived from, advances state to an injected wall clock on each pull, memoizes the derived snapshot, routes upgrade presses to the matching core command, and accepts state or cat roster projections replaced by authoritative commands. |
-| `src/game/entities/HudView.ts`, `src/game/entities/BottomNavigationView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar. `BottomNavigationView` owns the fixed icon-only five-button shell, thumb-safe hit regions, and press animation; activation is presentation-only and changes no authoritative state. `PurchaseControlView` is the one pressable purchase button shared by floor panels and both shared stages. |
+| `src/game/entities/HudView.ts`, `src/game/entities/BottomNavigationView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar. `BottomNavigationView` owns the fixed full-menu artwork, overlays only a transient press tint, preserves the five thumb-safe hit regions and callbacks, and keeps activation presentation-only. `PurchaseControlView` is the one pressable purchase button shared by floor panels and both shared stages. |
 | `src/game/assets/placeholderAssets.ts` | Semantic Phaser texture keys, public paths, and native shaft-texture dimensions for the original Step 32 family plus the Step 32A floor, filled/empty elevator-tower, warehouse, and supervisor pack loaded by `BootScene.preload`. |
+| `src/game/assets/navigationAssets.ts`, `public/assets/ui/navigation/`, `art-source/navigation-menu/` | Source-of-truth full-menu texture key, absolute runtime path, generated reference prompt/source, transparent processed strip, and deterministic raster-QC metadata for the fixed bottom menu. The earlier icon-only source remains retained under `art-source/navigation-icons/` as superseded provenance. |
 | `src/game/assets/backlogTextures.ts` | Generates the solid backlog-colour silhouette once at boot from the source sprite, so the cue survives a Canvas fallback that would drop a WebGL-only tint. |
 | `src/game/entities/setTextColor.ts` | The shared guard that compares a Phaser text colour before writing it, because `Text.setColor` re-rasterizes and re-uploads the caption texture on every call. |
 | `src/game/layout/mineFloorPanel.ts` | Pure semantic geometry for the approved 288×132 floor composition; renderer and browser probes share its anchors and regions. |
@@ -63,7 +76,7 @@ remain open base-game caveats rather than blocking the cat implementation.
 | `src/platform/web/supabaseClient.ts` | Server-milestone Step 8: builds the browser's Supabase client from `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, or returns `null` without attempting any network call when either is unset. |
 | `src/platform/web/guestSession.ts` | Server-milestone Step 8: `ensureGuestSession` reuses an existing session or signs in anonymously through an injected `GuestAuthClient` collaborator, never throwing — every failure resolves to a typed `sign-in-failed`/`unconfigured` result instead. |
 | `src/ui/OfflineRewardModal.ts`, `src/ui/MineShaftUpgradeModal.ts` | Accessible DOM overlays: offline reward claim/save/retry, and the live mine-floor detail with attributes plus x1/x5/MAX CTAs. The floor overlay blocks background Phaser input until dismissed and rebinds after each purchase. |
-| `src/ui/CollectionModal.ts` | Read-only owned-cat list/detail overlay. It consumes the validated roster projection, supports search/filter/sort, shows role/effect/assignment context, and keeps portrait fallback plus focus/close behavior local to the UI layer. |
+| `src/ui/CollectionModal.ts`, `src/ui/MarketplaceModal.ts` | Accessible DOM overlays for owned-cat list/detail and Marketplace. Collection consumes the validated roster projection, distinguishes ready/empty from loading/stale/error states, and keeps retryable failures from masquerading as zero owned cats; Marketplace's Buy, Rent, Sell, and My listings tabs perform server-backed confirm/pending/success/error flows through authenticated callbacks. |
 | `src/ui/CatAssignmentModal.ts` | Authoritative current-role panel and replacement picker. It filters candidates by exact slot role and assignable state, owns only transient selection/pending UI state, submits the minimal expected-revision command, and applies a returned roster projection only after success. |
 | `src/ui/SaveDiagnosticBanner.ts` | Non-blocking DOM notice that surfaces save-recovery warnings and persistence diagnostics, de-duplicated by code and dismissible. |
 
@@ -91,7 +104,7 @@ remain open base-game caveats rather than blocking the cat implementation.
 | `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, pending-reward claim transitions, and the server-side progress bound on an uploaded save (`src/core/anti-cheat/progressBound.ts`). |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration, semantic placeholder-asset manifest, pure portrait geometry, pure presentation models and cosmetic animation maths, live simulation driver, reusable HUD/floor/shared-stage/purchase views, generated-sprite presentation, interactive controls, scroll input, and the single scene that pulls snapshots into them. |
-| `src/ui/` | Owns the offline-reward modal, live mine-floor upgrade modal, read-only owned-cat Collection list/detail modal, and save-diagnostic notice. The HUD remains a Phaser view. |
+| `src/ui/` | Owns the offline-reward modal, live mine-floor upgrade modal, owned-cat Collection list/detail modal, server-backed seeded Buy modal, and save-diagnostic notice. The HUD remains a Phaser view. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding and, since server-milestone Step 8, the Supabase client factory and anonymous guest-session bootstrap — the first `src/` code that makes a network call, never awaited before boot and never throwing. Broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Runtime original placeholder sprites, art-direction brief, and provenance manifest. Generated source and processor outputs live in `art-source/placeholder/` so production builds ship only the semantic runtime files. |
@@ -238,9 +251,9 @@ The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inse
 | `hud` | `0,0,360,52` | Compact fixed top HUD; icon-plus-value pairs without duplicate captions. |
 | `surface` | `0,52,360,164` | Shared elevator and warehouse panels. |
 | `mine` | `0,216,360,366` | Clipped viewport the mine content scrolls behind; ends above fixed navigation. |
-| `bottomNavigation` | `0,582,360,58` | Compact fixed five-icon navigation shell at the bottom safe edge. |
+| `bottomNavigation` | `0,560,360,80` | Compact fixed five-tile navigation shell at the bottom safe edge. |
 
-The complete visible navigation controls — chrome and icon together — render at 60% of their authored size inside unchanged 48×44 standard and 62×50 Boost hit regions. The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT` (474). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 366-pixel mine region scrolls by 314. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
+The complete visible navigation controls use one generated transparent menu strip inside unchanged 48×44 standard and 62×50 Boost hit regions. The 2,167×455 artwork is fitted uniformly to roughly 356×75 inside the 360×80 safe edge, preserving tile/icon proportions and keeping the raised centre ornament visible. A navigation-color backdrop fills the transparent artwork margin so the mine background cannot form a black seam above the shell; a transient code-rendered tint is the only press overlay. The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT` (496). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 344-pixel mine region scrolls by 336. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
 
 `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects any smaller interactive region. The visible shared-stage cards are replaced by art, so their live level/upgrade controls are compact 30×34 badges inside 44×50 hit regions: the elevator region is `(106,48,44,50)` relative to the surface and sits immediately right of and no lower than the discharge tray; the warehouse region is `(263,0,44,50)` and places its chrome above the roof. The hidden `SharedStageView` controls remain read-back models only. The surface strip remains 164 pixels tall.
 
@@ -2282,7 +2295,11 @@ the receiving-position fallback and the baseline candidate for `unloader:N`.
 After explicit Phase 7 approval, three selected role assets are runtime
 integrated: Mofy (`elevator-cargo-cat:SSR:mofy:idle`) in the elevator, Baron
 (`warehouse-manager:SR:baron:idle`) at the warehouse, and Forge
-(`miner:SSR:forge:idle`) on mine floors. `BootScene` resolves local 8-frame
+(`miner:SSR:forge:idle`) on mine floors. The two surface role slots and mine
+floor miners use the shared 75 px display box so surface and underground cats
+remain visually consistent after assignment changes; the moving shaft copy is
+kept at 50 px so it remains inside the 62 px cabin. `BootScene` resolves local
+8-frame
 runtime sheets and falls back to the bundled 4-frame placeholders when a copy
 is unavailable. Runtime identity, display frames, and animation timing remain
 presentation-only: they add no gameplay attribute, authoritative state field,
@@ -2319,6 +2336,16 @@ A direct press goes to `MineSimulationDriver.purchase(target)`; every floor/elev
 The result is shown on the pressed control for `PURCHASE_FEEDBACK_DURATION_MS` (1,200 ms): `Upgraded!` or `Unlocked!` on green, `Need more gold`, `Level too low`, or `Unavailable` on red, in place of the action and price. `describePurchaseFeedback(feedback, nowMs)` is pure and expires the message, and the scene runs it on the Phaser scene clock rather than the cosmetic animation clock, so how long a message stays readable cannot change with animation speed. The scene expires its whole feedback map each frame rather than only the entries whose control is still on screen: the map is keyed by control and so is bounded either way, but a successful unlock hides the control that was pressed, and collecting through live controls alone would leave that result in place until the control came back. `BootScene` rebinds the snapshot and republishes diagnostics immediately on a press instead of waiting for the next tick. Because that expiry runs on the frame clock, every control re-renders on every frame, so the render path must cost nothing when nothing changed: text colours are compared before they are written, since `Text.setColor` — unlike `Text.setText` — repaints the caption's canvas and re-uploads its texture on every call. A browser test counts repaints across idle frames and requires zero.
 
 `BootScene` publishes `data-purchase-controls`: every visible control's key, rendered labels, enabled appearance, live feedback, and its pressable rectangle in screen coordinates. Floor controls are drawn through the mine camera, so their world rectangle is offset by that camera's viewport and scroll. Surface-stage entries come from the two visible compact badge instances rather than the hidden legacy card controls; the main camera leaves their world and screen rectangles equal. This is what lets a browser test aim a real press at a real control instead of assuming a coordinate.
+
+The Marketplace Buy confirmation is a two-action decision: the confirmation
+copy and wallet context span the modal width, while the action pair shares one
+responsive grid row. A `Listed` catalog item uses domain-specific
+`Buy listed cat` and `Back to cats` actions; the generic `Confirm purchase` /
+`Cancel` labels remain for any non-listed purchase path. Collection summary
+copy is state-aware: only `ready` renders an owned-count/revision summary;
+`loading`, `stale`, and `error` use explicit status copy. A failed read
+therefore cannot be mistaken for a valid empty collection, which is reserved
+for a successful projection whose `cats` array is empty.
 
 ## Floor Unlock Contract
 
@@ -2380,8 +2407,9 @@ the local Supabase stack; Step 5 landed it on 2026-09-08 as
 Step 4's bootstrap migration
 (`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
 creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
-for `gen_random_uuid()`). All six tables and the row-level-security policies in
-the six base tables and five cat-collection tables, plus their row-level-security policies, in the matrix below exist in the local development database after
+for `gen_random_uuid()`). The six base tables, five cat-collection tables, and
+three Marketplace trading tables, plus their row-level-security policies, exist
+in the local development database after
 `supabase db reset`; **no deployed database contains them**, because no
 deployment exists yet. This block and its twin in the other document are
 byte-identical by construction and must be changed together, in the same change
@@ -2874,12 +2902,104 @@ one cat from occupying two slots.
 `purchase_cat_instance(user, assetId, idempotencyKey)` locks the caller's
 existing V3 save, derives the blueprint price and role from the server
 allowlist, debits serialized save gold, creates an Idle instance, and records
-the idempotency result in one transaction. `replace_cat_assignment(user,
+the idempotency result in one transaction. The purchase projection also reads
+the committed `walletGold` and `saveRevision`; `src/main.ts` applies those
+values before the next local/cloud save, and `CloudSaveReplica` accepts the
+external revision so the purchase cannot be mistaken for a third-party
+conflict. `replace_cat_assignment(user,
 catInstanceId, slotKey, expectedAssignmentRevision)` locks the owner revision
 and candidate, validates ownership/state/exact role, returns the prior cat to
 Idle, assigns the candidate, and increments the revision atomically. The
 `cat-collection` Edge Function is the only public API; it derives the caller
 from the bearer token and returns a caller-scoped projection.
+
+### Marketplace trading schema extension — 2026-09-20
+
+The forward-only migration `20260920100000_create_marketplace_trading.sql`
+extends `cat_instances` with `renter_user_id` and `rental_expires_at`, then
+adds three service-role-owned tables. All three have RLS enabled, no client
+policies, and no direct browser grants.
+
+```sql
+alter table public.cat_instances
+  add column renter_user_id uuid null references auth.users(id) on delete set null,
+  add column rental_expires_at timestamptz null;
+
+-- The two columns are both null or both set. A rental belongs to another user,
+-- and the instance may be Rented or Assigned while that renter uses it.
+constraint cat_instances_rental_pair
+  check ((renter_user_id is null) = (rental_expires_at is null));
+constraint cat_instances_rental_owner_distinct
+  check (renter_user_id is null or renter_user_id <> owner_user_id);
+constraint cat_instances_rental_state_consistent
+  check (renter_user_id is null or availability_state in ('Rented', 'Assigned'));
+
+create table public.cat_marketplace_listings (
+  listing_id uuid primary key default gen_random_uuid(),
+  seller_user_id uuid not null references auth.users(id) on delete cascade,
+  cat_instance_id uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  listing_type text not null check (listing_type in ('sale', 'rent')),
+  price_exact numeric not null check (price_exact > 0 and price_exact = trunc(price_exact) and price_exact <= 1000000000),
+  status text not null default 'Active' check (status in ('Active', 'Sold', 'Rented', 'Cancelled', 'Expired')),
+  buyer_user_id uuid null references auth.users(id) on delete set null,
+  renter_user_id uuid null references auth.users(id) on delete set null,
+  duration_hours integer null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz null
+);
+
+create table public.cat_rentals (
+  rental_id uuid primary key default gen_random_uuid(),
+  listing_id uuid not null unique references public.cat_marketplace_listings(listing_id) on delete cascade,
+  cat_instance_id uuid not null unique references public.cat_instances(cat_instance_id) on delete cascade,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  renter_user_id uuid not null references auth.users(id) on delete cascade,
+  hourly_price_exact numeric not null,
+  duration_hours integer not null check (duration_hours between 1 and 24),
+  total_price_exact numeric not null,
+  started_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  status text not null default 'Active' check (status in ('Active', 'Expired')),
+  updated_at timestamptz not null default now()
+);
+
+create table public.cat_marketplace_requests (
+  requester_user_id uuid not null references auth.users(id) on delete cascade,
+  idempotency_key text not null,
+  operation text not null check (operation in ('create_listing', 'cancel_listing', 'buy_listing', 'rent_listing')),
+  result_id uuid not null,
+  created_at timestamptz not null default now(),
+  primary key (requester_user_id, idempotency_key)
+);
+```
+
+The listing table has a partial unique index on `cat_instance_id` for `Active`
+rows, plus active browse and seller-history indexes. `cat_rentals` has renter
+and owner state indexes. `cat_instances` has a renter-state index. The
+listing shape constraints keep buyer/renter ids consistent with `Sold`/`Rented`
+statuses, and all price values are positive integer gold amounts capped at
+`1,000,000,000`.
+
+`settle_due_cat_rentals()` is the lazy expiry boundary. It locks due rentals,
+removes any renter assignment, returns the instance to the owner's `Idle`
+roster, marks the rental and listing `Expired`, clears renter metadata, and
+bumps collection plus renter assignment revisions. `create_cat_listing`,
+`cancel_cat_listing`, `buy_cat_listing`, and `rent_cat_listing` are security
+definer RPCs exposed only to `service_role`. They enforce idle ownership,
+single-active-listing, self-trade, wallet, exact-price, 1–24-hour duration,
+and idempotency rules in one transaction. Buy transfers title and credits the
+seller; rent credits the owner while preserving title and setting a server
+expiry. Buyer/renter and seller/owner save rows are locked in UUID order to
+avoid a cross-trade deadlock.
+
+`replace_cat_assignment` now accepts either an owner's idle cat or the caller's
+active rented cat, while preserving the exact role check. The Edge Function
+routes are authenticated `GET /v1/listings`, `POST /v1/listings`, and
+`POST /v1/listings/:id/{cancel,buy,rent}`. Listing projections include the
+exact current cat stats and seller display name; rented users receive a
+caller-scoped usable roster projection while legal ownership remains in the
+server tables. The browser never writes marketplace tables directly.
 
 ## Closed incident reports
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertTouchTargetRegion,
   BOTTOM_NAVIGATION_HEIGHT,
+  CAT_RUNTIME_DISPLAY_SIZE,
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,
@@ -70,9 +71,9 @@ describe('portrait layout geometry', () => {
     expect(FONT_STYLE_BOLD).toBe('700');
   });
 
-  it('balances both floor characters to the elevator cat visual scale', () => {
-    expect(MINE_FLOOR_CHARACTER_DISPLAY_SIZE).toBe(75);
-    expect(MINE_FLOOR_CHARACTER_DISPLAY_SIZE).toBeGreaterThan(
+  it('shares one runtime display box across surface and floor characters', () => {
+    expect(MINE_FLOOR_CHARACTER_DISPLAY_SIZE).toBe(CAT_RUNTIME_DISPLAY_SIZE);
+    expect(MINE_FLOOR_CHARACTER_DISPLAY_SIZE).toBeGreaterThanOrEqual(
       MINE_SHAFT_CARGO_CAT_SIZE,
     );
   });
@@ -245,7 +246,7 @@ describe('scrollable mine content', () => {
     expect(calculateMineContentHeight(MINE_FLOOR_COUNT)).toBe(2_000);
     expect(
       calculateMineContentHeight(MINE_FLOOR_COUNT) - calculateMineLayout().mine.height,
-    ).toBe(1_634);
+    ).toBe(1_656);
   });
 
   it('rejects invalid floor counts', () => {
@@ -379,9 +380,9 @@ describe('touch targets', () => {
 
 describe('region serialization', () => {
   it('emits the diagnostic form the browser layout test reads', () => {
-    expect(serializeRegion(calculateMineLayout().mine)).toBe('0,216,360,366');
+    expect(serializeRegion(calculateMineLayout().mine)).toBe('0,216,360,344');
     expect(serializeRegion(calculateMineLayout().bottomNavigation)).toBe(
-      '0,582,360,58',
+      '0,560,360,80',
     );
   });
 });

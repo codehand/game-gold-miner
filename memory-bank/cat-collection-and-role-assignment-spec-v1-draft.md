@@ -10,7 +10,9 @@ change the relevant production result according to the cat's role, skill, and
 score.
 
 This document extends `marketplace-spec-v1-draft.md`. It does not replace the
-marketplace's ownership, listing, rental, or transaction rules.
+marketplace's listing, rental, or sale rules. It consumes the live seeded-
+catalog Buy result: ownership is created by the server purchase command and
+then projected into Collection.
 
 ## 1. Scope and product story
 
@@ -433,12 +435,15 @@ valid authenticated response before claiming success.
    calculations.
 6. Add reload, re-login, conflict, offline, and end-to-end verification.
 
-Until these steps are implemented and validated, the current Marketplace
-preview remains preview-only and must not claim that a cat is owned or assigned.
+The seeded-catalog Buy handoff is now live and may claim ownership only after
+the authoritative purchase response is applied. Rent, Sell, My listings, and
+any local-only preview still must not claim that a cat is owned or assigned.
 
 ## 12. Explicit non-goals for this draft
 
 - Redesigning Marketplace pricing, rarity, role weights, or transaction states.
+- Implementing live Rent, Sell, My listings, auction, or real-money payment
+  transactions; those remain Marketplace follow-up scope.
 - Allowing shared ownership or one cat instance in multiple mine slots.
 - Adding Unloader as a live v1 role without a separate role decision.
 - Changing the base mine/elevator/warehouse formulas unrelated to cat effects.

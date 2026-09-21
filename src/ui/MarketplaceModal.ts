@@ -7,6 +7,13 @@ import {
   getMarketplaceStatePresentation,
   type MarketplaceAvailabilityState,
 } from './marketplaceStatePresentation';
+import type { CatRosterState } from '../core';
+import type {
+  MarketplaceCommandResult,
+  MarketplaceListingRecord,
+  MarketplaceListingType,
+  MarketplaceListingsResult,
+} from '../platform/web/marketplace';
 
 type RoleFilter = 'All roles' | 'Elevator' | 'Warehouse' | 'Miner';
 type RarityFilter = 'All rarities' | 'N' | 'R' | 'SR' | 'SSR' | 'UR';
@@ -25,6 +32,35 @@ interface CatListing {
   readonly primarySkill: string;
   readonly skillBonusPercent: number;
   readonly availability: MarketplaceAvailabilityState;
+  readonly listingId?: string;
+  readonly listingType?: MarketplaceListingType;
+  readonly sellerDisplayName?: string | null;
+  readonly status?: MarketplaceListingRecord['status'];
+  readonly completedAt?: string | null;
+}
+
+export type MarketplacePurchaseResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'rejected'; readonly code: string }
+  | { readonly kind: 'unavailable'; readonly reason: string };
+
+export interface MarketplaceModalOptions {
+  readonly onPurchase?: (assetId: string) => Promise<MarketplacePurchaseResult>;
+  readonly getWalletGold?: () => string | null;
+  readonly onViewCollection?: () => void;
+  readonly getCollection?: () => CatRosterState;
+  readonly loadListings?: (
+    listingType: MarketplaceListingType | null,
+    mineOnly: boolean,
+  ) => Promise<MarketplaceListingsResult>;
+  readonly onCreateListing?: (command: {
+    readonly catInstanceId: string;
+    readonly listingType: MarketplaceListingType;
+    readonly priceExact: string;
+  }) => Promise<MarketplaceCommandResult>;
+  readonly onCancelListing?: (listingId: string) => Promise<MarketplaceCommandResult>;
+  readonly onBuyListing?: (listingId: string) => Promise<MarketplaceCommandResult>;
+  readonly onRentListing?: (listingId: string, durationHours: number) => Promise<MarketplaceCommandResult>;
 }
 
 const ROLE_LABELS = {
@@ -66,6 +102,21 @@ const ATTRIBUTE_ICON_IDS: Readonly<Record<AttributeKey, string>> = {
 };
 
 const MARKETPLACE_FALLBACK_PORTRAIT = '/assets/placeholder/miner-cat.png';
+
+function formatPurchaseError(code: string): string {
+  switch (code) {
+    case 'insufficient_funds':
+      return 'you do not have enough gold.';
+    case 'wallet_unavailable':
+      return 'your wallet is not ready.';
+    case 'unknown_asset':
+      return 'this cat is no longer listed.';
+    case 'unauthenticated':
+      return 'sign in again and retry.';
+    default:
+      return 'the server did not accept the request.';
+  }
+}
 
 const PREVIEW_FIXTURES = [
   {
@@ -166,8 +217,8 @@ const CATS: readonly CatListing[] = PREVIEW_FIXTURES.map((fixture) => {
   };
 });
 
-type MarketTab = 'Buy' | 'Rent' | 'My listings';
-const MARKET_TABS: readonly MarketTab[] = ['Buy', 'Rent', 'My listings'];
+type MarketTab = 'Buy' | 'Rent' | 'Sell' | 'My listings';
+const MARKET_TABS: readonly MarketTab[] = ['Buy', 'Rent', 'Sell', 'My listings'];
 
 const ROLE_FILTERS: readonly RoleFilter[] = [
   'All roles',
@@ -182,15 +233,9 @@ type SortOption = 'Featured' | 'Price: low' | 'Price: high';
 const SORT_OPTIONS: readonly SortOption[] = ['Featured', 'Price: low', 'Price: high'];
 
 /**
- * UI preview only: listings and drafts never enter authoritative game state.
- *
- * Every listing rendered here — `cat.name`, `cat.role`, `cat.rarity` — comes
- * from the module-level `CATS` constant today, but this screen exists because
- * the server milestone eventually replaces that constant with other players'
- * data. Built with `createElement`/`textContent` throughout, the same
- * discipline `MineShaftUpgradeModal` already uses, so that day does not
- * require rewriting a screen full of `innerHTML` template strings into a
- * stored-XSS sink's fix.
+ * Buy keeps the nine deterministic catalog contracts. Rent, Sell, and My
+ * listings are server projections, so transaction state and ownership never
+ * come from a local draft or a client-only fixture.
  */
 export class MarketplaceModal {
   readonly #dialog = document.createElement('dialog');
@@ -199,13 +244,42 @@ export class MarketplaceModal {
   #rarity: RarityFilter = 'All rarities';
   #search = '';
   #sort: SortOption = 'Featured';
-  #drafts: string[] = [];
+  #listings: readonly MarketplaceListingRecord[] = [];
+  #listingLoadState: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+  #listingError = '';
+  #listingLoadToken = 0;
+  #listingActionId: string | null = null;
+  #listingActionState: 'idle' | 'pending' | 'success' | 'error' = 'idle';
+  #listingActionError = '';
+  #rentalHours = 1;
+  #rentalPriceButton: HTMLButtonElement | null = null;
   #returnFocus: HTMLElement | null = null;
   #destroyed = false;
   readonly #onClose: () => void;
+  readonly #onPurchase: ((assetId: string) => Promise<MarketplacePurchaseResult>) | null;
+  readonly #getWalletGold: (() => string | null) | null;
+  readonly #onViewCollection: (() => void) | null;
+  readonly #getCollection: (() => CatRosterState) | null;
+  readonly #loadListings: MarketplaceModalOptions['loadListings'] | null;
+  readonly #onCreateListing: MarketplaceModalOptions['onCreateListing'] | null;
+  readonly #onCancelListing: MarketplaceModalOptions['onCancelListing'] | null;
+  readonly #onBuyListing: MarketplaceModalOptions['onBuyListing'] | null;
+  readonly #onRentListing: MarketplaceModalOptions['onRentListing'] | null;
+  #purchaseState: 'idle' | 'confirming' | 'pending' | 'success' | 'error' = 'idle';
+  #purchaseAssetId: string | null = null;
+  #purchaseError = '';
 
-  public constructor(parent: HTMLElement, onClose: () => void) {
+  public constructor(parent: HTMLElement, onClose: () => void, options: MarketplaceModalOptions = {}) {
     this.#onClose = onClose;
+    this.#onPurchase = options.onPurchase ?? null;
+    this.#getWalletGold = options.getWalletGold ?? null;
+    this.#onViewCollection = options.onViewCollection ?? null;
+    this.#getCollection = options.getCollection ?? null;
+    this.#loadListings = options.loadListings ?? null;
+    this.#onCreateListing = options.onCreateListing ?? null;
+    this.#onCancelListing = options.onCancelListing ?? null;
+    this.#onBuyListing = options.onBuyListing ?? null;
+    this.#onRentListing = options.onRentListing ?? null;
     this.#dialog.className = 'marketplace';
     this.#dialog.setAttribute('aria-label', 'Marketplace');
     parent.append(this.#dialog);
@@ -289,7 +363,7 @@ export class MarketplaceModal {
   #preview(): HTMLSpanElement {
     const preview = document.createElement('span');
     preview.className = 'market-preview';
-    preview.textContent = 'Preview';
+    preview.textContent = 'All trading live';
     return preview;
   }
 
@@ -343,7 +417,7 @@ export class MarketplaceModal {
 
     const note = document.createElement('p');
     note.className = 'market-note';
-    note.textContent = 'Sample listings · Gold prices · No live trading yet';
+    note.textContent = 'Seeded catalog · Rent and Sell use player listings · My listings is server-backed';
 
     const tabs = document.createElement('nav');
     tabs.className = 'market-tabs';
@@ -351,8 +425,7 @@ export class MarketplaceModal {
     let activeTabButton: HTMLButtonElement | null = null;
     for (const tab of MARKET_TABS) {
       const button = this.#button(tab, () => {
-        this.#tab = tab;
-        this.#render();
+        this.#selectTab(tab);
       });
       button.setAttribute('aria-pressed', String(this.#tab === tab));
       if (this.#tab === tab) {
@@ -379,6 +452,18 @@ export class MarketplaceModal {
     // screen-reader users where they were, instead of the dialog falling
     // back to <body> and forcing them to tab back down from the header.
     activeTabButton?.focus();
+
+    if (this.#tab !== 'Buy' && this.#listingLoadState === 'idle') {
+      void this.#loadCurrentListings();
+    }
+  }
+
+  #selectTab(tab: MarketTab): void {
+    this.#tab = tab;
+    this.#listingLoadToken += 1;
+    this.#listingLoadState = tab === 'Buy' || tab === 'Sell' ? 'idle' : 'idle';
+    this.#listingError = '';
+    this.#render();
   }
 
   #renderListings(body: HTMLElement): void {
@@ -386,31 +471,40 @@ export class MarketplaceModal {
     heading.textContent = 'Your trading corner';
     const note = document.createElement('p');
     note.className = 'market-note';
-    note.textContent = 'Prepare a sale or hourly rental. Drafts last until this page reloads.';
+    note.textContent = 'Create a fixed-price sale or hourly rental from an idle cat you own.';
     const create = this.#button('+ Create listing', () => this.#createListing(), 'market-primary');
     body.append(heading, note, create);
 
-    if (!this.#drafts.length) {
+    if (this.#listingLoadState === 'loading') {
+      const loading = document.createElement('p');
+      loading.className = 'market-note';
+      loading.textContent = 'Loading your listings…';
+      body.append(loading);
+      return;
+    }
+    if (this.#listingLoadState === 'error') {
+      const error = document.createElement('p');
+      error.className = 'market-note';
+      error.textContent = this.#listingError || 'Your listings are unavailable.';
+      body.append(error, this.#button('Retry', () => {
+        this.#listingLoadState = 'idle';
+        this.#render();
+      }, 'market-primary'));
+      return;
+    }
+
+    if (!this.#listings.length) {
       const empty = document.createElement('div');
       empty.className = 'market-empty';
       const hint = document.createElement('span');
-      hint.textContent = 'Your saved drafts will appear here.';
+      hint.textContent = 'Published listings and completed trades will appear here.';
       empty.append('No listings yet', hint);
       body.append(empty);
     }
 
-    this.#drafts.forEach((draft, index) => {
-      const row = document.createElement('article');
-      row.className = 'market-draft';
-      const text = document.createElement('p');
-      text.textContent = draft;
-      const remove = this.#button('Remove', () => {
-        this.#drafts.splice(index, 1);
-        this.#render();
-      });
-      row.append(text, remove);
-      body.append(row);
-    });
+    for (const listing of this.#listings) {
+      body.append(this.#listingRow(listing));
+    }
   }
 
   #renderBrowse(body: HTMLElement): void {
@@ -458,10 +552,42 @@ export class MarketplaceModal {
     this.#results(body);
   }
 
+  #listingRow(listing: MarketplaceListingRecord): HTMLElement {
+    const row = document.createElement('article');
+    row.className = 'market-draft market-listing-row';
+    const text = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = `${listing.cat.displayName} · ${listing.listingType === 'rent' ? 'Hourly rental' : 'For sale'}`;
+    const meta = document.createElement('p');
+    meta.textContent = `${formatGold(listing.priceExact)} gold${listing.listingType === 'rent' ? '/hr' : ''} · ${listing.status}`;
+    text.append(title, meta);
+    row.append(text);
+
+    if (listing.status === 'Active' && this.#onCancelListing !== null) {
+      const cancel = this.#button(
+        this.#listingActionId === listing.listingId && this.#listingActionState === 'pending' ? 'Cancelling…' : 'Cancel',
+        () => void this.#cancelListing(listing),
+      );
+      cancel.disabled = this.#listingActionId === listing.listingId && this.#listingActionState === 'pending';
+      row.append(cancel);
+    }
+    if (this.#listingActionId === listing.listingId && this.#listingActionState === 'error') {
+      const error = document.createElement('p');
+      error.className = 'market-note';
+      error.textContent = this.#listingActionError;
+      row.append(error);
+    }
+    return row;
+  }
+
   #results(body: HTMLElement): void {
     const rental = this.#tab === 'Rent';
-    const price = (cat: CatListing): number => (rental ? cat.hourly : cat.price);
-    const cats = CATS.filter(
+    const serverBrowse = this.#tab === 'Rent' || this.#tab === 'Sell';
+    const sourceCats = serverBrowse
+      ? this.#listings.filter((listing) => listing.status === 'Active').map(toCatListing)
+      : [...CATS];
+    const price = (cat: CatListing): number => rental ? cat.hourly : cat.price;
+    const cats = sourceCats.filter(
       (cat) =>
         (this.#role === 'All roles' || cat.role === this.#role) &&
         (this.#rarity === 'All rarities' || cat.rarity === this.#rarity) &&
@@ -472,11 +598,26 @@ export class MarketplaceModal {
       cats.sort((a, b) => (price(a) - price(b)) * direction);
     }
 
-    const summary = rental ? ' · Rent for 1–24 hours' : ' · Find a keeper';
-    body.querySelector('.market-results')!.textContent = `${cats.length} cats available${summary}`;
+    const summary = rental ? ' · Rent for 1–24 hours' : this.#tab === 'Sell' ? ' · Buy from another player' : ' · Find a keeper';
+    const resultLabel = this.#listingLoadState === 'loading'
+      ? 'Loading live listings…'
+      : this.#listingLoadState === 'error'
+        ? this.#listingError || 'Live listings unavailable.'
+        : `${cats.length} cats available${summary}`;
+    body.querySelector('.market-results')!.textContent = resultLabel;
 
     const grid = body.querySelector<HTMLElement>('.market-grid')!;
     grid.replaceChildren();
+    if (this.#listingLoadState === 'loading') {
+      return;
+    }
+    if (this.#listingLoadState === 'error') {
+      grid.append(this.#button('Retry', () => {
+        this.#listingLoadState = 'idle';
+        this.#render();
+      }, 'market-primary'));
+      return;
+    }
     for (const cat of cats) {
       grid.append(this.#card(cat, rental, price(cat)));
     }
@@ -535,8 +676,43 @@ export class MarketplaceModal {
     info.append(name, role, this.#statGrid(cat, true), priceLine, availability);
 
     card.append(portrait, info);
-    card.append(this.#button(rental ? 'Rent cat' : 'View cat', () => this.#details(cat, rental)));
+    card.append(this.#button(
+      rental ? 'Rent cat' : cat.listingType === 'sale' ? 'Buy cat' : 'View cat',
+      () => this.#details(cat, rental),
+    ));
     return card;
+  }
+
+  async #loadCurrentListings(): Promise<void> {
+    if (this.#loadListings === null || this.#tab === 'Buy') {
+      return;
+    }
+    const listingType: MarketplaceListingType | null = this.#tab === 'Rent'
+      ? 'rent'
+      : this.#tab === 'Sell'
+        ? 'sale'
+        : null;
+    const mineOnly = this.#tab === 'My listings';
+    const token = ++this.#listingLoadToken;
+    this.#listingLoadState = 'loading';
+    this.#render();
+    const loadListings = this.#loadListings;
+    if (loadListings === null || loadListings === undefined) {
+      return;
+    }
+    const result = await loadListings(listingType, mineOnly);
+    if (token !== this.#listingLoadToken) {
+      return;
+    }
+    if (result.kind === 'ready') {
+      this.#listings = result.listings;
+      this.#listingError = '';
+      this.#listingLoadState = 'ready';
+    } else {
+      this.#listingError = formatMarketplaceUnavailable(result.reason);
+      this.#listingLoadState = 'error';
+    }
+    this.#render();
   }
 
   #portraitImage(cat: CatListing): HTMLImageElement {
@@ -577,9 +753,18 @@ export class MarketplaceModal {
     const description = document.createElement('p');
     description.textContent = rental
       ? 'A helping paw, by the hour.'
-      : 'A new face for your mining crew.';
+      : cat.listingType === 'sale'
+        ? 'A permanent specialist contract from another mine.'
+        : 'A new face for your mining crew.';
     detail.append(this.#portraitImage(cat), eyebrow, name, description);
     main.append(detail);
+
+    if (cat.sellerDisplayName !== undefined) {
+      const seller = document.createElement('p');
+      seller.className = 'market-note';
+      seller.textContent = `Listed by ${cat.sellerDisplayName ?? 'another mine operator'}`;
+      main.append(seller);
+    }
 
     const availability = document.createElement('p');
     availability.className = 'market-detail-availability';
@@ -607,8 +792,12 @@ export class MarketplaceModal {
     const total = document.createElement('p');
     total.className = 'market-total';
     const update = (hours: number): void => {
+      this.#rentalHours = hours;
       const amount = (rental ? cat.hourly * hours : cat.price).toLocaleString('en-US');
       total.textContent = `Total: ${amount} gold${rental ? ` for ${hours} hr` : ''}`;
+      if (rental && this.#rentalPriceButton !== null) {
+        this.#rentalPriceButton.textContent = `Rent for ${amount} gold`;
+      }
     };
 
     if (rental) {
@@ -625,15 +814,298 @@ export class MarketplaceModal {
 
     const note = document.createElement('p');
     note.className = 'market-note';
-    note.textContent = 'Preview only. Ownership, role bonuses and live transactions are not available yet.';
-    const disabled = document.createElement('button');
-    disabled.type = 'button';
-    disabled.className = 'market-primary';
-    disabled.textContent = 'Trading coming soon';
-    disabled.disabled = true;
-    main.append(note, disabled);
+    if (rental) {
+      note.textContent = 'Rental is server-authoritative. The owner keeps the cat and usage rights expire automatically.';
+      main.append(note, this.#rentalControls(cat));
+    } else if (cat.listingType === 'sale') {
+      note.textContent = 'Sale is server-authoritative: the seller receives gold and the cat enters your idle Collection.';
+      main.append(note, this.#saleControls(cat));
+    } else {
+      note.textContent = 'Buy is server-authoritative: gold is deducted once and the owned cat is added to Collection.';
+      main.append(note, this.#purchaseControls(cat));
+    }
 
     back.focus();
+  }
+
+  #purchaseControls(cat: CatListing): HTMLElement {
+    const controls = document.createElement('div');
+    controls.className = 'market-purchase-controls';
+    const wallet = this.#getWalletGold?.();
+    const isListed = cat.availability === 'Listed';
+    if (wallet !== null && wallet !== undefined) {
+      const walletLabel = document.createElement('p');
+      walletLabel.className = 'market-note';
+      walletLabel.textContent = `Wallet: ${Number(wallet).toLocaleString('en-US')} gold`;
+      controls.append(walletLabel);
+    }
+
+    const state = this.#purchaseAssetId === cat.assetId ? this.#purchaseState : 'idle';
+    if (this.#onPurchase === null) {
+      const unavailable = document.createElement('button');
+      unavailable.type = 'button';
+      unavailable.className = 'market-primary';
+      unavailable.textContent = 'Purchase unavailable';
+      unavailable.disabled = true;
+      controls.append(unavailable);
+      return controls;
+    }
+
+    if (state === 'pending') {
+      const pending = document.createElement('button');
+      pending.type = 'button';
+      pending.className = 'market-primary';
+      pending.textContent = 'Buying…';
+      pending.disabled = true;
+      pending.setAttribute('aria-busy', 'true');
+      controls.append(pending);
+      return controls;
+    }
+
+    if (state === 'success') {
+      const success = document.createElement('p');
+      success.className = 'market-note';
+      success.textContent = `${cat.name} was added to your Collection.`;
+      const collection = this.#button('View collection', () => {
+        this.#close();
+        window.setTimeout(() => this.#onViewCollection?.(), 0);
+      }, 'market-primary');
+      controls.append(success, collection);
+      return controls;
+    }
+
+    if (state === 'confirming') {
+      controls.classList.add('market-purchase-confirming');
+      const confirmation = document.createElement('p');
+      confirmation.className = 'market-note';
+      confirmation.textContent = isListed
+        ? `Buy listed ${cat.name} for ${cat.price.toLocaleString('en-US')} gold?`
+        : `Confirm purchase of ${cat.name} for ${cat.price.toLocaleString('en-US')} gold?`;
+      const confirm = this.#button(
+        isListed ? 'Buy listed cat' : 'Confirm purchase',
+        () => void this.#purchase(cat),
+        'market-primary',
+      );
+      const cancel = this.#button(isListed ? 'Back to cats' : 'Cancel', () => {
+        this.#purchaseState = 'idle';
+        if (isListed) {
+          this.#render();
+        } else {
+          this.#renderDetailsAgain(cat);
+        }
+      });
+      controls.append(confirmation, confirm, cancel);
+      return controls;
+    }
+
+    if (state === 'error') {
+      const error = document.createElement('p');
+      error.className = 'market-note';
+      error.textContent = this.#purchaseError;
+      const retry = this.#button('Try again', () => {
+        this.#purchaseState = 'idle';
+        this.#renderDetailsAgain(cat);
+      }, 'market-primary');
+      controls.append(error, retry);
+      return controls;
+    }
+
+    controls.append(this.#button(
+      `Buy for ${cat.price.toLocaleString('en-US')} gold`,
+      () => {
+        this.#purchaseAssetId = cat.assetId;
+        this.#purchaseState = 'confirming';
+        this.#renderDetailsAgain(cat);
+      },
+      'market-primary',
+    ));
+    return controls;
+  }
+
+  #saleControls(cat: CatListing): HTMLElement {
+    const controls = document.createElement('div');
+    controls.className = 'market-purchase-controls';
+    const state = this.#listingActionId === cat.listingId ? this.#listingActionState : 'idle';
+    if (cat.listingId === undefined || this.#onBuyListing === null) {
+      const unavailable = this.#button('Purchase unavailable', () => undefined, 'market-primary');
+      unavailable.disabled = true;
+      controls.append(unavailable);
+      return controls;
+    }
+    if (state === 'pending') {
+      const pending = this.#button('Buying…', () => undefined, 'market-primary');
+      pending.disabled = true;
+      pending.setAttribute('aria-busy', 'true');
+      controls.append(pending);
+      return controls;
+    }
+    if (state === 'success') {
+      const success = document.createElement('p');
+      success.className = 'market-note';
+      success.textContent = `${cat.name} was added to your Collection.`;
+      controls.append(success, this.#button('View collection', () => {
+        this.#close();
+        window.setTimeout(() => this.#onViewCollection?.(), 0);
+      }, 'market-primary'));
+      return controls;
+    }
+    if (state === 'error') {
+      const error = document.createElement('p');
+      error.className = 'market-note';
+      error.textContent = this.#listingActionError;
+      controls.append(error, this.#button('Try again', () => {
+        this.#listingActionState = 'idle';
+        this.#renderDetailsAgain(cat);
+      }, 'market-primary'));
+      return controls;
+    }
+    controls.append(this.#button(
+      `Buy for ${formatGold(cat.price)} gold`,
+      () => void this.#buyListing(cat),
+      'market-primary',
+    ));
+    return controls;
+  }
+
+  #rentalControls(cat: CatListing): HTMLElement {
+    const controls = document.createElement('div');
+    controls.className = 'market-purchase-controls';
+    this.#rentalPriceButton = null;
+    const state = this.#listingActionId === cat.listingId ? this.#listingActionState : 'idle';
+    if (cat.listingId === undefined || this.#onRentListing === null) {
+      const unavailable = this.#button('Rent unavailable', () => undefined, 'market-primary');
+      unavailable.disabled = true;
+      controls.append(unavailable);
+      return controls;
+    }
+    if (state === 'pending') {
+      const pending = this.#button('Renting…', () => undefined, 'market-primary');
+      pending.disabled = true;
+      pending.setAttribute('aria-busy', 'true');
+      controls.append(pending);
+      return controls;
+    }
+    if (state === 'success') {
+      const success = document.createElement('p');
+      success.className = 'market-note';
+      success.textContent = `${cat.name} is now available in your Collection for ${this.#rentalHours} hours.`;
+      controls.append(success, this.#button('View collection', () => {
+        this.#close();
+        window.setTimeout(() => this.#onViewCollection?.(), 0);
+      }, 'market-primary'));
+      return controls;
+    }
+    if (state === 'error') {
+      const error = document.createElement('p');
+      error.className = 'market-note';
+      error.textContent = this.#listingActionError;
+      controls.append(error, this.#button('Try again', () => {
+        this.#listingActionState = 'idle';
+        this.#renderDetailsAgain(cat);
+      }, 'market-primary'));
+      return controls;
+    }
+    const submit = this.#button(
+      `Rent for ${formatGold(String(cat.hourly * this.#rentalHours))} gold`,
+      () => void this.#rentListing(cat),
+      'market-primary',
+    );
+    this.#rentalPriceButton = submit;
+    controls.append(submit);
+    return controls;
+  }
+
+  async #buyListing(cat: CatListing): Promise<void> {
+    if (this.#onBuyListing === null || cat.listingId === undefined || this.#listingActionState === 'pending') {
+      return;
+    }
+    this.#listingActionId = cat.listingId;
+    this.#listingActionState = 'pending';
+    this.#renderDetailsAgain(cat);
+    const buyListing = this.#onBuyListing;
+    if (buyListing === null || buyListing === undefined) {
+      return;
+    }
+    const result = await buyListing(cat.listingId).catch(() => ({ kind: 'unavailable', reason: 'offline' } as const));
+    this.#applyListingCommandResult(result);
+    this.#renderDetailsAgain(cat);
+  }
+
+  async #rentListing(cat: CatListing): Promise<void> {
+    if (this.#onRentListing === null || cat.listingId === undefined || this.#listingActionState === 'pending') {
+      return;
+    }
+    this.#listingActionId = cat.listingId;
+    this.#listingActionState = 'pending';
+    this.#renderDetailsAgain(cat);
+    const rentListing = this.#onRentListing;
+    if (rentListing === null || rentListing === undefined) {
+      return;
+    }
+    const result = await rentListing(cat.listingId, this.#rentalHours)
+      .catch(() => ({ kind: 'unavailable', reason: 'offline' } as const));
+    this.#applyListingCommandResult(result);
+    this.#renderDetailsAgain(cat);
+  }
+
+  async #cancelListing(listing: MarketplaceListingRecord): Promise<void> {
+    if (this.#onCancelListing === null || this.#listingActionState === 'pending') {
+      return;
+    }
+    this.#listingActionId = listing.listingId;
+    this.#listingActionState = 'pending';
+    this.#listingActionError = '';
+    const cancelListing = this.#onCancelListing;
+    if (cancelListing === null || cancelListing === undefined) {
+      return;
+    }
+    const result = await cancelListing(listing.listingId)
+      .catch(() => ({ kind: 'unavailable', reason: 'offline' } as const));
+    this.#applyListingCommandResult(result);
+    this.#listingLoadState = 'idle';
+    this.#render();
+  }
+
+  #applyListingCommandResult(result: MarketplaceCommandResult): void {
+    if (result.kind === 'applied') {
+      this.#listingActionState = 'success';
+      this.#listingActionError = '';
+      this.#listings = result.listings;
+      return;
+    }
+    this.#listingActionState = 'error';
+    this.#listingActionError = result.kind === 'rejected'
+      ? `Marketplace rejected the request: ${formatMarketplaceError(result.code)}`
+      : `Marketplace unavailable: ${formatMarketplaceUnavailable(result.reason)}`;
+  }
+
+  #renderDetailsAgain(cat: CatListing): void {
+    this.#details(cat, this.#tab === 'Rent');
+  }
+
+  async #purchase(cat: CatListing): Promise<void> {
+    if (this.#onPurchase === null || this.#purchaseState === 'pending') {
+      return;
+    }
+    this.#purchaseAssetId = cat.assetId;
+    this.#purchaseState = 'pending';
+    this.#renderDetailsAgain(cat);
+    try {
+      const result = await this.#onPurchase(cat.assetId);
+      if (result.kind === 'applied') {
+        this.#purchaseState = 'success';
+        this.#purchaseError = '';
+      } else {
+        this.#purchaseState = 'error';
+        this.#purchaseError = result.kind === 'rejected'
+          ? `Purchase rejected: ${formatPurchaseError(result.code)}`
+          : `Purchase unavailable: ${formatPurchaseError(result.reason)}`;
+      }
+    } catch {
+      this.#purchaseState = 'error';
+      this.#purchaseError = 'Purchase unavailable. Check your connection and try again.';
+    }
+    this.#renderDetailsAgain(cat);
   }
 
   #createListing(): void {
@@ -645,7 +1117,7 @@ export class MarketplaceModal {
     heading.textContent = 'Create a listing';
     const note = document.createElement('p');
     note.className = 'market-note';
-    note.textContent = 'Try a draft with a sample cat. Publishing will require a cat you own.';
+    note.textContent = 'Only idle cats in your Collection can be listed. Assigned, rented, and already-listed cats are unavailable.';
 
     const form = document.createElement('form');
     form.className = 'market-form';
@@ -653,8 +1125,12 @@ export class MarketplaceModal {
     const catLabel = document.createElement('label');
     const catSelect = document.createElement('select');
     catSelect.name = 'cat';
-    CATS.forEach((cat) => catSelect.add(new Option(`${cat.name} · ${cat.role} · ${cat.rarity}`, cat.name)));
-    catLabel.append('Sample cat', catSelect);
+    const ownedCats = this.#getCollection?.().cats.filter((cat) => cat.availabilityState === 'Idle' && cat.assignedSlotKey === null) ?? [];
+    for (const cat of ownedCats) {
+      catSelect.add(new Option(`${cat.displayName} · ${ROLE_LABELS[cat.roleId]} · ${cat.rarityTier}`, cat.catInstanceId));
+    }
+    catSelect.required = ownedCats.length > 0;
+    catLabel.append('Cat to list', catSelect);
 
     const typeLabel = document.createElement('label');
     const typeSelect = document.createElement('select');
@@ -679,26 +1155,62 @@ export class MarketplaceModal {
     const submit = document.createElement('button');
     submit.type = 'submit';
     submit.className = 'market-primary';
-    submit.textContent = 'Save draft';
+    submit.textContent = this.#onCreateListing === null ? 'Publishing unavailable' : 'Publish listing';
+    submit.disabled = this.#onCreateListing === null || ownedCats.length === 0;
 
     form.append(catLabel, typeLabel, priceLabel, submit);
     main.append(heading, note, form);
 
+    if (ownedCats.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'market-note';
+      empty.textContent = 'You do not have an idle cat available to list yet.';
+      main.append(empty);
+    }
+
     form.onsubmit = (event) => {
       event.preventDefault();
-      if (!form.reportValidity()) {
+      if (!form.reportValidity() || this.#onCreateListing === null) {
         return;
       }
       const data = new FormData(form);
-      const type = data.get('type');
-      const price = Number(data.get('price')).toLocaleString('en-US');
-      const suffix = type === 'Hourly rental' ? '/hr' : '';
-      this.#drafts.push(`${data.get('cat')} · ${type} · ${price} gold${suffix} · Draft`);
-      this.#tab = 'My listings';
-      this.#render();
+      const price = String(data.get('price'));
+      const listingType: MarketplaceListingType = data.get('type') === 'Hourly rental' ? 'rent' : 'sale';
+      void this.#publishListing({
+        catInstanceId: String(data.get('cat')),
+        listingType,
+        priceExact: price,
+      });
     };
 
     back.focus();
+  }
+
+  async #publishListing(command: {
+    readonly catInstanceId: string;
+    readonly listingType: MarketplaceListingType;
+    readonly priceExact: string;
+  }): Promise<void> {
+    if (this.#onCreateListing === null) {
+      return;
+    }
+    const createListing = this.#onCreateListing;
+    if (createListing === null || createListing === undefined) {
+      return;
+    }
+    const submit = createListing(command);
+    const result = await submit.catch(() => ({ kind: 'unavailable', reason: 'offline' } as const));
+    this.#applyListingCommandResult(result);
+    if (result.kind === 'applied') {
+      this.#tab = 'My listings';
+      this.#listingLoadState = 'ready';
+      this.#render();
+      return;
+    }
+    const message = document.createElement('p');
+    message.className = 'market-note';
+    message.textContent = this.#listingActionError;
+    this.#dialog.querySelector('.market-form')?.append(message);
   }
 
   #button(text: string, action: () => void, className = ''): HTMLButtonElement {
@@ -721,5 +1233,82 @@ export class MarketplaceModal {
     values.forEach((value) => select.add(new Option(value, value, false, value === selected)));
     select.onchange = () => change(select.value as T);
     return select;
+  }
+}
+
+function toCatListing(listing: MarketplaceListingRecord): CatListing {
+  const role = ROLE_LABELS[listing.cat.roleId];
+  const price = safeDisplayPrice(listing.priceExact);
+  return {
+    assetId: listing.cat.assetId as MarketplaceAssetRecord['assetId'],
+    name: listing.cat.displayName,
+    role,
+    rarity: listing.cat.rarityTier,
+    price: listing.listingType === 'sale' ? price : 0,
+    hourly: listing.listingType === 'rent' ? price : 0,
+    level: listing.cat.level,
+    attributes: listing.cat.attributes,
+    roleScore: calculateRoleScoreForDisplay(listing.cat),
+    primarySkill: ROLE_SKILLS[listing.cat.roleId],
+    skillBonusPercent: Math.round(calculateSkillBonusForDisplay(listing.cat) * 100),
+    availability: listing.cat.availabilityState,
+    listingId: listing.listingId,
+    listingType: listing.listingType,
+    sellerDisplayName: listing.sellerDisplayName,
+    status: listing.status,
+    completedAt: listing.completedAt,
+  };
+}
+
+function safeDisplayPrice(value: string): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function formatGold(value: string | number): string {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed.toLocaleString('en-US') : value.toString();
+}
+
+function calculateRoleScoreForDisplay(cat: MarketplaceListingRecord['cat']): number {
+  const weights = cat.roleId === 'elevator'
+    ? { power: 0.1, speed: 0.45, capacity: 0.3, efficiency: 0.15 }
+    : cat.roleId === 'warehouse'
+      ? { power: 0.1, speed: 0.25, capacity: 0.4, efficiency: 0.25 }
+      : { power: 0.45, speed: 0.3, capacity: 0.05, efficiency: 0.2 };
+  return Math.round(
+    cat.attributes.power * weights.power +
+    cat.attributes.speed * weights.speed +
+    cat.attributes.capacity * weights.capacity +
+    cat.attributes.efficiency * weights.efficiency,
+  );
+}
+
+function calculateSkillBonusForDisplay(cat: MarketplaceListingRecord['cat']): number {
+  const score = calculateRoleScoreForDisplay(cat);
+  const base = cat.roleId === 'miner' ? 0 : 0.02;
+  const max = cat.roleId === 'miner' ? 0.25 : 0.28;
+  return base + max * score / 100;
+}
+
+function formatMarketplaceError(code: string): string {
+  switch (code) {
+    case 'insufficient_funds': return 'you do not have enough gold.';
+    case 'listing_unavailable': return 'this listing is no longer available.';
+    case 'cat_not_listable': return 'only an idle cat can be listed.';
+    case 'listing_exists': return 'this cat already has an active listing.';
+    case 'invalid_duration': return 'choose a rental duration from 1 to 24 hours.';
+    case 'self_trade': return 'you cannot trade with your own listing.';
+    case 'unknown_cat': return 'that cat is no longer in your Collection.';
+    default: return 'the server did not accept the request.';
+  }
+}
+
+function formatMarketplaceUnavailable(reason: string): string {
+  switch (reason) {
+    case 'unauthenticated': return 'sign in again and retry.';
+    case 'unconfigured': return 'marketplace services are not configured.';
+    case 'invalid-response': return 'the marketplace returned invalid data.';
+    default: return 'check your connection and try again.';
   }
 }

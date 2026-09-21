@@ -1,4 +1,5 @@
 import {
+  GameNumber,
   validateCatRoster,
   type CatAvailabilityState,
   type CatRarityTier,
@@ -28,7 +29,14 @@ export type CatCollectionLoadResult =
   | { readonly kind: 'unavailable'; readonly reason: CatCollectionUnavailableReason };
 
 export type CatCollectionCommandResult =
-  | { readonly kind: 'applied'; readonly roster: CatRosterState }
+  | {
+      readonly kind: 'applied';
+      readonly roster: CatRosterState;
+      /** Present for a server-backed purchase response. */
+      readonly walletGold?: string;
+      /** The save revision changed atomically with the purchase. */
+      readonly saveRevision?: number;
+    }
   | { readonly kind: 'rejected'; readonly code: string }
   | { readonly kind: 'unavailable'; readonly reason: CatCollectionUnavailableReason };
 
@@ -62,7 +70,7 @@ export async function loadCatCollectionViaFetch(
   }
 
   try {
-    const roster = parseCatRoster(await response.response.json() as unknown);
+    const roster = parseCatRosterResponse(await response.response.json() as unknown);
     return roster === null
       ? { kind: 'unavailable', reason: 'invalid-response' }
       : { kind: 'ready', roster };
@@ -127,10 +135,34 @@ async function sendMutation(
       : { kind: 'rejected', code };
   }
 
-  const roster = parseCatRoster(payload);
-  return roster === null
+  const purchaseMetadata = 'assetId' in body ? parsePurchaseMetadata(payload) : null;
+  const roster = parseCatRosterResponse(payload);
+  return roster === null || ('assetId' in body && purchaseMetadata === null)
     ? { kind: 'unavailable', reason: 'invalid-response' }
-    : { kind: 'applied', roster };
+    : {
+        kind: 'applied',
+        roster,
+        ...(purchaseMetadata ?? {}),
+      };
+}
+
+function parsePurchaseMetadata(value: unknown):
+  | { readonly walletGold: string; readonly saveRevision: number }
+  | null {
+  if (!isRecord(value) || !isNonEmptyString(value.walletGold) || !isSafeNonNegativeInteger(value.saveRevision)) {
+    return null;
+  }
+
+  try {
+    // Keep the exact serialized representation across the network boundary;
+    // constructing the domain number rejects malformed or non-finite values.
+    if (GameNumber.from(value.walletGold).lessThan(0)) {
+      return null;
+    }
+    return { walletGold: value.walletGold, saveRevision: value.saveRevision };
+  } catch {
+    return null;
+  }
 }
 
 async function authenticatedRequest(
@@ -188,7 +220,7 @@ function fetchWithToken(
   });
 }
 
-function parseCatRoster(value: unknown): CatRosterState | null {
+export function parseCatRosterResponse(value: unknown): CatRosterState | null {
   if (!isRecord(value) || !Array.isArray(value.cats) || !Array.isArray(value.assignments)) {
     return null;
   }

@@ -3,8 +3,9 @@
 ## Current State
 
 All 37 base-game implementation-plan steps are complete and user-validated;
-cat collection Phases 0–9 are complete under the living post-milestone plan;
-the full feature acceptance gate passed.
+cat collection Phases 0–9 and the live seeded-catalog Marketplace
+Buy/Sell/Rent/My listings flows are complete under the living post-milestone
+plans.
 IndexedDB remains schema version 1, the data-only save document is V3, and the
 Supabase relational cat tables are documented in the complete schema below. The
 physical mid-range Android pass and a human 30-second-comprehension playtest
@@ -14,6 +15,23 @@ the runtime slot resolver and pure cat production modifiers; Phase 6 uses
 comparison, pending/rejection handling, and an expected-revision command; the
 browser adapter receives the function base URL so it appends each mutation
 route exactly once.
+The 2026-09-21 UI feedback pass is presentation-only: the Marketplace Buy
+confirmation uses listing-specific CTAs in a two-column grid at every
+supported portrait width, and Collection status copy keeps retryable load
+errors separate from valid empty data. No save, network, or database contract
+changed.
+The same asset pass adds an alpha-cropped transparent full-menu strip at
+`/assets/ui/navigation/bottom-navigation-menu.png` (2,167×455 RGBA). Phaser
+loads it as one image; the view fits the complete navy/gold artwork uniformly
+to roughly 356×75 inside the fixed 360×80 navigation region. A solid
+`NAVIGATION_BACKGROUND` underlay fills the transparent margins so the mine
+background cannot show through as a black seam, while the existing five code
+hit regions remain independent of the artwork. The crop is recorded in
+`art-source/navigation-menu/processed/crop-meta.json`; the prior icon-only
+sheet is retained as superseded source material. The runtime texture is a
+high-quality 712×150 resample of the 2,167×455 alpha-cropped source, so
+`BottomNavigationView` draws it at an exact 0.5 scale before
+`Phaser.Scale.FIT` enlarges the 360×640 logical viewport.
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
@@ -78,6 +96,11 @@ variants and the future Unloader role remain preview/source assets.
   registry only for portrait/icon presentation. It never claims ownership or
   changes an assignment; that mutation belongs to `CatAssignmentModal` and the
   server-authoritative adapter.
+- `src/ui/MarketplaceModal.ts` owns the live Buy, Rent, Sell, and My listings
+  tabs, with explicit confirm, pending, rejection, success, publish, and
+  cancellation states. Callbacks return only after the authenticated server
+  projection has updated the driver's wallet, roster, or listing state, so the
+  UI never treats a local fixture as ownership.
 - `src/ui/SaveDiagnosticBanner.ts` is the one visible surface for recoverable
   persistence problems. `src/main.ts` supplies it as `loadActiveGame`'s
   `onWarning` and the save coordinator's `onDiagnostic`; before Step 36 neither
@@ -501,7 +524,7 @@ variants and the future Unloader role remain preview/source assets.
 - The surface headhouse has matched filled and empty 512×512 textures. `BootScene` derives the visible hopper state from `warehouse.queueSteps`: positive input shows gold, while zero shows the empty steel bin, with the same 128×128 display bounds after every texture swap.
 - The same `warehouse.queueSteps > 0` predicate exclusively drives surface cargo feedback: filled lead/assistant carts and the chute's gold-pour effect. Material still carried by the elevator cannot appear at the surface before authoritative delivery into `warehouse.inputQueue`; at zero queue every moving cart uses the empty texture and the pour is hidden, while all workers keep looping.
 - `src/game/layout/` is pure Phaser-free geometry and palette data, so `tests/unit/layout.test.ts` and the Playwright layout spec both import the `src/game/layout` barrel without loading Phaser. `eslint.config.mjs` enforces that purity for `src/game/layout/**` (no `document`/`window`/`navigator`, no `phaser` import) and `tests/unit/architecture.test.ts` probes the rule. It exports the 360×640 constants, `calculateMineLayout`, `calculateMineContentHeight`, `calculateFloorSlotRegion`, `regionContainsPoint`, `assertTouchTargetRegion`, and `serializeRegion`, and rejects non-finite/non-positive dimensions, heights below 488 logical pixels, invalid floor counts, negative floor indexes, and interactive regions below 44×44.
-- The portrait layout tiles `hud` (`0,0,360,52`), `surface` (`0,52,360,164`), `mine` (`0,216,360,366`), and fixed `bottomNavigation` (`0,582,360,58`) with no gaps. The five code-native navigation illustrations are a treasure chest, storefront, bolt, cat-manager badge, and folded map. Each complete visible control uses a child container at scale `0.6`, while the interactive parent remains 48×44 for standard controls and 62×50 for the wider, raised Boost. Every hit region is therefore at least 44×44, and presses animate the visual child without shrinking input coverage or issuing a core command. The initial five edge-to-edge 288×132 floor slots plus vertical content padding produce 680 logical pixels of mine content, so the mine area scrolls by 314; the content height expands at the 10-floor and 15-floor reveal gates. The elevator shaft is 64 px wide with a 62 px cabin, 50 px cargo cat, and no floor plaques; its 192×528 source artwork is a 64×1,980 `TileSprite` with tile scale `(1/3, 1)`, so it repeats at native vertical resolution instead of blurring through full-depth stretching. Adjusted shaft inset/gap/right inset preserve the floor width. `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects anything smaller.
+- The portrait layout tiles `hud` (`0,0,360,52`), `surface` (`0,52,360,164`), `mine` (`0,216,360,344`), and fixed `bottomNavigation` (`0,560,360,80`) with no gaps. The full generated menu strip contains the treasure chest, marketplace stall, active celestial bolt, chibi cat head, and folded map in one cohesive navy/gold frame. The runtime keeps the 2,167×455 source aspect ratio at roughly 356×75 inside the 360×80 region. The interactive parent remains 48×44 for standard controls and 62×50 for the wider, raised Boost. Every hit region is therefore at least 44×44, and presses tint the artwork without shrinking input coverage or issuing a core command. The initial five edge-to-edge 288×132 floor slots plus vertical content padding produce 680 logical pixels of mine content, so the mine area scrolls by 336; the content height expands at the 10-floor and 15-floor reveal gates. The elevator shaft is 64 px wide with a 62 px cabin, 50 px cargo cat, and no floor plaques; its 192×528 source artwork is a 64×1,980 `TileSprite` with tile scale `(1/3, 1)`, so it repeats at native vertical resolution instead of blurring through full-depth stretching. Adjusted shaft inset/gap/right inset preserve the floor width. `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects anything smaller.
 - `index.html` declares `viewport-fit=cover` and hosts the Phaser parent in `#game-viewport`; `#app` applies `env(safe-area-inset-*)` padding so the scale manager measures the safe box. `Phaser.Scale.FIT` with `CENTER_BOTH` preserves aspect ratio and letterboxes instead of cropping.
 - Phaser 4 removed WebGL geometry masks (`setMask` logs a warning and does nothing), so the mine area is clipped by a dedicated camera viewport instead. The main camera ignores the mine content layer, the mine camera ignores the fixed HUD/surface layers, and the scroll gesture drives only that camera's `scrollY`. Phaser hit-tests through the same camera and honours both its scroll and each object's camera filter, so a scrolled control's pressable rectangle follows what is drawn without extra bookkeeping.
 - Elevator route geometry stays in mine-world coordinates. Its surface endpoint is always `SURFACE_ELEVATOR_STOP_Y - SURFACE_HEIGHT`, and the fixed-layer cabin twin maps from that world Y without applying mine-camera `scrollY`; scrolling can clip/reveal the cabin but cannot shorten a deep return leg or move the tower entry point.
@@ -556,8 +579,9 @@ the local Supabase stack; Step 5 landed it on 2026-09-08 as
 Step 4's bootstrap migration
 (`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
 creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
-for `gen_random_uuid()`). The six base tables and five cat-collection tables, plus their row-level-security policies, in
-the matrix below exist in the local development database after
+for `gen_random_uuid()`). The six base tables, five cat-collection tables, and
+three Marketplace trading tables, plus their row-level-security policies, exist
+in the local development database after
 `supabase db reset`; **no deployed database contains them**, because no
 deployment exists yet. This block and its twin in the other document are
 byte-identical by construction and must be changed together, in the same change
@@ -1080,14 +1104,125 @@ one cat from occupying two slots.
 `purchase_cat_instance(user, assetId, idempotencyKey)` locks the caller's
 existing V3 save, derives the blueprint price and role from the server
 allowlist, debits serialized save gold, creates an Idle instance, and records
-the idempotency result in one transaction. `replace_cat_assignment(user,
+the idempotency result in one transaction. The purchase projection also
+returns committed `walletGold` and `saveRevision`; the client adopts that
+revision before its next cloud compare-and-swap. `replace_cat_assignment(user,
 catInstanceId, slotKey, expectedAssignmentRevision)` locks the owner revision
 and candidate, validates ownership/state/exact role, returns the prior cat to
 Idle, assigns the candidate, and increments the revision atomically. The
 `cat-collection` Edge Function is the only public API; it derives the caller
 from the bearer token and returns a caller-scoped projection.
 
+### Marketplace trading schema extension — 2026-09-20
+
+The forward-only migration `20260920100000_create_marketplace_trading.sql`
+extends `cat_instances` with `renter_user_id` and `rental_expires_at`, then
+adds three service-role-owned tables. All three have RLS enabled, no client
+policies, and no direct browser grants.
+
+```sql
+alter table public.cat_instances
+  add column renter_user_id uuid null references auth.users(id) on delete set null,
+  add column rental_expires_at timestamptz null;
+
+-- The two columns are both null or both set. A rental belongs to another user,
+-- and the instance may be Rented or Assigned while that renter uses it.
+constraint cat_instances_rental_pair
+  check ((renter_user_id is null) = (rental_expires_at is null));
+constraint cat_instances_rental_owner_distinct
+  check (renter_user_id is null or renter_user_id <> owner_user_id);
+constraint cat_instances_rental_state_consistent
+  check (renter_user_id is null or availability_state in ('Rented', 'Assigned'));
+
+create table public.cat_marketplace_listings (
+  listing_id uuid primary key default gen_random_uuid(),
+  seller_user_id uuid not null references auth.users(id) on delete cascade,
+  cat_instance_id uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  listing_type text not null check (listing_type in ('sale', 'rent')),
+  price_exact numeric not null check (price_exact > 0 and price_exact = trunc(price_exact) and price_exact <= 1000000000),
+  status text not null default 'Active' check (status in ('Active', 'Sold', 'Rented', 'Cancelled', 'Expired')),
+  buyer_user_id uuid null references auth.users(id) on delete set null,
+  renter_user_id uuid null references auth.users(id) on delete set null,
+  duration_hours integer null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz null
+);
+
+create table public.cat_rentals (
+  rental_id uuid primary key default gen_random_uuid(),
+  listing_id uuid not null unique references public.cat_marketplace_listings(listing_id) on delete cascade,
+  cat_instance_id uuid not null unique references public.cat_instances(cat_instance_id) on delete cascade,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  renter_user_id uuid not null references auth.users(id) on delete cascade,
+  hourly_price_exact numeric not null,
+  duration_hours integer not null check (duration_hours between 1 and 24),
+  total_price_exact numeric not null,
+  started_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  status text not null default 'Active' check (status in ('Active', 'Expired')),
+  updated_at timestamptz not null default now()
+);
+
+create table public.cat_marketplace_requests (
+  requester_user_id uuid not null references auth.users(id) on delete cascade,
+  idempotency_key text not null,
+  operation text not null check (operation in ('create_listing', 'cancel_listing', 'buy_listing', 'rent_listing')),
+  result_id uuid not null,
+  created_at timestamptz not null default now(),
+  primary key (requester_user_id, idempotency_key)
+);
+```
+
+The listing table has a partial unique index on `cat_instance_id` for `Active`
+rows, plus active browse and seller-history indexes. `cat_rentals` has renter
+and owner state indexes. `cat_instances` has a renter-state index. The
+listing shape constraints keep buyer/renter ids consistent with `Sold`/`Rented`
+statuses, and all price values are positive integer gold amounts capped at
+`1,000,000,000`.
+
+`settle_due_cat_rentals()` is the lazy expiry boundary. It locks due rentals,
+removes any renter assignment, returns the instance to the owner's `Idle`
+roster, marks the rental and listing `Expired`, clears renter metadata, and
+bumps collection plus renter assignment revisions. `create_cat_listing`,
+`cancel_cat_listing`, `buy_cat_listing`, and `rent_cat_listing` are security
+definer RPCs exposed only to `service_role`. They enforce idle ownership,
+single-active-listing, self-trade, wallet, exact-price, 1–24-hour duration,
+and idempotency rules in one transaction. Buy transfers title and credits the
+seller; rent credits the owner while preserving title and setting a server
+expiry. Buyer/renter and seller/owner save rows are locked in UUID order to
+avoid a cross-trade deadlock.
+
+`replace_cat_assignment` now accepts either an owner's idle cat or the caller's
+active rented cat, while preserving the exact role check. The Edge Function
+routes are authenticated `GET /v1/listings`, `POST /v1/listings`, and
+`POST /v1/listings/:id/{cancel,buy,rent}`. Listing projections include the
+exact current cat stats and seller display name; rented users receive a
+caller-scoped usable roster projection while legal ownership remains in the
+server tables. The browser never writes marketplace tables directly.
+
 ## Verified Commands
+
+- 2026-09-21 reference-driven navigation menu integration and aspect-ratio fix:
+  the raster/layout contract tests pass, `npm run lint` passes, and
+  `npm run build` passes. The processed source strip is alpha-cropped to
+  2,167×455 RGBA with a transparent magenta-removed surround and a non-empty
+  full navy/gold menu subject; the shipped runtime texture is its 712×150
+  high-quality resample and `BottomNavigationView` fits it at roughly 356×75
+  inside the 360×80 safe region. The crop/resample is reproducible from
+  `crop-meta.json`.
+
+- 2026-09-21 raster sharpness feedback: the runtime menu texture is now a
+  high-quality 712×150 resample of the alpha-cropped source and draws at an
+  exact 0.5 scale. The in-app browser check shows sharper tile borders and icon
+  details at the current display size without changing the global renderer.
+
+- 2026-09-21 UI feedback regression slices: `npm run lint`, `npm run build`,
+  the focused Marketplace trading Playwright run (6 tests), and the focused
+  Collection run (4 tests) passed. Browser checks cover the Listed-specific
+  `Buy listed cat` / `Back to cats` row, authoritative purchase success,
+  responsive Collection at 390×844 and 320×568, and the explicit
+  unavailable-versus-empty state with a working Retry action.
 
 - `npm run dev`: verified by starting Vite at `127.0.0.1:5173`, receiving the application HTML over HTTP, and terminating the server cleanly.
 - `npm run build` (`tsc --noEmit` plus Vite production build)

@@ -4,6 +4,12 @@ import type { CatSlotKey } from '../core';
 import { GAME_HEIGHT, GAME_WIDTH, MINE_BACKGROUND } from './layout';
 import type { MineRuntimePort } from './runtime';
 import { BootScene } from './scenes/BootScene';
+import type { MarketplacePurchaseResult } from '../ui/MarketplaceModal';
+import type {
+  MarketplaceCommandResult,
+  MarketplaceListingType,
+  MarketplaceListingsResult,
+} from '../platform/web/marketplace';
 
 export { GAME_HEIGHT, GAME_WIDTH };
 export {
@@ -44,6 +50,21 @@ export interface CreateGameOptions {
   readonly onLeaderboard?: (onClosed: () => void) => void;
   readonly onCollection?: (onClosed: () => void) => void;
   readonly onCatSlot?: (slotKey: CatSlotKey, onClosed: () => void) => void;
+  readonly onMarketplacePurchase?: (assetId: string) => Promise<MarketplacePurchaseResult>;
+  readonly getWalletGold?: () => string | null;
+  readonly getCollection?: () => import('../core').CatRosterState;
+  readonly loadMarketplaceListings?: (
+    listingType: MarketplaceListingType | null,
+    mineOnly: boolean,
+  ) => Promise<MarketplaceListingsResult>;
+  readonly onCreateMarketplaceListing?: (command: {
+    readonly catInstanceId: string;
+    readonly listingType: MarketplaceListingType;
+    readonly priceExact: string;
+  }) => Promise<MarketplaceCommandResult>;
+  readonly onCancelMarketplaceListing?: (listingId: string) => Promise<MarketplaceCommandResult>;
+  readonly onBuyMarketplaceListing?: (listingId: string) => Promise<MarketplaceCommandResult>;
+  readonly onRentMarketplaceListing?: (listingId: string, durationHours: number) => Promise<MarketplaceCommandResult>;
 }
 
 export function createGame(
@@ -71,6 +92,14 @@ export function createGame(
         onLeaderboard: options.onLeaderboard,
         onCollection: options.onCollection,
         onCatSlot: options.onCatSlot,
+        onMarketplacePurchase: options.onMarketplacePurchase,
+        getWalletGold: options.getWalletGold,
+        getCollection: options.getCollection,
+        loadMarketplaceListings: options.loadMarketplaceListings,
+        onCreateMarketplaceListing: options.onCreateMarketplaceListing,
+        onCancelMarketplaceListing: options.onCancelMarketplaceListing,
+        onBuyMarketplaceListing: options.onBuyMarketplaceListing,
+        onRentMarketplaceListing: options.onRentMarketplaceListing,
       }),
     ],
     scale: {

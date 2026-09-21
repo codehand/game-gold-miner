@@ -1060,6 +1060,21 @@ body {
   color: #1b2b3d;
 }
 
+.market-purchase-confirming {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.market-purchase-confirming > .market-note {
+  grid-column: 1 / -1;
+}
+
+.market-purchase-confirming > button {
+  width: 100%;
+  margin: 0;
+}
+
 .market-empty {
   grid-column: 1 / -1;
   text-align: center;

@@ -65,7 +65,7 @@ describe('cat collection web adapter', () => {
     const client = auth();
     const responses = [
       new Response('', { status: 401 }),
-      new Response(JSON.stringify(ROSTER), { status: 200 }),
+      new Response(JSON.stringify({ ...ROSTER, walletGold: '64000', saveRevision: 2 }), { status: 200 }),
     ];
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect((init?.headers as Record<string, string>).authorization).toBe(
@@ -83,6 +83,10 @@ describe('cat collection web adapter', () => {
     );
 
     expect(result.kind).toBe('applied');
+    if (result.kind === 'applied') {
+      expect(result.walletGold).toBe('64000');
+      expect(result.saveRevision).toBe(2);
+    }
     expect(client.refreshSession).toHaveBeenCalledTimes(1);
     const body = JSON.parse((fetcher.mock.calls[0][1]?.body ?? '') as string) as Record<string, unknown>;
     expect(body).toEqual({ assetId: 'miner:SSR:forge:idle', idempotencyKey: 'purchase-0001' });

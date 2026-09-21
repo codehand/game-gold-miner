@@ -8,6 +8,59 @@ enforced by shipped code and restated as a contract in `architecture.md` or
 Not part of the contract. `activeContext.md` keeps only decisions that still
 constrain code not yet written.
 
+## Reference-driven bottom menu artwork — 2026-09-21
+
+- The supplied visual reference is the source of truth for the menu's outer
+  treatment: one navy/gold strip, five rounded tiles, and a raised active Boost
+  tile in the centre. Use one processed transparent runtime image instead of
+  rebuilding this chrome from multiple code-drawn pieces.
+- Keep code responsible for semantic order, hit regions, callbacks, and
+  accessibility-adjacent interaction behavior. Artwork is presentation-only;
+  the full strip must never become the hit-test boundary.
+- Retain the earlier icon-only generation under `art-source/` for provenance,
+  but do not load it in the runtime after the reference-driven replacement.
+
+The runtime source must be alpha-cropped to the visible menu before display;
+transparent generation margins must not determine the layout box. Fit the
+cropped strip uniformly inside a fixed 360×80 safe region with a small margin,
+while keeping semantic hit regions independent of the artwork so decorative
+shell and active Boost ornaments cannot clip or change interaction geometry.
+Fill the transparent margin with the navigation surface color rather than
+letting the mine background show through as a black seam.
+Ship a high-quality 2× runtime resample of the menu and draw it at an exact
+0.5 texture scale, so the large generated source is not filtered directly into
+the small logical display box and softened in the browser.
+This supersedes the temporary 360×58 presentation fit, which vertically
+stretched the source strip.
+
+## Bottom-navigation sprite sheet — 2026-09-21
+
+- Use one generated transparent 5×1 sprite sheet as the source of truth for
+  the bottom-navigation icon family, with fixed frame order Rewards,
+  Marketplace, Boost, Collection, Map. Keep the raw prompt/source and QC
+  outputs under `art-source/navigation-icons/`; ship only the approved runtime
+  sheet under `public/assets/ui/navigation/`.
+- Keep the existing interactive parent geometry and presentation callbacks.
+  Fit each transparent 256px frame before the shared 0.6 visual scale so the
+  generated art cannot overlap neighboring targets or alter input behavior.
+- Treat the regenerated art as presentation-only. Boost and Map may look
+  production-ready while their game actions remain deferred until their own
+  milestones.
+
+## UI feedback decisions — 2026-09-21
+
+- Treat Marketplace Buy confirmation as one two-choice action group: the
+  explanatory copy and wallet context span the modal, while `Confirm purchase`
+  and `Cancel` share a responsive row so neither choice is pushed below the
+  other on a narrow portrait screen.
+- Treat Collection `ready` with zero cats as the only true empty state. During
+  `loading`, `stale`, or `error`, show state-specific copy and preserve Retry;
+  never display a zero owned-count summary from a failed roster load.
+- Treat a `Listed` Marketplace catalog item as a listing-specific confirmation
+  surface: use `Buy listed cat` and `Back to cats` so the CTA names reflect the
+  active listing, while retaining the explicit confirmation boundary and the
+  existing server-authoritative command.
+
 ## Marketplace asset runtime decisions
 
 - **2026-09-19:** The first runtime-integrated Marketplace roles are Mofy for
@@ -82,3 +135,32 @@ constrain code not yet written.
 - Expire a press-result map on its own terms rather than through the controls still on screen, because a purchase can remove the control it was made on.
 - Let a completed change be its own confirmation: a floor that visibly opens says more than a message on a button the same frame removes.
 - Wait for a browser press to be observed rather than assuming a settling time, and grant the paused-clock game loop one step before pressing anything at all.
+
+## Marketplace transaction boundary
+
+- **2026-09-20:** Make Buy live only for the nine seeded v1 catalog rows. Price,
+  wallet deduction, ownership, idempotency, and the returned cat instance stay
+  server-authoritative; the response also returns wallet gold and save revision
+  so the client can continue cloud CAS safely. Keep Rent, Sell, My listings,
+  auctions, and real-money payment as explicit preview/deferred surfaces until
+  their own server contracts and acceptance gates exist.
+
+## Marketplace trading authority — 2026-09-20
+
+- **Server-owned listing state:** prices, listing status, sale ownership,
+  rental ownership, rental expiry, wallet deductions, and idempotency are
+  authoritative in Supabase RPCs; the client only renders returned projections.
+- **Safe sell boundary:** only an owned, unassigned cat can be listed, and an
+  active listing locks the cat out of another listing or assignment until it is
+  cancelled or settled.
+- **Sale versus rental semantics:** Buy transfers the cat permanently; Rent
+  grants temporary use to the renter while legal ownership remains with the
+  seller and the owner is restored when expiry is settled.
+- **Exact-role replacement:** both the owner and active renter can replace a
+  currently assigned cat, but the requested cat must match the mine role and
+  remain idle for that account.
+- **Replay safety:** every Marketplace mutation takes a caller idempotency key
+  so retries return the original result without charging or transferring twice.
+- **Caller-scoped renter projection:** a renter receives a usable collection
+  projection without changing the V4 client save schema; legal ownership stays
+  in `cat_instances` and `cat_rentals`.

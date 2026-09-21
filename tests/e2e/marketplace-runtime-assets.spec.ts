@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 import { MARKETPLACE_RUNTIME_ROLE_ASSETS } from '../../src/game/assets/marketplaceRuntimeAssets';
+import {
+  CAT_RUNTIME_DISPLAY_SIZE,
+  MINE_SHAFT_CARGO_CAT_SIZE,
+} from '../../src/game/layout';
 
 const RUNTIME_ASSETS = Object.values(MARKETPLACE_RUNTIME_ROLE_ASSETS).map((asset) => ({
   assetId: asset.assetId,
@@ -28,8 +32,14 @@ test('renders the approved Marketplace role assets in runtime presentation slots
   expect(animation.elevatorCargoCat).toMatchObject({
     assetId: 'elevator-cargo-cat:SSR:mofy:idle',
     texture: 'marketplace-runtime-elevator-mofy',
-    width: MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.displaySize,
-    height: MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.displaySize,
+    width: MINE_SHAFT_CARGO_CAT_SIZE,
+    height: MINE_SHAFT_CARGO_CAT_SIZE,
+  });
+  expect(animation.surfaceElevatorCat).toMatchObject({
+    assetId: 'elevator-cargo-cat:SSR:mofy:idle',
+    texture: 'marketplace-runtime-elevator-mofy',
+    width: CAT_RUNTIME_DISPLAY_SIZE,
+    height: CAT_RUNTIME_DISPLAY_SIZE,
   });
   expect(animation.warehouseManager).toMatchObject({
     assetId: 'warehouse-manager:SR:baron:idle',
@@ -37,6 +47,21 @@ test('renders the approved Marketplace role assets in runtime presentation slots
     width: MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.displaySize,
     height: MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.displaySize,
   });
+  expect(MARKETPLACE_RUNTIME_ROLE_ASSETS.elevator.displaySize).toBe(
+    MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.displaySize,
+  );
+  expect(MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.displaySize).toBe(
+    MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.displaySize,
+  );
+  expect(animation.elevatorCargoCat.width).toBe(
+    MINE_SHAFT_CARGO_CAT_SIZE,
+  );
+  expect(animation.surfaceElevatorCat.width).toBe(
+    MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.displaySize,
+  );
+  expect(animation.warehouseManager.width).toBe(
+    MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.displaySize,
+  );
 
   const floorViews = await page.evaluate(() => (
     JSON.parse(document.querySelector('#game-viewport canvas')?.getAttribute('data-floor-views') ?? '[]')

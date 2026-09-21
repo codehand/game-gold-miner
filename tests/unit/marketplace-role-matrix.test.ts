@@ -5,8 +5,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  CAT_RUNTIME_DISPLAY_SIZE,
   MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
-  MINE_SHAFT_CARGO_CAT_SIZE,
   SURFACE_WAREHOUSE_MANAGER_SIZE,
 } from '../../src/game/layout';
 
@@ -82,7 +82,7 @@ describe('Marketplace Phase 0 role matrix', () => {
 
   it('matches the runtime display boxes that the role art must fit', () => {
     const displaySizes = new Map(matrix.roles.map((role) => [role.roleId, role.runtimeDisplaySize]));
-    expect(displaySizes.get('elevator')).toBe(MINE_SHAFT_CARGO_CAT_SIZE);
+    expect(displaySizes.get('elevator')).toBe(CAT_RUNTIME_DISPLAY_SIZE);
     expect(displaySizes.get('warehouse')).toBe(SURFACE_WAREHOUSE_MANAGER_SIZE);
     expect(displaySizes.get('miner')).toBe(MINE_FLOOR_CHARACTER_DISPLAY_SIZE);
     expect(matrix.futureRoles[0]?.runtimeDisplaySize).toBe(MINE_FLOOR_CHARACTER_DISPLAY_SIZE);

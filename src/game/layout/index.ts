@@ -1,5 +1,6 @@
 export {
   assertTouchTargetRegion,
+  CAT_RUNTIME_DISPLAY_SIZE,
   calculateFloorSlotRegion,
   calculateMineContentHeight,
   calculateMineLayout,

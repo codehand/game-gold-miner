@@ -94,3 +94,16 @@ export {
   type CatCollectionLoadResult,
   type CatCollectionUnavailableReason,
 } from './catCollection';
+export {
+  buyMarketplaceListingViaFetch,
+  cancelMarketplaceListingViaFetch,
+  createMarketplaceListingViaFetch,
+  loadMarketplaceListingsViaFetch,
+  rentMarketplaceListingViaFetch,
+  type MarketplaceCommandResult,
+  type MarketplaceListingRecord,
+  type MarketplaceListingStatus,
+  type MarketplaceListingType,
+  type MarketplaceListingsResult,
+  type MarketplaceUnavailableReason,
+} from './marketplace';

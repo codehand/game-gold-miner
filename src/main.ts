@@ -36,7 +36,13 @@ import {
   LifecycleSafeActiveSaveRepository,
   loadLeaderboardViaFetch,
   loadCatCollectionViaFetch,
+  purchaseCatViaFetch,
   replaceCatAssignmentViaFetch,
+  buyMarketplaceListingViaFetch,
+  cancelMarketplaceListingViaFetch,
+  createMarketplaceListingViaFetch,
+  loadMarketplaceListingsViaFetch,
+  rentMarketplaceListingViaFetch,
   markOfflineGrantApplied,
   MISSING_LOCAL_SAVE_CODE,
   MISSING_LOCAL_SAVE_MESSAGE,
@@ -58,6 +64,9 @@ import {
   type SignOutResult,
   type StorageManagerLike,
   type SupabaseClient,
+  type MarketplaceCommandResult,
+  type MarketplaceListingType,
+  type MarketplaceListingsResult,
 } from './platform/web';
 import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
 import {
@@ -73,6 +82,7 @@ import {
   type AccountIdentityView,
   type CatAssignmentCommand,
   type CatAssignmentCommandResult,
+  type MarketplacePurchaseResult,
   type OfflineRewardModal,
 } from './ui';
 
@@ -1254,6 +1264,171 @@ function toAccountConflictCandidate(
 }
 
 /** Sends the minimum assignment command and applies only an authoritative projection. */
+async function purchaseMarketplaceCat(assetId: string): Promise<MarketplacePurchaseResult> {
+  const driver = activeDriver;
+  if (driver === null || localSavesSuspended) {
+    return { kind: 'unavailable', reason: 'offline' };
+  }
+
+  // Bring the local simulation to the purchase boundary. The server remains
+  // authoritative for the wallet: it locks the save row, checks the exact
+  // price, deducts once, and creates the owned instance in one transaction.
+  driver.advance();
+  let client: SupabaseClient | null;
+  try {
+    client = await supabaseClientPromise;
+  } catch {
+    return { kind: 'unavailable', reason: 'offline' };
+  }
+
+  const result = await purchaseCatViaFetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cat-collection`,
+    client?.auth ?? null,
+    assetId,
+    createIdempotencyKey('cat-purchase'),
+  );
+
+  if (result.kind !== 'applied') {
+    return result;
+  }
+  if (result.walletGold === undefined || result.saveRevision === undefined) {
+    return { kind: 'unavailable', reason: 'invalid-response' };
+  }
+
+  driver.replaceState({
+    ...driver.state,
+    gold: GameNumber.from(result.walletGold),
+  });
+  driver.replaceCatRoster(result.roster);
+  // The purchase RPC increments the save revision outside the normal local
+  // repository path. Adopt that revision before the updated local document is
+  // offered to the cloud replica, otherwise the next upload would conflict
+  // with the purchase it already contains.
+  cloudReplica.acceptExternalRevision(result.saveRevision);
+  catCollectionUiStatus = 'ready';
+  collectionModal?.refresh();
+  catAssignmentModal?.refresh();
+
+  const purchasedDocument = createSaveDocument(
+    driver.state,
+    BASE_GAME_BALANCE,
+    Date.now(),
+    driver.catRoster,
+  );
+  persistence.queueSave(purchasedDocument);
+  await persistence.flush();
+  repository.forceCloudUpload(purchasedDocument);
+  return { kind: 'applied' };
+}
+
+const marketplaceEdgeFunctionUrl = () =>
+  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cat-collection`;
+
+async function loadMarketplaceListings(
+  listingType: MarketplaceListingType | null,
+  mineOnly: boolean,
+): Promise<MarketplaceListingsResult> {
+  let client: SupabaseClient | null;
+  try {
+    client = await supabaseClientPromise;
+  } catch {
+    return { kind: 'unavailable', reason: 'offline' };
+  }
+  return loadMarketplaceListingsViaFetch(
+    marketplaceEdgeFunctionUrl(),
+    client?.auth ?? null,
+    listingType,
+    mineOnly,
+  );
+}
+
+async function createMarketplaceListing(command: {
+  readonly catInstanceId: string;
+  readonly listingType: MarketplaceListingType;
+  readonly priceExact: string;
+}): Promise<MarketplaceCommandResult> {
+  return sendMarketplaceCommand((client) => createMarketplaceListingViaFetch(
+    marketplaceEdgeFunctionUrl(),
+    client?.auth ?? null,
+    { ...command, idempotencyKey: createIdempotencyKey('cat-listing') },
+  ));
+}
+
+async function cancelMarketplaceListing(listingId: string): Promise<MarketplaceCommandResult> {
+  return sendMarketplaceCommand((client) => cancelMarketplaceListingViaFetch(
+    marketplaceEdgeFunctionUrl(),
+    client?.auth ?? null,
+    listingId,
+    createIdempotencyKey('cat-listing-cancel'),
+  ));
+}
+
+async function buyMarketplaceListing(listingId: string): Promise<MarketplaceCommandResult> {
+  return sendMarketplaceCommand((client) => buyMarketplaceListingViaFetch(
+    marketplaceEdgeFunctionUrl(),
+    client?.auth ?? null,
+    listingId,
+    createIdempotencyKey('cat-listing-buy'),
+  ), true);
+}
+
+async function rentMarketplaceListing(listingId: string, durationHours: number): Promise<MarketplaceCommandResult> {
+  return sendMarketplaceCommand((client) => rentMarketplaceListingViaFetch(
+    marketplaceEdgeFunctionUrl(),
+    client?.auth ?? null,
+    listingId,
+    durationHours,
+    createIdempotencyKey('cat-listing-rent'),
+  ), true);
+}
+
+async function sendMarketplaceCommand(
+  request: (client: SupabaseClient | null) => Promise<MarketplaceCommandResult>,
+  walletChanges = false,
+): Promise<MarketplaceCommandResult> {
+  const driver = activeDriver;
+  if (driver === null || localSavesSuspended) {
+    return { kind: 'unavailable', reason: 'offline' };
+  }
+  driver.advance();
+  let client: SupabaseClient | null;
+  try {
+    client = await supabaseClientPromise;
+  } catch {
+    return { kind: 'unavailable', reason: 'offline' };
+  }
+  const result = await request(client);
+  if (result.kind !== 'applied' || disposed || activeDriver !== driver) {
+    return result;
+  }
+  if (walletChanges && (result.walletGold === undefined || result.saveRevision === undefined)) {
+    return { kind: 'unavailable', reason: 'invalid-response' };
+  }
+
+  driver.replaceCatRoster(result.roster);
+  if (result.walletGold !== undefined && result.saveRevision !== undefined) {
+    driver.replaceState({ ...driver.state, gold: GameNumber.from(result.walletGold) });
+    cloudReplica.acceptExternalRevision(result.saveRevision);
+  }
+  catCollectionUiStatus = 'ready';
+  collectionModal?.refresh();
+  catAssignmentModal?.refresh();
+
+  const document = createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster);
+  persistence.queueSave(document);
+  await persistence.flush();
+  if (result.walletGold !== undefined) {
+    repository.forceCloudUpload(document);
+  }
+  return result;
+}
+
+function createIdempotencyKey(prefix: string): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  return `${prefix}-${randomUuid ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+/** Sends the minimum assignment command and applies only an authoritative projection. */
 async function replaceAssignedCat(
   command: CatAssignmentCommand,
 ): Promise<CatAssignmentCommandResult> {
@@ -1404,6 +1579,14 @@ async function startApplication(): Promise<void> {
   maybePresentOfflineReward();
 
   game = createGame(gameViewport, driver, {
+    onMarketplacePurchase: purchaseMarketplaceCat,
+    getWalletGold: () => activeDriver?.state.gold.serialize() ?? null,
+    getCollection: () => activeDriver?.catRoster ?? createEmptyCatRoster(),
+    loadMarketplaceListings,
+    onCreateMarketplaceListing: createMarketplaceListing,
+    onCancelMarketplaceListing: cancelMarketplaceListing,
+    onBuyMarketplaceListing: buyMarketplaceListing,
+    onRentMarketplaceListing: rentMarketplaceListing,
     onSettings: (onClosed) => {
       if (accountSettingsModal === null) {
         onClosed();

@@ -1,4 +1,5 @@
 import { PLACEHOLDER_ANIMATION_TEXTURES } from './placeholderAssets';
+import { CAT_RUNTIME_DISPLAY_SIZE } from '../layout/mineLayout';
 
 export type MarketplaceRuntimeRole = 'elevator' | 'warehouse' | 'miner';
 
@@ -42,7 +43,7 @@ export const MARKETPLACE_RUNTIME_ROLE_ASSETS = {
     frameSizePx: 128,
     frameCount: 8,
     frameDurationMs: 110,
-    displaySize: 50,
+    displaySize: CAT_RUNTIME_DISPLAY_SIZE,
     fallbackTextureKey: PLACEHOLDER_ANIMATION_TEXTURES.elevatorCargoCat,
     fallbackFrameCount: 4,
     fallbackFrameDurationMs: 220,
@@ -58,7 +59,7 @@ export const MARKETPLACE_RUNTIME_ROLE_ASSETS = {
     frameSizePx: 128,
     frameCount: 8,
     frameDurationMs: 110,
-    displaySize: 56,
+    displaySize: CAT_RUNTIME_DISPLAY_SIZE,
     fallbackTextureKey: PLACEHOLDER_ANIMATION_TEXTURES.warehouseManager,
     fallbackFrameCount: 4,
     fallbackFrameDurationMs: 240,
@@ -74,7 +75,7 @@ export const MARKETPLACE_RUNTIME_ROLE_ASSETS = {
     frameSizePx: 128,
     frameCount: 8,
     frameDurationMs: 110,
-    displaySize: 75,
+    displaySize: CAT_RUNTIME_DISPLAY_SIZE,
     fallbackTextureKey: PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
     fallbackFrameCount: 4,
     fallbackFrameDurationMs: 220,

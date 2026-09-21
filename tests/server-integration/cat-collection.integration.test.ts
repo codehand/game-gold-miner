@@ -5,6 +5,7 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import { createInitialGameState, GameNumber } from '../../src/core';
 import { createSaveDocument } from '../../src/persistence';
 import { LOCAL_ANON_KEY } from './authFixture';
+import { createServiceRoleClient } from './serviceRoleFixture';
 
 /**
  * Phase 3 integration gate: the real Auth → Edge Function → service-role RPC
@@ -34,6 +35,8 @@ interface CatCollectionResponse {
   readonly assignments: readonly { readonly slotKey: string; readonly catInstanceId: string }[];
   readonly assignmentRevision: number;
   readonly collectionRevision: number;
+  readonly walletGold?: string;
+  readonly saveRevision?: number;
 }
 
 async function createGuestIdentity(): Promise<GuestIdentity> {
@@ -120,6 +123,8 @@ describe('cat collection and role assignment against the live stack', () => {
       availabilityState: 'Idle',
       assignedSlotKey: null,
     });
+    expect(firstProjection.walletGold).toBe('64000');
+    expect(firstProjection.saveRevision).toBe(2);
 
     const replay = await requestCollection(guest.accessToken, '/v1/purchase', {
       method: 'POST',
@@ -129,6 +134,8 @@ describe('cat collection and role assignment against the live stack', () => {
     const replayProjection = await replay.json() as CatCollectionResponse;
     expect(replayProjection.cats).toHaveLength(1);
     expect(replayProjection.cats[0].catInstanceId).toBe(firstProjection.cats[0].catInstanceId);
+    expect(replayProjection.walletGold).toBe('64000');
+    expect(replayProjection.saveRevision).toBe(firstProjection.saveRevision);
   });
 
   it('filters assignment by role and revision, then persists the replacement', async () => {
@@ -207,5 +214,108 @@ describe('cat collection and role assignment against the live stack', () => {
       assignedSlotKey: 'elevator:main',
     });
     expect((await readCollection(guest.accessToken)).collectionRevision).toBe(finalProjection.collectionRevision);
+  });
+
+  it('lists, sells, rents, and settles player cats through atomic marketplace commands', async () => {
+    const seller = await createGuestIdentity();
+    const buyer = await createGuestIdentity();
+    await uploadWallet(seller.accessToken);
+    await uploadWallet(buyer.accessToken);
+
+    const sellerPurchase = await requestCollection(seller.accessToken, '/v1/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ assetId: 'miner:SSR:forge:idle', idempotencyKey: 'market-seller-forge-0001' }),
+    });
+    expect(sellerPurchase.status).toBe(200);
+    const sellerForgeProjection = await sellerPurchase.json() as CatCollectionResponse;
+    const forge = sellerForgeProjection.cats[0];
+
+    const createSale = await requestCollection(seller.accessToken, '/v1/listings', {
+      method: 'POST',
+      body: JSON.stringify({
+        catInstanceId: forge.catInstanceId,
+        listingType: 'sale',
+        priceExact: '10000',
+        idempotencyKey: 'market-sale-create-0001',
+      }),
+    });
+    expect(createSale.status).toBe(200);
+    const saleProjection = await createSale.json() as {
+      readonly listingId: string;
+      readonly listings: readonly { readonly listingId: string; readonly status: string }[];
+    };
+    const sale = saleProjection.listings.find((listing) => listing.status === 'Active')!;
+    expect(sale.listingId).toBeTruthy();
+
+    const visibleSale = await requestCollection(buyer.accessToken, '/v1/listings?type=sale', { method: 'GET' });
+    expect(visibleSale.status).toBe(200);
+    expect((await visibleSale.json()).listings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ listingId: sale.listingId, listingType: 'sale', priceExact: '10000' }),
+    ]));
+
+    const buy = await requestCollection(buyer.accessToken, `/v1/listings/${sale.listingId}/buy`, {
+      method: 'POST',
+      body: JSON.stringify({ idempotencyKey: 'market-sale-buy-0001' }),
+    });
+    expect(buy.status).toBe(200);
+    const buyerAfterSale = await buy.json() as CatCollectionResponse & { readonly listingId: string };
+    expect(buyerAfterSale.listingId).toBe(sale.listingId);
+    expect(buyerAfterSale.walletGold).toBe('90000');
+    expect(buyerAfterSale.cats).toEqual(expect.arrayContaining([
+      expect.objectContaining({ catInstanceId: forge.catInstanceId, ownerUserId: buyer.userId, availabilityState: 'Idle' }),
+    ]));
+
+    const buyReplay = await requestCollection(buyer.accessToken, `/v1/listings/${sale.listingId}/buy`, {
+      method: 'POST',
+      body: JSON.stringify({ idempotencyKey: 'market-sale-buy-0001' }),
+    });
+    expect(buyReplay.status).toBe(200);
+    expect((await buyReplay.json()).walletGold).toBe('90000');
+
+    const sellerMicaPurchase = await requestCollection(seller.accessToken, '/v1/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ assetId: 'miner:N:mica:idle', idempotencyKey: 'market-seller-mica-0001' }),
+    });
+    expect(sellerMicaPurchase.status).toBe(200);
+    const mica = (await sellerMicaPurchase.json() as CatCollectionResponse).cats[0];
+    const createRent = await requestCollection(seller.accessToken, '/v1/listings', {
+      method: 'POST',
+      body: JSON.stringify({
+        catInstanceId: mica.catInstanceId,
+        listingType: 'rent',
+        priceExact: '250',
+        idempotencyKey: 'market-rent-create-0001',
+      }),
+    });
+    expect(createRent.status).toBe(200);
+    const rentProjection = await createRent.json() as {
+      readonly listings: readonly { readonly listingId: string; readonly status: string }[];
+    };
+    const rentListingId = rentProjection.listings.find((listing) => listing.status === 'Active')!.listingId;
+
+    const visibleRent = await requestCollection(buyer.accessToken, '/v1/listings?type=rent', { method: 'GET' });
+    expect(visibleRent.status).toBe(200);
+    expect((await visibleRent.json()).listings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ listingId: rentListingId, listingType: 'rent', priceExact: '250' }),
+    ]));
+    const rentCommand = await requestCollection(buyer.accessToken, `/v1/listings/${rentListingId}/rent`, {
+      method: 'POST',
+      body: JSON.stringify({ durationHours: 2, idempotencyKey: 'market-rent-buy-0001' }),
+    });
+    expect(rentCommand.status).toBe(200);
+    const renterProjection = await rentCommand.json() as CatCollectionResponse;
+    expect(renterProjection.walletGold).toBe('89500');
+    expect(renterProjection.cats).toEqual(expect.arrayContaining([
+      expect.objectContaining({ catInstanceId: mica.catInstanceId, ownerUserId: buyer.userId, availabilityState: 'Idle' }),
+    ]));
+
+    const admin = createServiceRoleClient(API_URL);
+    const expire = await admin.from('cat_rentals').update({ expires_at: new Date(Date.now() - 1_000).toISOString() }).eq('cat_instance_id', mica.catInstanceId);
+    expect(expire.error).toBeNull();
+    const afterExpiry = await readCollection(seller.accessToken);
+    expect(afterExpiry.cats).toEqual(expect.arrayContaining([
+      expect.objectContaining({ catInstanceId: mica.catInstanceId, ownerUserId: seller.userId, availabilityState: 'Idle' }),
+    ]));
+    expect((await readCollection(buyer.accessToken)).cats.some((cat) => cat.catInstanceId === mica.catInstanceId)).toBe(false);
   });
 });

@@ -1,13 +1,14 @@
-import { MIN_TOUCH_TARGET_PX, type LayoutRegion } from './mineLayout';
+import {
+  CAT_RUNTIME_DISPLAY_SIZE,
+  MIN_TOUCH_TARGET_PX,
+  type LayoutRegion,
+} from './mineLayout';
 
 /** Approved 288x132 floor composition from layout1.png. */
 export const MINE_FLOOR_PANEL_REFERENCE_WIDTH = 288;
 export const MINE_FLOOR_PANEL_REFERENCE_HEIGHT = 132;
-/**
- * The older floor sheets occupy about 59% of a frame while the elevator cat
- * occupies about 88%; 75 px makes their visible bodies match its 50 px draw.
- */
-export const MINE_FLOOR_CHARACTER_DISPLAY_SIZE = 75;
+/** Shared runtime display box keeps surface and underground cats at one scale. */
+export const MINE_FLOOR_CHARACTER_DISPLAY_SIZE = CAT_RUNTIME_DISPLAY_SIZE;
 const FLOOR_BADGE_REFERENCE_SIZE = 34;
 const FLOOR_BADGE_REVIEW_SCALE = 0.5;
 

@@ -150,3 +150,34 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     await expect(dialog).not.toBeVisible();
   });
 }
+
+test('distinguishes an unavailable collection from a genuinely empty one', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+
+  await page.evaluate(async () => {
+    const modulePath = '/src/ui/CollectionModal.ts';
+    const { CollectionModal } = await import(/* @vite-ignore */ modulePath);
+    const parent = document.createElement('div');
+    parent.id = 'collection-error-fixture';
+    document.body.append(parent);
+    const modal = new CollectionModal({
+      parent,
+      getRoster: () => ({ cats: [], assignments: [], assignmentRevision: 0, collectionRevision: 0 }),
+      getStatus: () => 'error',
+      onRetry: () => {
+        document.body.dataset.collectionRetry = 'true';
+      },
+    });
+    modal.open();
+  });
+
+  const dialog = page.getByRole('dialog', { name: 'Cat Collection' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Collection unavailable · Retry to reconnect');
+  await expect(dialog).not.toContainText('0 owned cats');
+  await expect(dialog).toContainText('Your collection could not be loaded. Retry to check your saved cats.');
+  await expect(dialog.locator('.collection-card')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-collection-retry', 'true');
+});

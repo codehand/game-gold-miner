@@ -7,6 +7,86 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Reference-driven bottom menu artwork — 2026-09-21
+
+- **Visual asset gate — Passed:** the generated reference-shaped strip has a
+  continuous navy/gold shell, five ordered tiles, a raised active Boost tile,
+  no typography, and a transparent magenta-removed surround.
+- **Runtime gate — Passed:** `BootScene` loads one menu image and
+  `BottomNavigationView` preserves the existing five independent hit regions,
+  callbacks, and diagnostic key order.
+- **Verification gate — Passed:** the navigation asset contract test, lint,
+  build, and touch navigation slice pass. The mouse navigation slice still
+  exposes a Collection-close timing race at its 17th click; it is isolated
+  from the menu asset and is recorded as an open test risk rather than claimed
+  green.
+- **Acceptance boundary:** presentation-only; no save, economy, network, or
+  database contract changed.
+
+## Reference-driven bottom menu aspect-ratio fix — 2026-09-21
+
+- **Layout gate — Passed:** the alpha-cropped 2,167×455 runtime image fits
+  uniformly at roughly 356×75 inside the fixed 360×80 navigation region; the
+  five tiles and raised Boost ornament are fully visible in the in-app browser
+  with balanced proportions and no overflow or clipping. The navigation-color
+  underlay removes the exposed dark mine seam around the transparent artwork.
+- **Interaction gate — Passed:** the five independent hit regions remain
+  unchanged, and the focused touch navigation slice passes.
+- **Verification gate — Passed:** `tests/unit/navigation-assets.test.ts`,
+  `tests/unit/layout.test.ts`, `npm run lint`, `npm run build`,
+  `git diff --check`, and the focused touch Playwright slice pass. The known
+  mouse Collection-close timing race remains isolated from this asset/layout
+  fix.
+
+## Reference-driven bottom menu raster sharpness fix — 2026-09-21
+
+- **Rendering gate — Passed:** the 712×150 high-quality runtime resample draws
+  at an exact 0.5 scale; in-app browser inspection shows sharper menu borders
+  and icon details without changing the logical layout or global renderer.
+- **Regression gate — Passed:** focused navigation asset/layout unit tests,
+  lint, build, touch navigation E2E, and `git diff --check` pass.
+
+## Bottom-navigation sprite sheet — 2026-09-21
+
+- **Asset gate — Passed:** one transparent 1,280×256 runtime sheet contains
+  exactly five non-empty 256×256 frames in the required menu order; processed
+  output subjects do not touch cell edges.
+- **Runtime gate — Passed:** `BootScene` loads the sheet before the menu is
+  created, and `BottomNavigationView` preserves the existing five keys,
+  hitboxes, press animation, and callbacks while rendering frames 0–4.
+- **Verification gate — Passed:** the navigation asset unit test, `npm run
+  lint`, and `npm run build` pass. The touch navigation E2E remains green; the
+  existing mouse slice retains its known Collection-close timing flake and is
+  not used as the asset gate.
+- **Acceptance boundary:** presentation-only; no save, economy, network, or
+  database contract changed.
+
+## Listed Marketplace CTA feedback — 2026-09-21
+
+- **Lifecycle-specific CTA gate — Passed:** a `Listed` catalog item no longer
+  renders `Confirm purchase` or `Cancel`; it renders `Buy listed cat` and
+  `Back to cats` in the same responsive row.
+- **Transaction gate — Passed:** the new primary CTA still invokes the existing
+  authoritative purchase callback and reaches the existing Collection success
+  state.
+- **Focused evidence — Passed:** Marketplace trading browser slice 6/6,
+  `npm run lint`, `npm run build`, and `git diff --check` pass.
+- **Acceptance boundary:** presentation and copy only; no save, network,
+  database, or gameplay contract changed.
+
+## Marketplace and Collection feedback polish — 2026-09-21
+
+- **CTA layout regression — Passed:** the Buy confirmation keeps the primary
+  and cancel actions on the same row after the confirmation state rerenders;
+  the browser assertion checks equal vertical position and ordering.
+- **Collection state regression — Passed:** an `error` status renders
+  unavailable/retry copy and no owned-count summary, while the existing ready
+  empty state remains covered by the Collection flow.
+- **Focused evidence — Passed:** the Marketplace purchase and Collection
+  browser specs pass 4/4, plus `npm run lint` and `npm run build`.
+- **Acceptance boundary:** presentation-only; no save, network, database, or
+  gameplay contract changed.
+
 ## Cat collection Phase 9 — 2026-09-20
 
 - **Full feature acceptance — Passed:** client unit 64 files / 739 tests,
@@ -240,3 +320,26 @@ and IndexedDB schema versions remain 1.
 ## Gate recorded under `Active Decisions`
 
 - The user validated Step 30 and authorized Step 31 on 2026-08-30.
+
+## Marketplace purchase handoff — 2026-09-20
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Server purchase authority | Pass | Live cat-collection integration covers exact seeded price, wallet deduction, ownership/Idle projection, revision metadata, replay safety, unknown asset, insufficient funds, and missing wallet. |
+| Client reconciliation | Pass | Focused client tests cover purchase metadata parsing, auth refresh, malformed responses, and `CloudSaveReplica.acceptExternalRevision`. |
+| Buy UI | Pass | Marketplace browser test covers detail → confirm → callback → success; full client E2E is 61/61. |
+| Collection and assignment | Pass | Live server browser E2E is 12/12 and covers two real purchases, Collection/assignment, same-role replacement, production binding, and reload persistence. |
+| Release regression | Pass | Lint, 740 unit tests, build, secret scan, 61 client E2E, 10 production smoke, 195 server-unit, 132 server-integration, 12 server-E2E, and `git diff --check` pass. |
+| Deferred boundary | Pass | Rent, Sell, and My listings stay preview-only and do not create ownership or transaction state. |
+
+## Marketplace trading — 2026-09-20
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Listing authority | Pass | Migration and RPCs enforce owner-only listing creation/cancellation, active-listing uniqueness, positive integer pricing, legal status transitions, and exact-role assignment eligibility. |
+| Sale flow | Pass | Live server integration creates a sale listing, transfers ownership, deducts the buyer wallet, returns save revision metadata, and proves idempotent replay does not double-charge. |
+| Rental flow | Pass | Live server integration rents for two hours, deducts the exact hourly total, exposes the cat to the renter, and settles expiry back to the owner after the expiry timestamp. |
+| API and adapter | Pass | Edge-function route tests and marketplace adapter unit tests cover listing query/mutation forwarding, auth refresh, malformed responses, and invalid duration handling. |
+| Marketplace UI | Pass | Responsive browser tests cover Buy, Rent duration/total, Sell publication, My listings, cancellation controls, live callbacks, and mobile layouts at 390×844 and 320×568. |
+| Security boundary | Pass | Supabase reset, server-unit tests, targeted integration tests, and adversarial RLS tests pass with marketplace tables service-role-only. |
+| Release regression | Pass | Production build, 743 client unit tests, 11 targeted server integration tests, six Marketplace browser tests, lint, and `git diff --check` pass. |

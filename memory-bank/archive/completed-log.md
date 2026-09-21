@@ -1,5 +1,62 @@
 # Archive — Completed work log
 
+## 2026-09-21 — Reference-driven bottom menu artwork
+
+After visual review supplied a complete target composition, regenerated the
+bottom navigation as one transparent full-menu strip: a continuous navy/gold
+shell, five rounded tiles, and a raised active Boost tile in the centre. The
+runtime now loads the processed artwork as one image while code retains the
+five independent hit regions and a transient press tint. The earlier icon-only
+sheet remains retained as superseded art provenance.
+
+The follow-up browser review found that the raw transparent canvas made the
+menu overflow its 58-pixel region and reduced the visible icon scale. The
+runtime asset was alpha-cropped from 2,172×724 to 2,167×455, and the next
+feedback pass showed that fitting it to 356×54 distorted the source vertically.
+The navigation region is now 360×80 and the artwork is fitted uniformly at
+roughly 356×75 with a 2-pixel safe margin. A `NAVIGATION_BACKGROUND` underlay
+now fills the transparent margins so the mine background cannot show through as
+a black seam between the mine and menu. In-app browser inspection confirms the
+complete shell and centre ornament remain visible with balanced icon
+proportions.
+
+The browser comparison then found the menu softer than the source generation
+because the large source was being filtered directly into the small logical
+display box. The runtime asset is now a high-quality 712×150 resample of the
+alpha-cropped source and draws at an exact 0.5 scale, improving edge/detail
+retention without changing logical coordinates, hit regions, or save/gameplay
+behavior.
+
+## 2026-09-21 — Bottom-navigation sprite sheet integration
+
+Regenerated the five bottom-menu icons from the approved celestial cat-mining
+prompt as one transparent 5×1 sheet. The processor produced five 256×256
+frames, individual crops, and deterministic QC metadata; the runtime now loads
+the sheet and maps frames 0–4 to Rewards, Marketplace, Boost, Collection, and
+Map. The existing hit regions, press animation, callbacks, and future Boost/Map
+behavior remain unchanged. The asset contract test, lint, and production build
+pass.
+
+## 2026-09-21 — Listed Marketplace CTA feedback
+
+Reviewed the follow-up browser comment showing a `Listed` catalog item with the
+generic `Confirm purchase` / `Cancel` pair. The confirmation row now uses
+listing-specific `Buy listed cat` and `Back to cats` actions while preserving
+the explicit confirmation step and the same server-authoritative purchase
+callback. The focused Marketplace trading browser slice passes 6/6, with lint,
+build, and diff-whitespace checks clean. No save, network, database, or
+gameplay contract changed.
+
+## 2026-09-21 — Marketplace and Collection feedback polish
+
+Reviewed two browser comments from the live in-app browser. The Marketplace
+Buy confirmation now lays out the explanatory/wallet copy full-width and keeps
+`Confirm purchase` plus `Cancel` in one responsive row. Collection now uses
+state-aware summary copy and an explicit retryable unavailable message, so a
+failed hydration cannot be mistaken for a genuine empty collection. Added
+browser regressions for CTA geometry and unavailable-versus-empty semantics.
+`npm run lint`, `npm run build`, and the focused four-test Playwright slice pass.
+
 ## 2026-09-20 — Cat collection Phase 9 and full feature acceptance
 
 Closed the conflict/offline/recovery/release audit for the cat collection and
@@ -3205,3 +3262,25 @@ Final validation for the miner/elevator feedback passes: lint, strict build, 335
 - Step 32 visual review passed at an exact 360×640 viewport and a reduced 320×568 phone viewport with all required objects distinguishable and no browser warnings or errors. Strict sprite QC reports 128×128 RGBA output with usable alpha; two visually complete source-cell contacts were explicitly accepted while output-edge contact and paste clamping remain absent.
 - Step 32 automated evidence: 278 unit tests and 27 Chromium E2E tests pass, including provenance/dimension checks for every runtime asset and real framebuffer probes updated to prove generated gold and backlog silhouettes render under both the WebGL and the Canvas renderer. Lint, strict production build, and asset alpha/size reporting pass.
 - A code review of the Step 32 change corrected six defects before the gate: the backlog cue was a WebGL-only fill tint and vanished on a Canvas fallback, so it is now a boot-generated recoloured texture; `describeRenderedState` had started echoing cached snapshot fields, so pile size and backlog state are measured back off the drawn sprite again; the stacked purchase control overlapped its icon with its action label; `PurchaseControlView.#render` called the unguarded `setTexture` every frame; a second finger stole a live scroll gesture and froze the mine mid-drag; and foreground progress was persisted only by a purchase or a lifecycle flush, so a 30-second save heartbeat now covers a webview killed without `pagehide`.
+
+The Marketplace purchase handoff is complete on 2026-09-20. The seeded catalog's
+Buy action now confirms and calls the authenticated server purchase endpoint;
+the server returns the caller-scoped roster, post-purchase wallet gold, and
+save revision; the client reconciles those values before its next cloud CAS;
+and the success path exposes Collection. Rent, Sell, and My listings remain
+explicitly preview-only. The live browser journey bought Forge and Mica,
+assigned Forge to the Miner slot, changed the slot to Mica, and proved the
+runtime binding persisted after reload. No renderer asset or animation state
+was added to authoritative save data.
+
+The Marketplace trading implementation is complete on 2026-09-20. Active
+server-authoritative listings now support fixed-price Buy, hourly Rent, owner
+Sell, and My listings history. Listing creation, cancellation, purchase, rent
+settlement, expiry reconciliation, wallet deductions, ownership/renter
+projection, exact-role assignment, and idempotent mutation replay are covered
+by the Supabase RPC layer and the authenticated `cat-collection` endpoint.
+The client adapter, live Marketplace tabs, listing detail/confirmation flows,
+and post-mutation save reconciliation are wired through the game shell. The
+live integration and browser gates prove sale transfer, rental use and expiry,
+responsive listing controls, and no remaining active preview-only trading
+boundary.

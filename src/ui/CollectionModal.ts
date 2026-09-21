@@ -125,12 +125,18 @@ export class CollectionModal {
 
     const main = document.createElement('main');
     main.className = 'collection-content';
+    const status = this.#getStatus();
     const summary = document.createElement('p');
     summary.className = 'collection-summary';
-    summary.textContent = `${roster.cats.length} owned ${roster.cats.length === 1 ? 'cat' : 'cats'} · Collection #${roster.collectionRevision}`;
+    summary.textContent = status === 'ready'
+      ? `${roster.cats.length} owned ${roster.cats.length === 1 ? 'cat' : 'cats'} · Collection #${roster.collectionRevision}`
+      : status === 'stale'
+        ? `${roster.cats.length} saved ${roster.cats.length === 1 ? 'cat' : 'cats'} · Refresh pending`
+        : status === 'loading'
+          ? 'Loading your collection…'
+          : 'Collection unavailable · Retry to reconnect';
     main.append(summary);
 
-    const status = this.#getStatus();
     if (status !== 'ready') {
       main.append(this.#status(status));
     }
@@ -150,7 +156,7 @@ export class CollectionModal {
       empty.className = 'collection-empty collection-state-empty';
       empty.textContent = status === 'loading'
         ? 'Loading your collection…'
-        : 'Your saved collection is unavailable right now.';
+        : 'Your collection could not be loaded. Retry to check your saved cats.';
       main.append(empty);
     }
 

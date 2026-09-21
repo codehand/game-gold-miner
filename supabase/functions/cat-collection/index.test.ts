@@ -4,6 +4,7 @@ import {
   handleRequest,
   type CatCollectionDependencies,
   type CatCollectionProjection,
+  type MarketplaceMutationProjection,
 } from './index.ts';
 
 const EMPTY: CatCollectionProjection = {
@@ -11,6 +12,12 @@ const EMPTY: CatCollectionProjection = {
   assignments: [],
   assignmentRevision: 0,
   collectionRevision: 0,
+};
+
+const MARKETPLACE_EMPTY: MarketplaceMutationProjection = {
+  ...EMPTY,
+  listings: [],
+  listingId: 'listing-1',
 };
 
 function deps(overrides: Partial<CatCollectionDependencies> = {}): CatCollectionDependencies {
@@ -137,4 +144,68 @@ Deno.test('assignment rejects malformed revisions before calling the repository'
   assert.equal(response.status, 400);
   assert.equal(called, false);
   assert.ok((await response.json()).error);
+});
+
+Deno.test('marketplace listing routes authenticate and forward caller-scoped commands', async () => {
+  let received: { userId: string; catInstanceId: string; listingType: string; priceExact: string } | null = null;
+  const response = await handleRequest(
+    request('/v1/listings', 'POST', {
+      catInstanceId: 'cat-1',
+      listingType: 'rent',
+      priceExact: '250',
+      idempotencyKey: 'listing-0001',
+      ownerUserId: 'attacker',
+    }),
+    deps({
+      createListing: async (userId, command) => {
+        received = { userId, ...command };
+        return MARKETPLACE_EMPTY;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(received, {
+    userId: 'user-1',
+    catInstanceId: 'cat-1',
+    listingType: 'rent',
+    priceExact: '250',
+    idempotencyKey: 'listing-0001',
+  });
+});
+
+Deno.test('rent route rejects invalid duration before reaching the marketplace service', async () => {
+  let called = false;
+  const response = await handleRequest(
+    request('/v1/listings/listing-1/rent', 'POST', {
+      durationHours: 25,
+      idempotencyKey: 'rent-0001',
+    }),
+    deps({
+      rentListing: async () => {
+        called = true;
+        return MARKETPLACE_EMPTY;
+      },
+    }),
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, 'invalid_duration');
+  assert.equal(called, false);
+});
+
+Deno.test('marketplace GET forwards type and mine scope', async () => {
+  let received: { userId: string; type: string | null; mineOnly: boolean } | null = null;
+  const response = await handleRequest(
+    request('/v1/listings?type=sale&scope=mine', 'GET'),
+    deps({
+      readMarketplace: async (userId, type, mineOnly) => {
+        received = { userId, type, mineOnly };
+        return { listings: [] };
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(received, { userId: 'user-1', type: 'sale', mineOnly: true });
 });

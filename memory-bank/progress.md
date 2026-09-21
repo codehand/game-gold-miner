@@ -2,11 +2,44 @@
 
 ## Status Summary
 
+**Reference-driven bottom menu, 2026-09-21:** regenerated the complete
+Rewards, Marketplace, active Boost, Collection, and Map menu from the supplied
+reference, alpha-cropped it to a transparent 2,167×455 runtime strip, and
+integrated it into the existing Phaser menu. The fixed navigation region is now
+360×80 and `BottomNavigationView` fits the artwork uniformly at roughly 356×75,
+resolving the reported vertical squashing while keeping the complete shell
+visible. Deterministic raster QC confirms a non-empty navy/gold subject. The
+runtime asset/layout contract tests, lint, production build, and in-app browser
+inspection pass. A navigation-color backdrop now fills the transparent margin
+around the artwork so the menu joins the mine edge without a black seam;
+interaction behavior and hit regions remain unchanged. The runtime texture is
+now a high-quality 2× resample at 712×150 and the view draws it at an exact
+0.5 scale; the in-app browser confirms sharper edges at display size.
+
+**UI feedback polish, 2026-09-21:** the Marketplace Buy confirmation for a
+`Listed` catalog item uses `Buy listed cat` and `Back to cats` on one row at the
+supported portrait widths. Collection shows an explicit unavailable/retry state
+when hydration fails instead of reporting `0 owned cats`; the owned-count
+summary remains reserved for a successful roster projection. Focused
+Marketplace Playwright (6/6), Collection Playwright (4/4), lint, and build
+pass. This is presentation-only and does not change save, network, or schema
+contracts.
+
+**Marketplace trading:** live seeded-catalog Buy plus player-to-player Sell,
+Rent, and My listings are complete under
+`memory-bank/marketplace-purchase-and-cat-assignment-implementation-plan-v1.md`
+and `memory-bank/marketplace-trading-implementation-plan-v1.md`. The server
+owns listing, sale, rental, cancellation, wallet, idempotency, expiry, and
+role-compatible renter assignment state. The client renders live projections,
+publishes/cancels listings, confirms sale/rental commands, adopts roster and
+wallet/save revisions, and persists the result through the existing local/cloud
+CAS path. Rent, Sell, and My listings are no longer preview-only.
+
 **Cat collection and role assignment implementation:** the ordered phase/gate
 plan is in
 `memory-bank/cat-collection-and-role-assignment-implementation-plan-v1-draft.md`.
 Phases 0–9 passed on 2026-09-19/20. The pure core domain, V3 save/migration,
-server ownership/purchase/assignment API, eleven-table RLS coverage, typed web
+server ownership/purchase/assignment API, fourteen-table RLS coverage, typed web
 adapter, active-save hydration, non-blocking boot hydration, and responsive
 Collection list/detail UI, assigned-cat replacement flow, runtime role-slot
 binding, simulation production effects, and the conflict/offline/recovery/
@@ -20,10 +53,9 @@ purchase-to-collection, owned-cat detail, same-role replacement in mine slots,
 production modifiers, and reload/re-login persistence. Phases 0–9 now implement
 the V3 projection, server ownership/assignment path, hydration, Collection UI,
 expected-revision assignment adapter, runtime slot binding, and role-based
-production modifiers. The current Marketplace remains preview-only for
-transaction UI; its future purchase handoff still needs to call the ownership
-API, but the collection and assignment feature itself is authoritative and
-complete.
+production modifiers. The seeded Buy handoff and live trading surfaces now call
+the ownership and marketplace APIs; the collection, assignment, sale, rental,
+and listing features are authoritative and complete.
 
 **Base game: complete.** All 37 `implementation-plan.md` steps are implemented
 and validated; the user validated Step 37 on 2026-09-08. No plan step remains
@@ -210,8 +242,9 @@ asset registry, presents role/rarity/4-stat/role-fit/skill/availability data
 with the Phase 2 icon family, and falls back to the safe placeholder when a
 portrait is missing or fails to load. The 390×844 and 320×568 Marketplace
 flows, detail stat/skill assertions, catalog HTTP checks, and failure fallback
-browser test pass; cards do not decode premium sheets at open. The UI remains
-preview-only and does not change authoritative ownership or transaction state.
+browser test pass; cards do not decode premium sheets at open. This phase was
+presentation-only; the later Marketplace trading phase now supplies the
+authoritative ownership and transaction path.
 Phase 6 — listing and transaction state presentation — completed 2026-09-19.
 Added the UI-only state contract for Idle, Assigned, Listed, Rented, Expired,
 and Locked, with approved icons, explanations, and explicit non-conflicting

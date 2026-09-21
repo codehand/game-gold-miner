@@ -38,19 +38,21 @@ re-login; the old instance returns to `Idle`, the new instance becomes
 metric. Offline or stale sessions keep the last safe read-only projection and
 cannot claim a replacement success without authority.
 
-Phases 5–8 now deliver the owned-cat Collection/detail surface, the
+Phases 5–8 deliver the owned-cat Collection/detail surface, the
 server-authoritative mine replacement flow, runtime role-slot binding, and the
-role-based production effect. The existing Managers navigation entry opens the
-Collection; Marketplace remains a preview/catalog surface for transaction UI
-until its future purchase handoff is connected to the same ownership API.
+role-based production effect. The Marketplace now also has live fixed-price
+Sell, hourly Rent, and My listings contracts: owners publish idle cats, buyers
+or renters transact through the server, and the resulting wallet, roster,
+assignment, and expiry state is reconciled into the game. None of these
+surfaces is a client-only preview.
 
 ## UX Principles
 
-Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback; the Rewards item opens the Step 29 leaderboard, and Managers opens the current owned-cat Collection list/detail surface. The remaining future-feature items stay discoverable without pretending their screens already exist.
+Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses a cohesive generated full-menu strip fitted inside the safe region, icon-only thumb-safe controls, and immediate press feedback; the Rewards item opens the Step 29 leaderboard, and Managers opens the current owned-cat Collection list/detail surface. Marketplace confirmations keep listing-specific actions visible together on narrow screens (`Buy listed cat` plus `Back to cats` for a Listed catalog item), while Collection explicitly distinguishes a valid empty roster from a failed or stale load. The remaining future-feature items stay discoverable without pretending their screens already exist.
 
 ## Base-Game Delivery Boundary
 
-The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation shell now reserves the bottom 58 logical pixels for five clickable, individually illustrated controls (Rewards, Shop, Boost, Managers, Map); each complete visible tile is scaled to 60% while the thumb-safe hit region stays unchanged. Managers now leads to the owned-cat Collection list/detail surface and the mine role-slot assignment flow; boost, gift, shop, task, social, Telegram, monetization, audio, and final-art systems remain deferred.
+The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation shell now reserves the bottom 80 logical pixels for five clickable, generated menu tiles (Rewards, Shop, Boost, Managers, Map); the reference-shaped artwork keeps its source aspect ratio while the thumb-safe hit region stays unchanged. Managers now leads to the owned-cat Collection list/detail surface and the mine role-slot assignment flow; boost, gift, shop, task, social, Telegram, monetization, audio, and final-art systems remain deferred.
 
 The user-review revision completed on 2026-09-08 reduces the fixed HUD to 52 logical pixels and defines its centre number as the authoritative warehouse input queue (`warehouse.inputQueue`), not gold still travelling inside the elevator cabin. A warehouse icon makes that ownership explicit. The tower hopper, gold pour, loaded cats, and filled surface carts now all empty with that queue; elevator cargo remains visually in transit until surface delivery. The elevator preserves top-down priority by returning whenever a visited floor still has gold, and the surface delivery crew shares one straight baseline.
 

@@ -4,10 +4,23 @@ import {
   getCatForSlot,
   type CatSlotKey,
 } from '../../core';
-import { MarketplaceModal } from '../../ui/MarketplaceModal';
+import {
+  MarketplaceModal,
+  type MarketplacePurchaseResult,
+} from '../../ui/MarketplaceModal';
+import type { CatRosterState } from '../../core';
+import type {
+  MarketplaceCommandResult,
+  MarketplaceListingType,
+  MarketplaceListingsResult,
+} from '../../platform/web/marketplace';
 import { MineShaftUpgradeModal } from '../../ui/MineShaftUpgradeModal';
 
 import { createBacklogTextures } from '../assets/backlogTextures';
+import {
+  BOTTOM_NAVIGATION_MENU_ASSET_PATH,
+  BOTTOM_NAVIGATION_MENU_TEXTURE_KEY,
+} from '../assets/navigationAssets';
 import {
   MARKETPLACE_RUNTIME_ANIMATION_ASSETS,
   MARKETPLACE_RUNTIME_ROLE_ASSETS,
@@ -45,6 +58,8 @@ import {
   MINE_BACKGROUND,
   MINE_FLOOR_COUNT,
   MINE_SHAFT_CABIN_SIZE,
+  MINE_SHAFT_CARGO_CAT_SIZE,
+  CAT_RUNTIME_DISPLAY_SIZE,
   serializeRegion,
   SURFACE_ELEVATOR_STOP_X,
   SURFACE_ELEVATOR_STOP_Y,
@@ -176,6 +191,21 @@ export interface BootSceneOptions {
   readonly onLeaderboard?: (onClosed: () => void) => void;
   readonly onCollection?: (onClosed: () => void) => void;
   readonly onCatSlot?: (slotKey: CatSlotKey, onClosed: () => void) => void;
+  readonly onMarketplacePurchase?: (assetId: string) => Promise<MarketplacePurchaseResult>;
+  readonly getWalletGold?: () => string | null;
+  readonly getCollection?: () => CatRosterState;
+  readonly loadMarketplaceListings?: (
+    listingType: MarketplaceListingType | null,
+    mineOnly: boolean,
+  ) => Promise<MarketplaceListingsResult>;
+  readonly onCreateMarketplaceListing?: (command: {
+    readonly catInstanceId: string;
+    readonly listingType: MarketplaceListingType;
+    readonly priceExact: string;
+  }) => Promise<MarketplaceCommandResult>;
+  readonly onCancelMarketplaceListing?: (listingId: string) => Promise<MarketplaceCommandResult>;
+  readonly onBuyMarketplaceListing?: (listingId: string) => Promise<MarketplaceCommandResult>;
+  readonly onRentMarketplaceListing?: (listingId: string, durationHours: number) => Promise<MarketplaceCommandResult>;
 }
 
 /**
@@ -198,6 +228,14 @@ export class BootScene extends Phaser.Scene {
   readonly #onLeaderboard: ((onClosed: () => void) => void) | null;
   readonly #onCollection: ((onClosed: () => void) => void) | null;
   readonly #onCatSlot: ((slotKey: CatSlotKey, onClosed: () => void) => void) | null;
+  readonly #onMarketplacePurchase: ((assetId: string) => Promise<MarketplacePurchaseResult>) | null;
+  readonly #getWalletGold: (() => string | null) | null;
+  readonly #getCollection: (() => CatRosterState) | null;
+  readonly #loadMarketplaceListings: BootSceneOptions['loadMarketplaceListings'] | null;
+  readonly #onCreateMarketplaceListing: BootSceneOptions['onCreateMarketplaceListing'] | null;
+  readonly #onCancelMarketplaceListing: BootSceneOptions['onCancelMarketplaceListing'] | null;
+  readonly #onBuyMarketplaceListing: BootSceneOptions['onBuyMarketplaceListing'] | null;
+  readonly #onRentMarketplaceListing: BootSceneOptions['onRentMarketplaceListing'] | null;
   /** Live press results, keyed by control, cleared as each one expires. */
   readonly #purchaseFeedback = new Map<string, PurchaseFeedback>();
   /** The snapshot currently bound to the views, compared by identity. */
@@ -258,6 +296,14 @@ export class BootScene extends Phaser.Scene {
     this.#onLeaderboard = options.onLeaderboard ?? null;
     this.#onCollection = options.onCollection ?? null;
     this.#onCatSlot = options.onCatSlot ?? null;
+    this.#onMarketplacePurchase = options.onMarketplacePurchase ?? null;
+    this.#getWalletGold = options.getWalletGold ?? null;
+    this.#getCollection = options.getCollection ?? null;
+    this.#loadMarketplaceListings = options.loadMarketplaceListings ?? null;
+    this.#onCreateMarketplaceListing = options.onCreateMarketplaceListing ?? null;
+    this.#onCancelMarketplaceListing = options.onCancelMarketplaceListing ?? null;
+    this.#onBuyMarketplaceListing = options.onBuyMarketplaceListing ?? null;
+    this.#onRentMarketplaceListing = options.onRentMarketplaceListing ?? null;
     this.#viewModel = options.source.snapshot;
     this.#visibleFloorCount = countVisibleFloors(options.source.snapshot);
     this.#animationSpeedMultiplier =
@@ -266,6 +312,11 @@ export class BootScene extends Phaser.Scene {
 
   /** Loads the original Step 32 placeholder family before any view is built. */
   public preload(): void {
+    this.load.image(
+      BOTTOM_NAVIGATION_MENU_TEXTURE_KEY,
+      BOTTOM_NAVIGATION_MENU_ASSET_PATH,
+    );
+
     for (const [key, path] of PLACEHOLDER_ASSETS) {
       this.load.image(key, path);
     }
@@ -300,10 +351,32 @@ export class BootScene extends Phaser.Scene {
     ];
     const mineContent = this.#createMineContent(layout.width);
 
-    this.#marketplace = new MarketplaceModal(this.game.canvas.parentElement ?? document.body, () => {
-      this.input.enabled = true;
-      this.#publishMarketplaceClose();
-    });
+    this.#marketplace = new MarketplaceModal(
+      this.game.canvas.parentElement ?? document.body,
+      () => {
+        this.input.enabled = true;
+        this.#publishMarketplaceClose();
+      },
+      {
+        onPurchase: this.#onMarketplacePurchase ?? undefined,
+        getWalletGold: this.#getWalletGold ?? undefined,
+        getCollection: this.#getCollection ?? undefined,
+        loadListings: this.#loadMarketplaceListings ?? undefined,
+        onCreateListing: this.#onCreateMarketplaceListing ?? undefined,
+        onCancelListing: this.#onCancelMarketplaceListing ?? undefined,
+        onBuyListing: this.#onBuyMarketplaceListing ?? undefined,
+        onRentListing: this.#onRentMarketplaceListing ?? undefined,
+        onViewCollection: () => {
+          if (this.#onCollection === null) {
+            return;
+          }
+          this.input.enabled = false;
+          this.#onCollection(() => {
+            this.input.enabled = true;
+          });
+        },
+      },
+    );
     this.#floorUpgradeModal = new MineShaftUpgradeModal({
       parent: this.game.canvas.parentElement ?? document.body,
       onUpgrade: (target, quantity) => {
@@ -1056,8 +1129,8 @@ export class BootScene extends Phaser.Scene {
         0,
       )
       .setDisplaySize(
-        this.#elevatorAnimation.displaySize,
-        this.#elevatorAnimation.displaySize,
+        MINE_SHAFT_CARGO_CAT_SIZE,
+        MINE_SHAFT_CARGO_CAT_SIZE,
       )
       .setVisible(false)
       .setInteractive({ useHandCursor: true })
@@ -1346,8 +1419,16 @@ export class BootScene extends Phaser.Scene {
     const warehouse = bindings.find((binding) => binding.slotKey === 'warehouse:main');
     if (elevator !== undefined) {
       this.#elevatorAnimation = elevator.animation;
-      this.#applyRuntimeSprite(this.#shaftCargoCat, elevator.animation);
-      this.#applyRuntimeSprite(this.#surfaceCargoCat, elevator.animation);
+      this.#applyRuntimeSprite(
+        this.#shaftCargoCat,
+        elevator.animation,
+        MINE_SHAFT_CARGO_CAT_SIZE,
+      );
+      this.#applyRuntimeSprite(
+        this.#surfaceCargoCat,
+        elevator.animation,
+        CAT_RUNTIME_DISPLAY_SIZE,
+      );
     }
     if (warehouse !== undefined) {
       this.#warehouseAnimation = warehouse.animation;
@@ -1397,10 +1478,11 @@ export class BootScene extends Phaser.Scene {
   #applyRuntimeSprite(
     sprite: Phaser.GameObjects.Sprite | null,
     animation: MarketplaceRuntimeAnimationAsset,
+    displaySize: number = animation.displaySize,
   ): void {
     sprite
       ?.setTexture(animation.textureKey, 0)
-      .setDisplaySize(animation.displaySize, animation.displaySize);
+      .setDisplaySize(displaySize, displaySize);
   }
 
   /**
@@ -1647,6 +1729,15 @@ export class BootScene extends Phaser.Scene {
             height: this.#shaftCargoCat.displayHeight,
             assetId: this.#elevatorAnimation.assetId,
             texture: this.#shaftCargoCat.texture.key,
+          },
+      surfaceElevatorCat: this.#surfaceCargoCat === null
+        ? null
+        : {
+            centerY: this.#surfaceCargoCat.y,
+            width: this.#surfaceCargoCat.displayWidth,
+            height: this.#surfaceCargoCat.displayHeight,
+            assetId: this.#elevatorAnimation.assetId,
+            texture: this.#surfaceCargoCat.texture.key,
           },
       elevatorTower: this.#surfaceElevatorTower === null
         ? null

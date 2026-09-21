@@ -33,6 +33,23 @@ Persistence and Platform Adapters
 - Unlock deeper floors only through a distinct immutable command after the immediately previous floor is unlocked at its configured shaft level; deduct once and initialize the target from balance data. Derive what a locked floor shows from the same private predicate that command uses, so the description and the charge cannot disagree.
 - Analyze provisional balance with a deterministic one-second automated playthrough: prioritize eligible unlocks, reserve their cost once prerequisites are met, otherwise buy the affordable upgrade with the greatest modeled effective-rate increase, and use next-unlock progress plus configured order for exact ties.
 - Use events/commands between presentation and core logic; never mutate economy state directly from a scene.
+- Keep generated UI art reproducible and renderer-safe: retain the prompt, raw
+  source, processed output, and deterministic QC metadata under `art-source/`,
+  copy only the approved transparent runtime artwork into `public/assets/`,
+  and keep texture keys, source dimensions, and display fitting in a typed asset
+  module. When a full menu strip replaces code-drawn chrome, fit the artwork to
+  the presentation region while keeping semantic hit regions independent, so
+  decorative padding cannot change neighboring input behavior.
+- Keep async UI states semantically distinct: a successful empty projection may say
+  “empty”, but loading, stale, and failed reads must expose their own status and
+  retry path rather than rendering a zero-count fallback as if it were data.
+- Keep a destructive and a cancel CTA in the same responsive action group when
+  they are one confirmation decision; let the explanatory copy span the group,
+  but do not stack the two choices on narrow portrait screens.
+- Make Marketplace CTA labels describe the current lifecycle state: a `Listed`
+  catalog item confirms with `Buy listed cat` and exits with `Back to cats`,
+  rather than presenting generic purchase/cancel labels that obscure the
+  listing context.
 - Advance foreground simulation through 100 ms fixed ticks, retain sub-tick remainder in authoritative state, and credit at most 1,000 ms per update after suspension while consuming the full wall-clock delta.
 - Advance extraction only for unlocked floors, retain normalized overflow progress, and place completed level-adjusted output in the producing floor's local queue without changing spendable gold.
 - Encode the elevator route in its legacy signed cursor: non-negative means descending toward that floor, negative `-(index + 1)` means returning from that floor. Load only on arrival, snap a pickup that consumes the computed remainder to exact configured capacity, never pass a floor whose queue remains, slow each leg linearly with load up to 75% at full capacity, and deliver only on reaching the surface.

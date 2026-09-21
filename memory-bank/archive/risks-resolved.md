@@ -48,3 +48,20 @@ Not part of the contract.
   session playable with the local save intact and one `save_audit` row — but they
   await user validation. The risk stays in `progress.md` until those land and are
   validated.
+
+- **Marketplace Buy was only a visual preview and could diverge from wallet or
+  ownership state.** *Closed 2026-09-20:* seeded Buy now uses the authenticated
+  purchase transaction with server price and wallet authority, idempotent
+  replay, a validated roster projection, and wallet/save-revision metadata.
+  The live browser gate bought two Miner cats, changed the assigned Miner, and
+  reloaded the game with the replacement still bound. Rent, Sell, and My
+  listings remain intentionally deferred rather than being falsely presented
+  as live.
+
+- **Marketplace Rent/Sell/My listings could remain a misleading local preview
+  after Buy became live.** *Closed 2026-09-20:* listing creation,
+  cancellation, sale, rental, expiry settlement, seller history, wallet
+  changes, renter projection, and retry idempotency now run through the
+  authenticated service-role transaction boundary. Browser and integration
+  gates exercise the live tabs and the active documents now describe the
+  complete trading surface.

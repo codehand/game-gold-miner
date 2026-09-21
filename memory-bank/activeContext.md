@@ -2,6 +2,35 @@
 
 ## Current Focus
 
+**Reference-driven bottom menu, 2026-09-21.** The five code-drawn menu
+illustrations were regenerated as one transparent, QC-processed full menu
+strip matching the reference: continuous navy/gold shell, five rounded tiles,
+and a raised active Boost tile in the centre. The runtime image is alpha-cropped
+to 2,167×455, fitted uniformly at roughly 356×75 inside the new 360×80 safe
+region, and no longer vertically squashed. `BottomNavigationView` renders the
+strip as artwork and retains independent 48×44 / 62×50 hit regions with a
+transient press tint. This is presentation-only; Boost and Map remain future
+behavior entries. The 360×80 region now has a continuous navigation-color
+backdrop behind the transparent artwork, so the mine background cannot show as
+a black gap above the shell. No save, economy, network, or schema contract
+changed. The runtime menu texture is now a high-quality 2× resample at
+712×150, allowing an exact 0.5 texture scale into the logical menu and reducing
+browser-side softness without changing the global renderer.
+
+**Marketplace trading, 2026-09-20.** The follow-up purchase plan and the new
+`marketplace-trading-implementation-plan-v1.md` are complete. Buy remains
+server-authoritative for seeded contracts; player-owned cats can now be listed
+for fixed-price sale or hourly rental, browsed in live Sell/Rent surfaces,
+cancelled from My listings, purchased by another account, and rented for 1–24
+hours. Wallet/save revisions, caller-scoped Collection projections, idempotency,
+lazy expiry, renter assignment, and reload-safe local/cloud reconciliation are
+implemented. The Marketplace no longer exposes Rent, Sell, or My listings as
+preview-only UI. A 2026-09-21 browser feedback pass fixed the remaining Buy
+confirmation CTA wrapping, changed Listed catalog actions to
+`Buy listed cat` / `Back to cats`, and made Collection's load failure visually
+distinct from a valid zero-cat projection; focused browser, lint, and build
+gates pass.
+
 **Cat collection and role assignment implementation, 2026-09-20.** Phases 0–9
 are complete and the full feature acceptance gate passed. The pure domain, V3
 local save/migration, server ownership and assignment API, RLS/integration
@@ -18,7 +47,7 @@ collection/detail journey, role-compatible mine replacement, authoritative
 assignment, role-based production effects, and reload/re-login persistence.
 The implementation plan and Phase 0–9 gate results are recorded in
 `cat-collection-and-role-assignment-implementation-plan-v1-draft.md`. The
-existing Marketplace remains a preview/catalog surface; the Collection UI now
+the seeded Buy path now consumes the same server ownership API; the Collection UI now
 consumes the typed account projection, while replacement mutations remain in the
 server-authoritative path and role effects flow through the deterministic core.
 
