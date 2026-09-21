@@ -27,8 +27,9 @@ import {
   MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
   MINE_MIN_HEIGHT,
   MINE_SHAFT_FLOOR_GAP,
-  MINE_SHAFT_CABIN_SIZE,
-  MINE_SHAFT_CARGO_CAT_SIZE,
+  MINE_SHAFT_CABIN_HEIGHT,
+  MINE_SHAFT_CABIN_CAT_Y_OFFSET,
+  MINE_SHAFT_CABIN_WIDTH,
   MINE_SHAFT_INSET_X,
   MINE_SHAFT_WIDTH,
   MIN_TOUCH_TARGET_PX,
@@ -73,9 +74,6 @@ describe('portrait layout geometry', () => {
 
   it('shares one runtime display box across surface and floor characters', () => {
     expect(MINE_FLOOR_CHARACTER_DISPLAY_SIZE).toBe(CAT_RUNTIME_DISPLAY_SIZE);
-    expect(MINE_FLOOR_CHARACTER_DISPLAY_SIZE).toBeGreaterThanOrEqual(
-      MINE_SHAFT_CARGO_CAT_SIZE,
-    );
   });
 
   it('aligns the surface cabin to the tower bay rather than its asymmetric chute', () => {
@@ -298,9 +296,10 @@ describe('scrollable mine content', () => {
       lastFloor.y + lastFloor.height,
     );
     expect(MINE_SHAFT_WIDTH).toBe(64);
-    expect(MINE_SHAFT_CABIN_SIZE).toBe(62);
-    expect(MINE_SHAFT_CARGO_CAT_SIZE).toBe(50);
-    expect(MINE_SHAFT_CABIN_SIZE).toBeLessThanOrEqual(shaft.width);
+    expect(MINE_SHAFT_CABIN_WIDTH).toBe(62);
+    expect(MINE_SHAFT_CABIN_HEIGHT).toBe(80);
+    expect(MINE_SHAFT_CABIN_CAT_Y_OFFSET).toBe(-5);
+    expect(MINE_SHAFT_CABIN_WIDTH).toBeLessThanOrEqual(shaft.width);
   });
 
   it('rejects invalid floor indexes', () => {

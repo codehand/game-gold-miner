@@ -2,6 +2,15 @@
 
 ## Current Focus
 
+**Elevator cabin alignment feedback, 2026-09-21.** Browser review found that
+the moving elevator cat's feet extended below the cabin's lower frame. The fix
+keeps the 64-pixel shaft and 62-pixel cabin width unchanged, uses an 80-pixel
+cabin height, and anchors the elevator cat 5 pixels above the cabin center
+while keeping the shared 75-pixel runtime display box used by surface and floor
+roles. Layout and production-stage regressions cover the size and anchor
+contract; this remains presentation-only
+with no save, economy, network, or schema change.
+
 **Reference-driven bottom menu, 2026-09-21.** The five code-drawn menu
 illustrations were regenerated as one transparent, QC-processed full menu
 strip matching the reference: continuous navy/gold shell, five rounded tiles,

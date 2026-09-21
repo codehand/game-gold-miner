@@ -26,8 +26,10 @@ import {
   calculateMineLayout,
   HUD_BACKGROUND,
   MATERIAL_BACKLOG_FILL,
-  MINE_SHAFT_CABIN_SIZE,
-  MINE_SHAFT_CARGO_CAT_SIZE,
+  CAT_RUNTIME_DISPLAY_SIZE,
+  MINE_SHAFT_CABIN_HEIGHT,
+  MINE_SHAFT_CABIN_CAT_Y_OFFSET,
+  MINE_SHAFT_CABIN_WIDTH,
   PANEL_BACKGROUND,
   SURFACE_ELEVATOR_STOP_X,
   SURFACE_ELEVATOR_STOP_Y,
@@ -624,16 +626,19 @@ test('stops the enlarged elevator beside the floor gold container', async ({
     expectedStopY,
   );
   expect(animation.elevatorCabin.width, 'larger cabin width').toBe(
-    MINE_SHAFT_CABIN_SIZE,
+    MINE_SHAFT_CABIN_WIDTH,
   );
   expect(animation.elevatorCabin.height, 'larger cabin height').toBe(
-    MINE_SHAFT_CABIN_SIZE,
+    MINE_SHAFT_CABIN_HEIGHT,
   );
   expect(animation.elevatorCargoCat.centerY, 'cargo cat follows cabin').toBe(
-    expectedStopY + 3,
+    expectedStopY + MINE_SHAFT_CABIN_CAT_Y_OFFSET,
   );
   expect(animation.elevatorCargoCat.width, 'larger cargo cat width').toBe(
-    MINE_SHAFT_CARGO_CAT_SIZE,
+    CAT_RUNTIME_DISPLAY_SIZE,
+  );
+  expect(animation.elevatorCargoCat.height, 'cargo cat uses the shared height').toBe(
+    CAT_RUNTIME_DISPLAY_SIZE,
   );
 });
 
@@ -713,8 +718,8 @@ test('returns through the surface boundary and stops inside the elevator tower',
   expect(animation.surfaceElevatorCabin, 'cabin rests inside headhouse bay').toMatchObject({
     centerX: SURFACE_ELEVATOR_STOP_X,
     centerY: SURFACE_ELEVATOR_STOP_Y,
-    width: MINE_SHAFT_CABIN_SIZE,
-    height: MINE_SHAFT_CABIN_SIZE,
+    width: MINE_SHAFT_CABIN_WIDTH,
+    height: MINE_SHAFT_CABIN_HEIGHT,
   });
   expect(animation.warehouseBuilding, 'generated warehouse replaces the legacy card').toEqual({
     centerX: SURFACE_WAREHOUSE_CENTER_X,

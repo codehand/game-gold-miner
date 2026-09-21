@@ -2,6 +2,17 @@
 
 ## Status Summary
 
+**Elevator cabin alignment feedback, 2026-09-21:** after the initial 62×75
+and 62×80 size corrections, the moving and surface elevator cabin remains
+62×80 pixels while preserving the 64-pixel shaft width. The elevator cargo cat
+remains on the shared 75-pixel runtime display box, with its center anchored
+5 pixels above the cabin center so the visible feet stand on the upper edge of
+the lower frame.
+Added layout and production-stage regression coverage; focused layout tests
+(30/30), production/runtime browser tests (13/13), the full unit suite
+(745/745), lint, and build pass. This is presentation-only and does not change
+save, economy, network, or schema contracts.
+
 **Reference-driven bottom menu, 2026-09-21:** regenerated the complete
 Rewards, Marketplace, active Boost, Collection, and Map menu from the supplied
 reference, alpha-cropped it to a transparent 2,167×455 runtime strip, and

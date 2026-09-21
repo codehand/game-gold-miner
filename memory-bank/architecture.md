@@ -253,7 +253,7 @@ The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inse
 | `mine` | `0,216,360,366` | Clipped viewport the mine content scrolls behind; ends above fixed navigation. |
 | `bottomNavigation` | `0,560,360,80` | Compact fixed five-tile navigation shell at the bottom safe edge. |
 
-The complete visible navigation controls use one generated transparent menu strip inside unchanged 48×44 standard and 62×50 Boost hit regions. The 2,167×455 artwork is fitted uniformly to roughly 356×75 inside the 360×80 safe edge, preserving tile/icon proportions and keeping the raised centre ornament visible. A navigation-color backdrop fills the transparent artwork margin so the mine background cannot form a black seam above the shell; a transient code-rendered tint is the only press overlay. The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT` (496). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 344-pixel mine region scrolls by 336. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
+The complete visible navigation controls use one generated transparent menu strip inside unchanged 48×44 standard and 62×50 Boost hit regions. The 2,167×455 artwork is fitted uniformly to roughly 356×75 inside the 360×80 safe edge, preserving tile/icon proportions and keeping the raised centre ornament visible. A navigation-color backdrop fills the transparent artwork margin so the mine background cannot form a black seam above the shell; a transient code-rendered tint is the only press overlay. The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT` (496). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 344-pixel mine region scrolls by 336. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel-wide by 80-pixel-high cabin and the same 75-pixel semantic cat display box used by floor miners and surface role slots; the width stays within the shaft, while the cat's `-5` center-Y offset aligns its visible feet with the upper edge of the cabin's lower interior frame. The shaft renders no plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
 
 `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects any smaller interactive region. The visible shared-stage cards are replaced by art, so their live level/upgrade controls are compact 30×34 badges inside 44×50 hit regions: the elevator region is `(106,48,44,50)` relative to the surface and sits immediately right of and no lower than the discharge tray; the warehouse region is `(263,0,44,50)` and places its chrome above the roof. The hidden `SharedStageView` controls remain read-back models only. The surface strip remains 164 pixels tall.
 
@@ -2297,8 +2297,12 @@ integrated: Mofy (`elevator-cargo-cat:SSR:mofy:idle`) in the elevator, Baron
 (`warehouse-manager:SR:baron:idle`) at the warehouse, and Forge
 (`miner:SSR:forge:idle`) on mine floors. The two surface role slots and mine
 floor miners use the shared 75 px display box so surface and underground cats
-remain visually consistent after assignment changes; the moving shaft copy is
-kept at 50 px so it remains inside the 62 px cabin. `BootScene` resolves local
+remain visually consistent after assignment changes, including the moving shaft
+copy. The moving shaft copy uses that same 75 px box inside a 62 px wide by
+80 px high cabin; the cat center is 5 px above the cabin center so the visible
+feet stand on the upper edge of the lower interior frame while the shaft width
+remains unchanged.
+`BootScene` resolves local
 8-frame
 runtime sheets and falls back to the bundled 4-frame placeholders when a copy
 is unavailable. Runtime identity, display frames, and animation timing remain

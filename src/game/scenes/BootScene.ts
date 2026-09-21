@@ -57,8 +57,9 @@ import {
   toFillColor,
   MINE_BACKGROUND,
   MINE_FLOOR_COUNT,
-  MINE_SHAFT_CABIN_SIZE,
-  MINE_SHAFT_CARGO_CAT_SIZE,
+  MINE_SHAFT_CABIN_HEIGHT,
+  MINE_SHAFT_CABIN_CAT_Y_OFFSET,
+  MINE_SHAFT_CABIN_WIDTH,
   CAT_RUNTIME_DISPLAY_SIZE,
   serializeRegion,
   SURFACE_ELEVATOR_STOP_X,
@@ -983,7 +984,7 @@ export class BootScene extends Phaser.Scene {
         .setPosition(elevatorX, elevatorY);
       cargoCat
         .setFrame(cargoFrame)
-        .setPosition(elevatorX, elevatorY + 3)
+        .setPosition(elevatorX, elevatorY + MINE_SHAFT_CABIN_CAT_Y_OFFSET)
         .setVisible(cargoVisible);
       // These twins are clipped to the surface strip. Together with the mine
       // camera's clip they form one continuous cabin across the boundary.
@@ -993,7 +994,7 @@ export class BootScene extends Phaser.Scene {
         .setVisible(towerEntryProgress > 0);
       surfaceCargoCat
         .setFrame(cargoFrame)
-        .setPosition(elevatorX, surfaceLocalY + 3)
+        .setPosition(elevatorX, surfaceLocalY + MINE_SHAFT_CABIN_CAT_Y_OFFSET)
         .setAlpha(surfaceAlpha)
         .setVisible(cargoVisible && towerEntryProgress > 0);
     }
@@ -1120,17 +1121,17 @@ export class BootScene extends Phaser.Scene {
         SURFACE_ELEVATOR_STOP_Y,
         PLACEHOLDER_TEXTURES.elevatorCabin,
       )
-      .setDisplaySize(MINE_SHAFT_CABIN_SIZE, MINE_SHAFT_CABIN_SIZE);
+      .setDisplaySize(MINE_SHAFT_CABIN_WIDTH, MINE_SHAFT_CABIN_HEIGHT);
     this.#surfaceCargoCat = this.add
       .sprite(
         SURFACE_ELEVATOR_STOP_X,
-        SURFACE_ELEVATOR_STOP_Y + 3,
+        SURFACE_ELEVATOR_STOP_Y + MINE_SHAFT_CABIN_CAT_Y_OFFSET,
         this.#elevatorAnimation.textureKey,
         0,
       )
       .setDisplaySize(
-        MINE_SHAFT_CARGO_CAT_SIZE,
-        MINE_SHAFT_CARGO_CAT_SIZE,
+        CAT_RUNTIME_DISPLAY_SIZE,
+        CAT_RUNTIME_DISPLAY_SIZE,
       )
       .setVisible(false)
       .setInteractive({ useHandCursor: true })
@@ -1342,14 +1343,14 @@ export class BootScene extends Phaser.Scene {
     this.#shaftElevator = this.add
       .image(
         shaft.x + shaft.width / 2,
-        shaft.y + MINE_SHAFT_CABIN_SIZE / 2,
+        shaft.y + MINE_SHAFT_CABIN_HEIGHT / 2,
         PLACEHOLDER_TEXTURES.elevatorCabin,
       )
-      .setDisplaySize(MINE_SHAFT_CABIN_SIZE, MINE_SHAFT_CABIN_SIZE);
+      .setDisplaySize(MINE_SHAFT_CABIN_WIDTH, MINE_SHAFT_CABIN_HEIGHT);
     this.#shaftCargoCat = this.add
       .sprite(
         shaft.x + shaft.width / 2,
-        shaft.y + MINE_SHAFT_CABIN_SIZE / 2 + 3,
+        shaft.y + MINE_SHAFT_CABIN_HEIGHT / 2 + MINE_SHAFT_CABIN_CAT_Y_OFFSET,
         this.#elevatorAnimation.textureKey,
         0,
       )
@@ -1422,7 +1423,7 @@ export class BootScene extends Phaser.Scene {
       this.#applyRuntimeSprite(
         this.#shaftCargoCat,
         elevator.animation,
-        MINE_SHAFT_CARGO_CAT_SIZE,
+        CAT_RUNTIME_DISPLAY_SIZE,
       );
       this.#applyRuntimeSprite(
         this.#surfaceCargoCat,

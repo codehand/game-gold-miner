@@ -44,8 +44,10 @@ Current visual and runtime constraints:
 - Runtime sprite frame size: `128×128`, transparent RGBA.
 - N/R animation policy: exact 2×2 sheet, 4 frames.
 - SR/SSR/UR animation policy: exact 4×2 sheet, 8 frames.
-- Current role asset display boxes remain role-specific; the elevator cargo cat
-  is more compact than surface/floor attendants.
+- Runtime role slots use the shared 75 px semantic display box so elevator,
+  surface, and floor cats remain visually consistent. The elevator cabin is
+  62 px wide by 80 px high: width is constrained by the shaft, while height
+  keeps the visible cargo cat on the lower interior frame.
 - Text, prices, numbers, stat labels, and interaction state remain code-native.
 
 ## 2. Non-negotiable planning rules
@@ -565,7 +567,9 @@ the appropriate mine role without changing simulation authority.
 
 ### Outputs
 
-- Elevator cats render inside the elevator cabin at compact scale.
+- Elevator cats render inside the 62×80 px elevator cabin at the shared runtime
+  scale, with their center anchored 5 px above the cabin center so their feet
+  stand on the upper edge of the lower interior frame.
 - Warehouse cats render at the warehouse role position.
 - Miner cats render in mine floors with a distinct extraction pose.
 - Unloader cats remain at the floor-head receiving position.

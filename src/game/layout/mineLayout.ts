@@ -32,11 +32,13 @@ export const MINE_SHAFT_WIDTH = 64;
 export const MINE_SHAFT_FLOOR_GAP = 4;
 export const MINE_SHAFT_RAIL_INSET = 11;
 export const MINE_SHAFT_RAIL_WIDTH = 4;
-/** Shared runtime display box keeps surface and underground cats at one scale. */
-export const MINE_SHAFT_CABIN_SIZE = 62;
+/** Shaft width is constrained by the 64 px rail column. */
+export const MINE_SHAFT_CABIN_WIDTH = 62;
 export const CAT_RUNTIME_DISPLAY_SIZE = 75;
-/** The moving shaft cat stays within the 62 px cabin while the surface copy uses the runtime box. */
-export const MINE_SHAFT_CARGO_CAT_SIZE = 50;
+/** Extra vertical room keeps the shared runtime cat box clear of the cabin floor. */
+export const MINE_SHAFT_CABIN_HEIGHT = 80;
+/** Aligns the cat's visible feet with the cabin's lower interior floor. */
+export const MINE_SHAFT_CABIN_CAT_Y_OFFSET = -5;
 /** Fixed surface headhouse aligned with the underground shaft. */
 export const SURFACE_ELEVATOR_TOWER_WIDTH = 150;
 export const SURFACE_ELEVATOR_TOWER_HEIGHT = SURFACE_HEIGHT;
@@ -210,12 +212,8 @@ export function calculateMineShaftRegion(
     throw new Error('Mine width is too narrow for the elevator shaft.');
   }
 
-  if (MINE_SHAFT_CABIN_SIZE > MINE_SHAFT_WIDTH) {
+  if (MINE_SHAFT_CABIN_WIDTH > MINE_SHAFT_WIDTH) {
     throw new Error('Elevator cabin must fit inside the elevator shaft.');
-  }
-
-  if (MINE_SHAFT_CARGO_CAT_SIZE > MINE_SHAFT_CABIN_SIZE) {
-    throw new Error('Elevator cargo cat must fit inside the cabin.');
   }
 
   if (MINE_SHAFT_RAIL_INSET * 2 + MINE_SHAFT_RAIL_WIDTH > MINE_SHAFT_WIDTH) {

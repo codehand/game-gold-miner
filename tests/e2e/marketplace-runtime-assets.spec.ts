@@ -1,10 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { MARKETPLACE_RUNTIME_ROLE_ASSETS } from '../../src/game/assets/marketplaceRuntimeAssets';
-import {
-  CAT_RUNTIME_DISPLAY_SIZE,
-  MINE_SHAFT_CARGO_CAT_SIZE,
-} from '../../src/game/layout';
+import { CAT_RUNTIME_DISPLAY_SIZE } from '../../src/game/layout';
 
 const RUNTIME_ASSETS = Object.values(MARKETPLACE_RUNTIME_ROLE_ASSETS).map((asset) => ({
   assetId: asset.assetId,
@@ -32,8 +29,8 @@ test('renders the approved Marketplace role assets in runtime presentation slots
   expect(animation.elevatorCargoCat).toMatchObject({
     assetId: 'elevator-cargo-cat:SSR:mofy:idle',
     texture: 'marketplace-runtime-elevator-mofy',
-    width: MINE_SHAFT_CARGO_CAT_SIZE,
-    height: MINE_SHAFT_CARGO_CAT_SIZE,
+    width: CAT_RUNTIME_DISPLAY_SIZE,
+    height: CAT_RUNTIME_DISPLAY_SIZE,
   });
   expect(animation.surfaceElevatorCat).toMatchObject({
     assetId: 'elevator-cargo-cat:SSR:mofy:idle',
@@ -54,7 +51,7 @@ test('renders the approved Marketplace role assets in runtime presentation slots
     MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.displaySize,
   );
   expect(animation.elevatorCargoCat.width).toBe(
-    MINE_SHAFT_CARGO_CAT_SIZE,
+    CAT_RUNTIME_DISPLAY_SIZE,
   );
   expect(animation.surfaceElevatorCat.width).toBe(
     MARKETPLACE_RUNTIME_ROLE_ASSETS.miner.displaySize,
