@@ -3284,3 +3284,19 @@ and post-mutation save reconciliation are wired through the game shell. The
 live integration and browser gates prove sale transfer, rental use and expiry,
 responsive listing controls, and no remaining active preview-only trading
 boundary.
+
+The LAN OAuth/account feedback fix is complete on 2026-09-25. The browser
+return path now parses Supabase query/hash errors before removing them, turns
+`identity_already_exists` into an automatic handoff to the normal Google login
+path, with informational guidance only when that handoff cannot start, and
+exposes a
+retry state for generic account inspection failures. `AccountSettingsModal`
+repaints after asynchronous identity resolution so it cannot remain on
+`Loading`; `supabase/config.toml` uses the active `192.168.1.203:5173` as the
+local Auth fallback and allow-lists it plus `192.168.*.*:5173` for Vite LAN
+review while `window.location.origin` remains the exact OAuth return target;
+the browser maps the local loopback Supabase API URL to the same LAN host when
+opened from another device; the shared Edge Function CORS policy accepts only
+the same private-LAN origin on port 5173. Focused auth/server-stack tests,
+shared HTTP tests, lint, and build pass. No save, economy, renderer, or
+database schema changed.

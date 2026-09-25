@@ -518,15 +518,18 @@ inventing its own.
 sign-in is the first function `src/` calls directly with `fetch()` — save
 upload/download still don't exist. `supabase/functions/_shared/http.ts`
 gained `corsHeaders`/`corsPreflightResponse`, allow-listing the two known
-dev origins; `memory-bank/server-save-sync-protocol.md` records the policy,
+loopback dev origins plus the narrowly matched private-LAN
+`http://192.168.*.*:5173` origin; `memory-bank/server-save-sync-protocol.md`
+records the policy,
 per this finding's own instruction. See **F12** immediately below for what
 was discovered while proving it against the real local stack.
 
 **F12 — the local Kong gateway overrides every Edge Function's
 `Access-Control-Allow-Origin` with a wildcard, discovered empirically while
 integration-testing Step 12's CORS handling.** `corsHeaders()` reflects only
-the two allow-listed dev origins and omits the header entirely for anything
-else — proven correct in isolation by
+the two loopback origins or the narrowly matched private-LAN
+`192.168.*.*:5173` origin and omits the header entirely for anything else —
+proven correct in isolation by
 `supabase/functions/_shared/http.test.ts` and
 `telegram-sign-in/index.test.ts`, neither of which goes through the real
 network stack. Against the live local stack, though,

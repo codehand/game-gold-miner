@@ -2,6 +2,22 @@
 
 ## Status Summary
 
+**LAN OAuth/account feedback, 2026-09-25:** fixed the stale account-modal
+loading state and silent Google callback error. `readGoogleIdentityReturnError`
+captures Supabase query/hash errors, `identity_already_exists` becomes
+informational guest guidance and immediately starts normal Google account
+sign-in rather than requiring a second click; generic auth inspection failures
+become a visible retry state, and async
+identity updates repaint an already-open modal. Local Supabase redirect and
+shared Edge Function CORS config now allow the active
+`192.168.1.203:5173` origin plus the `192.168.*.*:5173` LAN glob for
+`vite --host 0.0.0.0`; Auth also uses the LAN address as its local fallback so
+provider returns cannot strand a remote device at `127.0.0.1`. Browser API
+calls map the local loopback Supabase URL to the LAN page host for
+another-device testing. Focused auth/server-stack tests, full lint, production
+build, and the shared HTTP Deno tests pass. No save, economy, renderer, or
+database schema contract changed.
+
 **Elevator cabin alignment feedback, 2026-09-21:** after the initial 62×75
 and 62×80 size corrections, the moving and surface elevator cabin remains
 62×80 pixels while preserving the 64-pixel shaft width. The elevator cargo cat

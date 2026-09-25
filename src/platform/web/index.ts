@@ -13,13 +13,17 @@ export {
   beginGoogleAccountSwitch,
   beginGoogleSignIn,
   detectGoogleIdentityCollision,
+  readGoogleIdentityReturnError,
   signOutOfSession,
   type GoogleAuthClient,
+  type GoogleIdentityReturnError,
   type GoogleSignInResult,
   type SignOutResult,
 } from './googleSignIn';
 export {
   createSupabaseClient,
+  getSupabaseApiUrl,
+  resolveSupabaseApiUrl,
   type SupabaseClient,
 } from './supabaseClient';
 export {

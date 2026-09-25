@@ -130,6 +130,8 @@ export async function discardRequestBody(
  * Playwright preview ports (E2E, production-bundle smoke, server-e2e — see
  * `playwright*.config.ts`), not a third-party origin — the same dev-server
  * reasoning that already lists `5173` twice (`127.0.0.1` and `localhost`).
+ * The LAN development origin is matched narrowly below as
+ * `192.168.*.*:5173`; it is not a wildcard CORS policy for arbitrary sites.
  * Needed once `main.ts`'s cloud-save reconcile started making the first
  * `fetch()` this milestone ever makes from outside the `5173` dev server:
  * without it, `production-smoke.spec.ts`'s bundle (served on `4175`) had its
@@ -148,6 +150,11 @@ const ALLOWED_ORIGINS: ReadonlySet<string> = new Set([
   'http://127.0.0.1:4175',
   'http://127.0.0.1:4176',
 ]);
+const LAN_DEV_ORIGIN_PATTERN = /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:5173$/;
+
+function isAllowedOrigin(origin: string): boolean {
+  return ALLOWED_ORIGINS.has(origin) || LAN_DEV_ORIGIN_PATTERN.test(origin);
+}
 
 /**
  * CORS response headers for `origin`, or none at all when it is missing or
@@ -156,7 +163,7 @@ const ALLOWED_ORIGINS: ReadonlySet<string> = new Set([
  * the calling page from reading it.
  */
 export function corsHeaders(origin: string | null): Readonly<Record<string, string>> {
-  if (origin === null || !ALLOWED_ORIGINS.has(origin)) {
+  if (origin === null || !isAllowedOrigin(origin)) {
     return {};
   }
   return { 'access-control-allow-origin': origin, vary: 'Origin' };

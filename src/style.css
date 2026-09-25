@@ -536,6 +536,16 @@ body {
   font-size: 13px;
 }
 
+.account-settings-notice {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #62b4d0;
+  border-radius: 9px;
+  background: #123b56;
+  color: #dbeafe;
+  font-size: 13px;
+}
+
 /* The leaderboard is a read-only DOM dialog so exact server values stay
  * accessible even when the canvas is letterboxed or the board is offline. */
 .leaderboard {

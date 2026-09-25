@@ -73,7 +73,7 @@ browser-side softness without changing the global renderer.
 | `src/persistence/ReplicatingActiveSaveRepository.ts` | Server-milestone Step 19: composes the local repository with a cloud replica behind `ActiveSaveRepository`. Reads local only; writes local first and awaits it before offering the same document to the replica; `forceCloudUpload` is the §9 forced-trigger entry point. |
 | `src/persistence/cloudSaveReplica.ts` | Server-milestone Step 19: pure, injected upload policy — §9's 60 s interval, coalescing, forced bypass, bounded retry backoff, and §7's `409` handling through `resolveSaveConflict`. Holds no `fetch`, no DOM type, and no storage. |
 | `src/platform/web/cloudSaveUpload.ts` | Server-milestone Step 19: the single network call (`PUT /v1/save`), mapping every §4 status to `CloudSaveUploadResult` and refreshing the session once on `unauthenticated`. Never throws. |
-| `src/platform/web/supabaseClient.ts` | Server-milestone Step 8: builds the browser's Supabase client from `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, or returns `null` without attempting any network call when either is unset. |
+| `src/platform/web/supabaseClient.ts` | Server-milestone Step 8: builds the browser's Supabase client from `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, or returns `null` without attempting any network call when either is unset; a local loopback API URL is mapped to the page's `192.168.x.x` host for LAN Vite review. |
 | `src/platform/web/guestSession.ts` | Server-milestone Step 8: `ensureGuestSession` reuses an existing session or signs in anonymously through an injected `GuestAuthClient` collaborator, never throwing — every failure resolves to a typed `sign-in-failed`/`unconfigured` result instead. |
 | `src/ui/OfflineRewardModal.ts`, `src/ui/MineShaftUpgradeModal.ts` | Accessible DOM overlays: offline reward claim/save/retry, and the live mine-floor detail with attributes plus x1/x5/MAX CTAs. The floor overlay blocks background Phaser input until dismissed and rebinds after each purchase. |
 | `src/ui/CollectionModal.ts`, `src/ui/MarketplaceModal.ts` | Accessible DOM overlays for owned-cat list/detail and Marketplace. Collection consumes the validated roster projection, distinguishes ready/empty from loading/stale/error states, and keeps retryable failures from masquerading as zero owned cats; Marketplace's Buy, Rent, Sell, and My listings tabs perform server-backed confirm/pending/success/error flows through authenticated callbacks. |
@@ -595,11 +595,16 @@ only discovers it after the player has chosen an account on Google's own
 page and the browser returns with `error_code=identity_already_exists` on
 the *return* URL, a fresh page load the client's own session-detection
 parses — long after `beginGoogleSignIn`'s promise already resolved
-`redirecting`. Nothing in `src/` reads those return-URL parameters yet; that
-read (or an `onAuthStateChange` subscription) is what Step 13's collision
-handling requires, not this function. Confirmed live during this step's own
-verification below: attempting to re-link an already-linked identity
-produced no consent screen at all, only an immediate redirect back carrying
+`redirecting`. `readGoogleIdentityReturnError` now reads both query and hash
+forms before the URL is cleaned, and `main.ts` keeps a collision as actionable
+guest copy (`Sign in with Google`) instead of discarding it; `main.ts` starts
+the `signInWithOAuth` handoff immediately, while the copy is an informational
+fallback rather than a fatal error if that handoff fails. If account
+inspection fails for another reason, the settings modal shows an unavailable
+state with retry; an already-open modal also repaints when the non-blocking
+identity bootstrap settles. Confirmed live during this step's own verification
+below: attempting to re-link an already-linked identity produced no consent
+screen at all, only an immediate redirect back carrying
 `error_code=identity_already_exists`, with the existing session and account
 untouched.
 
@@ -614,14 +619,26 @@ a second, separate git-ignored `.env` file (`.gitignore` already covers both
 application OAuth client with `http://127.0.0.1:54321/auth/v1/callback` (the
 fixed local GoTrue callback) as its authorized redirect URI — no domain
 needed, since Google permits `localhost`/`127.0.0.1` redirects in
-development, unlike Step 11's Apple.
+development, unlike Step 11's Apple. For LAN browser review, local
+`supabase/config.toml` uses the active `http://192.168.1.203:5173` origin as
+`site_url`, allow-lists that exact URL and the `http://192.168.*.*:5173` glob,
+while the client passes the exact origin that started the OAuth flow. The LAN
+`site_url` is intentional: it makes the Auth fallback device-reachable even
+if a provider or SDK path omits `redirectTo`; update it and restart the local
+stack if the host's DHCP address changes.
+`getSupabaseApiUrl()` also maps the checked-in local `127.0.0.1:54321` API
+host to that same LAN hostname when the page is served from `192.168.x.x:5173`,
+so a phone does not resolve loopback against itself; deployed HTTPS URLs are
+never rewritten.
 
 `HudView.ts` now adds a compact settings control beside the income value. It
 opens `src/ui/AccountSettingsModal.ts`, a DOM modal with keyboard focus,
 account status/email/user id, app version, and either Google sign-in or
 logout-and-reset. The modal keeps auth effects injected from `src/main.ts`,
 while the DEV-only `window.catMineIdleAccount` hook remains for guided
-verification and collision diagnostics.
+verification and collision diagnostics. The modal has an injected refresh
+callback so asynchronous auth state cannot leave it showing `Loading` after
+the boot result is known.
 
 **What nothing local can prove.** A real human completing Google's own
 consent screen is the one thing no test double, local mock, or CI runner can
@@ -1966,13 +1983,12 @@ the missing piece — detecting and resolving the one collision Google's
 `linkIdentity` can produce that `resolveSaveConflict` alone cannot get the
 caller into:
 
-- `detectGoogleIdentityCollision` (`src/platform/web/googleSignIn.ts`) calls
-  `client.auth.initialize()` — the SDK's own memoized boot-URL parser,
-  already triggered once by `ensureGuestSession`'s `getSession()`, so a
-  second call is free and returns the cached result — and reads
-  `error.details?.code === 'identity_already_exists'`, mirrored from the
-  SDK's own internal check (`GoTrueClient._initialize`) since no
-  higher-level named constant exists for it.
+- `readGoogleIdentityReturnError` (`src/platform/web/googleSignIn.ts`) reads
+  both query and hash return parameters before the app removes them;
+  `detectGoogleIdentityCollision` also calls `client.auth.initialize()` — the
+  SDK's own memoized boot-URL parser, already triggered once by
+  `ensureGuestSession`'s `getSession()` — and accepts the collision code from
+  either the top-level or nested auth error shape.
 - `beginGoogleAccountSwitch` always calls `signInWithOAuth`, never
   `linkIdentity`, regardless of whether a guest session already exists:
   GoTrue never reveals *which* account a colliding identity belongs to, so
@@ -1991,7 +2007,9 @@ The production account popup now owns the normal login/logout entry point;
 `main.ts`'s `DEV`-only `window.catMineIdleAccount` hook still carries
 `beginGoogleAccountSwitch` for the rare post-redirect collision, alongside the
 `data-google-identity-collision` diagnostic published by
-`detectGoogleIdentityCollision`.
+`detectGoogleIdentityCollision`. The popup preserves the collision message as
+informational fallback guidance, refreshes after async identity resolution,
+and offers retry when account inspection fails generically.
 
 ### Recovery code (Step 14)
 

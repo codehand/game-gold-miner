@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSupabaseClient,
   ensureGuestSession,
+  resolveSupabaseApiUrl,
   type GuestAuthClient,
 } from '../../src/platform/web';
 
@@ -47,6 +48,37 @@ describe('createSupabaseClient', () => {
     vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key');
 
     await expect(createSupabaseClient()).resolves.not.toBeNull();
+  });
+});
+
+describe('resolveSupabaseApiUrl', () => {
+  it('uses the LAN page host for a loopback local API URL', () => {
+    expect(resolveSupabaseApiUrl(
+      'http://127.0.0.1:54321',
+      'http://192.168.1.203:5173/#sb=',
+    )).toBe('http://192.168.1.203:54321');
+  });
+
+  it('keeps loopback for same-machine pages and does not rewrite production URLs', () => {
+    expect(resolveSupabaseApiUrl(
+      'http://127.0.0.1:54321',
+      'http://localhost:5173/',
+    )).toBe('http://127.0.0.1:54321');
+    expect(resolveSupabaseApiUrl(
+      'https://example.supabase.co',
+      'http://192.168.1.203:5173/',
+    )).toBe('https://example.supabase.co');
+  });
+
+  it('does not rewrite non-LAN or non-Vite origins', () => {
+    expect(resolveSupabaseApiUrl(
+      'http://127.0.0.1:54321',
+      'http://10.0.0.5:5173/',
+    )).toBe('http://127.0.0.1:54321');
+    expect(resolveSupabaseApiUrl(
+      'http://127.0.0.1:54321',
+      'http://192.168.1.203:4173/',
+    )).toBe('http://127.0.0.1:54321');
   });
 });
 

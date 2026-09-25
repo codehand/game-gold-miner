@@ -684,12 +684,15 @@ F11 had guessed.
 `supabase/functions/_shared/http.ts` for every function to reuse rather
 than invented per function:
 
-- Allowed origins are the two known dev origins,
-  `http://127.0.0.1:5173` and `http://localhost:5173` — the same pair
-  `additional_redirect_urls` in `supabase/config.toml` already allow-lists.
-  No deployed origin exists yet (threat model §7.5); add the real one to
-  `ALLOWED_ORIGINS` in `_shared/http.ts` when one does, rather than widening
-  it to a wildcard.
+- Allowed origins are the two known loopback dev origins,
+  `http://127.0.0.1:5173` and `http://localhost:5173`, plus the narrowly
+  matched `http://192.168.*.*:5173` LAN development origin used by
+  `vite --host 0.0.0.0` — the same redirect set
+  `supabase/config.toml` allow-lists. The LAN rule is port-specific and only
+  matches private `192.168` hostnames; it is not a wildcard CORS policy for
+  arbitrary sites. No deployed origin exists yet (threat model §7.5); add the
+  real one to `ALLOWED_ORIGINS` in `_shared/http.ts` when one does, rather than
+  widening it to a wildcard.
 - `corsPreflightResponse(request, allowedMethods)` answers `OPTIONS` with
   204, the matched origin (or none), `Access-Control-Allow-Methods`, and
   `Access-Control-Allow-Headers: content-type, authorization` — checked

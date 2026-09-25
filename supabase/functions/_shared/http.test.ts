@@ -61,6 +61,15 @@ Deno.test('corsHeaders reflects an allow-listed dev origin', () => {
   });
 });
 
+Deno.test('corsHeaders reflects a LAN Vite origin without allowing arbitrary sites', () => {
+  assert.deepEqual(corsHeaders('http://192.168.1.203:5173'), {
+    'access-control-allow-origin': 'http://192.168.1.203:5173',
+    vary: 'Origin',
+  });
+  assert.deepEqual(corsHeaders('http://192.168.1.203:4173'), {});
+  assert.deepEqual(corsHeaders('http://192.168.1.203.evil.example:5173'), {});
+});
+
 Deno.test('jsonResponse carries no CORS header by default', () => {
   const response = jsonResponse(200, { ok: true });
   assert.equal(response.headers.get('access-control-allow-origin'), null);

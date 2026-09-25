@@ -251,7 +251,10 @@ variants and the future Unloader role remain preview/source assets.
   `import.meta.env.VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` and returns
   `null`, attempting no network call, when either is unset or blank — the
   contract that keeps a checkout with no `.env.local` exactly as playable as
-  before this step. `src/platform/web/guestSession.ts`'s `ensureGuestSession`
+  before this step. For local review only, `getSupabaseApiUrl()` maps a
+  loopback `127.0.0.1:54321` value to the page's `192.168.x.x` hostname when
+  Vite serves on port 5173, so another device does not call its own loopback;
+  production URLs remain unchanged. `src/platform/web/guestSession.ts`'s `ensureGuestSession`
   takes only the narrow `GuestAuthClient` slice of `SupabaseClient['auth']`
   it needs (`getSession`/`signInAnonymously`), mirroring the injected-collaborator
   pattern `whoami-check/index.ts`'s `ResolveCaller` already established: unit
@@ -441,10 +444,13 @@ variants and the future Unloader role remain preview/source assets.
   two based on whether `getSession()` already returns a session, mirroring
   `guestSession.ts`'s injected-collaborator, never-throws shape, faked by
   `tests/unit/google-sign-in.test.ts` rather than mocking the SDK;
-  `signOutOfSession` wraps `signOut()` the same way. Linking an identity
-  already claimed by a different account fails with "Identity is already
-  linked to another user" — surfaced as a typed `error` result and
-  deliberately left unresolved; that collision belongs to Step 13.
+  `signOutOfSession` wraps `signOut()` the same way. A post-provider
+  `identity_already_exists` return is not a pre-redirect typed result:
+  `readGoogleIdentityReturnError` reads it from the query/hash, and the
+  account modal preserves the message as a fallback while `main.ts` immediately
+  calls `signInWithOAuth` for the account that owns the Google identity. The
+  collision is rendered as informational guidance if that automatic handoff
+  fails; unexpected account-check failures keep the alert/error treatment.
 - `config.toml`'s `env(...)` substitution is read by the Supabase CLI itself
   and only auto-loads a file literally named `.env` at the project root, not
   `.env.local` — `supabase start`/`stop`/`reset` have no flag to point it
@@ -453,12 +459,20 @@ variants and the future Unloader role remain preview/source assets.
   existing `.env`/`.env.*` rules), documented in `.env.example` alongside the
   exact Google Cloud Console setup — a Web application OAuth client with
   `http://127.0.0.1:54321/auth/v1/callback` (the fixed local GoTrue callback)
-  as its redirect URI, needing no domain.
+  as its redirect URI, needing no domain. Local browser review through a
+  `192.168.x.x:5173` Vite origin is supported by the exact active
+  `http://192.168.1.203:5173` entry plus the `http://192.168.*.*:5173`
+  Supabase Auth redirect glob; the LAN origin is also the local `site_url`
+  fallback so an omitted `redirectTo` cannot return a remote browser to
+  `127.0.0.1`. Update that exact value and restart Supabase when DHCP changes
+  the host address; production keeps exact configured URLs.
 - The production player-facing entry point is the settings control beside the
   HUD income value. It opens `src/ui/AccountSettingsModal.ts`, which shows
   account status/email/user id, app version, Google login for guests, and
   logout-and-reset for linked accounts. Auth effects remain injected from
-  `src/main.ts`; the DEV-only `window.catMineIdleAccount` hook remains for
+  `src/main.ts`; the modal re-renders when async identity resolution settles,
+  preserves OAuth callback errors as alert copy, and offers retry after a
+  generic account-check failure. The DEV-only `window.catMineIdleAccount` hook remains for
   guided verification and collision diagnostics. A real human completing
   Google's own consent screen is still the one thing nothing local can
   substitute for, so the same-user-id proof remains a guided manual check.

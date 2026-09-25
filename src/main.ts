@@ -33,10 +33,12 @@ import {
   downloadCloudSaveViaFetch,
   ensureGuestSession,
   generateRecoveryCode,
+  getSupabaseApiUrl,
   LifecycleSafeActiveSaveRepository,
   loadLeaderboardViaFetch,
   loadCatCollectionViaFetch,
   purchaseCatViaFetch,
+  readGoogleIdentityReturnError,
   replaceCatAssignmentViaFetch,
   buyMarketplaceListingViaFetch,
   cancelMarketplaceListingViaFetch,
@@ -68,6 +70,7 @@ import {
   type MarketplaceListingType,
   type MarketplaceListingsResult,
 } from './platform/web';
+import { describeError } from './platform/describeError';
 import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
 import {
   AccountSettingsModal,
@@ -112,6 +115,9 @@ const app = getRequiredElement('#app', 'Application root');
 const gameViewport = getRequiredElement('#game-viewport', 'Game viewport');
 
 validateBaseGameBalance(BASE_GAME_BALANCE);
+
+const supabaseApiUrl = getSupabaseApiUrl();
+const supabaseFunctionUrl = (path: string): string => `${supabaseApiUrl ?? ''}${path}`;
 
 /**
  * Server-milestone Step 21: ask the browser to make this origin's storage
@@ -159,7 +165,7 @@ if (telegramInitData !== null) {
     .then((client) =>
       signInWithTelegram(
         telegramInitData,
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-sign-in`,
+        supabaseFunctionUrl('/functions/v1/telegram-sign-in'),
         client?.auth ?? null,
       ),
     )
@@ -186,15 +192,21 @@ if (telegramInitData !== null) {
       // unset here and no notice can fire. A returning Telegram player is
       // restored from the cloud by the reconcile below.
       if (result.status === 'signed-in') {
-        accountIdentity = {
+        setAccountIdentity({
           status: 'signed-in',
           userId: null,
           email: null,
           googleLoginLabel: undefined,
-        };
+        });
         void refreshAccountIdentity();
         triggerCloudSaveReconcile();
       } else {
+        setAccountIdentity(
+          result.status === 'unconfigured'
+            ? { status: 'unconfigured', userId: null, email: null }
+            : { status: 'error', userId: null, email: null, message: result.reason },
+        );
+        void refreshAccountIdentity();
         // Step 22: no session means no server grant; fall back to the local projection.
         finishOfflineRewardDecision(result.status === 'unconfigured');
       }
@@ -226,18 +238,24 @@ if (telegramInitData !== null) {
       // reused session with no local save can be recognised as a returning
       // player whose device lost its copy.
       if (result.status === 'signed-in') {
-        accountIdentity = {
+        setAccountIdentity({
           status: result.user.isAnonymous ? 'guest' : 'signed-in',
           userId: result.user.id,
           email: null,
           googleLoginLabel: result.user.isAnonymous
             ? getGoogleLoginLabel()
             : undefined,
-        };
+        });
         void refreshAccountIdentity();
         sessionIsNew = result.isNewSession;
         triggerCloudSaveReconcile();
       } else {
+        setAccountIdentity(
+          result.status === 'unconfigured'
+            ? { status: 'unconfigured', userId: null, email: null }
+            : { status: 'error', userId: null, email: null, message: result.reason },
+        );
+        void refreshAccountIdentity();
         // Step 22: no session means no server grant; fall back to the local
         // projection rather than showing no offline reward at all.
         finishOfflineRewardDecision(result.status === 'unconfigured');
@@ -266,12 +284,12 @@ if (import.meta.env.DEV) {
         generateRecoveryCode: () =>
           generateRecoveryCode(
             client?.auth ?? null,
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/recovery-code/v1/generate`,
+            supabaseFunctionUrl('/functions/v1/recovery-code/v1/generate'),
           ),
         redeemRecoveryCode: async (code: string) => {
           const result = await redeemRecoveryCode(
             code,
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/recovery-code/v1/redeem`,
+            supabaseFunctionUrl('/functions/v1/recovery-code/v1/redeem'),
             client?.auth ?? null,
           );
           // Server-milestone Step 14: "redemption... must reuse the Step 13
@@ -290,9 +308,9 @@ if (import.meta.env.DEV) {
       };
       // Server-milestone Step 13: whether this page load's return URL
       // carried `error_code=identity_already_exists` — a `linkIdentity`
-      // attempt that collided with an existing account. The account popup
-      // still leaves this rare post-redirect collision to the normal auth
-      // return flow; the hook keeps it observable for guided verification.
+      // attempt that collided with an existing account. The normal boot path
+      // immediately hands this return to `signInWithOAuth`; the hook keeps the
+      // collision observable for guided verification.
       app.dataset.googleIdentityCollision = String(
         await detectGoogleIdentityCollision(client?.auth ?? null),
       );
@@ -335,6 +353,12 @@ let accountIdentity: AccountIdentityView = {
   userId: null,
   email: null,
 };
+let googleCollisionHandoffStarted = false;
+
+function setAccountIdentity(next: AccountIdentityView): void {
+  accountIdentity = next;
+  accountSettingsModal?.refresh();
+}
 
 /**
  * Server-milestone Step 21: the facts `shouldExplainMissingLocalSave` needs,
@@ -357,7 +381,7 @@ let missingLocalSaveNoticeReported = false;
  * is suppressed at load. When false, the client-only behaviour is unchanged.
  */
 const backendConfigured = Boolean(
-  import.meta.env.VITE_SUPABASE_URL?.trim() &&
+  supabaseApiUrl &&
   import.meta.env.VITE_SUPABASE_ANON_KEY?.trim(),
 );
 
@@ -722,7 +746,7 @@ async function runCloudSaveReconcile(): Promise<CloudSaveReconcileOutcome> {
   return reconcileCloudSaveAtBoot(accessToken, Date.now(), {
     repository: localRepository,
     download: (token) =>
-      downloadCloudSaveViaFetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-sync/v1/save`, token),
+      downloadCloudSaveViaFetch(supabaseFunctionUrl('/functions/v1/save-sync/v1/save'), token),
     config: BASE_GAME_BALANCE,
     // A 2026-09-13 review finding: `location.reload()` fires `pagehide`
     // synchronously on the page being torn down, and `bindSaveLifecycle`'s
@@ -907,7 +931,7 @@ const cloudReplica = new CloudSaveReplica({
     const client = await supabaseClientPromise;
 
     return uploadCloudSaveViaFetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-sync/v1/save`,
+      supabaseFunctionUrl('/functions/v1/save-sync/v1/save'),
       client?.auth ?? null,
       baseRevision,
       document,
@@ -991,6 +1015,10 @@ accountSettingsModal = new AccountSettingsModal({
   getIdentity: () => accountIdentity,
   onLogin: handleGoogleLogin,
   onLogout: handleLogout,
+  onRetry: async () => {
+    await refreshAccountIdentity();
+    return { status: 'refreshed' };
+  },
   onConflictChoice: handleConflictChoice,
 });
 leaderboardModal = new LeaderboardModal({
@@ -998,7 +1026,7 @@ leaderboardModal = new LeaderboardModal({
   load: async () => {
     const client = await supabaseClientPromise;
     return loadLeaderboardViaFetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/leaderboard-read`,
+      supabaseFunctionUrl('/functions/v1/leaderboard-read'),
       client?.auth ?? null,
     );
   },
@@ -1078,39 +1106,94 @@ function clearGoogleIdentityErrorFromUrl(): void {
 }
 
 async function refreshAccountIdentity(): Promise<void> {
-  const client = await supabaseClientPromise;
-  if (client === null) {
-    accountIdentity = { status: 'unconfigured', userId: null, email: null };
-    return;
-  }
+  try {
+    const client = await supabaseClientPromise;
+    if (client === null) {
+      setAccountIdentity({ status: 'unconfigured', userId: null, email: null });
+      return;
+    }
 
-  if (await detectGoogleIdentityCollision(client.auth)) {
-    setPreferGoogleSignIn(true);
-    clearGoogleIdentityErrorFromUrl();
-  }
+    const returnError = readGoogleIdentityReturnError(window.location.href);
+    const collision = returnError?.code === 'identity_already_exists'
+      || await detectGoogleIdentityCollision(client.auth);
+    let handoffError: string | undefined;
+    if (collision) {
+      setPreferGoogleSignIn(true);
+    }
 
-  const { data, error } = await client.auth.getSession();
-  const user = data.session?.user;
-  if (error !== null || user === undefined) {
-    accountIdentity = {
-      status: 'guest',
+    if (returnError?.code === 'identity_already_exists') {
+      clearGoogleIdentityErrorFromUrl();
+      if (!googleCollisionHandoffStarted) {
+        googleCollisionHandoffStarted = true;
+        const switchResult = await beginGoogleAccountSwitch(client.auth, window.location.origin);
+        if (switchResult.status === 'redirecting') {
+          return;
+        }
+        googleCollisionHandoffStarted = false;
+        handoffError = switchResult.status === 'error'
+          ? `Google sign-in could not continue: ${switchResult.reason}`
+          : 'Google sign-in is not configured.';
+      }
+    } else if (returnError !== null) {
+      clearGoogleIdentityErrorFromUrl();
+    }
+
+    const message = handoffError ?? (collision
+      ? 'This Google account is already linked to another account. Select “Sign in with Google” to continue with that account.'
+      : returnError?.description === null || returnError?.description === undefined
+        ? undefined
+        : `Google sign-in could not be completed: ${returnError.description}`);
+    const messageTone = handoffError === undefined && collision ? 'info' : 'error';
+
+    const { data, error } = await client.auth.getSession();
+    const user = data.session?.user;
+    if (error !== null) {
+      setAccountIdentity({
+        status: collision ? 'guest' : 'error',
+        userId: null,
+        email: null,
+        googleLoginLabel: getGoogleLoginLabel(),
+        message: message ?? describeError(error),
+        messageTone,
+      });
+      return;
+    }
+    if (user === undefined) {
+      setAccountIdentity({
+        status: 'guest',
+        userId: null,
+        email: null,
+        googleLoginLabel: getGoogleLoginLabel(),
+        ...(message === undefined ? {} : {
+          message,
+          messageTone,
+        }),
+      });
+      return;
+    }
+
+    const isGuest = user.is_anonymous === true;
+    if (!isGuest) {
+      setPreferGoogleSignIn(false);
+    }
+    setAccountIdentity({
+      status: isGuest ? 'guest' : 'signed-in',
+      userId: user.id,
+      email: user.email ?? null,
+      googleLoginLabel: isGuest ? getGoogleLoginLabel() : undefined,
+      ...(message === undefined ? {} : {
+        message,
+        messageTone,
+      }),
+    });
+  } catch (error) {
+    setAccountIdentity({
+      status: 'error',
       userId: null,
       email: null,
-      googleLoginLabel: getGoogleLoginLabel(),
-    };
-    return;
+      message: describeError(error),
+    });
   }
-
-  const isGuest = user.is_anonymous === true;
-  if (!isGuest) {
-    setPreferGoogleSignIn(false);
-  }
-  accountIdentity = {
-    status: isGuest ? 'guest' : 'signed-in',
-    userId: user.id,
-    email: user.email ?? null,
-    googleLoginLabel: isGuest ? getGoogleLoginLabel() : undefined,
-  };
 }
 
 async function handleGoogleLogin(): Promise<AccountActionResult> {
@@ -1198,7 +1281,7 @@ async function handleConflictChoice(
 
   const client = await supabaseClientPromise;
   const result = await uploadCloudSaveViaFetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-sync/v1/save`,
+    supabaseFunctionUrl('/functions/v1/save-sync/v1/save'),
     client?.auth ?? null,
     serverRevision,
     conflict.local.document,
@@ -1282,7 +1365,7 @@ async function purchaseMarketplaceCat(assetId: string): Promise<MarketplacePurch
   }
 
   const result = await purchaseCatViaFetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cat-collection`,
+    supabaseFunctionUrl('/functions/v1/cat-collection'),
     client?.auth ?? null,
     assetId,
     createIdempotencyKey('cat-purchase'),
@@ -1322,7 +1405,7 @@ async function purchaseMarketplaceCat(assetId: string): Promise<MarketplacePurch
 }
 
 const marketplaceEdgeFunctionUrl = () =>
-  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cat-collection`;
+  supabaseFunctionUrl('/functions/v1/cat-collection');
 
 async function loadMarketplaceListings(
   listingType: MarketplaceListingType | null,
@@ -1439,7 +1522,7 @@ async function replaceAssignedCat(
 
   const client = await supabaseClientPromise;
   const result = await replaceCatAssignmentViaFetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cat-collection`,
+    supabaseFunctionUrl('/functions/v1/cat-collection'),
     client?.auth ?? null,
     command,
   );
@@ -1484,7 +1567,7 @@ async function hydrateCatRoster(driver: MineSimulationDriver): Promise<void> {
     return;
   }
   const result = await loadCatCollectionViaFetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cat-collection/v1/collection`,
+    supabaseFunctionUrl('/functions/v1/cat-collection/v1/collection'),
     client?.auth ?? null,
   );
 

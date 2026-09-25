@@ -2,6 +2,26 @@
 
 ## Current Focus
 
+**LAN OAuth/account feedback, 2026-09-25.** Browser review found that a
+Google return containing `identity_already_exists` could leave the account
+modal on `Loading`, while the callback URL could fall back from a `192.168.x.x`
+origin to `127.0.0.1`. The client now parses query/hash OAuth errors before
+clearing them, shows collision or account-check copy, re-renders an open modal
+when async identity state settles, and offers retry after an inspection error.
+The already-linked collision is informational and keeps the guest's primary
+flow on the normal `signInWithOAuth` account-login path automatically, so the
+player does not need a second manual click; only an unexpected handoff or
+account inspection failure uses the red error treatment.
+Supabase local Auth allows the exact active origin `http://192.168.1.203:5173`
+and the `http://192.168.*.*:5173` glob, while OAuth calls keep passing the
+exact `window.location.origin`; the Auth `site_url` fallback is also the LAN
+origin so an SDK/provider fallback cannot strand a remote device at
+`127.0.0.1`. Local browser API calls rewrite a loopback `VITE_SUPABASE_URL` to
+the same `192.168.x.x` host when the page is served on LAN; the shared Edge
+Function CORS policy allows only that private-LAN origin on port 5173. This is
+an auth/UI/configuration fix only; save, economy, renderer state, and database
+schema are unchanged.
+
 **Elevator cabin alignment feedback, 2026-09-21.** Browser review found that
 the moving elevator cat's feet extended below the cabin's lower frame. The fix
 keeps the 64-pixel shaft and 62-pixel cabin width unchanged, uses an 80-pixel

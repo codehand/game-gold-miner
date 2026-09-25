@@ -137,6 +137,18 @@ describe('local Supabase stack configuration', () => {
     );
   });
 
+  it('uses the LAN Vite origin as the Auth fallback and allows browser OAuth callbacks', () => {
+    expect(config).toMatch(/site_url = "http:\/\/192\.168\.1\.203:5173"/);
+    expect(config).toContain('"http://192.168.1.203:5173"');
+    expect(config).toContain('"http://192.168.*.*:5173"');
+  });
+
+  it('keeps the Edge Function CORS policy aligned with the LAN OAuth origin', () => {
+    const http = readProjectFile('supabase/functions/_shared/http.ts');
+    expect(http).toContain('LAN_DEV_ORIGIN_PATTERN');
+    expect(http).toContain('192\\.168\\.\\d{1,3}');
+  });
+
   it('disables public email signup, closing the Telegram placeholder-email pre-account-takeover', () => {
     // Critical finding, server-milestone Step 12: `telegram-sign-in` maps a
     // Telegram user to the deterministic `telegram-<id>@telegram.invalid`
@@ -808,6 +820,33 @@ describe('the Step 13 Google identity-collision hook in src/main.ts', () => {
   it('publishes the collision diagnostic from detectGoogleIdentityCollision', () => {
     expect(hookBootstrap).toContain('app.dataset.googleIdentityCollision');
     expect(hookBootstrap).toContain('detectGoogleIdentityCollision(client?.auth ?? null)');
+  });
+});
+
+describe('account auth feedback in src/main.ts and AccountSettingsModal', () => {
+  const mainSource = readProjectFile('src/main.ts');
+  const modalSource = readProjectFile('src/ui/AccountSettingsModal.ts');
+
+  it('does not leave the account modal on a stale loading state', () => {
+    expect(mainSource).toContain('accountSettingsModal?.refresh();');
+    expect(modalSource).toContain('public refresh(): void');
+  });
+
+  it('preserves OAuth return errors as visible account feedback', () => {
+    expect(mainSource).toContain('readGoogleIdentityReturnError(window.location.href)');
+    expect(mainSource).toContain('This Google account is already linked to another account.');
+    expect(mainSource).toContain("await beginGoogleAccountSwitch(client.auth, window.location.origin)");
+    expect(mainSource).toContain("if (switchResult.status === 'redirecting')");
+    expect(mainSource).toContain("const messageTone = handoffError === undefined && collision ? 'info' : 'error'");
+    expect(modalSource).toContain("identity.status === 'error'");
+    expect(modalSource).toContain('identity.message');
+    expect(modalSource).toContain('account-settings-notice');
+  });
+
+  it('offers a retry after account inspection fails', () => {
+    expect(modalSource).toContain("this.#button('Try again'");
+    expect(modalSource).toContain('onRetry');
+    expect(mainSource).toContain("return { status: 'refreshed' }");
   });
 });
 
