@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   advanceSimulation,
+  calculateLevelEffect,
   createInitialGameState,
   GameNumber,
+  calculateMineFloorWorkforce,
   type GameState,
 } from '../../src/core';
 
@@ -35,6 +37,87 @@ describe('mine-floor extraction', () => {
     expect(beyondBoundary.elevator.carriedMaterial.equals(0)).toBe(true);
     expect(beyondBoundary.elevator.transitProgress).toBeCloseTo(4 / 15);
     expect(beyondBoundary.gold.equals(BASE_GAME_BALANCE.startingGold)).toBe(true);
+  });
+
+  it('delivers one equal output chunk at each miner arrival', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const multiMinerState: GameState = {
+      ...initialState,
+      floors: [
+        {
+          ...initialState.floors[0],
+          mineShaftLevel: 50,
+        },
+        ...initialState.floors.slice(1),
+      ],
+    };
+    const expectedCycleYield = calculateLevelEffect(
+      BASE_GAME_BALANCE.floors[0].baseYield,
+      50,
+      BASE_GAME_BALANCE.floors[0].upgrade,
+    );
+    const expectedMinerYield = expectedCycleYield.divide(2);
+
+    const firstArrival = advanceFor(multiMinerState, 1_000);
+
+    expect(firstArrival.floors[0].extractionProgress).toBeCloseTo(0.5);
+    expect(firstArrival.floors[0].totalExtracted.equals(expectedMinerYield)).toBe(true);
+    expect(firstArrival.floors[0].materialQueue.equals(expectedMinerYield)).toBe(true);
+
+    const secondArrival = advanceSimulation(firstArrival, 1_000);
+
+    expect(secondArrival.floors[0].extractionProgress).toBeCloseTo(0);
+    expect(Number(secondArrival.floors[0].totalExtracted.toJSON())).toBeCloseTo(
+      Number(expectedCycleYield.toJSON()),
+      8,
+    );
+  });
+
+  it('caps the visible crew at five and converts overflow into productivity', () => {
+    expect(calculateMineFloorWorkforce(200)).toEqual({
+      rawCount: 5,
+      visibleCount: 5,
+      productivityMultiplier: 1,
+    });
+    expect(calculateMineFloorWorkforce(250)).toEqual({
+      rawCount: 6,
+      visibleCount: 5,
+      productivityMultiplier: 1.2,
+    });
+
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const level250State: GameState = {
+      ...initialState,
+      floors: [
+        {
+          ...initialState.floors[0],
+          mineShaftLevel: 250,
+        },
+        ...initialState.floors.slice(1),
+      ],
+    };
+    const expectedCycleYield = calculateLevelEffect(
+      BASE_GAME_BALANCE.floors[0].baseYield,
+      250,
+      BASE_GAME_BALANCE.floors[0].upgrade,
+    ).multiply(1.2);
+
+    const state = advanceFor(level250State, 2_000);
+
+    expect(
+      Number(state.floors[0].totalExtracted.toJSON()) /
+        Number(expectedCycleYield.toJSON()),
+    ).toBeCloseTo(1, 10);
+    expect(
+      Number(state.floors[0].materialQueue.toJSON()) /
+        Number(expectedCycleYield.toJSON()),
+    ).toBeCloseTo(1, 10);
   });
 
   it('applies level-adjusted yield without milestone multipliers', () => {

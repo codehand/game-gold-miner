@@ -2,6 +2,53 @@
 
 ## Status Summary
 
+**Mine-floor workforce cap/productivity feedback, 2026-09-27 — implemented:**
+mine levels continue increasing the raw workforce by one per 50 levels, but
+only five miner sprites are rendered. Above raw count five, the shared
+`rawCount / visibleCount` multiplier increases extraction throughput while
+preserving the visible five-delivery cadence. Production rates and progress
+bounds use the same productivity rule. Focused extraction, production-rate,
+progress-bound, stage-animation, and mine-view tests pass; full unit suite
+(765/765), mine-view E2E (5/5), production-stage E2E (13/13), lint, build, and
+whitespace checks pass. No save schema or extra queue was added.
+
+**Fixed chute pour origin feedback, 2026-09-27 — implemented:** per-cart pour
+events remain independent, but every visible effect is now rendered at the
+single chute-mouth coordinate. Regression coverage pins both X/Y coordinates.
+
+**Per-cart gold-pour feedback, 2026-09-27 — implemented:** the surface scene
+now pools one matching gold-pour animation for the lead and every visible
+hauler. Each effect follows its own cart and uses that cart's loading pose;
+queue-empty state hides all effects. Unit suite (762/762), production-stage E2E
+(13/13), lint, and build pass.
+
+**Surface hauler cap/productivity feedback, 2026-09-27 — implemented:** the
+raw progression remains `1 + floor(min(warehouseLevel, 100) / 10)`, while the
+visible crew is capped at five. Overflow is represented by the shared core
+multiplier `rawCount / visibleCount`, reaching `2.2x` at raw count eleven.
+Simulation applies it at the existing `warehouse.inputQueue` handoff, and the
+production-rate helper uses the same value for HUD, offline, and anti-cheat
+bounds. No save-state queue or schema field changed. Targeted tests, full unit
+tests, lint, build, and production-stage browser coverage passed.
+
+**OAuth fallback-port feedback, 2026-09-27:** fixed the redirect-domain change
+when Vite falls back from `5173` to `5174`. The app already passed the active
+origin to OAuth; local Supabase Auth rejected that origin because only `5173`
+was allow-listed and then used the LAN `site_url` fallback at
+`192.168.1.203:5173`. Auth redirects, shared Edge Function CORS, and LAN API
+host rewriting now cover both dev ports, with regression tests added. Focused
+unit/config tests (103 Vitest, 13 Deno), lint, build, local Supabase restart,
+and a live Auth authorize probe all pass; the probe returned `302` while
+preserving `redirect_to=http://localhost:5174/`. No save or schema change.
+
+**Mine miner delivery cadence feedback, 2026-09-26:** fixed mine-floor crews
+appearing on separate Y lanes and delayed queue updates. The core now shares a
+derived worker-count rule with the renderer and adds one equal yield chunk for
+each miner delivery milestone; all miners use one horizontal baseline. Focused
+extraction and animation tests pass; full unit (757/757), lint, production
+build, and mine/production E2E (17/17) verification pass. No save schema or
+spendable-gold pipeline change.
+
 **LAN OAuth/account feedback, 2026-09-25:** fixed the stale account-modal
 loading state and silent Google callback error. `readGoogleIdentityReturnError`
 captures Supabase query/hash errors, `identity_already_exists` becomes

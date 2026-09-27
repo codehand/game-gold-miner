@@ -8,6 +8,18 @@ enforced by shipped code and restated as a contract in `architecture.md` or
 Not part of the contract. `activeContext.md` keeps only decisions that still
 constrain code not yet written.
 
+## Mine miner delivery cadence — 2026-09-26
+
+- Treat the mine worker count as a shared derived rule: one worker plus one at
+  shaft levels 50, 100, 150, and 200, capped at five. Keep the rule out of save
+  state so upgrades still derive the current crew from the authoritative level.
+- Schedule floor material delivery at evenly spaced worker milestones. Each
+  miner arrival adds an equal share of the configured cycle yield to that floor's
+  `materialQueue`; the complete cycle yield is unchanged, and spendable gold
+  remains owned by elevator transport plus warehouse conversion.
+- Render the phase-shifted crew on one horizontal patrol baseline. The renderer
+  mirrors milestones and never writes back to the core.
+
 ## Reference-driven bottom menu artwork — 2026-09-21
 
 - The supplied visual reference is the source of truth for the menu's outer
@@ -164,3 +176,29 @@ stretched the source strip.
 - **Caller-scoped renter projection:** a renter receives a usable collection
   projection without changing the V4 client save schema; legal ownership stays
   in `cat_instances` and `cat_rentals`.
+
+## Surface hauler productivity — 2026-09-27
+
+- Preserve the existing raw progression `1 + floor(min(warehouseLevel, 100) / 10)`.
+- Cap the visible surface crew at five cats and keep one cart per visible cat.
+- Convert overflow into shared per-cat productivity with
+  `productivityMultiplier = rawCount / visibleCount`, preserving the aggregate
+  workforce represented by the prior eleven-cat rule.
+- Apply the multiplier at the existing `warehouse.inputQueue` handoff rather
+  than adding a persisted surface queue. Reuse the same core-derived value in
+  foreground simulation, production-rate estimates, offline income, and
+  anti-cheat bounds so all projections agree without a save-schema change.
+
+## Mine-floor workforce productivity — 2026-09-27
+
+- Preserve the mine-floor raw progression as `1 + floor(mineShaftLevel / 50)`;
+  do not cap the derived raw count at level 200.
+- Cap the rendered and delivery-event workforce at five visible miners so the
+  scene's pooled sprites remain bounded.
+- Convert overflow into `productivityMultiplier = rawCount / visibleCount` and
+  apply it to the completed cycle yield. At level 200 the multiplier is `1x`;
+  at level 250 it is `1.2x`; higher levels continue to scale throughput while
+  the screen remains five cats.
+- Keep the helper shared by extraction, theoretical production rates, offline
+  projections, and anti-cheat in-flight allowances. This preserves one
+  authoritative formula without adding a save-state workforce field or queue.

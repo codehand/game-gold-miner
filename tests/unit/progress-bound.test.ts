@@ -102,6 +102,20 @@ describe('evaluateProgressBound (Step 23)', () => {
     }
   });
 
+  it('accepts honest overflow-productivity output from a high-level mine floor', () => {
+    const previous = withFloorLevel(freshState(), 0, 250);
+    const candidate = catchUpSimulation(previous, 2_000);
+
+    expect(
+      evaluateProgressBound({
+        previous,
+        candidate,
+        elapsedMs: 2_000,
+        config: BASE_GAME_BALANCE,
+      }),
+    ).toBeNull();
+  });
+
   it('rejects an inflated warehouse delivery', () => {
     const previous = freshState();
     const candidate = withDelivered(freshState(), GameNumber.from(1e12));

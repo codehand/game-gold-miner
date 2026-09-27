@@ -8,6 +8,8 @@ import { calculateLevelEffect } from '../progression/calculateLevelEffect';
 import type { GameState, MineFloorState } from '../state/GameState';
 import { advanceElevator } from './advanceElevator';
 import { advanceWarehouse } from './advanceWarehouse';
+import { calculateMineFloorWorkforce } from './mineFloorWorkers';
+import { calculateSurfaceHaulerWorkforce } from './surfaceHaulers';
 import {
   EMPTY_CAT_PRODUCTION_MODIFIERS,
   getMiningOutputMultiplier,
@@ -91,11 +93,17 @@ function advanceFixedStep(
     SIMULATION_STEP_MS,
     modifiers.elevatorThroughputMultiplier,
   );
+  // Surface delivery has no separate persisted queue: warehouse.inputQueue is
+  // the handoff boundary. Overflow workforce therefore scales the rate at
+  // which the surface crew can complete that handoff/conversion stage.
+  const surfaceDeliveryMultiplier = calculateSurfaceHaulerWorkforce(
+    transportedState.warehouse.level,
+  ).productivityMultiplier;
   const convertedState = advanceWarehouse(
     transportedState,
     config.warehouse,
     SIMULATION_STEP_MS,
-    modifiers.warehouseProcessingMultiplier,
+    modifiers.warehouseProcessingMultiplier * surfaceDeliveryMultiplier,
   );
 
   return {
@@ -114,23 +122,38 @@ function advanceExtraction(
     return floor;
   }
 
+  const workforce = calculateMineFloorWorkforce(floor.mineShaftLevel);
+  const previousDeliveryCount = calculateCompletedMinerDeliveries(
+    floor.extractionProgress,
+    workforce.visibleCount,
+  );
   const accumulatedProgress =
     floor.extractionProgress + elapsedMs / config.cycleDurationMs;
   const completedCycles = Math.floor(accumulatedProgress + PROGRESS_EPSILON);
   const extractionProgress = normalizeProgress(
     accumulatedProgress - completedCycles,
   );
+  const completedMinerDeliveries =
+    calculateCompletedMinerDeliveries(
+      accumulatedProgress,
+      workforce.visibleCount,
+    ) -
+    previousDeliveryCount;
 
-  if (completedCycles === 0) {
+  if (completedMinerDeliveries <= 0) {
     return {
       ...floor,
       extractionProgress,
     };
   }
 
-  const completedOutput = calculateExtractionYield(floor, config).multiply(
-    completedCycles * miningOutputMultiplier,
-  );
+  const completedOutput = calculateExtractionYield(floor, config)
+    .divide(workforce.visibleCount)
+    .multiply(
+      completedMinerDeliveries *
+        miningOutputMultiplier *
+        workforce.productivityMultiplier,
+    );
 
   return {
     ...floor,
@@ -138,6 +161,13 @@ function advanceExtraction(
     materialQueue: floor.materialQueue.add(completedOutput),
     totalExtracted: floor.totalExtracted.add(completedOutput),
   };
+}
+
+function calculateCompletedMinerDeliveries(
+  progress: number,
+  workerCount: number,
+): number {
+  return Math.floor(progress * workerCount + PROGRESS_EPSILON);
 }
 
 function calculateExtractionYield(

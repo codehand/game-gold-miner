@@ -164,26 +164,42 @@ MVP chỉ dùng tiền ảo nội bộ, không blockchain, NFT, quy đổi tiề
   mọi mèo công nhân luôn lặp tuyến đến máng, đẩy xe sang kho rồi đưa xe quay lại,
   kể cả khi `warehouse.inputQueue` bằng 0. Vàng chỉ đổ và xe chỉ chuyển sang trạng
   thái đầy khi queue đang dương; queue bằng 0 thì toàn bộ chuyến đi dùng xe rỗng.
-  Đây là animation presentation-only; simulation vẫn chuyển vật liệu trực tiếp
-  theo core.
+  Core cũng áp dụng productivity của đội surface tại ranh giới
+  `warehouse.inputQueue`, nên animation và throughput dùng cùng một quy tắc.
   Vàng còn nằm trong cabin elevator chưa thuộc queue của tháp và không được làm
   hiện dòng vàng, xe đầy, hoặc mèo đang chở hàng. Khi queue về 0, toàn bộ đội
-  surface lập tức dùng xe rỗng và máng ngừng đổ nhưng vẫn tiếp tục tuần hoàn.
-- Đội vận chuyển phản ánh level warehouse mà không đổi throughput: luôn có một
-  mèo cơ bản, sau đó mỗi 10 level warehouse thêm một mèo hỗ trợ. Vì vậy level
-  10/20/.../100 hiển thị tổng cộng 2/3/.../11 mèo; level trên 100 vẫn giữ đội
-  tối đa 11 mèo. Mỗi mèo có pha di chuyển và vị trí ngang riêng trên tuyến
-  surface nhưng toàn đội cùng một đường baseline; mỗi mèo sở hữu một xe đẩy
-  riêng ở cùng pose vận chuyển thay vì sao chép mèo chính hoặc dùng chung xe.
+  surface lập tức dùng xe rỗng và mọi hiệu ứng rót vàng đều ẩn nhưng vẫn tiếp
+  tục tuần hoàn. Khi từng xe tới máng trong lúc queue dương, xe đó nhận một
+  hiệu ứng rót vàng riêng giống hệt các xe còn lại; nguồn rơi luôn nằm ở một
+  tọa độ cố định ngay dưới miệng máng.
+- Mỗi tầng mỏ có raw workforce theo `rawCount = 1 + floor(mineShaftLevel / 50)`.
+  Tối đa năm miner được hiển thị; tất cả đi trên cùng một đường ngang giữa mèo
+  trắng và đống vàng. Khi từng miner chạm cạnh phải của mèo trắng, tầng cộng
+  ngay một phần bằng nhau của yield chu kỳ vào `materialQueue`. Từ raw worker
+  thứ sáu trở đi, `productivityMultiplier = rawCount / visibleCount` tăng sản
+  lượng của đội năm miner đang hiển thị, nên level cao hơn vẫn tăng hiệu suất mà
+  không thêm sprite. Gold tiêu được chỉ tăng sau elevator và warehouse chuyển
+  vật liệu như trước.
+- Đội vận chuyển phản ánh level warehouse bằng một quy tắc raw count nhưng chỉ
+  hiển thị tối đa năm mèo. Quy tắc là
+  `rawCount = 1 + floor(min(warehouseLevel, 100) / 10)`,
+  `visibleCount = min(rawCount, 5)`, và
+  `productivityMultiplier = rawCount / visibleCount`. Vì vậy level 40 có 5
+  mèo ở `1x`, level 50 có 5 mèo ở `1.2x`, còn level 100 trở lên có 5 mèo ở
+  `2.2x`; tổng capacity của workforce cũ được giữ nguyên. Multiplier được áp
+  dụng tại handoff `warehouse.inputQueue` và không tạo thêm save-state queue.
+  Mỗi mèo có pha di chuyển và vị trí ngang riêng trên tuyến surface nhưng toàn
+  đội cùng một đường baseline; mỗi mèo sở hữu một xe đẩy riêng ở cùng pose vận
+  chuyển thay vì sao chép mèo chính hoặc dùng chung xe.
 - Trục elevator phải giữ ray và thanh giằng rõ nét xuyên suốt 15 tầng: lặp artwork
   theo chiều dọc ở tỉ lệ native, không kéo giãn một bitmap theo toàn bộ độ sâu mỏ.
 - Scroll mine chỉ đổi camera quan sát, không đổi tọa độ hành trình elevator. Cabin
   đi đủ khoảng cách world từ tầng đang phục vụ qua các tầng phía trên tới tháp,
   kể cả khi những tầng trung gian đang nằm ngoài màn hình.
-- Đội miner của mọi tầng cũng phản ánh level mà không đổi sản lượng: tầng đã mở
-  luôn có một miner, rồi level 50/100/150/200 lần lượt thêm một miner, tạo tổng
-  số 2/3/4/5. Trên level 200 vẫn giữ tối đa 5 miner. Các miner phụ dùng cùng
-  sprite nhưng có pha tuần tra, frame và làn dọc nông riêng để giảm che nhau;
+- Đội miner của mọi tầng phản ánh cùng quy tắc raw/visible ở trên: level
+  50/100/150/200 lần lượt đạt 2/3/4/5 miner hiển thị; trên level 200 vẫn giữ
+  tối đa 5 miner và chuyển phần vượt cap thành productivity. Các miner phụ dùng
+  cùng sprite nhưng có pha tuần tra, frame riêng và chia sẻ một baseline;
   extraction progress authoritative vẫn điều khiển tuyến di chuyển chung.
 
 Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự động: mở cả bốn tầng (tầng 4 hiện ở giây 508 sau khi mở rộng 15 tầng và sửa tuyến elevator), chạm multiplier nhưng không tăng mất kiểm soát tới cấp 100 trong mười phút, và không kẹt tiến trình. Đường cân bằng tầng 5–15 được mở rộng theo cấp số và vẫn là tạm thời cho tới khi được kiểm chứng bằng playtest thực tế.

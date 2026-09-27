@@ -448,7 +448,7 @@ test('reveals the same level-derived miner crew progression on every floor', asy
         import { createInitialGameState } from '/src/core/index.ts';
         import { BASE_GAME_BALANCE } from '/src/config/index.ts';
 
-        const levels = [1, 50, 100, 200];
+        const levels = [1, 50, 100, 250];
         const base = createInitialGameState(
           BASE_GAME_BALANCE,
           ${FIXTURE_TIMESTAMP_MS},
@@ -503,9 +503,9 @@ test('reveals the same level-derived miner crew progression on every floor', asy
     expect(floor.minerCrew, `floor ${index + 1} visible miner read-back`)
       .toHaveLength([1, 2, 3, 5][index]);
     expect(
-      new Set(floor.minerCrew.map(({ x, y }) => `${x.toFixed(2)}:${y.toFixed(2)}`)).size,
-      `floor ${index + 1} miners occupy independent poses`,
-    ).toBe(floor.minerCrew.length);
+      new Set(floor.minerCrew.map(({ y }) => y.toFixed(2))).size,
+      `floor ${index + 1} miners share one horizontal patrol line`,
+    ).toBe(1);
   });
 
   expect(browserErrors).toEqual([]);

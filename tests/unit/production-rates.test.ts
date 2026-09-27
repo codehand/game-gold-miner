@@ -4,6 +4,7 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   calculateMineProductionRates,
   calculateTheoreticalFloorExtractionRate,
+  calculateLevelEffect,
   createCatProductionModifiers,
   createInitialGameState,
   GameNumber,
@@ -44,6 +45,32 @@ describe('production rates', () => {
     const expectedRate = GameNumber.from(10)
       .multiply(1.1 ** 2)
       .multiply(1_000 / 2_000);
+
+    expect(rate.equals(expectedRate)).toBe(true);
+  });
+
+  it('applies overflow mine-floor workforce productivity after five visible cats', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const state: GameState = {
+      ...initialState,
+      floors: [
+        {
+          ...initialState.floors[0],
+          mineShaftLevel: 250,
+        },
+        ...initialState.floors.slice(1),
+      ],
+    };
+    const rate = calculateMineProductionRates(state, BASE_GAME_BALANCE)
+      .floors[0].theoreticalExtractionPerSecond;
+    const expectedRate = calculateLevelEffect(
+      BASE_GAME_BALANCE.floors[0].baseYield,
+      250,
+      BASE_GAME_BALANCE.floors[0].upgrade,
+    ).multiply(1.2 * (1_000 / BASE_GAME_BALANCE.floors[0].cycleDurationMs));
 
     expect(rate.equals(expectedRate)).toBe(true);
   });

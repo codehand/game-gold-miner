@@ -8,6 +8,7 @@ import {
   calculateWarehouseUpgradeBatchCost,
 } from '../progression/upgrades';
 import { createCatProductionModifiers, type CatRosterState } from '../cats';
+import { calculateMineFloorWorkforce } from '../simulation/mineFloorWorkers';
 import type { GameState } from '../state/GameState';
 
 /**
@@ -243,7 +244,11 @@ function inFlightCycleYieldForFloor(
   miningOutputMultiplier = 1,
 ): GameNumber {
   return calculateLevelEffect(config.baseYield, floor.mineShaftLevel, config.upgrade)
-    .multiply(miningOutputMultiplier);
+    .multiply(
+      miningOutputMultiplier *
+        calculateMineFloorWorkforce(floor.mineShaftLevel)
+          .productivityMultiplier,
+    );
 }
 
 /** Total gold required to move `previous` to `candidate`: upgrades plus floor unlocks. */

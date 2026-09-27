@@ -123,6 +123,21 @@ export {
   type ElevatorRouteDirection,
 } from './simulation/advanceElevator';
 export {
+  calculateMineFloorWorkforce,
+  calculateMineFloorWorkerCount,
+  MINE_FLOOR_WORKER_LEVEL_INTERVAL,
+  MINE_FLOOR_WORKER_MAX_COUNT,
+  MINE_FLOOR_WORKER_MAX_LEVEL,
+  type MineFloorWorkforce,
+} from './simulation/mineFloorWorkers';
+export {
+  calculateSurfaceHaulerWorkforce,
+  SURFACE_HAULER_LEVEL_INTERVAL,
+  SURFACE_HAULER_MAX_VISIBLE_COUNT,
+  SURFACE_HAULER_MAX_WAREHOUSE_LEVEL,
+  type SurfaceHaulerWorkforce,
+} from './simulation/surfaceHaulers';
+export {
   catchUpSimulation,
   MAX_CATCH_UP_MS,
 } from './simulation/catchUpSimulation';

@@ -7,6 +7,17 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Mine miner delivery cadence — 2026-09-26
+
+- **Simulation gate — Passed:** a level-50 two-miner fixture adds one equal
+  chunk at the halfway delivery and reaches the original full cycle total at
+  the second delivery; the spendable-gold pipeline remains downstream.
+- **Presentation gate — Passed:** all visible mine miners report the same Y
+  baseline, while phase-shifted patrol offsets remain distinct and aligned with
+  the delivery milestones.
+- **Regression gate — Passed:** focused extraction and stage-animation tests
+  pass; the mine-floor browser read-back now asserts the shared horizontal line.
+
 ## Reference-driven bottom menu artwork — 2026-09-21
 
 - **Visual asset gate — Passed:** the generated reference-shaped strip has a
@@ -343,3 +354,38 @@ and IndexedDB schema versions remain 1.
 | Marketplace UI | Pass | Responsive browser tests cover Buy, Rent duration/total, Sell publication, My listings, cancellation controls, live callbacks, and mobile layouts at 390×844 and 320×568. |
 | Security boundary | Pass | Supabase reset, server-unit tests, targeted integration tests, and adversarial RLS tests pass with marketplace tables service-role-only. |
 | Release regression | Pass | Production build, 743 client unit tests, 11 targeted server integration tests, six Marketplace browser tests, lint, and `git diff --check` pass. |
+
+## Surface hauler cap/productivity — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Core workforce rule | Pass | Unit coverage proves raw progression, five-cat visible cap, `rawCount / visibleCount` overflow multiplier, invalid-level rejection, and the `2.2x` level-100+ boundary. |
+| Authoritative throughput | Pass | Unit coverage proves the same multiplier reaches warehouse conversion and derived production rates at the existing `warehouse.inputQueue` handoff. |
+| Renderer contract | Pass | Production-stage browser coverage is 13/13 and proves raw count 11, five visible cats/carts, four assistants, and `2.2x` diagnostics at warehouse level 100. |
+| Regression gate | Pass | Full client unit suite 761/761, lint, production build, focused production-stage E2E 13/13, and `git diff --check` pass. No save schema or extra queue was added. |
+
+## Per-cart gold-pour feedback — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Event coverage | Pass | The lead and every visible assistant expose the same loading/pour event from their phase-shifted route pose; empty queue remains hidden. |
+| Visual binding | Pass | `BootScene` pools one matching gold-pour sprite per visible cart and positions it relative to that cart beneath the chute. |
+| Browser regression | Pass | Production-stage E2E observes all five per-cart effects over the staggered route cycle; the suite passes 13/13. |
+| Regression gate | Pass | Unit suite 762/762, lint, production build, and `git diff --check` pass; authoritative state and save schema are unchanged. |
+
+## Fixed chute pour origin — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Single origin | Pass | Every visible per-cart pour sprite is rendered at `SURFACE_GOLD_POUR_X/Y`; cart movement no longer changes the falling-gold origin. |
+| Event preservation | Pass | Each lead/assistant loading pose still controls its own effect visibility and frame. |
+| Regression gate | Pass | Production-stage E2E pins both coordinates and observes all five effects; unit suite, lint, build, and `git diff --check` pass. |
+
+## Mine-floor workforce cap/productivity — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Workforce rule | Pass | Core tests pin raw one-per-50 progression, visible cap five, `1x` at level 200, and `1.2x` at level 250. |
+| Authoritative throughput | Pass | Extraction and production-rate tests prove overflow productivity increases floor output while visible delivery events remain capped at five. |
+| Renderer contract | Pass | Mine-view E2E uses a level-250 floor and still reads back five visible miners with no browser errors. |
+| Regression gate | Pass | Focused core tests, full unit suite, lint, production build, mine-view E2E, and `git diff --check` pass; no save schema or extra queue was added. |

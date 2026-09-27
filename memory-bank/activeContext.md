@@ -2,6 +2,58 @@
 
 ## Current Focus
 
+**Mine-floor workforce cap/productivity feedback, 2026-09-27 — implemented.**
+The mine-floor rule now keeps `rawCount = 1 + floor(mineShaftLevel / 50)`,
+caps the visible crew at five, and converts overflow into
+`productivityMultiplier = rawCount / visibleCount`. Extraction delivery keeps
+five visible milestones, while the multiplier raises floor output above level
+200. Production rates and anti-cheat in-flight allowances use the same helper;
+no saved field or schema change was needed.
+
+**Fixed chute pour origin feedback, 2026-09-27 — implemented.**
+The per-cart gold-pour pool now keeps every effect at the single fixed chute
+mouth (`SURFACE_GOLD_POUR_X`, `SURFACE_GOLD_POUR_Y`). Each cart still controls
+whether its matching effect is visible and which frame it shows, but carts no
+longer move the falling-gold origin horizontally.
+
+**Per-cart gold-pour feedback, 2026-09-27 — implemented.**
+The surface loop previously rendered one fixed gold-pour sprite for the lead
+cart; assistant poses calculated the same loading event but had no effect
+instance. `BootScene` now pools one gold-pour sprite per visible cart, positions
+each at its own cart beneath the chute, and binds visibility/frame to that
+cart's loading pose. Empty queues still suppress every pour. Unit and focused
+production-stage browser coverage pass.
+
+**Surface hauler cap/productivity feedback, 2026-09-27 — implemented.**
+The shared core helper keeps `rawCount = 1 + floor(min(warehouseLevel, 100) / 10)`,
+caps the visible crew at five, and derives `productivityMultiplier =
+rawCount / visibleCount`. It is `1x` through raw count five and reaches `2.2x`
+at raw count eleven. `BootScene` renders `visibleCount`; `advanceSimulation`
+and `calculateMineProductionRates` apply the same multiplier at the existing
+`warehouse.inputQueue` handoff, so foreground, offline, HUD, and anti-cheat
+rate calculations stay aligned. No save-state queue or schema field was added.
+Targeted tests, full unit tests, lint, build, and production-stage browser
+coverage are the validation gate; the detailed settled decision is recorded in
+`archive/decision-log.md`.
+
+**OAuth fallback-port feedback, 2026-09-27.** Running Vite on `localhost:5174`
+because the default `:5173` was occupied exposed a configuration gap: the
+client passed the correct `window.location.origin`, but local Supabase Auth
+only allow-listed `:5173`, so it rejected `:5174` and fell back to the LAN
+`site_url` at `192.168.1.203:5173`. Auth redirect allow-lists, Edge Function
+CORS, and loopback-to-LAN API rewriting now cover both Vite dev ports `5173`
+and `5174`; the LAN `site_url` remains the safe fallback for omitted or
+invalid redirects. No save, economy, or database schema contract changed.
+
+**Mine miner delivery cadence feedback, 2026-09-26.** Browser review found that
+multiple mine miners were drawn on staggered Y lanes and the floor queue only
+increased once after a full multi-miner cycle. The shared core worker rule now
+derives the same one-plus-one-per-50-level count used by the renderer, adds an
+equal `cycleYield / workerCount` chunk at each delivery milestone, and preserves
+the full-cycle total. `MineFloorView` phase-shifts every miner on one horizontal
+baseline so each arrival lines up with one queue update. The save schema and
+elevator/warehouse ownership of spendable gold remain unchanged.
+
 **LAN OAuth/account feedback, 2026-09-25.** Browser review found that a
 Google return containing `identity_already_exists` could leave the account
 modal on `Loading`, while the callback URL could fall back from a `192.168.x.x`

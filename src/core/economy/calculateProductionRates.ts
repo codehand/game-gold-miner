@@ -11,6 +11,8 @@ import {
   getMiningOutputMultiplier,
   type CatProductionModifiers,
 } from '../cats';
+import { calculateSurfaceHaulerWorkforce } from '../simulation/surfaceHaulers';
+import { calculateMineFloorWorkforce } from '../simulation/mineFloorWorkers';
 
 const MILLISECONDS_PER_SECOND = 1_000;
 
@@ -31,6 +33,7 @@ export interface MineProductionRates {
   readonly aggregateExtractionPerSecond: GameNumber;
   readonly elevatorCapacityPerSecond: GameNumber;
   readonly warehouseCapacityPerSecond: GameNumber;
+  readonly surfaceHaulerProductivityMultiplier: number;
   readonly effectiveProductionPerSecond: GameNumber;
   readonly bottleneck: ProductionBottleneck;
 }
@@ -73,7 +76,9 @@ export function calculateMineProductionRates(
         calculateTheoreticalFloorExtractionRate(
           floor,
           floorConfig,
-          getMiningOutputMultiplier(modifiers, floor.id),
+          getMiningOutputMultiplier(modifiers, floor.id) *
+            calculateMineFloorWorkforce(floor.mineShaftLevel)
+              .productivityMultiplier,
         ),
     };
   });
@@ -90,10 +95,14 @@ export function calculateMineProductionRates(
     config.elevator,
     modifiers.elevatorThroughputMultiplier,
   );
+  const surfaceHaulerProductivityMultiplier =
+    calculateSurfaceHaulerWorkforce(state.warehouse.level)
+      .productivityMultiplier;
   const warehouseCapacityPerSecond = calculateStageCapacityPerSecond(
     state.warehouse.capacity,
     config.warehouse,
-    modifiers.warehouseProcessingMultiplier,
+    modifiers.warehouseProcessingMultiplier *
+      surfaceHaulerProductivityMultiplier,
   );
   const { bottleneck, rate: effectiveProductionPerSecond } = findBottleneck(
     aggregateExtractionPerSecond,
@@ -106,6 +115,7 @@ export function calculateMineProductionRates(
     aggregateExtractionPerSecond,
     elevatorCapacityPerSecond,
     warehouseCapacityPerSecond,
+    surfaceHaulerProductivityMultiplier,
     effectiveProductionPerSecond,
     bottleneck,
   };

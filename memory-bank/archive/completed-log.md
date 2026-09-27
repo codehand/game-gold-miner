@@ -1,5 +1,16 @@
 # Archive — Completed work log
 
+## 2026-09-26 — Mine miner delivery cadence
+
+Addressed browser feedback that mine miners were walking on staggered vertical
+lanes and that a floor's visible amount increased only after a whole multi-miner
+cycle. The core now owns a shared level-derived worker count and credits one
+equal `cycleYield / workerCount` chunk to the floor queue whenever a miner
+reaches the unloading cat. The full cycle yield remains unchanged. Mine-floor
+assistants use the same phase milestones and all miners share one horizontal
+baseline. Added extraction, animation, and browser read-back regressions; no
+save schema or elevator/warehouse contract changed.
+
 ## 2026-09-21 — Reference-driven bottom menu artwork
 
 After visual review supplied a complete target composition, regenerated the
@@ -3300,3 +3311,35 @@ opened from another device; the shared Edge Function CORS policy accepts only
 the same private-LAN origin on port 5173. Focused auth/server-stack tests,
 shared HTTP tests, lint, and build pass. No save, economy, renderer, or
 database schema changed.
+
+The 2026-09-27 surface-hauler productivity feedback is complete. The raw
+progression remains `1 + floor(min(warehouseLevel, 100) / 10)`, the renderer
+caps the visible crew at five, and overflow becomes the shared core multiplier
+`rawCount / visibleCount`. `advanceSimulation` applies that multiplier at the
+existing `warehouse.inputQueue` handoff, while `calculateMineProductionRates`
+exposes the same value to HUD, offline income, and anti-cheat bounds. No extra
+queue or save-schema field was introduced. Full unit coverage is 761/761,
+production-stage browser coverage is 13/13, lint and build pass, and
+`git diff --check` is clean.
+
+The 2026-09-27 per-cart gold-pour feedback is complete. The previous single
+lead-only pour sprite is replaced by a pool of one matching effect per visible
+cart; each effect follows its cart's loading pose, frame, and position beneath
+the chute, while an empty `warehouse.inputQueue` hides all effects. Unit
+coverage is 762/762 and production-stage browser coverage is 13/13; lint,
+build, and whitespace checks pass. The change remains presentation-only and
+does not alter save or economy state.
+
+The follow-up fixed-chute-origin feedback is complete. Per-cart pour events
+remain independent, but every effect is now pinned to the single chute-mouth
+coordinate rather than following each moving cart horizontally. The browser
+regression pins both effect coordinates while observing all five route events;
+authoritative state, economy, and save schema remain unchanged.
+
+The 2026-09-27 mine-floor workforce feedback is complete. Mine levels continue
+the raw one-worker-per-50-level progression, while the renderer and delivery
+cadence cap at five visible miners. Raw overflow now becomes the shared
+`rawCount / visibleCount` productivity multiplier, so level 250 produces at
+`1.2x` with five cats rather than adding a sixth sprite. Foreground extraction,
+production-rate estimates, and progress-bound in-flight allowances all consume
+the same helper; no save schema or additional queue was added.
