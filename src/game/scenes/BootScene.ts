@@ -17,10 +17,7 @@ import type {
 import { MineShaftUpgradeModal } from '../../ui/MineShaftUpgradeModal';
 
 import { createBacklogTextures } from '../assets/backlogTextures';
-import {
-  BOTTOM_NAVIGATION_MENU_ASSET_PATH,
-  BOTTOM_NAVIGATION_MENU_TEXTURE_KEY,
-} from '../assets/navigationAssets';
+import { NAVIGATION_ICON_ASSETS } from '../assets/navigationAssets';
 import {
   MARKETPLACE_RUNTIME_ANIMATION_ASSETS,
   MARKETPLACE_RUNTIME_ROLE_ASSETS,
@@ -313,10 +310,9 @@ export class BootScene extends Phaser.Scene {
 
   /** Loads the original Step 32 placeholder family before any view is built. */
   public preload(): void {
-    this.load.image(
-      BOTTOM_NAVIGATION_MENU_TEXTURE_KEY,
-      BOTTOM_NAVIGATION_MENU_ASSET_PATH,
-    );
+    for (const icon of NAVIGATION_ICON_ASSETS) {
+      this.load.image(icon.textureKey, icon.path);
+    }
 
     for (const [key, path] of PLACEHOLDER_ASSETS) {
       this.load.image(key, path);

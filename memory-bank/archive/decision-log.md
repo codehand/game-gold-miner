@@ -8,6 +8,20 @@ enforced by shipped code and restated as a contract in `architecture.md` or
 Not part of the contract. `activeContext.md` keeps only decisions that still
 constrain code not yet written.
 
+## Independent bottom-navigation icons — 2026-09-27
+
+- The mine's HUD and buildings, not the old ornate menu reference, now set the
+  bottom bar's palette: navy, slate-blue steel, warm gold and restrained timber.
+- Ship five separate transparent 96×96 PNG textures, each displayed at 42×42.
+  Draw panel, tile frames, English labels and pressed state in Phaser so an
+  individual icon can be replaced without regenerating a full strip or sheet.
+- Keep five equal 64×64 hit regions inside the unchanged 360×80 layout; preserve
+  keys, callbacks and the presentation-only status of Boost and Map.
+
+This supersedes the two 2026-09-21 full-strip/sprite-sheet decisions below.
+Their original sources remain in `art-source/`; their unused public runtime
+files were removed.
+
 ## Mine miner delivery cadence — 2026-09-26
 
 - Treat the mine worker count as a shared derived rule: one worker plus one at

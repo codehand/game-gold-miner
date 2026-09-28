@@ -7,6 +7,15 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Independent bottom-menu assets — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Asset separation | Pass | Five unique 96×96 RGBA PNG paths and Phaser texture keys; no full strip or icon sheet loaded. PNG header/alpha QC and the asset-registry unit test pass. |
+| Visual fit | Pass | Native 360×640 screenshot shows the five independent icons, short labels, restrained steel-blue tiles, and gold divider matching the HUD and mine palette. |
+| Interaction | Pass | Five 64×64 targets preserve order and callbacks; focused browser layout and mouse/touch hit tests pass 7/7. |
+| Regression | Pass | Client unit suite 764/764, lint, build and `git diff --check` pass; no save, economy, network or schema change. |
+
 ## Mine miner delivery cadence — 2026-09-26
 
 - **Simulation gate — Passed:** a level-50 two-miner fixture adds one equal

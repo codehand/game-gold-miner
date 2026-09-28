@@ -2,6 +2,16 @@
 
 ## Status Summary
 
+**Bottom menu redesign, 2026-09-27 — implemented:** replaced the mismatched
+purple/gold shared strip with five separate transparent 96×96 icon PNGs and
+code-drawn HUD-navy/slate-steel menu chrome. The fixed region remains 360×80;
+every tile has its own 64×64 hit target, label and press feedback. Raw art,
+prompts, manifest and reproducible normalizer are retained under
+`art-source/navigation-icons-v2/`. Raster QC, the navigation asset test, full
+unit suite (764/764), lint, build, seven focused mouse/touch/layout browser
+tests and native-size visual review pass. The two unused legacy public menu
+images were removed; historical sources remain in `art-source/` and Git.
+
 **Mine-floor workforce cap/productivity feedback, 2026-09-27 — implemented:**
 mine levels continue increasing the raw workforce by one per 50 levels, but
 only five miner sprites are rendered. Above raw count five, the shared
@@ -75,20 +85,6 @@ Added layout and production-stage regression coverage; focused layout tests
 (30/30), production/runtime browser tests (13/13), the full unit suite
 (745/745), lint, and build pass. This is presentation-only and does not change
 save, economy, network, or schema contracts.
-
-**Reference-driven bottom menu, 2026-09-21:** regenerated the complete
-Rewards, Marketplace, active Boost, Collection, and Map menu from the supplied
-reference, alpha-cropped it to a transparent 2,167×455 runtime strip, and
-integrated it into the existing Phaser menu. The fixed navigation region is now
-360×80 and `BottomNavigationView` fits the artwork uniformly at roughly 356×75,
-resolving the reported vertical squashing while keeping the complete shell
-visible. Deterministic raster QC confirms a non-empty navy/gold subject. The
-runtime asset/layout contract tests, lint, production build, and in-app browser
-inspection pass. A navigation-color backdrop now fills the transparent margin
-around the artwork so the menu joins the mine edge without a black seam;
-interaction behavior and hit regions remain unchanged. The runtime texture is
-now a high-quality 2× resample at 712×150 and the view draws it at an exact
-0.5 scale; the in-app browser confirms sharper edges at display size.
 
 **UI feedback polish, 2026-09-21:** the Marketplace Buy confirmation for a
 `Listed` catalog item uses `Buy listed cat` and `Back to cats` on one row at the

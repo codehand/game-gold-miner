@@ -1,56 +1,45 @@
 import Phaser from 'phaser';
 
 import {
-  BOTTOM_NAVIGATION_MENU_TEXTURE_KEY,
-  calculateNavigationArtworkDisplaySize,
+  NAVIGATION_ICON_ASSETS,
+  NAVIGATION_ICON_DISPLAY_SIZE,
+  type NavigationIconKey,
 } from '../assets/navigationAssets';
 import {
   assertTouchTargetRegion,
+  DIVIDER,
+  FONT_FAMILY,
+  FONT_STYLE_SEMIBOLD,
   NAVIGATION_BACKGROUND,
+  NAVIGATION_BUTTON,
+  NAVIGATION_BUTTON_BORDER,
+  NAVIGATION_BUTTON_PRESSED,
+  NAVIGATION_ICON,
   NAVIGATION_SHADOW,
   toFillColor,
   type LayoutRegion,
 } from '../layout';
 
-export type BottomNavigationItemKey =
-  | 'rewards'
-  | 'shop'
-  | 'boost'
-  | 'managers'
-  | 'map';
+export type BottomNavigationItemKey = NavigationIconKey;
 
 export interface RenderedBottomNavigationItem {
   readonly key: BottomNavigationItemKey;
   readonly bounds: LayoutRegion;
+  readonly iconTextureKey: string;
 }
 
 export interface BottomNavigationViewOptions {
   readonly onActivate?: (key: BottomNavigationItemKey) => void;
 }
 
-interface NavigationItemDefinition {
-  readonly key: BottomNavigationItemKey;
-}
+type NavigationItemDefinition = (typeof NAVIGATION_ICON_ASSETS)[number];
 
-const STANDARD_BUTTON_WIDTH = 48;
-const STANDARD_BUTTON_HEIGHT = 44;
-const BOOST_BUTTON_WIDTH = 62;
-const BOOST_BUTTON_HEIGHT = 50;
-const STANDARD_BUTTON_CENTER_Y = 40;
-const BOOST_BUTTON_CENTER_Y = 40;
-const COLOR_PRESSED_OVERLAY = toFillColor(NAVIGATION_SHADOW);
-const MENU_ART_MARGIN = 2;
-
-const ITEMS = [
-  { key: 'rewards' },
-  { key: 'shop' },
-  { key: 'boost' },
-  { key: 'managers' },
-  { key: 'map' },
-] as const satisfies readonly NavigationItemDefinition[];
+const BUTTON_SIZE = 64;
+const BUTTON_CENTER_Y = 40;
+const BUTTON_RADIUS = 11;
 
 /**
- * Fixed, icon-only bottom navigation.
+ * Fixed bottom navigation with independent item textures and code-drawn chrome.
  *
  * Activation remains a presentation callback: no screen, economy rule, or
  * saved state is introduced before those features receive their own milestone.
@@ -65,9 +54,6 @@ export class BottomNavigationView {
     options: BottomNavigationViewOptions = {},
   ) {
     this.#root = scene.add.container(region.x, region.y);
-    // The generated strip has transparent pixels around its outer shell. Keep
-    // those pixels on the same continuous navigation surface instead of
-    // exposing the dark mine background as a gap above or below the menu.
     const navigationBackdrop = scene.add
       .rectangle(
         region.width / 2,
@@ -78,36 +64,24 @@ export class BottomNavigationView {
       )
       .setOrigin(0.5);
     this.#root.add(navigationBackdrop);
-
-    // The processed runtime image is alpha-cropped to the visible menu. Fit it
-    // uniformly inside the taller safe region so the tiles and icons retain
-    // their source proportions instead of being vertically squashed.
-    const menuSize = calculateNavigationArtworkDisplaySize(
-      region.width,
-      region.height,
-      MENU_ART_MARGIN,
-    );
-    const menuArtwork = scene.add
-      .image(
+    this.#root.add(
+      scene.add.rectangle(
         region.width / 2,
-        region.height / 2,
-        BOTTOM_NAVIGATION_MENU_TEXTURE_KEY,
-      )
-      .setOrigin(0.5)
-      .setScale(menuSize.scale);
-    this.#root.add(menuArtwork);
+        1,
+        region.width,
+        2,
+        toFillColor(DIVIDER),
+      ),
+    );
 
-    const slotWidth = region.width / ITEMS.length;
+    const slotWidth = region.width / NAVIGATION_ICON_ASSETS.length;
     const renderedItems: RenderedBottomNavigationItem[] = [];
 
-    ITEMS.forEach((definition, index) => {
-      const isBoost = definition.key === 'boost';
-      const width = isBoost ? BOOST_BUTTON_WIDTH : STANDARD_BUTTON_WIDTH;
-      const height = isBoost ? BOOST_BUTTON_HEIGHT : STANDARD_BUTTON_HEIGHT;
+    NAVIGATION_ICON_ASSETS.forEach((definition, index) => {
+      const width = BUTTON_SIZE;
+      const height = BUTTON_SIZE;
       const centerX = slotWidth * (index + 0.5);
-      const centerY = isBoost
-        ? BOOST_BUTTON_CENTER_Y
-        : STANDARD_BUTTON_CENTER_Y;
+      const centerY = BUTTON_CENTER_Y;
       const localBounds = {
         x: centerX - width / 2,
         y: centerY - height / 2,
@@ -130,6 +104,7 @@ export class BottomNavigationView {
       );
       renderedItems.push({
         key: definition.key,
+        iconTextureKey: definition.textureKey,
         bounds: {
           x: region.x + localBounds.x,
           y: region.y + localBounds.y,
@@ -160,22 +135,52 @@ export class BottomNavigationView {
     onActivate: BottomNavigationViewOptions['onActivate'],
   ): Phaser.GameObjects.Container {
     const button = scene.add.container(x, y);
-    const pressOverlay = scene.add.graphics();
-    const visual = scene.add.container(0, 0);
+    const tile = scene.add.graphics();
+    const icon = scene.add
+      .image(0, -9, definition.textureKey)
+      .setDisplaySize(NAVIGATION_ICON_DISPLAY_SIZE, NAVIGATION_ICON_DISPLAY_SIZE);
+    const label = scene.add
+      .text(0, 23, definition.label, {
+        fontFamily: FONT_FAMILY,
+        fontStyle: FONT_STYLE_SEMIBOLD,
+        fontSize: '10px',
+        color: NAVIGATION_ICON,
+      })
+      .setOrigin(0.5);
     let isPressed = false;
 
-    const drawPressOverlay = (pressed: boolean): void => {
-      pressOverlay.clear();
-      if (pressed) {
-        pressOverlay
-          .fillStyle(COLOR_PRESSED_OVERLAY, 0.18)
-          .fillRoundedRect(-width / 2, -height / 2, width, height, 9);
-      }
+    const drawTile = (pressed: boolean): void => {
+      tile.clear();
+      tile.fillStyle(toFillColor(NAVIGATION_SHADOW), 0.6);
+      tile.fillRoundedRect(
+        -width / 2,
+        -height / 2 + 2,
+        width,
+        height,
+        BUTTON_RADIUS,
+      );
+      tile.fillStyle(
+        toFillColor(pressed ? NAVIGATION_BUTTON_PRESSED : NAVIGATION_BUTTON),
+      );
+      tile.fillRoundedRect(
+        -width / 2,
+        -height / 2,
+        width,
+        height - 2,
+        BUTTON_RADIUS,
+      );
+      tile.lineStyle(1, toFillColor(NAVIGATION_BUTTON_BORDER));
+      tile.strokeRoundedRect(
+        -width / 2 + 0.5,
+        -height / 2 + 0.5,
+        width - 1,
+        height - 3,
+        BUTTON_RADIUS,
+      );
     };
 
-    drawPressOverlay(false);
-    visual.add(pressOverlay);
-    button.add(visual);
+    drawTile(false);
+    button.add([tile, icon, label]);
     button
       .setSize(width, height)
       .setInteractive(
@@ -187,12 +192,11 @@ export class BottomNavigationView {
       )
       .on('pointerdown', () => {
         isPressed = true;
-        drawPressOverlay(true);
-        scene.tweens.killTweensOf(visual);
+        drawTile(true);
       })
       .on('pointerout', () => {
         isPressed = false;
-        drawPressOverlay(false);
+        drawTile(false);
       })
       .on('pointerup', () => {
         if (!isPressed) {
@@ -200,8 +204,7 @@ export class BottomNavigationView {
         }
 
         isPressed = false;
-        drawPressOverlay(false);
-        scene.tweens.killTweensOf(visual);
+        drawTile(false);
         onActivate?.(definition.key);
       });
 

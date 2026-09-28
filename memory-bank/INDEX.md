@@ -91,9 +91,9 @@ file only when you need the provenance of a specific step or decision.
 
 | File | Holds |
 |---|---|
-| `completed-log.md` | Finished work: base-game Steps 1–37 and server Steps 1–24. |
-| `acceptance-gates.md` | Passed gates with evidence; features deferred at the Step 37 close. |
-| `decision-log.md` | Settled base-game decisions and their rationale. |
+| `completed-log.md` | Finished work: base-game Steps 1–37, server Steps 1–24, and independent bottom-menu assets (2026-09-27). |
+| `acceptance-gates.md` | Passed gates with evidence, including independent bottom-menu assets; features deferred at the Step 37 close. |
+| `decision-log.md` | Settled decisions and rationale, including the 2026-09-27 independent-icon decision superseding the old full strip. |
 | `risks-resolved.md` | Risks closed by code, each with the reason it closed. |
 | `step-implementation-map.md` | Which server step produced which package, migration, and test. |
 | `phase-narrative.md` | The prose account of how each phase unfolded. |

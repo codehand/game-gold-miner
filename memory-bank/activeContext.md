@@ -2,6 +2,14 @@
 
 ## Current Focus
 
+**Bottom menu redesign, 2026-09-27 — implemented.** Browser feedback found the
+former purple/gold shared strip mismatched the mine and requested independent
+icons. Five transparent 96×96 PNGs now load as separate Phaser textures and
+display at 42×42. `BottomNavigationView` draws the HUD-navy backdrop,
+slate-steel tiles, gold divider, labels and press feedback in code, with five
+64×64 hit regions in the unchanged 360×80 safe area. Boost and Map remain
+future behavior; no save, economy, network or schema contract changed.
+
 **Mine-floor workforce cap/productivity feedback, 2026-09-27 — implemented.**
 The mine-floor rule now keeps `rawCount = 1 + floor(mineShaftLevel / 50)`,
 caps the visible crew at five, and converts overflow into
@@ -82,21 +90,6 @@ while keeping the shared 75-pixel runtime display box used by surface and floor
 roles. Layout and production-stage regressions cover the size and anchor
 contract; this remains presentation-only
 with no save, economy, network, or schema change.
-
-**Reference-driven bottom menu, 2026-09-21.** The five code-drawn menu
-illustrations were regenerated as one transparent, QC-processed full menu
-strip matching the reference: continuous navy/gold shell, five rounded tiles,
-and a raised active Boost tile in the centre. The runtime image is alpha-cropped
-to 2,167×455, fitted uniformly at roughly 356×75 inside the new 360×80 safe
-region, and no longer vertically squashed. `BottomNavigationView` renders the
-strip as artwork and retains independent 48×44 / 62×50 hit regions with a
-transient press tint. This is presentation-only; Boost and Map remain future
-behavior entries. The 360×80 region now has a continuous navigation-color
-backdrop behind the transparent artwork, so the mine background cannot show as
-a black gap above the shell. No save, economy, network, or schema contract
-changed. The runtime menu texture is now a high-quality 2× resample at
-712×150, allowing an exact 0.5 texture scale into the logical menu and reducing
-browser-side softness without changing the global renderer.
 
 **Marketplace trading, 2026-09-20.** The follow-up purchase plan and the new
 `marketplace-trading-implementation-plan-v1.md` are complete. Buy remains

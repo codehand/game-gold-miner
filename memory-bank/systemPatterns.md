@@ -36,10 +36,10 @@ Persistence and Platform Adapters
 - Keep generated UI art reproducible and renderer-safe: retain the prompt, raw
   source, processed output, and deterministic QC metadata under `art-source/`,
   copy only the approved transparent runtime artwork into `public/assets/`,
-  and keep texture keys, source dimensions, and display fitting in a typed asset
-  module. When a full menu strip replaces code-drawn chrome, fit the artwork to
-  the presentation region while keeping semantic hit regions independent, so
-  decorative padding cannot change neighboring input behavior.
+  and keep texture keys and display sizes in a typed asset module. For repeated
+  menu controls, ship each icon as an independent texture while drawing chrome,
+  labels, and interaction states in code. Keep semantic hit regions independent
+  of decorative alpha so icon padding cannot reduce touch coverage.
 - Keep async UI states semantically distinct: a successful empty projection may say
   “empty”, but loading, stale, and failed reads must expose their own status and
   retry path rather than rendering a zero-count fallback as if it were data.

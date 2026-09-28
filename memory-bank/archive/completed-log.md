@@ -1,5 +1,19 @@
 # Archive — Completed work log
 
+## 2026-09-27 — Independent bottom-menu asset redesign
+
+Replaced the mismatched purple/gold full-menu strip with five separately
+generated transparent chest, stall, bolt, miner-cat and map icons. Retained the
+raw generations, art brief, prompt manifest, normalizer and contact sheet under
+`art-source/navigation-icons-v2/`; shipped five normalized 96×96 RGBA files
+under `public/assets/ui/navigation/icons/`. The scene loads each texture
+individually. `BottomNavigationView` draws a HUD-navy panel, gold divider,
+slate-steel tiles, labels and pressed states while retaining five independent
+64×64 hit targets. Removed the two unused legacy runtime menu images; their
+historical source remains recoverable in `art-source/` and Git. The asset test,
+764-unit suite, seven focused browser tests, lint, build and native-size visual
+review pass. No gameplay, save, network or database schema changed.
+
 ## 2026-09-26 — Mine miner delivery cadence
 
 Addressed browser feedback that mine miners were walking on staggered vertical

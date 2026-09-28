@@ -1,37 +1,38 @@
-export const BOTTOM_NAVIGATION_MENU_TEXTURE_KEY = 'bottom-navigation-menu';
-export const BOTTOM_NAVIGATION_MENU_ASSET_PATH =
-  '/assets/ui/navigation/bottom-navigation-menu.png';
-// The runtime texture is a 2× high-quality resample of the alpha-cropped
-// source, so Phaser can draw it at an exact 0.5 scale into the logical menu.
-export const BOTTOM_NAVIGATION_MENU_SOURCE_WIDTH = 712;
-export const BOTTOM_NAVIGATION_MENU_SOURCE_HEIGHT = 150;
+/** Independent transparent textures; menu chrome and labels are renderer-owned. */
+export const NAVIGATION_ICON_SOURCE_SIZE = 96;
+export const NAVIGATION_ICON_DISPLAY_SIZE = 42;
 
-export interface NavigationArtworkDisplaySize {
-  readonly width: number;
-  readonly height: number;
-  readonly scale: number;
-}
+export const NAVIGATION_ICON_ASSETS = [
+  {
+    key: 'rewards',
+    label: 'Rewards',
+    textureKey: 'navigation-icon-rewards',
+    path: '/assets/ui/navigation/icons/rewards.png',
+  },
+  {
+    key: 'shop',
+    label: 'Shop',
+    textureKey: 'navigation-icon-shop',
+    path: '/assets/ui/navigation/icons/shop.png',
+  },
+  {
+    key: 'boost',
+    label: 'Boost',
+    textureKey: 'navigation-icon-boost',
+    path: '/assets/ui/navigation/icons/boost.png',
+  },
+  {
+    key: 'managers',
+    label: 'Cats',
+    textureKey: 'navigation-icon-managers',
+    path: '/assets/ui/navigation/icons/managers.png',
+  },
+  {
+    key: 'map',
+    label: 'Map',
+    textureKey: 'navigation-icon-map',
+    path: '/assets/ui/navigation/icons/map.png',
+  },
+] as const;
 
-/**
- * Fits the generated menu without distorting its tile or icon proportions.
- * The runtime region can be wider than the source artwork, so both axes must
- * use the same scale and the remaining space becomes a safe margin.
- */
-export function calculateNavigationArtworkDisplaySize(
-  regionWidth: number,
-  regionHeight: number,
-  margin: number,
-): NavigationArtworkDisplaySize {
-  const availableWidth = regionWidth - margin * 2;
-  const availableHeight = regionHeight - margin * 2;
-  const scale = Math.min(
-    availableWidth / BOTTOM_NAVIGATION_MENU_SOURCE_WIDTH,
-    availableHeight / BOTTOM_NAVIGATION_MENU_SOURCE_HEIGHT,
-  );
-
-  return {
-    width: BOTTOM_NAVIGATION_MENU_SOURCE_WIDTH * scale,
-    height: BOTTOM_NAVIGATION_MENU_SOURCE_HEIGHT * scale,
-    scale,
-  };
-}
+export type NavigationIconKey = (typeof NAVIGATION_ICON_ASSETS)[number]['key'];

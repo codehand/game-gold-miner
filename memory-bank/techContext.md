@@ -20,18 +20,15 @@ confirmation uses listing-specific CTAs in a two-column grid at every
 supported portrait width, and Collection status copy keeps retryable load
 errors separate from valid empty data. No save, network, or database contract
 changed.
-The same asset pass adds an alpha-cropped transparent full-menu strip at
-`/assets/ui/navigation/bottom-navigation-menu.png` (2,167×455 RGBA). Phaser
-loads it as one image; the view fits the complete navy/gold artwork uniformly
-to roughly 356×75 inside the fixed 360×80 navigation region. A solid
-`NAVIGATION_BACKGROUND` underlay fills the transparent margins so the mine
-background cannot show through as a black seam, while the existing five code
-hit regions remain independent of the artwork. The crop is recorded in
-`art-source/navigation-menu/processed/crop-meta.json`; the prior icon-only
-sheet is retained as superseded source material. The runtime texture is a
-high-quality 712×150 resample of the 2,167×455 alpha-cropped source, so
-`BottomNavigationView` draws it at an exact 0.5 scale before
-`Phaser.Scale.FIT` enlarges the 360×640 logical viewport.
+The 2026-09-27 navigation redesign ships five independent 96×96 RGBA textures
+under `/assets/ui/navigation/icons/`, each drawn at 42×42. `BootScene.preload`
+loads them from the typed `NAVIGATION_ICON_ASSETS` registry. The fixed 360×80
+panel, slate-steel tiles, labels, gold divider and pressed fills are code-drawn;
+each 64×64 hit region is independent of the artwork. Raw generated art, prompts,
+and the deterministic normalization script live in
+`art-source/navigation-icons-v2/`. The previous full-menu PNG remains on disk
+for historical reference but is not loaded at runtime. No save, economy,
+network or schema contract changed.
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
@@ -539,7 +536,7 @@ variants and the future Unloader role remain preview/source assets.
 - The surface headhouse has matched filled and empty 512×512 textures. `BootScene` derives the visible hopper state from `warehouse.queueSteps`: positive input shows gold, while zero shows the empty steel bin, with the same 128×128 display bounds after every texture swap.
 - The same `warehouse.queueSteps > 0` predicate exclusively drives surface cargo feedback: filled lead/assistant carts and each cart's gold-pour effect. Material still carried by the elevator cannot appear at the surface before authoritative delivery into `warehouse.inputQueue`; at zero queue every moving cart uses the empty texture and every pour is hidden, while all workers keep looping.
 - `src/game/layout/` is pure Phaser-free geometry and palette data, so `tests/unit/layout.test.ts` and the Playwright layout spec both import the `src/game/layout` barrel without loading Phaser. `eslint.config.mjs` enforces that purity for `src/game/layout/**` (no `document`/`window`/`navigator`, no `phaser` import) and `tests/unit/architecture.test.ts` probes the rule. It exports the 360×640 constants, `calculateMineLayout`, `calculateMineContentHeight`, `calculateFloorSlotRegion`, `regionContainsPoint`, `assertTouchTargetRegion`, and `serializeRegion`, and rejects non-finite/non-positive dimensions, heights below 488 logical pixels, invalid floor counts, negative floor indexes, and interactive regions below 44×44.
-- The portrait layout tiles `hud` (`0,0,360,52`), `surface` (`0,52,360,164`), `mine` (`0,216,360,344`), and fixed `bottomNavigation` (`0,560,360,80`) with no gaps. The full generated menu strip contains the treasure chest, marketplace stall, active celestial bolt, chibi cat head, and folded map in one cohesive navy/gold frame. The runtime keeps the 2,167×455 source aspect ratio at roughly 356×75 inside the 360×80 region. The interactive parent remains 48×44 for standard controls and 62×50 for the wider, raised Boost. Every hit region is therefore at least 44×44, and presses tint the artwork without shrinking input coverage or issuing a core command. The initial five edge-to-edge 288×132 floor slots plus vertical content padding produce 680 logical pixels of mine content, so the mine area scrolls by 336; the content height expands at the 10-floor and 15-floor reveal gates. The elevator shaft is 64 px wide with a 62 px wide by 80 px high cabin, the shared 75 px semantic cat display box, and no floor plaques; the cat center is 5 px above the cabin center so its visible feet stand on the upper edge of the lower interior frame without changing the shaft width. Its 192×528 source artwork is a 64×1,980 `TileSprite` with tile scale `(1/3, 1)`, so it repeats at native vertical resolution instead of blurring through full-depth stretching. Adjusted shaft inset/gap/right inset preserve the floor width. `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects anything smaller.
+- The portrait layout tiles `hud` (`0,0,360,52`), `surface` (`0,52,360,164`), `mine` (`0,216,360,344`), and fixed `bottomNavigation` (`0,560,360,80`) with no gaps. Navigation loads five independent 96×96 transparent icon PNGs displayed at 42×42; its backdrop, equal slate-steel tiles, English labels, gold divider and press state are code-drawn. The five interactive parents are 64×64 in 72-pixel slots, so icon transparency does not reduce input coverage or issue a core command. The initial five edge-to-edge 288×132 floor slots plus vertical content padding produce 680 logical pixels of mine content, so the mine area scrolls by 336; the content height expands at the 10-floor and 15-floor reveal gates. The elevator shaft is 64 px wide with a 62 px wide by 80 px high cabin, the shared 75 px semantic cat display box, and no floor plaques; the cat center is 5 px above the cabin center so its visible feet stand on the upper edge of the lower interior frame without changing the shaft width. Its 192×528 source artwork is a 64×1,980 `TileSprite` with tile scale `(1/3, 1)`, so it repeats at native vertical resolution instead of blurring through full-depth stretching. Adjusted shaft inset/gap/right inset preserve the floor width. `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects anything smaller.
 - `index.html` declares `viewport-fit=cover` and hosts the Phaser parent in `#game-viewport`; `#app` applies `env(safe-area-inset-*)` padding so the scale manager measures the safe box. `Phaser.Scale.FIT` with `CENTER_BOTH` preserves aspect ratio and letterboxes instead of cropping.
 - Phaser 4 removed WebGL geometry masks (`setMask` logs a warning and does nothing), so the mine area is clipped by a dedicated camera viewport instead. The main camera ignores the mine content layer, the mine camera ignores the fixed HUD/surface layers, and the scroll gesture drives only that camera's `scrollY`. Phaser hit-tests through the same camera and honours both its scroll and each object's camera filter, so a scrolled control's pressable rectangle follows what is drawn without extra bookkeeping.
 - Elevator route geometry stays in mine-world coordinates. Its surface endpoint is always `SURFACE_ELEVATOR_STOP_Y - SURFACE_HEIGHT`, and the fixed-layer cabin twin maps from that world Y without applying mine-camera `scrollY`; scrolling can clip/reveal the cabin but cannot shorten a deep return leg or move the tower entry point.
@@ -1218,16 +1215,25 @@ server tables. The browser never writes marketplace tables directly.
 
 ## Verified Commands
 
+- 2026-09-27 independent bottom-menu redesign: all five normalized 96×96
+  textures pass RGBA/alpha and unique-path checks. The full client unit suite
+  passes 764/764, focused layout and mouse/touch browser tests pass 7/7,
+  `npm run lint`, `npm run build`, and `git diff --check` pass. A fresh 360×640
+  browser screenshot confirms distinct icons, code-drawn tiles and readable
+  labels at the logical display size. The old runtime strip and sheet were
+  removed; their art source is retained.
+
 - 2026-09-21 reference-driven navigation menu integration and aspect-ratio fix:
-  the raster/layout contract tests pass, `npm run lint` passes, and
+  historical result superseded by the 2026-09-27 redesign. Its
+  raster/layout contract tests passed, `npm run lint` passed, and
   `npm run build` passes. The processed source strip is alpha-cropped to
   2,167×455 RGBA with a transparent magenta-removed surround and a non-empty
-  full navy/gold menu subject; the shipped runtime texture is its 712×150
-  high-quality resample and `BottomNavigationView` fits it at roughly 356×75
+  full navy/gold menu subject; the then-shipped runtime texture was its 712×150
+  high-quality resample and `BottomNavigationView` fit it at roughly 356×75
   inside the 360×80 safe region. The crop/resample is reproducible from
   `crop-meta.json`.
 
-- 2026-09-21 raster sharpness feedback: the runtime menu texture is now a
+- 2026-09-21 raster sharpness feedback (historical, superseded): the menu texture was a
   high-quality 712×150 resample of the alpha-cropped source and draws at an
   exact 0.5 scale. The in-app browser check shows sharper tile borders and icon
   details at the current display size without changing the global renderer.

@@ -172,7 +172,7 @@ for (const viewport of VIEWPORTS) {
 
     await expect(canvas).toHaveAttribute(
       'data-layout-bottom-navigation',
-      '0,582,360,58',
+      '0,560,360,80',
     );
     // Scoped to a direct child of the Phaser parent, not `nav` anywhere in the
     // document: the marketplace dialog (also mounted there) renders its own
@@ -238,7 +238,7 @@ test('renders five icon buttons and acknowledges every click', async ({ page }) 
   const canvasBox = await requireBoundingBox(canvas);
   const items = JSON.parse(
     (await canvas.getAttribute('data-bottom-navigation-items')) ?? '[]',
-  ) as Array<{ key: string; bounds: Rect }>;
+  ) as Array<{ key: string; iconTextureKey: string; bounds: Rect }>;
   let closes = 0;
   let leaderboardCloses = 0;
 
@@ -249,15 +249,8 @@ test('renders five icon buttons and acknowledges every click', async ({ page }) 
     'managers',
     'map',
   ]);
-  expect(
-    items
-      .filter(({ key }) => key !== 'boost')
-      .every(({ bounds }) => bounds.width === 48 && bounds.height === 44),
-  ).toBe(true);
-  expect(items.find(({ key }) => key === 'boost')?.bounds).toMatchObject({
-    width: 62,
-    height: 50,
-  });
+  expect(new Set(items.map(({ iconTextureKey }) => iconTextureKey)).size).toBe(5);
+  expect(items.every(({ bounds }) => bounds.width === 64 && bounds.height === 64)).toBe(true);
 
   for (const [index, item] of items.entries()) {
     expect(item.bounds.width).toBeGreaterThanOrEqual(44);

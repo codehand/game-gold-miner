@@ -3,35 +3,27 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-  BOTTOM_NAVIGATION_MENU_ASSET_PATH,
-  BOTTOM_NAVIGATION_MENU_SOURCE_HEIGHT,
-  BOTTOM_NAVIGATION_MENU_SOURCE_WIDTH,
-  calculateNavigationArtworkDisplaySize,
+  NAVIGATION_ICON_ASSETS,
+  NAVIGATION_ICON_SOURCE_SIZE,
 } from '../../src/game/assets/navigationAssets';
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-describe('bottom navigation menu artwork', () => {
-  it('ships the reference-shaped transparent runtime menu artwork', () => {
-    const assetPath = resolve('public', BOTTOM_NAVIGATION_MENU_ASSET_PATH.slice(1));
-    expect(existsSync(assetPath)).toBe(true);
+describe('bottom navigation icon artwork', () => {
+  it('ships five separate transparent PNG textures', () => {
+    expect(NAVIGATION_ICON_ASSETS).toHaveLength(5);
+    expect(new Set(NAVIGATION_ICON_ASSETS.map(({ path }) => path)).size).toBe(5);
+    expect(new Set(NAVIGATION_ICON_ASSETS.map(({ textureKey }) => textureKey)).size).toBe(5);
 
-    const png = readFileSync(assetPath);
-    expect(png.subarray(0, PNG_SIGNATURE.length)).toEqual(PNG_SIGNATURE);
-    expect(png.readUInt32BE(16)).toBe(BOTTOM_NAVIGATION_MENU_SOURCE_WIDTH);
-    expect(png.readUInt32BE(20)).toBe(BOTTOM_NAVIGATION_MENU_SOURCE_HEIGHT);
-  });
+    for (const { path } of NAVIGATION_ICON_ASSETS) {
+      const assetPath = resolve('public', path.slice(1));
+      expect(existsSync(assetPath)).toBe(true);
 
-  it('fits the menu uniformly instead of stretching its height', () => {
-    const display = calculateNavigationArtworkDisplaySize(360, 80, 2);
-
-    expect(display.width).toBeLessThanOrEqual(356);
-    expect(display.height).toBeLessThanOrEqual(76);
-    expect(display.scale).toBe(0.5);
-    expect(display.width / display.height).toBeCloseTo(
-      BOTTOM_NAVIGATION_MENU_SOURCE_WIDTH / BOTTOM_NAVIGATION_MENU_SOURCE_HEIGHT,
-      8,
-    );
-    expect(display.height).toBeGreaterThan(74);
+      const png = readFileSync(assetPath);
+      expect(png.subarray(0, PNG_SIGNATURE.length)).toEqual(PNG_SIGNATURE);
+      expect(png.readUInt32BE(16)).toBe(NAVIGATION_ICON_SOURCE_SIZE);
+      expect(png.readUInt32BE(20)).toBe(NAVIGATION_ICON_SOURCE_SIZE);
+      expect(png[25]).toBe(6); // PNG color type 6: RGBA, not a baked checkerboard.
+    }
   });
 });
