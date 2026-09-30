@@ -10,6 +10,7 @@ for (const touch of [false, true]) {
     let presses = 0;
     let closes = 0;
     let leaderboardCloses = 0;
+    let boostCloses = 0;
     // Include a resize to catch CSS-to-canvas coordinate regressions.
     for (const viewport of [{ width: 553, height: 934 }, { width: 320, height: 568 }]) {
       await page.setViewportSize(viewport);
@@ -53,6 +54,10 @@ for (const touch of [false, true]) {
               'data-marketplace-close-count',
               String(++closes),
             );
+          } else if (key === 'boost') {
+            await expect(page.getByRole('dialog', { name: 'Mine Boost' })).toBeVisible();
+            await page.getByRole('button', { name: 'Close Boost' }).click();
+            await expect(canvas).toHaveAttribute('data-boost-close-count', String(++boostCloses));
           } else if (key === 'managers') {
             await expect(page.getByRole('dialog', { name: 'Cat Collection' })).toBeVisible();
             await page.getByRole('button', { name: 'Close collection' }).click();

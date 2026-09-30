@@ -16,7 +16,7 @@ Many management games obscure cause and effect or require constant tapping. This
 
 - Understand how gold is produced and spent within 30 seconds.
 - See miners, carts, and storage working concurrently.
-- Recognize floor extraction from miner travel and stalled production from visible gold queues; shared transport stages retain progress bars.
+- Recognize floor extraction from miners walking from the white unloader to the gold pile, striking ore, and returning to deliver; stalled production remains visible in gold queues, while shared transport stages retain progress bars.
 - Feel a noticeable acceleration after every meaningful upgrade.
 - Return to a useful but capped offline reward.
 - Make progress without blockchain, payment, or advertising systems.
@@ -27,6 +27,32 @@ The player claims offline gold, inspects the mine, upgrades the slowest stage, o
 
 ### Cat collection and role assignment journey
 
+Surface Haulers are a separate role from the Warehouse manager. Each unlocked
+cart starts with a free default cat and wooden handcart. Tobi SR (18,000 gold)
+brings an electric trolley; Rivet SSR (42,000 gold) brings a wheel-free maglev.
+One purchase creates one level-1 instance usable on one cart. Clicking a
+Hauler opens the role panel, with Cart 1–5 buttons for the currently unlocked
+crew, Change cat and Use default Hauler. Returning to default frees the owned
+instance for another cart without selling or deleting it. Buying alone does
+not equip a cat. Crew count still follows warehouse level and caps at five.
+Each assigned cat improves its own equal share of hauling; the crew bonus is
+the average of active cart multipliers and composes with the existing manager
+and overflow bonuses. Cat level is metadata; no new character-level upgrade
+mechanic is introduced by this expansion.
+
+Each unlocked floor starts with Mica as its free visual baseline, without an
+owned Collection instance or cat skill bonus. A purchased Forge enters the
+Collection as one distinct instance; the player must assign it to a floor to
+replace Mica. One Forge cannot serve two floors at once, so replacing every
+floor requires one purchased Miner instance per floor. The Marketplace Buy
+result allows another purchase of the same blueprint.
+
+The single Elevator slot likewise starts with Pip, a free visual operator
+without an owned instance or production bonus. Mofy is a Marketplace-only
+blueprint: buying one creates one owned Mofy, and only assigning that instance
+to `elevator:main` replaces Pip. Owning Mofy without assigning him does not
+change the mine.
+
 After a signed-in player purchases a cat in Marketplace, the server creates an
 owned cat instance in the player's Collection. Collection cards and detail show
 the instance's portrait, role, rarity, level, attributes, lifecycle state, and
@@ -35,7 +61,9 @@ current information and a role-filtered `Change cat` flow. A confirmed
 replacement is server-authoritative and persists the slot across reload and
 re-login; the old instance returns to `Idle`, the new instance becomes
 `Assigned`, and the role's score/skill modifier changes the affected production
-metric. Offline or stale sessions keep the last safe read-only projection and
+metric. On mine floors, an assigned Forge or Mica keeps that character's own
+appearance while walking, striking the gold pile, and returning to unload;
+the strike effect stays consistent across the role. Offline or stale sessions keep the last safe read-only projection and
 cannot claim a replacement success without authority.
 
 Phases 5–8 deliver the owned-cat Collection/detail surface, the
@@ -52,7 +80,7 @@ Prioritize one-thumb controls, readable large-number notation, strong upgrade af
 
 ## Base-Game Delivery Boundary
 
-The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation panel reserves the bottom 80 logical pixels for five clickable tiles (Rewards, Shop, Boost, Cats, Map), each with its own transparent icon and 64×64 target. Cats leads to the owned-cat Collection list/detail surface and the mine role-slot assignment flow; boost, gift, task, social, Telegram, monetization, audio, and other final-art systems remain deferred.
+The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation panel reserves the bottom 80 logical pixels for five clickable tiles (Rewards, Shop, Boost, Cats, Map), each with its own transparent icon and 64×64 target. Cats leads to the owned-cat Collection list/detail surface and the mine role-slot assignment flow. Boost opens Mine Overdrive: a free x4 increase to mining, elevator, and warehouse throughput for five real-time minutes, once per eight hours, including only the overlapping part of offline income. Gift, task, social, Telegram, monetization, audio, and other final-art systems remain deferred.
 
 The user-review revision completed on 2026-09-08 reduces the fixed HUD to 52 logical pixels and defines its centre number as the authoritative warehouse input queue (`warehouse.inputQueue`), not gold still travelling inside the elevator cabin. A warehouse icon makes that ownership explicit. The tower hopper, gold pour, loaded cats, and filled surface carts now all empty with that queue; elevator cargo remains visually in transit until surface delivery. The elevator preserves top-down priority by returning whenever a visited floor still has gold, and the surface delivery crew shares one straight baseline.
 
@@ -80,9 +108,10 @@ does not grant gameplay benefits or change the economy, state, save format, or
 schema. Animation fidelity is part of the presentation contract: `N`/`R` cat
 roles use four frames in a `2x2` sheet, while `SR`/`SSR`/`UR` roles use eight
 frames in a `4x2` sheet with consistent `128x128` proportions and feet anchors.
-Phase 7 now applies Mofy to the elevator, Baron to the warehouse, and Forge to
-mine floors; their runtime sheets are presentation-only and fall back locally
-when unavailable. The Marketplace portrait remains a single extracted frame
+Phase 7 integrated Mofy, Baron, and Forge as assignable variants. The current
+free Elevator baseline is Pip and the free Miner baseline is Mica; owned Mofy
+appears only after assignment. Their runtime sheets are presentation-only and
+fall back locally when unavailable. The Marketplace portrait remains a single extracted frame
 for card/detail compatibility.
 
 Server-milestone Steps 4 through 7 landed between 2026-09-08 and 2026-09-09,

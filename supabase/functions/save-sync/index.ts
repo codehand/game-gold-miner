@@ -51,12 +51,14 @@ import {
   LIFETIME_GOLD_BOARD_KEY,
   calculateLifetimeGoldEarned,
   calculateOfflineGrant,
+  EMPTY_BOOST_STATE,
   deserializeSaveDocument,
   evaluateProgressBound,
   SaveDocumentError,
   toLeaderboardMagnitude,
   validateSaveDocument,
 } from '../_shared/generated/core-bundle.js';
+import type { BoostState } from '../../../src/core/boost/boost.ts';
 import {
   corsHeaders,
   corsPreflightResponse,
@@ -402,6 +404,8 @@ export type ParseSaveBody = (rawBody: string) => unknown;
 export interface SaveSyncDeps {
   readonly resolveCaller: ResolveCaller;
   readonly readCurrentSave: ReadCurrentSave;
+  /** Optional only for older injected test collaborators; production always reads the server-owned row. */
+  readonly readBoostState?: (userId: string) => Promise<BoostState>;
   readonly writeSaveRow: WriteSaveRow;
   readonly writeSaveAudit: WriteSaveAudit;
   /** Step 28: publishes the accepted write's leaderboard entry — never called for a rejected or unvalidated save. */
@@ -656,7 +660,13 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   // documents never reach the row; the stored revision is unchanged. See
   // `memory-bank/architecture.md`'s Step 23 section for the modelling rule and
   // the tolerance's size.
-  const boundViolation = findProgressBoundViolation(current, validatedDocumentJson);
+  let boostState: BoostState;
+  try {
+    boostState = await (deps.readBoostState?.(caller.userId) ?? Promise.resolve(EMPTY_BOOST_STATE));
+  } catch (error) {
+    return await serverError(error);
+  }
+  const boundViolation = findProgressBoundViolation(current, validatedDocumentJson, boostState);
   if (boundViolation !== null) {
     return await reject(
       errorResponse(422, 'save_rejected', 'Claimed progress exceeds what the elapsed time allows.', {
@@ -893,6 +903,7 @@ interface ProgressBoundDetail {
 function findProgressBoundViolation(
   current: StoredSaveRow | null,
   candidateDocumentJson: string,
+  boostState: BoostState,
 ): ProgressBoundDetail | null {
   if (current === null) {
     return null;
@@ -914,6 +925,8 @@ function findProgressBoundViolation(
       previous: deserializeProjection(current.documentJson).state,
       candidate: candidate.state,
       elapsedMs: nowMs - receivedAtMs,
+      intervalStartMs: receivedAtMs,
+      boostState,
       config: BASE_GAME_BALANCE,
       previousCatRoster: deserializeProjection(current.documentJson).catRoster,
       candidateCatRoster: candidate.catRoster,
@@ -932,6 +945,8 @@ function findProgressBoundViolation(
           previous: deserializeProjection(current.previousDocumentJson).state,
           candidate: candidate.state,
           elapsedMs: nowMs - previousReceivedAtMs,
+          intervalStartMs: previousReceivedAtMs,
+          boostState,
           config: BASE_GAME_BALANCE,
           previousCatRoster: deserializeProjection(current.previousDocumentJson).catRoster,
           candidateCatRoster: candidate.catRoster,
@@ -1011,6 +1026,8 @@ async function handleSaveDownload(request: Request, deps: SaveSyncDeps, origin: 
   }
 
   const current = await deps.readCurrentSave(caller.userId, token);
+  const boostState = await (deps.readBoostState?.(caller.userId) ?? Promise.resolve(EMPTY_BOOST_STATE));
+  const serverNowMs = Date.now();
   if (current === null) {
     return new Response(null, { status: 204, headers: corsHeaders(origin) });
   }
@@ -1021,7 +1038,9 @@ async function handleSaveDownload(request: Request, deps: SaveSyncDeps, origin: 
       revision: current.revision,
       receivedAt: current.receivedAt,
       document: JSON.parse(current.documentJson),
-      offlineGrant: computeOfflineGrant(current),
+      offlineGrant: computeOfflineGrant(current, boostState, serverNowMs),
+      boost: boostState,
+      serverNowMs,
     },
     origin,
   );
@@ -1039,7 +1058,11 @@ interface OfflineGrantBody {
  * upload path validates every document it stores). `Date.now()` is the
  * server's own clock; the row's `received_at` is the server's own receipt time.
  */
-function computeOfflineGrant(row: StoredSaveRow): OfflineGrantBody | null {
+function computeOfflineGrant(
+  row: StoredSaveRow,
+  boostState: BoostState,
+  serverNowMs: number,
+): OfflineGrantBody | null {
   try {
     const document = JSON.parse(row.documentJson) as {
       readonly effectiveProductionRatePerSecond?: unknown;
@@ -1055,9 +1078,11 @@ function computeOfflineGrant(row: StoredSaveRow): OfflineGrantBody | null {
 
     const grant = calculateOfflineGrant(
       receivedAtMs,
-      Date.now(),
+      serverNowMs,
       rate,
       BASE_GAME_BALANCE.offlineIncome,
+      // The generated JS bundle loses the TS interface on its default arg.
+      boostState as never,
     );
 
     return {
@@ -1138,6 +1163,24 @@ async function readCurrentSaveRow(userId: string, bearerToken: string): Promise<
     previousDocumentJson: data.previous_document_json,
     previousReceivedAt: data.previous_received_at,
   };
+}
+
+async function readBoostStateViaServiceRole(userId: string): Promise<BoostState> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('save-sync: Boost service is not configured.');
+  }
+  const client = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+  const { data, error } = await client
+    .from('mine_boosts')
+    .select('last_activated_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw new Error(`save-sync: Boost read failed: ${error.message}`);
+  return { lastActivatedAtMs: data === null ? null : Date.parse(data.last_activated_at) };
 }
 
 /**
@@ -1356,6 +1399,7 @@ function parseSaveBodyJson(rawBody: string): unknown {
 const defaultSaveSyncDeps: SaveSyncDeps = {
   resolveCaller: resolveCallerViaSupabaseAuth,
   readCurrentSave: readCurrentSaveRow,
+  readBoostState: readBoostStateViaServiceRole,
   writeSaveRow: writeSaveRowViaServiceRole,
   writeSaveAudit: writeSaveAuditViaServiceRole,
   writeLeaderboardEntry: writeLeaderboardEntryViaServiceRole,

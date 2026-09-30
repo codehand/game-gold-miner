@@ -6,6 +6,8 @@ import {
   createEmptyCatRoster,
   type CatRosterState,
   type OfflineIncomeCalculation,
+  type BoostState,
+  EMPTY_BOOST_STATE,
 } from '../core';
 import type { SavePersistenceCoordinator } from './SavePersistenceCoordinator';
 import {
@@ -53,6 +55,7 @@ export type ActiveGameLoadResult =
 
 export interface LoadActiveGameOptions {
   readonly onWarning?: (warning: SaveRecoveryWarning) => void;
+  readonly boostState?: BoostState;
 }
 
 export async function loadActiveGame(
@@ -96,6 +99,7 @@ export async function loadActiveGame(
     currentTimestampMs,
     loadedSave.effectiveProductionRatePerSecond,
     config.offlineIncome,
+    options.boostState ?? EMPTY_BOOST_STATE,
   );
   const settledDocument = createSaveDocument(
     offlineIncome.state,

@@ -7,6 +7,17 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Default Mica and per-floor purchased Miner — 2026-09-28
+
+- **Presentation gate — Passed:** empty miner slots show Mica and base
+  production; purchased Forge retains his own assigned attack art.
+- **Purchase gate — Passed:** repeated Forge purchases yield distinct owned
+  instances with separate 36,000-gold charges; the Buy detail permits repeat.
+- **Assignment gate — Passed:** a second-floor assignment of one already
+  Assigned Forge returns 409 `cat_not_assignable` after the RPC migration.
+- **Regression gate — Passed:** 769 unit tests, focused client browser tests,
+  live server integration and purchase E2E, lint, build, and diff check.
+
 ## Independent bottom-menu assets — 2026-09-27
 
 | Gate | Result | Evidence |
@@ -398,3 +409,60 @@ and IndexedDB schema versions remain 1.
 | Authoritative throughput | Pass | Extraction and production-rate tests prove overflow productivity increases floor output while visible delivery events remain capped at five. |
 | Renderer contract | Pass | Mine-view E2E uses a level-250 floor and still reads back five visible miners with no browser errors. |
 | Regression gate | Pass | Focused core tests, full unit suite, lint, production build, mine-view E2E, and `git diff --check` pass; no save schema or extra queue was added. |
+
+## Forge mining action — 2026-09-28
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Route and delivery | Pass | Pure tests pin outbound, stationary strike, return and assistant phase offsets at core delivery milestones. |
+| Action and impact | Pass | Dedicated Forge and FX sheets pass strict sprite QC; browser tests observe the attack texture plus visible impact at the pile and idle texture plus hidden impact on return. |
+| Regression | Pass | 766 unit tests, lint, build, and eight focused browser tests pass; no economy or save schema change. |
+
+## Mica miner animation after assignment — 2026-09-28
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Identity binding | Pass | The Mica asset ID resolves to its own four-frame runtime sheet, not the Step 32A fallback; registry, manifest and source/runtime hash tests pass. |
+| Mining action | Pass | Mica's independent four-frame strike sheet passes strict raster QC; browser tests observe the Mica attack texture plus impact at the pile and Mica idle texture with impact hidden on return. |
+| Regression | Pass | 768 unit tests, lint, build, and twelve focused browser tests pass; core and save state are unchanged. |
+| Scale correction | Pass | Runtime-only idle frames are 73–75 px tall and share the upright strike foot line; the original catalog sheet stays intact. Pixel-geometry E2E, six focused browser tests, 768 unit tests, lint, build and native-scale attack/travel screenshot review pass. |
+| Directional walk correction | Pass | New right-facing 2×2 walk art passed strict raster QC. Browser diagnostics and screenshots show outbound `facesLeft=false`, right-facing mining, and returning `facesLeft=true` with the same walk sheet mirrored; seven focused browser tests, 768 full unit tests, lint and build pass. |
+## 2026-09-28 — Free Elevator Pip / purchased Mofy gate
+
+Passed: original Pip 2×2 sheet had four valid 128 px frames, no empty or
+edge-touching frames, no clamped pastes, and body-scale CV 0.0028 under strict
+raster QC. The full unit suite (770/770), focused Playwright runtime and
+assignment tests (11/11), lint, and production build passed.
+Browser readback confirms free Pip on an unassigned slot even with an idle
+owned Mofy, and Mofy's original texture in both positions after assignment.
+No gameplay, save, schema, or catalog-price change.
+
+## Mine Overdrive scoped gate — 2026-09-29
+
+| Gate | Result | Evidence |
+|---|---|---|
+| x4 timing and offline overlap | Pass | Pure tests cover active/end/cooldown boundaries, fixed-step acceleration, partial offline overlap, and server progress allowance. |
+| Server authority | Pass | Deno handler tests, atomic concurrent live activations (one winner), authenticated status/reload, save-download Boost state, and direct PostgREST RLS denial. Local migration applied without reset. |
+| Player UI | Pass | Eight focused client browser tests and configured-server activation/reload test; lint and build pass. |
+| Wider repository suites | Open | Full unit (775), Deno (204), and server integration (134) pass. Existing broader client E2E/production suites retain unrelated failures; do not treat them as a Boost pass. |
+
+## Hauler scoped gate — 2026-09-30
+
+- Art: both four-frame walk sheets and all four empty/full cart images passed
+  strict raster QC; runtime copies are linked to retained sources/provenance.
+- Core: 779 unit tests pass, including exact slot range, same-role filtering,
+  unique-instance assignment, reset, V3 round-trip, active-crew averaging,
+  unchanged default throughput, fallback assets and cart dimensions.
+- Authority: 205 Deno tests and 4 live cat-collection integration tests pass;
+  seeded prices debit once per purchase, repeated purchases create different
+  instances, duplicate use and stale revisions reject, reset preserves title.
+- Browser: 12 focused client tests pass; live mobile Hauler test buys Tobi and
+  Rivet, equips different carts, leaves an unassigned default, verifies no idle
+  candidate remains, reloads, resets and reuses an owned cat on another cart.
+  Screenshot and diagnostic readback confirm distinct vehicle textures and
+  Rivet's raised cart. Click probes wait for the open route to avoid the
+  overlapping Warehouse manager; the UI provides stable Cart buttons.
+- Lint, production build, server-core build, diff whitespace and byte-identical
+  Complete Database Schema blocks pass. The local migration was applied
+  without reset. Production deployment and unrelated broad E2E gates are not
+  claimed by this scoped release check.

@@ -6,7 +6,7 @@
  * key exposed to future Marketplace data sources.
  */
 
-export type MarketplaceAssetRole = 'elevator' | 'warehouse' | 'miner';
+export type MarketplaceAssetRole = 'elevator' | 'warehouse' | 'miner' | 'hauler';
 export type MarketplaceAssetRarity = 'N' | 'SR' | 'SSR';
 
 export interface MarketplaceAssetRecord {
@@ -26,6 +26,28 @@ export interface MarketplaceAssetRecord {
 type MarketplaceAssetDefinition = Omit<MarketplaceAssetRecord, 'runtimeIntegrated'>;
 
 const MARKETPLACE_ASSET_DEFINITIONS = [
+  {
+    assetId: 'hauler:SR:tobi:walk',
+    roleId: 'hauler',
+    assetFamilyId: 'hauler',
+    rarityTier: 'SR',
+    characterSlug: 'tobi',
+    characterName: 'Tobi',
+    portraitPath: '/assets/marketplace/catalog/hauler/sr/tobi/idle-1.png',
+    sourcePortraitPath: 'art-source/cat-role-catalog/hauler/sr/tobi/walk/walk-1.png',
+    catalogStatus: 'runtime-integrated',
+  },
+  {
+    assetId: 'hauler:SSR:rivet:walk',
+    roleId: 'hauler',
+    assetFamilyId: 'hauler',
+    rarityTier: 'SSR',
+    characterSlug: 'rivet',
+    characterName: 'Rivet',
+    portraitPath: '/assets/marketplace/catalog/hauler/ssr/rivet/idle-1.png',
+    sourcePortraitPath: 'art-source/cat-role-catalog/hauler/ssr/rivet/walk/walk-1.png',
+    catalogStatus: 'runtime-integrated',
+  },
   {
     assetId: 'elevator-cargo-cat:SSR:mofy:idle',
     roleId: 'elevator',
@@ -112,7 +134,7 @@ const MARKETPLACE_ASSET_DEFINITIONS = [
     characterName: 'Mica',
     portraitPath: '/assets/marketplace/catalog/miner/n/mica/idle-1.png',
     sourcePortraitPath: 'art-source/cat-role-catalog/miner/n/mica/processed/idle-1.png',
-    catalogStatus: 'preview-canonical',
+    catalogStatus: 'runtime-integrated',
   },
   {
     assetId: 'miner:SSR:forge:idle',

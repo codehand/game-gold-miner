@@ -1,5 +1,17 @@
 # Marketplace preview portraits
 
+## Hauler expansion — 2026-09-29
+
+`hauler:SR:tobi:walk` and `hauler:SSR:rivet:walk` are original generated
+characters with independent 4-frame right-facing walk sheets. Separate 128px
+transparent empty/filled cart images preserve the same silhouette. Tobi uses
+an electric wheeled trolley; Rivet uses a wheel-free cyan-coil maglev cart.
+The runtime copies are in `runtime/hauler/`; portraits use the first walk frame
+in `catalog/hauler/`. Raw sheets, transparent exports, animation previews and
+strict QC records are in `art-source/cat-role-catalog/hauler/`, with generation
+and processing details in its `provenance.md`. No third-party character art.
+The free Hauler portrait reuses the existing Step 32A walk-1 frame.
+
 Copied from the approved local cat-role art catalog, first stationary idle frame:
 - Mofy: art-source/cat-role-catalog/elevator-cargo-cat/ssr/mofy/processed-8f-v2/idle-1.png
 - Elon v2: public/assets/marketplace/elon-v2/idle-1.png, generated with generate2dsprite; prompt, raw sheet and QC metadata are in that directory.
@@ -61,6 +73,32 @@ served runtime asset path:
 - `elevator-cargo-cat:SSR:mofy:idle` → `runtime/elevator/mofy-8f-sheet.png`
 - `warehouse-manager:SR:baron:idle` → `runtime/warehouse/baron-8f-sheet.png`
 - `miner:SSR:forge:idle` → `runtime/miner/forge-8f-sheet.png`
+
+The 2026-09-28 miner assignment follow-up also integrates
+`miner:N:mica:idle` as `runtime/miner/mica-4f-sheet.png`, with its independent
+`runtime/miner/mica-attack-4f-sheet.png`. Forge and Mica select their own
+pickaxe sheet from the assigned asset ID and share the separate ore-impact
+sheet at `runtime/effects/forge-mining-impact-4f-sheet.png`. Mica's raw action,
+exact prompt, processed frames and QC record live under
+`art-source/cat-role-catalog/miner/n/mica/attack/`.
+The 2026-09-28 scale correction derives Mica's in-world idle copy from the
+original raw idle art at a smaller shared scale, then aligns its visible feet
+to the strike sheet's baseline. Its reproducible source is
+`art-source/cat-role-catalog/miner/n/mica/idle-runtime/sheet-feet-aligned.png`;
+the approved catalog portrait and preview idle sheet are unchanged.
+The later directional correction supersedes that travel copy with
+`runtime/miner/mica-walk-right-4f-sheet.png`, sourced from
+`art-source/cat-role-catalog/miner/n/mica/walk-right/sheet-feet-aligned.png`.
+All four walk frames face right; the game mirrors them for the leftward return.
+The previous idle-runtime copy remains in source history, and the Marketplace
+catalog portrait is unchanged.
+
+The free default Elevator operator Pip is deliberately outside the Marketplace
+catalog: `public/assets/defaults/elevator/pip-4f-sheet.png` and
+`pip-portrait.png` come from the source and provenance under
+`art-source/cat-role-catalog/elevator-cargo-cat/n/pip/`. Mofy's runtime sheet
+remains available for an owned instance assigned to the Elevator slot, but is
+not used as the unassigned default.
 
 These are presentation-only role assignments. They do not enter save data,
 change simulation formulas, or imply authoritative ownership. The unloader

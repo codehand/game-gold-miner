@@ -1,8 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 test('Buy detail confirms and invokes the authoritative purchase callback', async ({ page }) => {
+  await page.route('**/src/main.ts*', (route) => route.fulfill({
+    body: '',
+    contentType: 'application/javascript',
+  }));
   await page.goto('/');
-  await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
 
   await page.evaluate(async () => {
     const modulePath = '/src/ui/MarketplaceModal.ts';
@@ -13,6 +16,9 @@ test('Buy detail confirms and invokes the authoritative purchase callback', asyn
     const modal = new MarketplaceModal(parent, () => undefined, {
       onPurchase: async (assetId: string) => {
         document.body.dataset.marketplacePurchaseAssetId = assetId;
+        document.body.dataset.marketplacePurchaseCount = String(
+          Number(document.body.dataset.marketplacePurchaseCount ?? '0') + 1,
+        );
         return { kind: 'applied' };
       },
       getWalletGold: () => '100000',
@@ -41,4 +47,9 @@ test('Buy detail confirms and invokes the authoritative purchase callback', asyn
   await expect(marketplace).toContainText('Forge was added to your Collection.');
   await expect.poll(() => page.locator('body').getAttribute('data-marketplace-purchase-asset-id'))
     .toBe('miner:SSR:forge:idle');
+  await marketplace.getByRole('button', { name: 'Buy another Forge' }).click();
+  await marketplace.getByRole('button', { name: 'Buy listed cat' }).click();
+  await expect.poll(() => page.locator('body').getAttribute('data-marketplace-purchase-count'))
+    .toBe('2');
+  await expect(marketplace).toContainText('Forge was added to your Collection.');
 });

@@ -8,7 +8,7 @@
 
 export const CAT_CALCULATION_VERSION = 1 as const;
 
-export type CatRole = 'elevator' | 'warehouse' | 'miner';
+export type CatRole = 'elevator' | 'warehouse' | 'miner' | 'hauler';
 export type CatRarityTier = 'N' | 'R' | 'SR' | 'SSR' | 'UR';
 export type CatAvailabilityState =
   | 'Idle'
@@ -54,13 +54,15 @@ export interface CatRosterState {
 
 export type CatSlotKey =
   | `miner:${string}`
+  | `hauler:${1 | 2 | 3 | 4 | 5}`
   | 'elevator:main'
   | 'warehouse:main';
 
 export type CatBenefitMetric =
   | 'mining-output'
   | 'elevator-throughput'
-  | 'warehouse-processing';
+  | 'warehouse-processing'
+  | 'surface-hauling';
 
 export interface CatRoleEffect {
   readonly roleId: CatRole;
@@ -122,6 +124,13 @@ const ROLE_PROFILES: Readonly<Record<CatRole, {
     maxVariableBonus: 0.25,
     affectedMetric: 'mining-output',
   },
+  hauler: {
+    weights: { power: 0.1, speed: 0.4, capacity: 0.35, efficiency: 0.15 },
+    primarySkill: 'Hauling Mastery',
+    baseBonus: 0.02,
+    maxVariableBonus: 0.28,
+    affectedMetric: 'surface-hauling',
+  },
 };
 
 const SLOT_ROLES: Readonly<Record<'elevator:main' | 'warehouse:main', CatRole>> = {
@@ -167,6 +176,7 @@ export function calculateCatRoleEffect(
 }
 
 export function getRoleForSlot(slotKey: string): CatRole | null {
+  if (/^hauler:[1-5]$/.test(slotKey)) return 'hauler';
   if (slotKey.startsWith('miner:') && slotKey.length > 'miner:'.length) {
     return 'miner';
   }
@@ -229,7 +239,7 @@ export function compareCatForSlot(
 export function assignCatToSlot(
   roster: CatRosterState,
   slotKey: CatSlotKey,
-  catInstanceId: string,
+  catInstanceId: string | null,
   expectedAssignmentRevision: number,
   updatedAt: number,
 ): CatAssignmentResult {
@@ -240,6 +250,23 @@ export function assignCatToSlot(
   const role = getRoleForSlot(slotKey);
   if (role === null) {
     return { success: false, reason: 'unknown-slot' };
+  }
+
+  if (catInstanceId === null) {
+    const current = roster.assignments.find((assignment) => assignment.slotKey === slotKey);
+    if (role !== 'hauler') return { success: false, reason: 'wrong-role' };
+    if (current === undefined) return { success: false, reason: 'no-op' };
+    return {
+      success: true,
+      state: {
+        cats: roster.cats.map((cat) => cat.catInstanceId === current.catInstanceId
+          ? { ...cat, availabilityState: 'Idle' as const, assignedSlotKey: null, updatedAt }
+          : cat),
+        assignments: roster.assignments.filter((assignment) => assignment.slotKey !== slotKey),
+        assignmentRevision: roster.assignmentRevision + 1,
+        collectionRevision: roster.collectionRevision + 1,
+      },
+    };
   }
 
   const candidate = roster.cats.find((cat) => cat.catInstanceId === catInstanceId);
@@ -385,6 +412,7 @@ function formatBenefitLabel(bonus: number, metric: CatBenefitMetric): string {
     'mining-output': 'mining output',
     'elevator-throughput': 'elevator throughput',
     'warehouse-processing': 'warehouse processing',
+    'surface-hauling': 'this cart\'s hauling',
   }[metric];
   return `+${(bonus * 100).toFixed(1)}% ${label}`;
 }

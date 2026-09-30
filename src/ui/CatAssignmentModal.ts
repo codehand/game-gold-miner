@@ -3,6 +3,7 @@ import {
   compareCatForSlot,
   getAssignableCats,
   getCatForSlot,
+  getRoleForSlot,
   type CatInstance,
   type CatRole,
   type CatRosterState,
@@ -12,7 +13,7 @@ import { getMarketplaceAsset } from './marketplaceAssetRegistry';
 import { getMarketplaceIcon } from './marketplaceIconRegistry';
 
 export interface CatAssignmentCommand {
-  readonly catInstanceId: string;
+  readonly catInstanceId: string | null;
   readonly slotKey: CatSlotKey;
   readonly expectedAssignmentRevision: number;
 }
@@ -25,6 +26,7 @@ export type CatAssignmentCommandResult =
 export interface CatAssignmentModalOptions {
   readonly parent: HTMLElement;
   readonly getRoster: () => CatRosterState;
+  readonly getHaulerCount?: () => number;
   readonly assign: (command: CatAssignmentCommand) => Promise<CatAssignmentCommandResult>;
   readonly onClose?: () => void;
 }
@@ -36,16 +38,19 @@ const ROLE_LABELS: Readonly<Record<CatRole, string>> = {
   elevator: 'Elevator',
   warehouse: 'Warehouse',
   miner: 'Miner',
+  hauler: 'Hauler',
 };
 const ROLE_ICON_IDS: Readonly<Record<CatRole, string>> = {
   elevator: 'role-elevator',
   warehouse: 'role-warehouse',
   miner: 'role-miner',
+  hauler: 'role-hauler',
 };
 const SKILL_ICON_IDS: Readonly<Record<CatRole, string>> = {
   elevator: 'skill-lift-mastery',
   warehouse: 'skill-storage-mastery',
   miner: 'skill-mining-mastery',
+  hauler: 'skill-hauling-mastery',
 };
 
 /**
@@ -56,6 +61,7 @@ const SKILL_ICON_IDS: Readonly<Record<CatRole, string>> = {
 export class CatAssignmentModal {
   readonly #dialog = document.createElement('dialog');
   readonly #getRoster: () => CatRosterState;
+  readonly #getHaulerCount: () => number;
   readonly #assign: CatAssignmentModalOptions['assign'];
   readonly #onClose: (() => void) | null;
   #slotKey: CatSlotKey | null = null;
@@ -70,6 +76,7 @@ export class CatAssignmentModal {
 
   public constructor(options: CatAssignmentModalOptions) {
     this.#getRoster = options.getRoster;
+    this.#getHaulerCount = options.getHaulerCount ?? (() => 1);
     this.#assign = options.assign;
     this.#onClose = options.onClose ?? null;
     this.#dialog.className = 'cat-assignment-modal';
@@ -143,7 +150,9 @@ export class CatAssignmentModal {
     eyebrow.className = 'collection-eyebrow';
     eyebrow.textContent = 'MINE ROLE';
     const title = document.createElement('h1');
-    title.textContent = current === null ? 'Assign a cat' : 'Current cat';
+    title.textContent = current === null && slotKey.startsWith('warehouse:')
+      ? 'Assign a cat'
+      : 'Current cat';
     titleGroup.append(eyebrow, title);
     const close = this.#button('×', () => this.#dialog.close(), 'collection-close');
     close.setAttribute('aria-label', 'Close assigned cat');
@@ -156,6 +165,26 @@ export class CatAssignmentModal {
     location.className = 'cat-assignment-location';
     location.textContent = `Slot ${slotKey}`;
     main.append(location);
+    if (slotKey.startsWith('hauler:')) {
+      const slots = document.createElement('nav');
+      slots.className = 'cat-assignment-hauler-slots';
+      slots.setAttribute('aria-label', 'Hauler carts');
+      for (let index = 1; index <= this.#getHaulerCount(); index++) {
+        const key = `hauler:${index}` as CatSlotKey;
+        const button = this.#button(`Cart ${index}`, () => {
+          this.#slotKey = key;
+          this.#view = 'current';
+          this.#selectedCatId = null;
+          this.#message = '';
+          this.#messageKind = '';
+          this.#render();
+        }, 'cat-assignment-back');
+        button.setAttribute('aria-pressed', String(slotKey === key));
+        button.disabled = this.#pending;
+        slots.append(button);
+      }
+      main.append(slots);
+    }
 
     if (this.#message !== '') {
       const message = document.createElement('p');
@@ -178,7 +207,15 @@ export class CatAssignmentModal {
           this.#render();
         }, 'cat-assignment-primary');
         change.dataset.autofocus = 'true';
+        change.disabled = this.#pending;
         main.append(change);
+        if (slotKey.startsWith('hauler:')) {
+          const reset = this.#button('Use default Hauler', () => {
+            void this.#applyAssignment(slotKey, null);
+          }, 'cat-assignment-back');
+          reset.disabled = this.#pending;
+          main.append(reset);
+        }
       }
     } else {
       main.append(this.#picker(roster, slotKey, current));
@@ -190,13 +227,45 @@ export class CatAssignmentModal {
 
   #emptyCurrent(roster: CatRosterState, slotKey: CatSlotKey): HTMLElement {
     const section = document.createElement('section');
-    section.className = 'cat-assignment-empty';
     const role = this.#roleForSlot(slotKey);
-    const copy = document.createElement('p');
-    copy.textContent = `No ${ROLE_LABELS[role]} cat is assigned to this slot.`;
+    if (role === 'miner' || role === 'elevator' || role === 'hauler') {
+      section.className = 'cat-assignment-default';
+      const summary = document.createElement('div');
+      summary.className = 'cat-assignment-current';
+      const portrait = document.createElement('img');
+      portrait.className = 'cat-assignment-portrait';
+      portrait.src = role === 'miner'
+        ? getMarketplaceAsset('miner:N:mica:idle')?.portraitPath ?? FALLBACK_PORTRAIT
+        : role === 'hauler' ? '/assets/defaults/hauler/portrait.png'
+          : '/assets/defaults/elevator/pip-portrait.png';
+      portrait.alt = role === 'miner' ? 'Mica, default Miner'
+        : role === 'hauler' ? 'Default Hauler with handcart' : 'Pip, default Elevator';
+      const details = document.createElement('div');
+      details.className = 'cat-assignment-summary-copy';
+      const name = document.createElement('h2');
+      name.textContent = role === 'miner' ? 'Mica' : role === 'hauler' ? 'Default Hauler' : 'Pip';
+      const copy = document.createElement('p');
+      copy.textContent = role === 'miner'
+        ? 'Default miner · base production'
+        : role === 'hauler' ? 'Handcart · base hauling'
+          : 'Default elevator operator · base transport';
+      const note = document.createElement('p');
+      note.textContent = role === 'miner'
+        ? 'Buy a Miner cat in Marketplace to change this floor.'
+        : role === 'hauler' ? 'Buy a Hauler in Marketplace to upgrade this cart. One cat works on one cart.'
+          : 'Buy Mofy in Marketplace to change this elevator.';
+      details.append(name, copy, note);
+      summary.append(portrait, details);
+      section.append(summary);
+    } else {
+      section.className = 'cat-assignment-empty';
+      const copy = document.createElement('p');
+      copy.textContent = `No ${ROLE_LABELS[role]} cat is assigned to this slot.`;
+      section.append(copy);
+    }
     const candidateCount = getAssignableCats(roster, slotKey).length;
     const button = this.#button(
-      candidateCount === 0 ? 'No compatible cats' : 'Choose a cat',
+      candidateCount === 0 ? 'No compatible cats' : role === 'warehouse' ? 'Choose a cat' : 'Change cat',
       () => {
         if (candidateCount === 0) return;
         this.#view = 'picker';
@@ -206,7 +275,7 @@ export class CatAssignmentModal {
     );
     button.disabled = candidateCount === 0;
     button.dataset.autofocus = 'true';
-    section.append(copy, button);
+    section.append(button);
     return section;
   }
 
@@ -302,9 +371,11 @@ export class CatAssignmentModal {
 
   async #confirm(slotKey: CatSlotKey): Promise<void> {
     const catInstanceId = this.#selectedCatId;
-    if (catInstanceId === null || this.#pending) {
-      return;
-    }
+    if (catInstanceId !== null) await this.#applyAssignment(slotKey, catInstanceId);
+  }
+
+  async #applyAssignment(slotKey: CatSlotKey, catInstanceId: string | null): Promise<void> {
+    if (this.#pending) return;
 
     const roster = this.#getRoster();
     this.#pending = true;
@@ -416,8 +487,7 @@ export class CatAssignmentModal {
   }
 
   #roleForSlot(slotKey: CatSlotKey): CatRole {
-    if (slotKey.startsWith('miner:')) return 'miner';
-    return slotKey === 'elevator:main' ? 'elevator' : 'warehouse';
+    return getRoleForSlot(slotKey)!;
   }
 
   #metricLabel(metric: string): string {
@@ -425,6 +495,7 @@ export class CatAssignmentModal {
       'mining-output': 'mining output',
       'elevator-throughput': 'elevator throughput',
       'warehouse-processing': 'warehouse processing',
+      'surface-hauling': "this cart's hauling",
     }[metric] ?? metric;
   }
 }

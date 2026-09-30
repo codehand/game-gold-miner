@@ -59,11 +59,19 @@ Deno.test('corsHeaders reflects an allow-listed dev origin', () => {
     'access-control-allow-origin': 'http://127.0.0.1:5173',
     vary: 'Origin',
   });
+  assert.deepEqual(corsHeaders('http://localhost:5174'), {
+    'access-control-allow-origin': 'http://localhost:5174',
+    vary: 'Origin',
+  });
 });
 
 Deno.test('corsHeaders reflects a LAN Vite origin without allowing arbitrary sites', () => {
   assert.deepEqual(corsHeaders('http://192.168.1.203:5173'), {
     'access-control-allow-origin': 'http://192.168.1.203:5173',
+    vary: 'Origin',
+  });
+  assert.deepEqual(corsHeaders('http://192.168.1.203:5174'), {
+    'access-control-allow-origin': 'http://192.168.1.203:5174',
     vary: 'Origin',
   });
   assert.deepEqual(corsHeaders('http://192.168.1.203:4173'), {});

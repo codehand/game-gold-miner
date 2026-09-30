@@ -459,7 +459,9 @@ Authorization: Bearer <access token>
     "elapsedDurationMs": 3600000,
     "creditedDurationMs": 3600000,
     "reward": "12.5"
-  }
+  },
+  "boost": { "lastActivatedAtMs": null },
+  "serverNowMs": 1788870896789
 }
 ```
 
@@ -467,6 +469,15 @@ Authorization: Bearer <access token>
 for the absence since `receivedAt`, computed from the server's own clock to its
 own `now()` with the shared `calculateOfflineGrant` (7,200,000 ms cap, 0.5
 efficiency). `reward` is a serialized `GameNumber`. A `204` carries no grant.
+The `boost` field is the server-owned last activation; the grant applies x4
+only to its five-minute overlap with the credited interval. The client uses
+this same field to recompute its closed local projection before comparing
+against the server grant. The separate authenticated Boost Edge Function
+exposes `GET /functions/v1/boost/v1/status` and
+`POST /functions/v1/boost/v1/activate`; the latter accepts no client time and
+atomically enforces one free activation per eight hours.
+`serverNowMs` lets the browser map the server-owned activation to its local
+simulation timeline without treating the device clock as activation authority.
 A `200` may still carry `offlineGrant: null` when the stored row cannot be
 parsed well enough to compute one (defense-in-depth — the upload path validates
 every stored document); the client treats a null grant as "no server figure",
@@ -684,9 +695,10 @@ F11 had guessed.
 `supabase/functions/_shared/http.ts` for every function to reuse rather
 than invented per function:
 
-- Allowed origins are the two known loopback dev origins,
-  `http://127.0.0.1:5173` and `http://localhost:5173`, plus the narrowly
-  matched `http://192.168.*.*:5173` LAN development origin used by
+- Allowed origins are the two known loopback dev origins on each supported Vite
+  port, `http://127.0.0.1:5173`, `http://localhost:5173`, and their `:5174`
+  counterparts, plus the narrowly matched `http://192.168.*.*:5173` and
+  `http://192.168.*.*:5174` LAN development origins used by
   `vite --host 0.0.0.0` — the same redirect set
   `supabase/config.toml` allow-lists. The LAN rule is port-specific and only
   matches private `192.168` hostnames; it is not a wildcard CORS policy for

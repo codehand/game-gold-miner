@@ -169,11 +169,12 @@ export function createMineViewModel(
   state: GameState,
   balance: BaseGameBalanceConfig,
   modifiers: CatProductionModifiers = EMPTY_CAT_PRODUCTION_MODIFIERS,
+  boostMultiplier = 1,
 ): MineViewModel {
   const visibleFloorCount = calculateVisibleMineFloorCount(state.floors);
 
   return {
-    hud: createHudViewModel(state, balance, modifiers),
+    hud: createHudViewModel(state, balance, modifiers, boostMultiplier),
     floors: state.floors.map((floor, index) => {
       return createMineFloorViewModel({
         floor,

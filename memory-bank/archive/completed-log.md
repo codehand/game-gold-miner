@@ -1,5 +1,18 @@
 # Archive — Completed work log
 
+## 2026-09-28 — Default Mica and unique purchased Miner assignment
+
+Unassigned mine floors now render Mica's existing walk and strike animation
+without adding an owned Collection instance or a production bonus. The floor
+assignment panel identifies that baseline and offers only idle owned Miner
+instances as replacements. Marketplace Buy offers another purchase of the
+same blueprint after success. A forward-only Supabase migration fixes the
+nullable renter check in `replace_cat_assignment`, so an Assigned instance
+cannot be reused on another floor and receives a 409 business rejection.
+Existing owner/slot and unique-cat constraints remain in place. The 769-test
+unit suite, focused browser tests, live server integration and purchase E2E,
+lint, and build passed.
+
 ## 2026-09-27 — Independent bottom-menu asset redesign
 
 Replaced the mismatched purple/gold full-menu strip with five separately
@@ -3357,3 +3370,70 @@ cadence cap at five visible miners. Raw overflow now becomes the shared
 `1.2x` with five cats rather than adding a sixth sprite. Foreground extraction,
 production-rate estimates, and progress-bound in-flight allowances all consume
 the same helper; no save schema or additional queue was added.
+
+The 2026-09-28 Forge mining-action feedback is complete. Forge now follows a
+progress-bound unloader→gold pile→unloader lap with a stationary four-pose
+pickaxe strike and a separate four-frame gold-impact effect at the pile. All
+visible Forge miners share this behavior with phase offsets matched to the
+core's delivery milestones. New action/FX sources and provenance are retained
+under `art-source/`; no production or save fields changed. Strict raster QC,
+766 unit tests, lint, build, and eight focused browser tests pass.
+
+The 2026-09-28 same-role Mica animation feedback is complete. An assigned
+Mica now resolves his approved idle/travel sheet and newly generated
+four-frame pickaxe action rather than the generic miner fallback. Forge and
+Mica retain separate character art while sharing the impact effect and core
+delivery cadence. The catalog registry and manifest mark Mica runtime
+integrated; no economy or save schema changed. Strict asset QC, 768 unit
+tests, lint, build, and twelve focused browser tests pass.
+
+The 2026-09-28 Mica scale follow-up is complete. His runtime-only idle sheet
+was reprocessed from approved raw art to match the upright strike scale and
+foot line, without changing the catalog portrait or adjusting Phaser sprite
+size per action. A pixel-geometry browser regression, assigned-Mica attack
+and travel screenshots, six focused browser tests, 768 unit tests, lint and
+build pass. Core and save state are unchanged.
+
+The 2026-09-28 Mica direction follow-up is complete. A dedicated four-frame
+right-facing walk sheet replaces the former front-facing travel sheet, so
+the existing renderer flip visibly faces left on return. Mining still uses
+Mica's own right-facing strike sheet. Strict raster QC, outbound/mining/return
+browser screenshots, seven focused browser tests, 47 focused unit tests, lint
+and build pass; the full 768-test unit suite also passes. Catalog identity,
+economy and save state remain unchanged.
+# 2026-09-28 — Free Elevator Pip / purchased Mofy
+
+Created original four-frame Pip operator art with strict raster QC and a separate
+portrait; integrated Pip as the unassigned `elevator:main` presentation in both
+surface and moving cabin. Kept Mofy's existing Marketplace blueprint and sheet
+for owned-instance assignment only. Updated assignment copy, manifest,
+provenance, runtime tests, and product/architecture contracts. No owned Pip,
+gameplay bonus, save field, or database migration was added.
+
+# 2026-09-29 — Mine Overdrive
+
+Implemented the free x4 Boost across mining, Elevator, and Warehouse for five
+real-time minutes, with one activation per eight hours. The active interval is
+split exactly in foreground catch-up and offline grants, with no direct wallet
+multiplication. Added accessible modal/HUD countdown and a local-only cache.
+Configured play uses an authenticated Boost Edge Function, atomic server-clock
+RPC, one-row-per-user table, save-download Boost projection, and a matching
+server-side progress allowance. The V3 save document and IndexedDB schema did
+not change. Scoped client/server tests and live activation/reload/RLS gates
+passed; repository-wide legacy E2E/production failures remain open separately.
+
+## 2026-09-30 — Individual Haulers, Tobi SR and Rivet SSR
+
+Completed the approved surface transport expansion: free wooden handcart,
+Tobi with an electric wheeled cart, Rivet with wheel-free maglev. Generated
+separate walk sheets, cart-empty/cart-filled PNGs and portraits, retained raw
+sources and strict QC metadata, and integrated Marketplace and Collection.
+Four exact roles and eleven purchasable blueprints are now recognized across
+client validation, server projection and DB constraints. Stable Hauler slots
+use revision-checked assignment, reject instance reuse, and support explicit
+return-to-default without deleting ownership. The panel's active Cart buttons
+avoid selecting a particular overlapping moving cat. Production averages only
+active carts' bonuses and composes with existing overflow/manager effects once.
+Forward-only local migration preserves current saves and the V3/IndexedDB-v1
+format. Full unit/Deno and scoped client/server gates passed; dev server was
+restarted at localhost:5173. No commit or production deploy performed.

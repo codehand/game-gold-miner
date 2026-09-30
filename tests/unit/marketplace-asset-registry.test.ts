@@ -16,7 +16,7 @@ const PNG_SIGNATURE = '89504e470d0a1a0a';
 
 describe('Marketplace asset registry', () => {
   it('exposes the expanded stable catalog without duplicate IDs or paths', () => {
-    expect(MARKETPLACE_ASSETS).toHaveLength(9);
+    expect(MARKETPLACE_ASSETS).toHaveLength(11);
     expect(new Set(MARKETPLACE_ASSET_IDS).size).toBe(MARKETPLACE_ASSET_IDS.length);
     expect(new Set(MARKETPLACE_ASSETS.map((asset) => asset.portraitPath)).size).toBe(
       MARKETPLACE_ASSETS.length,
@@ -24,8 +24,11 @@ describe('Marketplace asset registry', () => {
     expect(
       MARKETPLACE_ASSETS
         .filter((asset) => asset.runtimeIntegrated)
-        .map((asset) => asset.assetId),
-    ).toEqual(MARKETPLACE_RUNTIME_ASSET_IDS);
+        .map((asset) => asset.assetId).sort(),
+    ).toEqual(MARKETPLACE_RUNTIME_ASSET_IDS.filter((assetId) => (
+      assetId !== 'elevator-cargo-cat:N:pip:idle'
+    )).sort());
+    expect(getMarketplaceAsset('elevator-cargo-cat:N:pip:idle')).toBeNull();
     expect(
       MARKETPLACE_ASSETS
         .filter((asset) => !asset.runtimeIntegrated)

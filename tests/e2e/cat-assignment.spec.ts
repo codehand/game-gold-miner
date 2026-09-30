@@ -4,6 +4,7 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateFloorSlotRegion } from '../../src/game/layout';
 import {
   CAT_CALCULATION_VERSION,
+  createEmptyCatRoster,
   createInitialGameState,
   type CatRosterState,
 } from '../../src/core';
@@ -77,12 +78,46 @@ function createAssignmentFixture(): CatRosterState {
   };
 }
 
-async function bootAssignmentFixture(page: Page): Promise<void> {
+function createMicaAssignmentFixture(): CatRosterState {
+  const base = createAssignmentFixture();
+  return {
+    ...base,
+    cats: base.cats.map((cat) => cat.catInstanceId === 'cat-miner-forge'
+      ? { ...cat, availabilityState: 'Idle', assignedSlotKey: null }
+      : cat.catInstanceId === 'cat-miner-mica'
+        ? { ...cat, availabilityState: 'Assigned', assignedSlotKey: 'miner:floor-1' }
+        : cat),
+    assignments: [{ slotKey: 'miner:floor-1', catInstanceId: 'cat-miner-mica' }],
+  };
+}
+
+function createMofyAssignmentFixture(): CatRosterState {
+  const base = createAssignmentFixture();
+  return {
+    ...base,
+    cats: base.cats.map((cat) => cat.catInstanceId === 'cat-elevator-mofy'
+      ? { ...cat, availabilityState: 'Assigned', assignedSlotKey: 'elevator:main' }
+      : cat),
+    assignments: [...base.assignments, { slotKey: 'elevator:main', catInstanceId: 'cat-elevator-mofy' }],
+  };
+}
+
+async function bootAssignmentFixture(
+  page: Page,
+  roster: CatRosterState = createAssignmentFixture(),
+  extractionProgress = 0,
+): Promise<void> {
+  const initialState = createInitialGameState(BASE_GAME_BALANCE, FIXTURE_TIMESTAMP_MS);
   const document = createSaveDocument(
-    createInitialGameState(BASE_GAME_BALANCE, FIXTURE_TIMESTAMP_MS),
+    {
+      ...initialState,
+      floors: initialState.floors.map((floor, index) => index === 0
+        ? { ...floor, extractionProgress }
+        : floor),
+    },
     BASE_GAME_BALANCE,
     FIXTURE_TIMESTAMP_MS,
-    createAssignmentFixture(),
+    roster,
   );
   let shouldSeed = true;
 
@@ -122,6 +157,92 @@ async function bootAssignmentFixture(page: Page): Promise<void> {
   await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
 }
 
+test('shows free Mica on an unassigned floor without adding him to Collection', async ({ page }) => {
+  await page.clock.install({ time: FIXTURE_TIMESTAMP_MS });
+  await page.clock.setFixedTime(FIXTURE_TIMESTAMP_MS);
+  await bootAssignmentFixture(page, createEmptyCatRoster());
+  await clickFirstMiner(page);
+
+  const dialog = page.getByRole('dialog', { name: 'Assigned cat' });
+  await expect(dialog.getByRole('heading', { name: 'Current cat' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Mica' })).toBeVisible();
+  await expect(dialog).toContainText('Default miner · base production');
+  await expect(dialog.getByRole('button', { name: 'No compatible cats' })).toBeDisabled();
+});
+
+test('renders Pip on an unassigned Elevator even when Mofy is owned but idle', async ({ page }) => {
+  await page.clock.install({ time: FIXTURE_TIMESTAMP_MS });
+  await page.clock.setFixedTime(FIXTURE_TIMESTAMP_MS);
+  await bootAssignmentFixture(page, createAssignmentFixture());
+  const canvas = page.locator('#game-viewport canvas');
+  await expect.poll(async () => {
+    const assets = JSON.parse(await canvas.getAttribute('data-marketplace-runtime-assets') ?? '{}');
+    return assets.elevator;
+  }).toBe('elevator-cargo-cat:N:pip:idle');
+  const defaultAnimation = JSON.parse(await canvas.getAttribute('data-animation') ?? '{}');
+  expect(defaultAnimation.elevatorCargoCat.texture).toBe('default-elevator-pip');
+  expect(defaultAnimation.surfaceElevatorCat.texture).toBe('default-elevator-pip');
+
+});
+
+test('renders purchased Mofy in both Elevator positions only when assigned', async ({ page }) => {
+  await page.clock.install({ time: FIXTURE_TIMESTAMP_MS });
+  await page.clock.setFixedTime(FIXTURE_TIMESTAMP_MS);
+  await bootAssignmentFixture(page, createMofyAssignmentFixture());
+  const canvas = page.locator('#game-viewport canvas');
+  await expect.poll(async () => {
+    const assets = JSON.parse(await canvas.getAttribute('data-marketplace-runtime-assets') ?? '{}');
+    return assets.elevator;
+  }).toBe('elevator-cargo-cat:SSR:mofy:idle');
+  const purchasedAnimation = JSON.parse(await canvas.getAttribute('data-animation') ?? '{}');
+  expect(purchasedAnimation.elevatorCargoCat.texture).toBe('marketplace-runtime-elevator-mofy');
+  expect(purchasedAnimation.surfaceElevatorCat.texture).toBe('marketplace-runtime-elevator-mofy');
+});
+
+test('keeps purchased Forge art on the floor where his instance is assigned', async ({ page }) => {
+  await page.clock.install({ time: FIXTURE_TIMESTAMP_MS });
+  await page.clock.setFixedTime(FIXTURE_TIMESTAMP_MS);
+  await bootAssignmentFixture(page, createAssignmentFixture(), 0.56);
+  const canvas = page.locator('#game-viewport canvas');
+
+  await expect.poll(async () => {
+    const floors = JSON.parse(await canvas.getAttribute('data-floor-views') ?? '[]') as Array<{
+      minerAssetId: string | null;
+      minerCrew: Array<{ textureKey: string }>;
+    }>;
+    return floors[0]?.minerAssetId === 'miner:SSR:forge:idle'
+      && floors[0]?.minerCrew[0]?.textureKey === 'marketplace-runtime-miner-forge-attack';
+  }, { timeout: 8_000 }).toBe(true);
+});
+
+for (const scenario of [
+  { progress: 0.2, texture: 'marketplace-runtime-miner-mica-walk-right', impact: false, facesLeft: false, screenshot: 'mica-outbound-assigned.png' },
+  { progress: 0.56, texture: 'marketplace-runtime-miner-mica-attack', impact: true, facesLeft: false, screenshot: 'mica-mining-assigned.png' },
+  { progress: 0.825, texture: 'marketplace-runtime-miner-mica-walk-right', impact: false, facesLeft: true, screenshot: 'mica-returning-assigned.png' },
+]) {
+  test(`renders assigned Mica's own mining art at progress ${scenario.progress}`, async ({ page }) => {
+    await page.clock.install({ time: FIXTURE_TIMESTAMP_MS });
+    await page.clock.setFixedTime(FIXTURE_TIMESTAMP_MS);
+    await bootAssignmentFixture(page, createMicaAssignmentFixture(), scenario.progress);
+    const canvas = page.locator('#game-viewport canvas');
+
+    await expect.poll(async () => {
+      const floors = JSON.parse(await canvas.getAttribute('data-floor-views') ?? '[]') as Array<{
+        minerAssetId: string | null;
+        minerCrew: Array<{ textureKey: string; facesLeft: boolean }>;
+        miningImpactVisible: boolean;
+      }>;
+      return floors[0]?.minerAssetId === 'miner:N:mica:idle' &&
+        floors[0]?.minerCrew[0]?.textureKey === scenario.texture &&
+        floors[0]?.minerCrew[0]?.facesLeft === scenario.facesLeft &&
+        floors[0]?.miningImpactVisible === scenario.impact;
+    }, { timeout: 8_000 }).toBe(true);
+    await page.screenshot({
+      path: `test-results/${scenario.screenshot}`,
+    });
+  });
+}
+
 async function clickFirstMiner(page: Page): Promise<void> {
   const canvas = page.locator('#game-viewport canvas');
   const box = (await canvas.boundingBox())!;
@@ -142,6 +263,8 @@ async function clickFirstMiner(page: Page): Promise<void> {
 for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
   test(`filters candidates, compares, and keeps the old cat on offline rejection at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    await page.clock.install({ time: FIXTURE_TIMESTAMP_MS });
+    await page.clock.setFixedTime(FIXTURE_TIMESTAMP_MS);
     await bootAssignmentFixture(page);
     await clickFirstMiner(page);
 

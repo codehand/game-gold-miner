@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 
 import {
+  calculateSurfaceHaulerWorkforce,
   getCatForSlot,
   type CatSlotKey,
 } from '../../core';
@@ -17,10 +18,15 @@ import type {
 import { MineShaftUpgradeModal } from '../../ui/MineShaftUpgradeModal';
 
 import { createBacklogTextures } from '../assets/backlogTextures';
+import { HaulerThrusterView } from '../entities/HaulerThrusterView';
 import { NAVIGATION_ICON_ASSETS } from '../assets/navigationAssets';
 import {
+  MINER_MINING_ATTACK_ASSETS,
+  MINER_MINING_IMPACT_ASSET,
   MARKETPLACE_RUNTIME_ANIMATION_ASSETS,
   MARKETPLACE_RUNTIME_ROLE_ASSETS,
+  HAULER_CART_ASSETS,
+  resolveHaulerCartAsset,
   resolveMarketplaceRuntimeSlot,
   type MarketplaceRuntimeAnimationAsset,
   type MarketplaceRuntimeRole,
@@ -187,6 +193,7 @@ export interface BootSceneOptions {
   readonly animationSpeedMultiplier?: number;
   readonly onSettings?: (onClosed: () => void) => void;
   readonly onLeaderboard?: (onClosed: () => void) => void;
+  readonly onBoost?: (onClosed: () => void) => void;
   readonly onCollection?: (onClosed: () => void) => void;
   readonly onCatSlot?: (slotKey: CatSlotKey, onClosed: () => void) => void;
   readonly onMarketplacePurchase?: (assetId: string) => Promise<MarketplacePurchaseResult>;
@@ -224,6 +231,7 @@ export class BootScene extends Phaser.Scene {
   readonly #source: MineRuntimePort;
   readonly #onSettings: ((onClosed: () => void) => void) | null;
   readonly #onLeaderboard: ((onClosed: () => void) => void) | null;
+  readonly #onBoost: ((onClosed: () => void) => void) | null;
   readonly #onCollection: ((onClosed: () => void) => void) | null;
   readonly #onCatSlot: ((slotKey: CatSlotKey, onClosed: () => void) => void) | null;
   readonly #onMarketplacePurchase: ((assetId: string) => Promise<MarketplacePurchaseResult>) | null;
@@ -272,7 +280,10 @@ export class BootScene extends Phaser.Scene {
   #surfaceHaulerCat: Phaser.GameObjects.Sprite | null = null;
   #surfaceHaulerAssistantCarts: readonly Phaser.GameObjects.Image[] = [];
   #surfaceHaulerAssistants: readonly Phaser.GameObjects.Sprite[] = [];
-  #surfaceGoldPour: Phaser.GameObjects.Sprite | null = null;
+  #haulerCartAssets = Array.from({ length: 5 }, () => resolveHaulerCartAsset(null));
+  #haulerFrameDurations = Array.from({ length: 5 }, () => 160);
+  #haulerThrusters: readonly HaulerThrusterView[] = [];
+  #surfaceGoldPours: readonly Phaser.GameObjects.Sprite[] = [];
   #marketplace: MarketplaceModal | null = null;
   #floorUpgradeModal: MineShaftUpgradeModal | null = null;
   #selectedUpgradeTarget: UpgradeTarget | null = null;
@@ -292,6 +303,7 @@ export class BootScene extends Phaser.Scene {
     this.#source = options.source;
     this.#onSettings = options.onSettings ?? null;
     this.#onLeaderboard = options.onLeaderboard ?? null;
+    this.#onBoost = options.onBoost ?? null;
     this.#onCollection = options.onCollection ?? null;
     this.#onCatSlot = options.onCatSlot ?? null;
     this.#onMarketplacePurchase = options.onMarketplacePurchase ?? null;
@@ -326,6 +338,19 @@ export class BootScene extends Phaser.Scene {
     }
 
     for (const asset of MARKETPLACE_RUNTIME_ANIMATION_ASSETS) {
+      this.load.spritesheet(asset.textureKey, asset.publicPath, {
+        frameWidth: asset.frameSizePx,
+        frameHeight: asset.frameSizePx,
+      });
+    }
+    for (const asset of HAULER_CART_ASSETS) {
+      this.load.image(asset.emptyTexture, asset.emptyPath);
+      this.load.image(asset.filledTexture, asset.filledPath);
+    }
+    for (const asset of [
+      ...Object.values(MINER_MINING_ATTACK_ASSETS),
+      MINER_MINING_IMPACT_ASSET,
+    ]) {
       this.load.spritesheet(asset.textureKey, asset.publicPath, {
         frameWidth: asset.frameSizePx,
         frameHeight: asset.frameSizePx,
@@ -390,6 +415,9 @@ export class BootScene extends Phaser.Scene {
       this.#marketplace = null;
       this.#floorUpgradeModal?.destroy();
       this.#floorUpgradeModal = null;
+      // The owning surface container destroys the Graphics; discard references
+      // so a scene restart creates exactly one fresh effect per cart.
+      this.#haulerThrusters = [];
     });
 
     this.#bindSnapshot(this.#source.snapshot, true);
@@ -433,6 +461,7 @@ export class BootScene extends Phaser.Scene {
    */
   public override update(time: number, delta: number): void {
     this.#bindSnapshot(this.#source.advance(), false);
+    this.#bottomNavigationView?.setBoostRemainingMs(this.#source.getBoostRemainingMs?.() ?? 0);
     this.#syncRuntimeCatAssignments(false);
     this.#animationTimeMs = advanceAnimationTimeMs(
       this.#animationTimeMs,
@@ -805,9 +834,9 @@ export class BootScene extends Phaser.Scene {
     const haulerCat = this.#surfaceHaulerCat;
     const haulerAssistantCarts = this.#surfaceHaulerAssistantCarts;
     const haulerAssistants = this.#surfaceHaulerAssistants;
-    const goldPour = this.#surfaceGoldPour;
+    const goldPours = this.#surfaceGoldPours;
 
-    if (haulerCart !== null && haulerCat !== null && goldPour !== null) {
+    if (haulerCart !== null && haulerCat !== null && goldPours.length > 0) {
       // Surface delivery represents material already present in the tower's
       // warehouse input queue. Elevator cargo still underground or returning
       // cannot fill a cart or create a pour before it reaches that queue.
@@ -828,18 +857,26 @@ export class BootScene extends Phaser.Scene {
       haulerCart
         .setTexture(
           pose.cartIsFilled
-            ? PLACEHOLDER_TEXTURES.goldContainerFilled
-            : PLACEHOLDER_TEXTURES.goldContainer,
+            ? this.#haulerCartAssets[0].filledTexture
+            : this.#haulerCartAssets[0].emptyTexture,
         )
-        .setPosition(cartX, SURFACE_HAULER_CART_Y)
+        .setFlipX(pose.facesLeft)
+        .setOrigin(0.5, this.#haulerCartAssets[0].originY)
+        .setPosition(cartX, SURFACE_HAULER_CART_Y + this.#haulerCartAssets[0].baselineOffsetY + this.#haulerCartAssets[0].hoverOffsetY)
         // `setTexture` restores the source's native dimensions. The empty cart
         // is 128 px and the filled variant is 256 px, so reapply one semantic
-        // display box after every swap to prevent visible pulsing.
-        .setDisplaySize(SURFACE_HAULER_CART_SIZE, SURFACE_HAULER_CART_SIZE);
+        // per-vehicle display box after every swap to prevent visible pulsing.
+        .setDisplaySize(this.#haulerCartAssets[0].displaySize, this.#haulerCartAssets[0].displaySize);
       haulerCat
-        .setFrame(pose.frame)
+        .setFrame(Math.floor(this.#animationTimeMs / this.#haulerFrameDurations[0]) % 4)
         .setFlipX(pose.facesLeft)
         .setPosition(catX, SURFACE_HAULER_CART_Y - 1);
+      goldPours[0]
+        .setFrame(pose.frame)
+        // The chute has one physical mouth; only the loading event/frame is
+        // per-cart, never the origin of the falling gold.
+        .setPosition(SURFACE_GOLD_POUR_X, SURFACE_GOLD_POUR_Y)
+        .setVisible(pose.goldPourVisible);
       const activeHaulerCount = calculateSurfaceHaulerCount(
         this.#viewModel.warehouse.level,
       );
@@ -851,6 +888,7 @@ export class BootScene extends Phaser.Scene {
         if (!isActive) {
           assistant.setVisible(false);
           assistantCart?.setVisible(false);
+          goldPours[index + 1]?.setVisible(false);
           continue;
         }
 
@@ -879,24 +917,35 @@ export class BootScene extends Phaser.Scene {
           ?.setVisible(true)
           .setTexture(
             assistantPose.cartIsFilled
-              ? PLACEHOLDER_TEXTURES.goldContainerFilled
-              : PLACEHOLDER_TEXTURES.goldContainer,
+              ? this.#haulerCartAssets[index + 1].filledTexture
+              : this.#haulerCartAssets[index + 1].emptyTexture,
           )
-          .setPosition(assistantCartX, assistantCartY)
-          .setDisplaySize(SURFACE_HAULER_CART_SIZE, SURFACE_HAULER_CART_SIZE);
+          .setFlipX(assistantPose.facesLeft)
+          .setOrigin(0.5, this.#haulerCartAssets[index + 1].originY)
+          .setPosition(assistantCartX, assistantCartY + this.#haulerCartAssets[index + 1].baselineOffsetY + this.#haulerCartAssets[index + 1].hoverOffsetY)
+          .setDisplaySize(this.#haulerCartAssets[index + 1].displaySize, this.#haulerCartAssets[index + 1].displaySize);
 
         assistant
           .setVisible(true)
-          .setFrame(assistantPose.frame)
+          .setFrame(Math.floor((this.#animationTimeMs + assistantPose.animationTimeOffsetMs) /
+            this.#haulerFrameDurations[index + 1]) % 4)
           .setFlipX(assistantPose.facesLeft)
           .setPosition(
             assistantX,
             assistantCartY - 1,
           );
+        goldPours[index + 1]
+          ?.setFrame(assistantPose.frame)
+          .setPosition(SURFACE_GOLD_POUR_X, SURFACE_GOLD_POUR_Y)
+          .setVisible(assistantPose.goldPourVisible);
       }
-      goldPour
-        .setFrame(pose.frame)
-        .setVisible(pose.goldPourVisible);
+      [haulerCart, ...haulerAssistantCarts].forEach((cart, index) => {
+        this.#haulerThrusters[index]?.apply(
+          cart,
+          this.#haulerCartAssets[index],
+          this.#animationTimeMs + index * 190,
+        );
+      });
     }
 
     const shaft = this.#shaftRegion;
@@ -1025,6 +1074,19 @@ export class BootScene extends Phaser.Scene {
           this.#onLeaderboard(() => {
             this.input.enabled = true;
             this.#publishLeaderboardClose();
+          });
+          return;
+        }
+
+        if (key === 'boost' && this.#onBoost !== null) {
+          this.input.enabled = false;
+          this.#onBoost(() => {
+            this.input.enabled = true;
+            if (PUBLISHES_VIEW_DIAGNOSTICS) {
+              const canvas = this.game.canvas;
+              const closeCount = Number(canvas.dataset.boostCloseCount ?? '0');
+              canvas.dataset.boostCloseCount = String(closeCount + 1);
+            }
           });
           return;
         }
@@ -1189,7 +1251,9 @@ export class BootScene extends Phaser.Scene {
         PLACEHOLDER_ANIMATION_TEXTURES.surfaceHaulerCat,
         0,
       )
-      .setDisplaySize(SURFACE_HAULER_CAT_SIZE, SURFACE_HAULER_CAT_SIZE);
+      .setDisplaySize(SURFACE_HAULER_CAT_SIZE, SURFACE_HAULER_CAT_SIZE)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.#openCatSlot('hauler:1'));
     this.#surfaceHaulerAssistantCarts = Array.from(
       { length: SURFACE_HAULER_ASSISTANT_COUNT },
       () => this.add
@@ -1203,7 +1267,7 @@ export class BootScene extends Phaser.Scene {
     );
     this.#surfaceHaulerAssistants = Array.from(
       { length: SURFACE_HAULER_ASSISTANT_COUNT },
-      () => this.add
+      (_, index) => this.add
         .sprite(
           SURFACE_HAULER_START_X - SURFACE_HAULER_CAT_GAP,
           SURFACE_HAULER_CART_Y - 1,
@@ -1211,23 +1275,33 @@ export class BootScene extends Phaser.Scene {
           0,
         )
         .setDisplaySize(SURFACE_HAULER_CAT_SIZE, SURFACE_HAULER_CAT_SIZE)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerup', () => this.#openCatSlot(`hauler:${index + 2}` as CatSlotKey))
         .setVisible(false),
     );
-    this.#surfaceGoldPour = this.add
-      .sprite(
-        SURFACE_GOLD_POUR_X,
-        SURFACE_GOLD_POUR_Y,
-        PLACEHOLDER_ANIMATION_TEXTURES.surfaceGoldPour,
-        0,
-      )
-      .setDisplaySize(SURFACE_GOLD_POUR_WIDTH, SURFACE_GOLD_POUR_HEIGHT)
-      .setVisible(false);
+    this.#surfaceGoldPours = Array.from(
+      { length: SURFACE_HAULER_ASSISTANT_COUNT + 1 },
+      () => this.add
+        .sprite(
+          SURFACE_GOLD_POUR_X,
+          SURFACE_GOLD_POUR_Y,
+          PLACEHOLDER_ANIMATION_TEXTURES.surfaceGoldPour,
+          0,
+        )
+        .setDisplaySize(SURFACE_GOLD_POUR_WIDTH, SURFACE_GOLD_POUR_HEIGHT)
+        .setVisible(false),
+    );
+    this.#haulerThrusters = Array.from(
+      { length: SURFACE_HAULER_ASSISTANT_COUNT + 1 },
+      () => new HaulerThrusterView(this),
+    );
     layer.add([
+      ...this.#haulerThrusters.map((view) => view.root),
       this.#surfaceHaulerCart,
       ...this.#surfaceHaulerAssistantCarts,
       ...this.#surfaceHaulerAssistants,
       this.#surfaceHaulerCat,
-      this.#surfaceGoldPour,
+      ...this.#surfaceGoldPours,
     ]);
     this.#warehouseManager = this.add
       .sprite(
@@ -1432,6 +1506,16 @@ export class BootScene extends Phaser.Scene {
       this.#applyRuntimeSprite(this.#warehouseManager, warehouse.animation);
     }
 
+    [this.#surfaceHaulerCat, ...this.#surfaceHaulerAssistants].forEach((sprite, index) => {
+      const binding = bindings.find((candidate) => candidate.slotKey === `hauler:${index + 1}`);
+      if (binding === undefined) return;
+      this.#applyRuntimeSprite(sprite, binding.animation, SURFACE_HAULER_CAT_SIZE);
+      this.#haulerFrameDurations[index] = binding.animation.frameDurationMs;
+      const cart = resolveHaulerCartAsset(binding.animation.assetId);
+      this.#haulerCartAssets[index] = this.textures.exists(cart.emptyTexture) &&
+        this.textures.exists(cart.filledTexture) ? cart : resolveHaulerCartAsset(null);
+    });
+
     this.#floorViews.forEach((view, index) => {
       const slotKey = `miner:${this.#viewModel.floors[index].id}`;
       const binding = bindings.find((candidate) => candidate.slotKey === slotKey);
@@ -1468,6 +1552,7 @@ export class BootScene extends Phaser.Scene {
     return [
       resolve('elevator:main', 'elevator'),
       resolve('warehouse:main', 'warehouse'),
+      ...Array.from({ length: 5 }, (_, index) => resolve(`hauler:${index + 1}`, 'hauler')),
       ...this.#viewModel.floors.map(({ id }) => resolve(`miner:${id}`, 'miner')),
     ];
   }
@@ -1653,6 +1738,9 @@ export class BootScene extends Phaser.Scene {
     this.#lastViewDiagnosticMs = this.time.now;
 
     const canvas = this.game.canvas;
+    const surfaceHaulerWorkforce = calculateSurfaceHaulerWorkforce(
+      this.#viewModel.warehouse.level,
+    );
 
     // Published only once the view exists, so a reader that finds the attribute
     // can trust its shape instead of parsing a `null` and failing later, on a
@@ -1775,7 +1863,7 @@ export class BootScene extends Phaser.Scene {
           },
       surfaceHauler: this.#surfaceHaulerCart === null ||
           this.#surfaceHaulerCat === null ||
-          this.#surfaceGoldPour === null
+          this.#surfaceGoldPours.length === 0
         ? null
         : {
             cartX: this.#surfaceHaulerCart.x,
@@ -1783,10 +1871,17 @@ export class BootScene extends Phaser.Scene {
             cartWidth: this.#surfaceHaulerCart.displayWidth,
             cartHeight: this.#surfaceHaulerCart.displayHeight,
             cartTexture: this.#surfaceHaulerCart.texture.key,
+            thrusters: this.#haulerThrusters[0]?.renderedState,
             catX: this.#surfaceHaulerCat.x,
             catY: this.#surfaceHaulerCat.y,
             catFrame: Number(this.#surfaceHaulerCat.frame.name),
+            catTexture: this.#surfaceHaulerCat.texture.key,
+            catWidth: this.#surfaceHaulerCat.displayWidth,
+            catHeight: this.#surfaceHaulerCat.displayHeight,
+            slotKey: 'hauler:1',
             catFlipX: this.#surfaceHaulerCat.flipX,
+            rawCatCount: surfaceHaulerWorkforce.rawCount,
+            productivityMultiplier: surfaceHaulerWorkforce.productivityMultiplier,
             activeCatCount: 1 + this.#surfaceHaulerAssistants.filter(
               (assistant) => assistant.visible,
             ).length,
@@ -1794,6 +1889,10 @@ export class BootScene extends Phaser.Scene {
               (cart) => cart.visible,
             ).length,
             assistants: this.#surfaceHaulerAssistants.map((assistant, index) => ({
+              slotKey: `hauler:${index + 2}`,
+              catTexture: assistant.texture.key,
+              catWidth: assistant.displayWidth,
+              catHeight: assistant.displayHeight,
               visible: assistant.visible,
               x: assistant.x,
               y: assistant.y,
@@ -1805,9 +1904,16 @@ export class BootScene extends Phaser.Scene {
               cartWidth: this.#surfaceHaulerAssistantCarts[index]?.displayWidth ?? 0,
               cartHeight: this.#surfaceHaulerAssistantCarts[index]?.displayHeight ?? 0,
               cartTexture: this.#surfaceHaulerAssistantCarts[index]?.texture.key ?? '',
+              thrusters: this.#haulerThrusters[index + 1]?.renderedState,
             })),
-            goldPourVisible: this.#surfaceGoldPour.visible,
-            goldPourFrame: Number(this.#surfaceGoldPour.frame.name),
+            goldPourVisible: this.#surfaceGoldPours[0].visible,
+            goldPourFrame: Number(this.#surfaceGoldPours[0].frame.name),
+            goldPours: this.#surfaceGoldPours.map((goldPour) => ({
+              visible: goldPour.visible,
+              x: goldPour.x,
+              y: goldPour.y,
+              frame: Number(goldPour.frame.name),
+            })),
           },
       surfaceLandscape: this.#surfaceLandscape === null
         ? null

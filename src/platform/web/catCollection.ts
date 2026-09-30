@@ -53,7 +53,7 @@ const KNOWN_AVAILABILITY_STATES: readonly CatAvailabilityState[] = [
   'Expired',
   'Locked',
 ];
-const KNOWN_ROLES: readonly CatRole[] = ['elevator', 'warehouse', 'miner'];
+const KNOWN_ROLES: readonly CatRole[] = ['elevator', 'warehouse', 'miner', 'hauler'];
 const KNOWN_RARITIES: readonly CatRarityTier[] = ['N', 'R', 'SR', 'SSR', 'UR'];
 
 export async function loadCatCollectionViaFetch(
@@ -98,7 +98,7 @@ export async function replaceCatAssignmentViaFetch(
   edgeFunctionUrl: string,
   auth: CatCollectionAuthClient | null,
   command: {
-    readonly catInstanceId: string;
+    readonly catInstanceId: string | null;
     readonly slotKey: string;
     readonly expectedAssignmentRevision: number;
   },

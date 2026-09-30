@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '::1']);
+const VITE_DEV_PORTS = new Set(['5173', '5174']);
 
 function isLanDevHostname(hostname: string): boolean {
   const octets = hostname.split('.');
@@ -35,7 +36,7 @@ export function resolveSupabaseApiUrl(
       apiUrl.protocol === 'http:'
       && pageUrl.protocol === 'http:'
       && LOOPBACK_HOSTNAMES.has(apiUrl.hostname)
-      && pageUrl.port === '5173'
+      && VITE_DEV_PORTS.has(pageUrl.port)
       && isLanDevHostname(pageUrl.hostname)
     ) {
       apiUrl.hostname = pageUrl.hostname;

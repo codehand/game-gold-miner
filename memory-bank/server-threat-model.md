@@ -148,6 +148,13 @@ behind, and moving backwards.
 still be derived locally so the screen is not blocked on the network. It is
 cosmetic; the credited figure is the server's.
 
+**Mine Overdrive addition (2026-09-29).** A configured client's clock cannot
+mint or prolong a Boost: the authenticated Edge Function ignores client time
+and an atomic Postgres RPC records activation with `clock_timestamp()`. Both
+the server offline grant and its upload progress bound use only that row's
+five-minute overlap. The unconfigured/local-only build intentionally has no
+server anti-cheat boundary and caches the timestamp in localStorage.
+
 **Ordering note.** Nothing before Step 22 defends this. Steps 15–21 ship a cloud
 save that faithfully stores clock-derived income. That is acceptable only
 because §7.4 records that no money is at stake, and it must not be presented as
@@ -518,8 +525,9 @@ inventing its own.
 sign-in is the first function `src/` calls directly with `fetch()` — save
 upload/download still don't exist. `supabase/functions/_shared/http.ts`
 gained `corsHeaders`/`corsPreflightResponse`, allow-listing the two known
-loopback dev origins plus the narrowly matched private-LAN
-`http://192.168.*.*:5173` origin; `memory-bank/server-save-sync-protocol.md`
+loopback dev origins on ports `5173` and `5174` plus the narrowly matched
+private-LAN `http://192.168.*.*:5173` and `:5174` origins;
+`memory-bank/server-save-sync-protocol.md`
 records the policy,
 per this finding's own instruction. See **F12** immediately below for what
 was discovered while proving it against the real local stack.
@@ -527,8 +535,8 @@ was discovered while proving it against the real local stack.
 **F12 — the local Kong gateway overrides every Edge Function's
 `Access-Control-Allow-Origin` with a wildcard, discovered empirically while
 integration-testing Step 12's CORS handling.** `corsHeaders()` reflects only
-the two loopback origins or the narrowly matched private-LAN
-`192.168.*.*:5173` origin and omits the header entirely for anything else —
+the two loopback-port pairs or the narrowly matched private-LAN
+`192.168.*.*:5173`/`:5174` origins and omits the header entirely for anything else —
 proven correct in isolation by
 `supabase/functions/_shared/http.test.ts` and
 `telegram-sign-in/index.test.ts`, neither of which goes through the real

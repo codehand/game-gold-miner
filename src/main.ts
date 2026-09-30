@@ -2,11 +2,16 @@ import './style.css';
 
 import { BASE_GAME_BALANCE, validateBaseGameBalance } from './config';
 import {
+  activateBoost,
+  calculateOfflineIncome,
+  calculateSurfaceHaulerWorkforce,
   claimOfflineReward,
   createEmptyCatRoster,
   createPendingOfflineReward,
+  EMPTY_BOOST_STATE,
   GameNumber,
   type PendingOfflineReward,
+  type BoostState,
 } from './core';
 import { createGame, formatAmount, MineSimulationDriver } from './game';
 import {
@@ -46,6 +51,9 @@ import {
   loadMarketplaceListingsViaFetch,
   rentMarketplaceListingViaFetch,
   markOfflineGrantApplied,
+  readLocalBoostState,
+  requestBoostViaFetch,
+  writeLocalBoostState,
   MISSING_LOCAL_SAVE_CODE,
   MISSING_LOCAL_SAVE_MESSAGE,
   readAppliedOfflineGrantReceivedAtMs,
@@ -74,6 +82,7 @@ import { describeError } from './platform/describeError';
 import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
 import {
   AccountSettingsModal,
+  BoostModal,
   CatAssignmentModal,
   CollectionModal,
   LeaderboardModal,
@@ -87,6 +96,7 @@ import {
   type CatAssignmentCommandResult,
   type MarketplacePurchaseResult,
   type OfflineRewardModal,
+  type BoostCommandResult,
 } from './ui';
 
 declare global {
@@ -387,6 +397,10 @@ const backendConfigured = Boolean(
 
 /** The running driver, owned by `startApplication` and shared with the Step 22 grant application. */
 let activeDriver: MineSimulationDriver | null = null;
+let serverBoostState = EMPTY_BOOST_STATE;
+let serverClockOffsetMs = 0;
+let loadedForBoostProjection: Extract<ActiveGameLoadResult, { source: 'saved' }> | null = null;
+let localProjectionEndMs = 0;
 type CatCollectionUiStatus = 'loading' | 'ready' | 'stale' | 'error';
 let catCollectionUiStatus: CatCollectionUiStatus = 'loading';
 let pendingReward: PendingOfflineReward | null = null;
@@ -426,7 +440,8 @@ let offlineRewardPresented = false;
  * below does not depend on it.
  */
 function triggerCloudSaveReconcile(): void {
-  void runCloudSaveReconcile()
+  void refreshServerBoostStatus()
+    .then(() => runCloudSaveReconcile())
     .catch(
       (error: unknown): CloudSaveReconcileOutcome => ({
         kind: 'error',
@@ -482,6 +497,57 @@ function triggerCloudSaveReconcile(): void {
         );
       }
     });
+}
+
+function localTimelineBoost(boost: BoostState): BoostState {
+  return boost.lastActivatedAtMs === null
+    ? EMPTY_BOOST_STATE
+    : { lastActivatedAtMs: boost.lastActivatedAtMs - serverClockOffsetMs };
+}
+
+function adoptServerBoostState(boost: BoostState, serverNowMs?: number): void {
+  // A status request started before activation must not replace a newer receipt.
+  if ((boost.lastActivatedAtMs ?? 0) < (serverBoostState.lastActivatedAtMs ?? 0)) return;
+  if (serverNowMs !== undefined) serverClockOffsetMs = serverNowMs - Date.now();
+  serverBoostState = boost;
+  const localBoost = localTimelineBoost(boost);
+  const driver = activeDriver;
+  if (driver !== null) {
+    driver.advance();
+    driver.replaceBoostState(localBoost);
+  }
+  if (loadedForBoostProjection !== null) {
+    const loaded = loadedForBoostProjection;
+    const recalculated = calculateOfflineIncome(
+      loaded.loadedSave.state,
+      loaded.loadedSave.savedAtTimestampMs,
+      localProjectionEndMs,
+      loaded.loadedSave.effectiveProductionRatePerSecond,
+      BASE_GAME_BALANCE.offlineIncome,
+      localBoost,
+    );
+    localProjectionReward = createPendingOfflineReward(
+      loaded.offlineIncomeSettlementPersisted
+        ? recalculated
+        : { ...recalculated, reward: GameNumber.from(0) },
+    );
+  }
+}
+
+async function refreshServerBoostStatus(): Promise<void> {
+  const client = await supabaseClientPromise;
+  const accessToken = client === null
+    ? null
+    : (await client.auth.getSession()).data.session?.access_token ?? null;
+  if (accessToken === null || !backendConfigured) return;
+  try {
+    const result = await requestBoostViaFetch(
+      supabaseFunctionUrl('/functions/v1/boost'), accessToken, 'status',
+    );
+    adoptServerBoostState(result.boost, result.serverNowMs);
+  } catch {
+    // The save download still carries its own Boost state; activation retries on demand.
+  }
 }
 
 /**
@@ -796,6 +862,7 @@ async function runCloudSaveReconcile(): Promise<CloudSaveReconcileOutcome> {
     // per stored `received_at`. It can arrive before `startApplication` has
     // built the driver; `applyServerOfflineGrant` holds it until then.
     onOfflineGrant: (grant, receivedAtMs) => applyServerOfflineGrant(grant, receivedAtMs),
+    onBoostState: adoptServerBoostState,
   });
 }
 
@@ -980,6 +1047,7 @@ let accountSettingsModal: AccountSettingsModal | null = null;
 let leaderboardModal: LeaderboardModal | null = null;
 let collectionModal: CollectionModal | null = null;
 let catAssignmentModal: CatAssignmentModal | null = null;
+let boostModal: BoostModal | null = null;
 let unbindSaveLifecycle: (() => void) | null = null;
 let saveHeartbeatId: number | null = null;
 let disposed = false;
@@ -1045,8 +1113,53 @@ collectionModal = new CollectionModal({
 catAssignmentModal = new CatAssignmentModal({
   parent: app,
   getRoster: () => activeDriver?.catRoster ?? createEmptyCatRoster(),
+  getHaulerCount: () => calculateSurfaceHaulerWorkforce(activeDriver?.state.warehouse.level ?? 1).visibleCount,
   assign: replaceAssignedCat,
 });
+boostModal = new BoostModal({
+  parent: app,
+  getBoostState: () => activeDriver?.boostState ?? EMPTY_BOOST_STATE,
+  activate: activateMineBoost,
+  now: () => Date.now(),
+});
+
+async function activateMineBoost(): Promise<BoostCommandResult> {
+  const driver = activeDriver;
+  if (driver === null) {
+    return { kind: 'unavailable', message: 'The mine is still loading.' };
+  }
+  if (backendConfigured) {
+    if (pendingReward !== null || pendingSaveConflict !== null) {
+      return { kind: 'unavailable', message: 'Resolve the pending reward or save conflict first.' };
+    }
+    const client = await supabaseClientPromise;
+    const accessToken = client === null
+      ? null
+      : (await client.auth.getSession()).data.session?.access_token ?? null;
+    if (accessToken === null) {
+      return { kind: 'unavailable', message: 'Sign in to activate your free Boost.' };
+    }
+    driver.advance();
+    const result = await requestBoostViaFetch(
+      supabaseFunctionUrl('/functions/v1/boost'), accessToken, 'activate',
+    );
+    adoptServerBoostState(result.boost, result.serverNowMs);
+    return result.kind === 'activated'
+      ? { kind: 'activated', boost: result.boost }
+      : { kind: 'cooldown', boost: result.boost };
+  }
+  driver.advance();
+  const result = activateBoost(driver.boostState, Date.now());
+  if (result.kind === 'cooldown') {
+    return { kind: 'cooldown', boost: driver.boostState };
+  }
+  if (!writeLocalBoostState(getAvailableLocalStorage(), result.boost)) {
+    return { kind: 'unavailable', message: 'Local storage is unavailable; Boost was not activated.' };
+  }
+  driver.replaceBoostState(result.boost);
+  persistence.queueSave(createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster));
+  return result;
+}
 
 void startApplication();
 
@@ -1612,17 +1725,28 @@ async function startApplication(): Promise<void> {
     return;
   }
 
+  const localBoostState = backendConfigured
+    ? localTimelineBoost(serverBoostState)
+    : readLocalBoostState(getAvailableLocalStorage());
+  const loadNowMs = Date.now();
   const loadResult = await loadActiveGame(
     persistence,
     BASE_GAME_BALANCE,
-    Date.now(),
-    { onWarning: (warning) => saveDiagnostics.report(warning) },
+    loadNowMs,
+    {
+      onWarning: (warning) => saveDiagnostics.report(warning),
+      boostState: localBoostState,
+    },
   );
 
   // Step 21: record the local-save state (`saved` / `missing` / `unreadable`)
   // for the missing-local-save notice, then re-run the decision — the reconcile
   // may already have finished while this was loading.
   localSaveState = localSaveStateFromLoadResult(loadResult);
+  if (loadResult.source === 'saved') {
+    loadedForBoostProjection = loadResult;
+    localProjectionEndMs = loadNowMs;
+  }
   reportMissingLocalSaveIfNeeded();
 
   if (disposed) {
@@ -1635,6 +1759,7 @@ async function startApplication(): Promise<void> {
   const driver = new MineSimulationDriver({
     state: loadResult.state,
     catRoster: loadResult.catRoster,
+    boostState: backendConfigured ? localTimelineBoost(serverBoostState) : localBoostState,
     balance: BASE_GAME_BALANCE,
     now: () => Date.now(),
     // A purchase changes authoritative state without any tick completing, and
@@ -1659,9 +1784,19 @@ async function startApplication(): Promise<void> {
   catCollectionUiStatus = 'ready';
   void hydrateCatRoster(driver);
   localProjectionReward = createPendingOfflineReward(loadResult.offlineIncome);
+  if (backendConfigured && loadResult.source === 'saved' && serverBoostState !== EMPTY_BOOST_STATE) {
+    adoptServerBoostState(serverBoostState);
+  }
   maybePresentOfflineReward();
 
   game = createGame(gameViewport, driver, {
+    onBoost: (onClosed) => {
+      if (boostModal === null) {
+        onClosed();
+        return;
+      }
+      boostModal.open(onClosed);
+    },
     onMarketplacePurchase: purchaseMarketplaceCat,
     getWalletGold: () => activeDriver?.state.gold.serialize() ?? null,
     getCollection: () => activeDriver?.catRoster ?? createEmptyCatRoster(),
@@ -1750,6 +1885,7 @@ if (import.meta.hot) {
     accountSettingsModal?.destroy();
     collectionModal?.destroy();
     catAssignmentModal?.destroy();
+    boostModal?.destroy();
     unbindSaveLifecycle?.();
 
     if (saveHeartbeatId !== null) {

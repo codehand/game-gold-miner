@@ -45,9 +45,9 @@ describe('Marketplace Phase 2 icon family', () => {
   });
 
   it('covers the complete v1 role, attribute, skill, and state families', () => {
-    expect(MARKETPLACE_ICONS.filter((icon) => icon.category === 'role')).toHaveLength(3);
+    expect(MARKETPLACE_ICONS.filter((icon) => icon.category === 'role')).toHaveLength(4);
     expect(MARKETPLACE_ICONS.filter((icon) => icon.category === 'attribute')).toHaveLength(4);
-    expect(MARKETPLACE_ICONS.filter((icon) => icon.category === 'skill')).toHaveLength(3);
+    expect(MARKETPLACE_ICONS.filter((icon) => icon.category === 'skill')).toHaveLength(4);
     expect(MARKETPLACE_ICONS.filter((icon) => icon.category === 'state')).toHaveLength(6);
     expect(MARKETPLACE_ICONS.filter((icon) => icon.category === 'state').every(
       (icon) => icon.colorIndependent,

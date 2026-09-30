@@ -2,10 +2,23 @@
   "schemaVersion": 1,
   "status": "approved-phase-0",
   "approvedAt": "2026-09-19",
+  "haulerExpansionAt": "2026-09-29",
   "story": "The Cat Miners Guild certifies mine specialists and records the role, rarity, attributes, and skill profile shown on a marketplace listing.",
   "rarityTiers": ["N", "R", "SR", "SSR", "UR"],
   "attributeKeys": ["power", "speed", "capacity", "efficiency"],
   "roles": [
+    {
+      "roleId": "hauler",
+      "displayName": "Hauler",
+      "assetFamilyId": "hauler",
+      "marketplaceV1": true,
+      "runtimeDisplaySize": 52,
+      "storyRead": "A surface transport specialist operating one cart between the chute and depot.",
+      "primarySkill": "Hauling Mastery",
+      "primaryBenefit": "Individual cart throughput, averaged across active crew",
+      "weights": { "power": 0.1, "speed": 0.4, "capacity": 0.35, "efficiency": 0.15 },
+      "animationOverride": { "grid": "2x2", "frameCount": 4, "frameSize": "128x128", "frameDurationMs": 200 }
+    },
     {
       "roleId": "elevator",
       "displayName": "Elevator",

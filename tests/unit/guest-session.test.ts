@@ -57,6 +57,10 @@ describe('resolveSupabaseApiUrl', () => {
       'http://127.0.0.1:54321',
       'http://192.168.1.203:5173/#sb=',
     )).toBe('http://192.168.1.203:54321');
+    expect(resolveSupabaseApiUrl(
+      'http://127.0.0.1:54321',
+      'http://192.168.1.203:5174/#sb=',
+    )).toBe('http://192.168.1.203:54321');
   });
 
   it('keeps loopback for same-machine pages and does not rewrite production URLs', () => {

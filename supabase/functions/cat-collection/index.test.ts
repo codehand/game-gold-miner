@@ -95,7 +95,7 @@ Deno.test('purchase forwards only asset identity and idempotency key', async () 
 });
 
 Deno.test('assignment forwards the expected revision and maps a stale command to 409', async () => {
-  let received: { userId: string; catInstanceId: string; slotKey: string; expected: number } | null = null;
+  let received: { userId: string; catInstanceId: string | null; slotKey: string; expected: number } | null = null;
   const response = await handleRequest(
     request('/v1/assignment', 'POST', {
       catInstanceId: 'cat-2',
@@ -125,6 +125,26 @@ Deno.test('assignment forwards the expected revision and maps a stale command to
     slotKey: 'elevator:main',
     expected: 7,
   });
+});
+
+Deno.test('assignment accepts explicit default reset, but not a missing cat id', async () => {
+  let called = 0;
+  const dependencies = deps({ replaceAssignment: async (userId, command) => {
+    assert.equal(userId, 'user-1');
+    assert.equal(command.catInstanceId, null);
+    assert.equal(command.slotKey, 'hauler:1');
+    called++;
+    return EMPTY;
+  } });
+  const reset = await handleRequest(request('/v1/assignment', 'POST', {
+    catInstanceId: null, slotKey: 'hauler:1', expectedAssignmentRevision: 1,
+  }), dependencies);
+  assert.equal(reset.status, 200);
+  const missing = await handleRequest(request('/v1/assignment', 'POST', {
+    slotKey: 'hauler:1', expectedAssignmentRevision: 1,
+  }), dependencies);
+  assert.equal(missing.status, 400);
+  assert.equal(called, 1);
 });
 
 Deno.test('assignment rejects malformed revisions before calling the repository', async () => {

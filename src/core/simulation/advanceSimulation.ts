@@ -13,6 +13,7 @@ import { calculateSurfaceHaulerWorkforce } from './surfaceHaulers';
 import {
   EMPTY_CAT_PRODUCTION_MODIFIERS,
   getMiningOutputMultiplier,
+  getHaulingMultiplier,
   type CatProductionModifiers,
 } from '../cats';
 
@@ -26,11 +27,12 @@ export function advanceSimulation(
   elapsedMs: number,
   config: BaseGameBalanceConfig,
   modifiers?: CatProductionModifiers,
+  timeScale?: number,
 ): GameState;
 export function advanceSimulation(
   state: GameState,
   elapsedMs: number,
-  ...options: [config?: BaseGameBalanceConfig, modifiers?: CatProductionModifiers]
+  ...options: [config?: BaseGameBalanceConfig, modifiers?: CatProductionModifiers, timeScale?: number]
 ): GameState {
   // `advanceSimulation` is also passed directly to Array.reduce by the
   // existing deterministic tests; reduce supplies its numeric index as the
@@ -44,9 +46,13 @@ export function advanceSimulation(
       'miningOutputMultiplierByFloor' in options[1]
     ? options[1]
     : EMPTY_CAT_PRODUCTION_MODIFIERS;
+  const timeScale = options[2] ?? 1;
+  if (!Number.isFinite(timeScale) || timeScale <= 0 || timeScale > 4) {
+    throw new Error('Simulation time scale must be finite and between zero and four.');
+  }
   validateElapsedMs(elapsedMs);
 
-  const creditedElapsedMs = Math.min(elapsedMs, MAX_FOREGROUND_DELTA_MS);
+  const creditedElapsedMs = Math.min(elapsedMs, MAX_FOREGROUND_DELTA_MS) * timeScale;
   const accumulatedMs = state.simulationRemainderMs + creditedElapsedMs;
   const completedTicks = Math.floor(accumulatedMs / SIMULATION_STEP_MS);
   const simulationRemainderMs =
@@ -96,9 +102,11 @@ function advanceFixedStep(
   // Surface delivery has no separate persisted queue: warehouse.inputQueue is
   // the handoff boundary. Overflow workforce therefore scales the rate at
   // which the surface crew can complete that handoff/conversion stage.
-  const surfaceDeliveryMultiplier = calculateSurfaceHaulerWorkforce(
+  const workforce = calculateSurfaceHaulerWorkforce(
     transportedState.warehouse.level,
-  ).productivityMultiplier;
+  );
+  const surfaceDeliveryMultiplier = workforce.productivityMultiplier *
+    getHaulingMultiplier(modifiers, workforce.visibleCount);
   const convertedState = advanceWarehouse(
     transportedState,
     config.warehouse,

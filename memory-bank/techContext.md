@@ -2,6 +2,25 @@
 
 ## Current State
 
+Hauler expansion (2026-09-29) adds role `hauler`, slots `hauler:1..5`, Tobi SR
+and Rivet SSR, and per-cart asset binding. Cat/cart/portrait PNGs are separate;
+walk sheets use four authored 128px frames at 200ms. Cat boxes remain 52px;
+default cart boxes are 46px, while Tobi/Rivet carts are 64px after the
+2026-09-30 feedback fix. Empty/full textures share each cart's display size and
+origin. Paid wheels/coils anchor to the default ground line (154.484375 logical
+Y); Rivet's maglev stays 4px above it. Cat spacing is unchanged. Marketplace/Collection
+filters and assignment details recognize the role. Cart selectors expose the
+active crew; NULL cat ID restores the free default through the same revision-
+checked server command. `getHaulingMultiplier` averages only active carts and
+multiplies overflow and manager effects once in simulation and rate estimates.
+The generated server core must be rebuilt with `npm run build:server-core`.
+Save V3 and IndexedDB v1 are retained, with extended role/slot validation.
+Rivet's two coil outlets also have a procedural cyan/white thrust effect
+(`HaulerThrusterView`, 2026-09-30). Reusable per-cart Graphics follow the
+cosmetic clock and cart transform, with smooth 5–7.5px jets at the 64px size,
+soft glow, and no interaction or production effect. Empty/full and both travel
+directions keep the effect; inactive slots and non-Rivet assignments clear it.
+
 All 37 base-game implementation-plan steps are complete and user-validated;
 cat collection Phases 0–9 and the live seeded-catalog Marketplace
 Buy/Sell/Rent/My listings flows are complete under the living post-milestone
@@ -29,6 +48,11 @@ and the deterministic normalization script live in
 `art-source/navigation-icons-v2/`. The previous full-menu PNG remains on disk
 for historical reference but is not loaded at runtime. No save, economy,
 network or schema contract changed.
+Mine Overdrive adds a pure `src/core/boost/` clock model, x4 fixed-step
+simulation, exact-overlap offline grants, an accessible Boost modal and HUD
+countdown, plus the authenticated Boost Edge Function and one-row-per-user
+`mine_boosts` table. The save document and IndexedDB version stay unchanged;
+the unconfigured browser caches its last activation separately in localStorage.
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
@@ -47,9 +71,14 @@ numeric gameplay `level`. The existing 2×2, four-frame Step 32A unloader sheet
 remains the receiving-position fallback and the `unloader:N` baseline. Asset
 presentation uses 2×2/four-frame sheets for `N`/`R` and 4×2/eight-frame sheets
 for `SR`/`SSR`/`UR`, with shared 128×128 cells and feet anchors. The approved
-Phase 7 runtime set uses Mofy for the elevator, Baron for the warehouse, and
-Forge for miners at 8×110 ms; local runtime copies fall back to the existing
-placeholders when unavailable. The resolver and animation state are
+Phase 7 runtime set includes purchasable Mofy for the Elevator and Baron for
+the warehouse. Pip's local `public/assets/defaults/elevator/pip-4f-sheet.png`
+is the free unassigned Elevator visual at 4×220 ms; an owned Mofy uses the
+original 8×110 ms runtime sheet only when assigned to `elevator:main`. Mica
+is the unassigned miner default at 4×220 ms. The miner-assignment
+follow-up also integrates Forge's 8×110 ms idle sheet; assigning either owned
+Miner selects that cat's own travel and four-frame strike sheets. Local runtime
+copies fall back to the existing placeholders when unavailable. The resolver and animation state are
 presentation-only: no gameplay attribute, balance value, persistence field, or
 schema version change is authorized by this integration. Unselected catalog
 variants and the future Unloader role remain preview/source assets.
@@ -532,6 +561,7 @@ variants and the future Unloader role remain preview/source assets.
 - All three production stages have an authoritative indicator. Miner travel replaces the hidden per-floor extraction bar, while the elevator and warehouse retain a cycle bar plus track marker. The cabin follows a real sequential route through unlocked floors, stops at the semantic centre of each floor's gold container, and uses `Collecting` / `Returning` status; duplicate shaft number plaques are not rendered. Queued material renders wherever it accumulates, and the elevator never reports a backlog because a full car is one full trip.
 - `src/game/view-model/stageAnimation.ts` holds the cosmetic clock and mirrors the shared core worker rules. The 5,200 ms surface loop always sequences tower collection, eased outbound travel, warehouse stop, and mirrored empty return; tower queue state only enables the pour/filled-cart feedback and never parks a worker. `calculateSurfaceHaulerWorkforce` keeps the raw progression but exposes at most five visible cats; overflow becomes `rawCount / visibleCount` productivity at the existing warehouse input handoff. Surface assistants retain independent phase-shifted X positions while sharing one cat/cart Y baseline, including empty-tower round trips. `BootScene` pools one gold-pour sprite for the lead and every visible cart, placing every sprite at the same fixed chute mouth while animating visibility/frame from its own loading pose. Every mine floor uses the same one-base-plus-one-per-50-level rule through level 200, with four pooled assistants on progress-driven phase-shifted patrols sharing one horizontal baseline. Mine worker count is part of authoritative extraction cadence but never multiplies the complete cycle yield or adds save state; frame accumulation remains capped at 250 ms, multiplier-scaled, and wrapped at 7,488,000 ms.
 - Miner route position no longer exposes the core's 100 ms fixed-step cadence. `interpolateNormalizedProgressForward` blends the currently rendered progress to each new authoritative target across one `SIMULATION_STEP_MS`, moves forward across a 1→0 wrap, clamps at completion, and is used only by `MineFloorView`; extraction timing and per-worker queue-delivery boundaries remain core-owned.
+- Forge and Mica use separate 2×2/128 px transparent strike sheets at `public/assets/marketplace/runtime/miner/{forge,mica}-attack-4f-sheet.png`; Mica's current travel sheet at `miner/mica-walk-right-4f-sheet.png` is authored facing right at the same scale and foot line as his upright strike, then mirrored for leftward return. The original catalog idle sheet remains untouched. The four-frame impact sheet under `runtime/effects/forge-mining-impact-4f-sheet.png` is shared. Raw art, exact prompts, processing metadata and provenance live under `art-source/`. `BootScene.preload` loads each sheet. `calculateMinerWorkPose` maps one core extraction cycle to outbound `[0, 0.4)`, stationary mining `[0.4, 0.65)`, and return `[0.65, 1)`; strike and impact frames are selected from that progress, not from an extra simulation timer. `MineFloorView` selects the attack texture from the assigned miner asset ID, pools an impact sprite for each possible miner, and uses that character's travel art in both directions. A missing action texture falls back to ordinary travel art without changing core state or save data.
 - `BootScene` publishes `data-hud-view`, `data-floor-views`, `data-surface-views`, `data-purchase-controls`, `data-floor-upgrade-modal`, and `data-animation` at most every 100 ms rather than every frame, because displayed progress changes continuously and an unthrottled read-back would serialize the whole screen 60 times a second for diagnostics alone.
 - The surface headhouse has matched filled and empty 512×512 textures. `BootScene` derives the visible hopper state from `warehouse.queueSteps`: positive input shows gold, while zero shows the empty steel bin, with the same 128×128 display bounds after every texture swap.
 - The same `warehouse.queueSteps > 0` predicate exclusively drives surface cargo feedback: filled lead/assistant carts and each cart's gold-pour effect. Material still carried by the elevator cannot appear at the surface before authoritative delivery into `warehouse.inputQueue`; at zero queue every moving cart uses the empty texture and every pour is hidden, while all workers keep looping.
@@ -1086,18 +1116,22 @@ fixed with a token-gated `POST /v1/test-only-reset-rate-limit` route (see
 - `offlineGrant` and anything Step 22 needs beyond `received_at`, which already
   anchors it.
 
-**IndexedDB schema:** database `cat-mine-idle`, version `1`.
+**IndexedDB database:** `cat-mine-idle`, schema version `1`.
 
-| Store | Field | Type | Nullability/default | Key, index, relationship |
+| Object store | Field | Type | Required / nullable | Key / constraint |
 |---|---|---|---|---|
-| `saves` | `id` | string | Required; no default | Primary key/key path; fixed application value `active`; not auto-incremented. |
-| `saves` | `document` | `SaveDocumentV3` structured object | Required; no default | No index; validated/migrated application payload. |
+| `saves` | `id` | string | Required, non-null | Primary key via key path `id`; application writes only the literal `active`. |
+| `saves` | `document` | structured-clone-compatible `SaveDocumentV3` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
 
-There are no secondary indexes, foreign keys, relationships, or other object stores. One logical record is maintained by `put` at the fixed key. Dexie version 1 creates the store with schema `id`; no IndexedDB structural migration exists. The save-document boundary migrates a version-1 or version-2 document (including the legacy four-floor-to-fifteen-floor expansion) to version 3 before strict validation, so existing prototype progress remains readable and gains an empty cat projection.
+The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, a legacy version-1 or version-2 save (including the former four-floor prefix, expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults) is migrated to version 3, with version 1 defaulting `warehouse.totalOfflineGoldClaimed` to `"0"` and both older shapes gaining an empty cat projection; the IndexedDB database version remains `1`.
 
-**Lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1` stores at most one JSON-encoded, validated `SaveDocumentV3`. It is a synchronous pagehide recovery record, not an authoritative second save. A newer valid journal wins during load and is deleted after the same-or-newer snapshot commits to IndexedDB; malformed values are discarded.
+**Synchronous lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1`.
 
-If a database is introduced, replace this statement with the complete authoritative schema: every table, column, data type, default, nullable rule, primary/foreign key, unique/check constraint, index, and relationship. Update this section in the same change as each migration; do not leave schema details only in migration files.
+| Key | Value | Lifetime / relationship |
+|---|---|---|
+| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV3` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+
+The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
 
 ### Cat collection schema extension — 2026-09-19
 
@@ -1113,12 +1147,170 @@ have RLS enabled, no client policies, and service-role-only mutation. The
 `Assigned`/`assigned_slot_key` relationship. Assignment uniqueness prevents
 one cat from occupying two slots.
 
+Full collection table definitions (current role/slot constraints); the rental
+columns, constraints, and renter index are listed in the trading extension
+immediately below. Primary/unique keys create their corresponding indexes;
+there are no additional collection indexes beyond those shown.
+
+```sql
+create table public.cat_blueprints (
+  asset_id       text primary key,
+  display_name   text not null,
+  role_id        text not null,
+  rarity_tier    text not null,
+  price_exact    numeric not null,
+  power          integer not null,
+  speed          integer not null,
+  capacity       integer not null,
+  efficiency     integer not null,
+  constraint cat_blueprints_asset_id_length check (char_length(asset_id) between 1 and 128),
+  constraint cat_blueprints_display_name_length check (char_length(display_name) between 1 and 64),
+  constraint cat_blueprints_role_known check (role_id in ('elevator', 'warehouse', 'miner', 'hauler')),
+  constraint cat_blueprints_rarity_known check (rarity_tier in ('N', 'R', 'SR', 'SSR', 'UR')),
+  constraint cat_blueprints_price_positive check (price_exact > 0),
+  constraint cat_blueprints_attributes_range check (
+    power between 0 and 100 and speed between 0 and 100 and
+    capacity between 0 and 100 and efficiency between 0 and 100
+  )
+);
+
+create table public.cat_collection_accounts (
+  user_id              uuid primary key references auth.users(id) on delete cascade,
+  assignment_revision  bigint not null default 0,
+  collection_revision  bigint not null default 0,
+  updated_at           timestamptz not null default now(),
+  constraint cat_collection_assignment_revision_non_negative check (assignment_revision >= 0),
+  constraint cat_collection_revision_non_negative check (collection_revision >= 0)
+);
+
+create trigger cat_collection_accounts_set_updated_at
+  before update on public.cat_collection_accounts
+  for each row execute function public.set_updated_at();
+
+create table public.cat_instances (
+  cat_instance_id    uuid primary key default gen_random_uuid(),
+  owner_user_id      uuid not null references auth.users(id) on delete cascade,
+  asset_id           text not null references public.cat_blueprints(asset_id),
+  display_name       text not null,
+  role_id            text not null,
+  rarity_tier        text not null,
+  level              integer not null default 1,
+  power              integer not null,
+  speed              integer not null,
+  capacity           integer not null,
+  efficiency         integer not null,
+  calculation_version integer not null default 1,
+  availability_state text not null default 'Idle',
+  assigned_slot_key  text null,
+  updated_at         timestamptz not null default now(),
+  constraint cat_instances_display_name_length check (char_length(display_name) between 1 and 64),
+  constraint cat_instances_role_known check (role_id in ('elevator', 'warehouse', 'miner', 'hauler')),
+  constraint cat_instances_rarity_known check (rarity_tier in ('N', 'R', 'SR', 'SSR', 'UR')),
+  constraint cat_instances_level_positive check (level > 0),
+  constraint cat_instances_attributes_range check (
+    power between 0 and 100 and speed between 0 and 100 and
+    capacity between 0 and 100 and efficiency between 0 and 100
+  ),
+  constraint cat_instances_calculation_version check (calculation_version = 1),
+  constraint cat_instances_state_known check (availability_state in ('Idle', 'Assigned', 'Listed', 'Rented', 'Expired', 'Locked')),
+  constraint cat_instances_assigned_state_consistent check (
+    (availability_state = 'Assigned') = (assigned_slot_key is not null)
+  )
+);
+
+create index cat_instances_owner_state_idx
+  on public.cat_instances (owner_user_id, availability_state, role_id, updated_at desc);
+
+create trigger cat_instances_set_updated_at
+  before update on public.cat_instances
+  for each row execute function public.set_updated_at();
+
+create table public.cat_assignments (
+  owner_user_id       uuid not null references auth.users(id) on delete cascade,
+  slot_key            text not null,
+  cat_instance_id     uuid not null unique references public.cat_instances(cat_instance_id) on delete cascade,
+  assignment_revision bigint not null,
+  updated_at          timestamptz not null default now(),
+  primary key (owner_user_id, slot_key),
+  constraint cat_assignments_slot_format check (
+    slot_key = 'elevator:main' or slot_key = 'warehouse:main' or slot_key ~ '^miner:.+
+  ),
+  constraint cat_assignments_revision_positive check (assignment_revision > 0)
+);
+
+create index cat_assignments_owner_idx
+  on public.cat_assignments (owner_user_id, updated_at desc);
+
+create trigger cat_assignments_set_updated_at
+  before update on public.cat_assignments
+  for each row execute function public.set_updated_at();
+
+create table public.cat_purchase_requests (
+  owner_user_id       uuid not null references auth.users(id) on delete cascade,
+  idempotency_key     text not null,
+  cat_instance_id     uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  price_exact         numeric not null,
+  created_at          timestamptz not null default now(),
+  primary key (owner_user_id, idempotency_key),
+  constraint cat_purchase_requests_key_length check (char_length(idempotency_key) between 8 and 128),
+  constraint cat_purchase_requests_price_positive check (price_exact > 0)
+);
+
+ or slot_key ~ '^hauler:[1-5]
+  ),
+  constraint cat_assignments_revision_positive check (assignment_revision > 0)
+);
+
+create index cat_assignments_owner_idx
+  on public.cat_assignments (owner_user_id, updated_at desc);
+
+create trigger cat_assignments_set_updated_at
+  before update on public.cat_assignments
+  for each row execute function public.set_updated_at();
+
+create table public.cat_purchase_requests (
+  owner_user_id       uuid not null references auth.users(id) on delete cascade,
+  idempotency_key     text not null,
+  cat_instance_id     uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  price_exact         numeric not null,
+  created_at          timestamptz not null default now(),
+  primary key (owner_user_id, idempotency_key),
+  constraint cat_purchase_requests_key_length check (char_length(idempotency_key) between 8 and 128),
+  constraint cat_purchase_requests_price_positive check (price_exact > 0)
+);
+
+
+  ),
+  constraint cat_assignments_revision_positive check (assignment_revision > 0)
+);
+
+create index cat_assignments_owner_idx
+  on public.cat_assignments (owner_user_id, updated_at desc);
+
+create trigger cat_assignments_set_updated_at
+  before update on public.cat_assignments
+  for each row execute function public.set_updated_at();
+
+create table public.cat_purchase_requests (
+  owner_user_id       uuid not null references auth.users(id) on delete cascade,
+  idempotency_key     text not null,
+  cat_instance_id     uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  price_exact         numeric not null,
+  created_at          timestamptz not null default now(),
+  primary key (owner_user_id, idempotency_key),
+  constraint cat_purchase_requests_key_length check (char_length(idempotency_key) between 8 and 128),
+  constraint cat_purchase_requests_price_positive check (price_exact > 0)
+);
+```
+
 `purchase_cat_instance(user, assetId, idempotencyKey)` locks the caller's
 existing V3 save, derives the blueprint price and role from the server
 allowlist, debits serialized save gold, creates an Idle instance, and records
-the idempotency result in one transaction. The purchase projection also
-returns committed `walletGold` and `saveRevision`; the client adopts that
-revision before its next cloud compare-and-swap. `replace_cat_assignment(user,
+the idempotency result in one transaction. The purchase projection also reads
+the committed `walletGold` and `saveRevision`; `src/main.ts` applies those
+values before the next local/cloud save, and `CloudSaveReplica` accepts the
+external revision so the purchase cannot be mistaken for a third-party
+conflict. `replace_cat_assignment(user,
 catInstanceId, slotKey, expectedAssignmentRevision)` locks the owner revision
 and candidate, validates ownership/state/exact role, returns the prior cat to
 Idle, assigns the candidate, and increments the revision atomically. The
@@ -1212,6 +1404,50 @@ routes are authenticated `GET /v1/listings`, `POST /v1/listings`, and
 exact current cat stats and seller display name; rented users receive a
 caller-scoped usable roster projection while legal ownership remains in the
 server tables. The browser never writes marketplace tables directly.
+
+The forward-only migration `20260928100000_reject_assigned_cat_reuse.sql`
+normalizes a nullable renter comparison to `false` for owned cats and checks
+`assigned_slot_key` before assigning. A second-floor request for an already
+Assigned instance now returns `cat_not_assignable` (HTTP 409) instead of
+falling through to the unique constraint and an opaque HTTP 500. Table shapes,
+indexes, roles, and grants are unchanged.
+
+### Hauler role and slot extension — 2026-09-29
+
+`20260929100000_add_hauler_role.sql` expands `cat_blueprints_role_known` and
+`cat_instances_role_known` to `elevator | warehouse | miner | hauler` and
+`cat_assignments_slot_format` with the exact regex `^hauler:[1-5]$`. Existing
+columns, keys, indexes, RLS policies and grants are unchanged. It adds two
+blueprints: `hauler:SR:tobi:walk` at 18,000 gold (power60/speed75/capacity70/
+efficiency70) and `hauler:SSR:rivet:walk` at 42,000 (80/95/92/90). Purchases
+still create one level-1 Idle instance per new idempotency key.
+
+The replaced `replace_cat_assignment` RPC keeps owner/renter checks, row locks,
+revision validation and unique-instance guarantees. Explicit NULL cat ID means
+return to the free default on a Hauler slot only: delete that assignment,
+return its cat to Idle (or Rented for an active rental), and increment both
+revisions atomically. Missing IDs remain malformed API requests. Non-Hauler
+NULL commands are rejected. Five persistent slot keys exist; UI exposes only
+warehouse-unlocked carts, and inactive slots contribute no production bonus.
+No migration rewrites player saves or creates owned default cats. Save V3 and
+IndexedDB v1 stay unchanged; V3 validators now accept the Hauler role/slots.
+
+### Mine Overdrive schema extension — 2026-09-29
+
+`public.mine_boosts` stores one row per account. Columns: `user_id uuid NOT
+NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE`,
+`last_activated_at timestamptz NOT NULL`, and `updated_at timestamptz NOT NULL
+DEFAULT now()`. The primary key is its only index. RLS is enabled and all
+table privileges are revoked from `anon` and `authenticated`; no client policy
+exists. The Edge Function authenticates the bearer token, reads this row with
+the service role, and calls `public.activate_mine_boost(p_user_id uuid)`.
+That security-definer RPC uses `clock_timestamp()` and an atomic `INSERT ...
+ON CONFLICT ... DO UPDATE ... WHERE last_activated_at <= now - interval '8
+hours'`; it returns the new timestamp or NULL on cooldown. Execution is
+revoked from PUBLIC/anon/authenticated and granted only to `service_role`.
+The row's foreign key deletes it with its `auth.users` owner. No save-document,
+IndexedDB, or localStorage-journal schema field was added; an unconfigured
+local game uses a separate best-effort Boost localStorage cache.
 
 ## Verified Commands
 

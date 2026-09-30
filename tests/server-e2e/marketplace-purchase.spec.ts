@@ -1,20 +1,27 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
-import { createEmptyCatRoster, createInitialGameState, GameNumber } from '../../src/core';
+import { calculateLevelEffect, createEmptyCatRoster, createInitialGameState, GameNumber } from '../../src/core';
 import { calculateFloorSlotRegion } from '../../src/game/layout';
 import { createSaveDocument } from '../../src/persistence';
 
-async function seedSave(page: Page): Promise<void> {
+async function seedSave(page: Page, warehouseLevel = 1): Promise<void> {
   const now = Date.now();
   const state = createInitialGameState(BASE_GAME_BALANCE, now);
   const document = createSaveDocument(
-    { ...state, gold: GameNumber.from(100_000) },
+    {
+      ...state, gold: GameNumber.from(100_000),
+      warehouse: {
+        ...state.warehouse, level: warehouseLevel,
+        capacity: calculateLevelEffect(BASE_GAME_BALANCE.warehouse.baseCapacity, warehouseLevel, BASE_GAME_BALANCE.warehouse.upgrade),
+      },
+    },
     BASE_GAME_BALANCE,
     now,
     createEmptyCatRoster(),
   );
   await page.addInitScript((seeded) => {
+    if (sessionStorage.getItem('marketplace-fixture-seeded')) return;
     return new Promise<void>((resolve, reject) => {
       const request = indexedDB.open('cat-mine-idle', 1);
       request.onupgradeneeded = () => {
@@ -29,6 +36,7 @@ async function seedSave(page: Page): Promise<void> {
         transaction.objectStore('saves').put({ id: 'active', document: seeded });
         transaction.onerror = () => reject(transaction.error);
         transaction.oncomplete = () => {
+          sessionStorage.setItem('marketplace-fixture-seeded', 'true');
           database.close();
           resolve();
         };
@@ -55,7 +63,7 @@ async function buy(page: Page, name: string, price: string): Promise<void> {
   await marketplace.getByRole('searchbox', { name: 'Search cats' }).fill(name);
   await marketplace.getByRole('button', { name: 'View cat' }).click();
   await marketplace.getByRole('button', { name: `Buy for ${price} gold` }).click();
-  await marketplace.getByRole('button', { name: 'Confirm purchase' }).click();
+  await marketplace.getByRole('button', { name: /^(Confirm purchase|Buy listed cat)$/ }).click();
   await expect(marketplace).toContainText(`${name} was added to your Collection.`, { timeout: 15_000 });
   await marketplace.getByRole('button', { name: 'Close marketplace' }).click();
 }
@@ -94,8 +102,8 @@ test('performs live Buy purchases against Supabase', async ({ page }) => {
 
   await clickFirstMiner(page);
   const assignment = page.getByRole('dialog', { name: 'Assigned cat' });
-  await expect(assignment).toContainText('No Miner cat is assigned to this slot.');
-  await assignment.getByRole('button', { name: 'Choose a cat' }).click();
+  await expect(assignment).toContainText('Default miner · base production');
+  await assignment.getByRole('button', { name: 'Change cat' }).click();
   const forge = assignment.locator('.cat-assignment-candidate').first();
   const forgeId = await forge.getAttribute('data-cat-instance-id');
   await forge.click();
@@ -125,4 +133,153 @@ test('performs live Buy purchases against Supabase', async ({ page }) => {
     JSON.parse(document.querySelector('#game-viewport canvas')?.getAttribute('data-cat-runtime-bindings') ?? '[]')
       .find((binding: { slotKey: string }) => binding.slotKey === 'miner:floor-1')
   ))).toMatchObject({ assignedAssetId: 'miner:N:mica:idle' });
+});
+
+test('buys and equips Tobi and Rivet per cart, persists and returns to default', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedSave(page, 20);
+  await page.goto('/');
+  const canvas = page.locator('#game-viewport canvas');
+  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
+  await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
+  await expect.poll(() => page.locator('#app').getAttribute('data-cloud-save-upload'), { timeout: 15_000 }).toMatch(/uploaded|same-progress/);
+  await buy(page, 'Tobi', '18,000');
+  await buy(page, 'Rivet', '42,000');
+
+  const clickHauler = async (slot: number) => {
+    // Any visible Hauler opens the crew panel; select the stable cart button
+    // instead of racing the desired moving/overlapping sprite.
+    await page.waitForTimeout(150);
+    const offline = page.getByRole('dialog', { name: 'Offline reward' });
+    if (await offline.isVisible()) await offline.getByRole('button', { name: 'Claim', exact: true }).click();
+    // The warehouse manager legitimately overlaps unloading carts. Click the
+    // lead while it is on the open middle of the route, not under that actor.
+    await page.waitForFunction(() => {
+      const data = document.querySelector('#game-viewport canvas')?.getAttribute('data-animation');
+      const crew = data ? JSON.parse(data).surfaceHauler : null;
+      return crew && crew.catX > 110 && crew.catX < 190;
+    });
+    const animation = JSON.parse((await canvas.getAttribute('data-animation'))!);
+    const crew = animation.surfaceHauler;
+    const cat = { x: crew.catX, y: crew.catY };
+    const [surfaceX, surfaceY] = (await canvas.getAttribute('data-layout-surface'))!.split(',').map(Number);
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.click(box.x + (surfaceX + cat.x) * box.width / 360, box.y + (surfaceY + cat.y) * box.height / 640);
+    const dialog = page.getByRole('dialog', { name: 'Assigned cat' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: `Cart ${slot}`, exact: true }).click();
+    await expect(dialog).toContainText(`Slot hauler:${slot}`);
+  };
+  const assignment = page.getByRole('dialog', { name: 'Assigned cat' });
+  const equip = async (slot: number, name: string) => {
+    await clickHauler(slot);
+    await expect(assignment).toContainText('Default Hauler');
+    await assignment.getByRole('button', { name: 'Change cat' }).click();
+    await assignment.locator('.cat-assignment-candidate').filter({ hasText: name }).click();
+    await assignment.getByRole('button', { name: 'Confirm change' }).click();
+    await expect(assignment).toContainText('Cat changed. The new assignment is saved.');
+    await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+  };
+  const bindings = async () => JSON.parse((await canvas.getAttribute('data-cat-runtime-bindings'))!);
+  await equip(1, 'Tobi');
+  await equip(2, 'Rivet');
+  await expect.poll(bindings).toEqual(expect.arrayContaining([
+    expect.objectContaining({ slotKey: 'hauler:1', assignedAssetId: 'hauler:SR:tobi:walk' }),
+    expect.objectContaining({ slotKey: 'hauler:2', assignedAssetId: 'hauler:SSR:rivet:walk' }),
+    expect.objectContaining({ slotKey: 'hauler:3', assignedAssetId: null }),
+  ]));
+  await clickHauler(3);
+  await expect(assignment.getByRole('button', { name: 'No compatible cats' })).toBeDisabled();
+  await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+  await page.screenshot({ path: testInfo.outputPath('hauler-crew-mobile.png') });
+
+  await page.reload();
+  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
+  await expect.poll(bindings).toEqual(expect.arrayContaining([
+    expect.objectContaining({ slotKey: 'hauler:1', assignedAssetId: 'hauler:SR:tobi:walk' }),
+    expect.objectContaining({ slotKey: 'hauler:2', assignedAssetId: 'hauler:SSR:rivet:walk' }),
+  ]));
+  const animation = JSON.parse((await canvas.getAttribute('data-animation'))!);
+  expect(animation.surfaceHauler.catTexture).toBe('marketplace-runtime-hauler-tobi');
+  expect(animation.surfaceHauler.cartTexture).toMatch(/^hauler-tobi-cart-/);
+  expect(animation.surfaceHauler).toMatchObject({ cartWidth: 64, cartHeight: 64, catWidth: 52, catHeight: 52 });
+  expect(animation.surfaceHauler.assistants[0].catTexture).toBe('marketplace-runtime-hauler-rivet');
+  expect(animation.surfaceHauler.assistants[0].cartTexture).toMatch(/^hauler-rivet-cart-/);
+  expect(animation.surfaceHauler.assistants[0]).toMatchObject({ cartWidth: 64, cartHeight: 64, catWidth: 52, catHeight: 52 });
+  expect(animation.surfaceHauler.assistants[1]).toMatchObject({ cartWidth: 46, cartHeight: 46, catWidth: 52, catHeight: 52 });
+  expect(animation.surfaceHauler.assistants[0].cartY).toBeLessThan(animation.surfaceHauler.cartY);
+  expect(animation.surfaceHauler.thrusters).toEqual({ visible: false, jets: [] });
+  expect(animation.surfaceHauler.assistants[0].thrusters.visible).toBe(true);
+  expect(animation.surfaceHauler.assistants[0].thrusters.jets).toHaveLength(2);
+  expect(animation.surfaceHauler.assistants.slice(1).every(
+    (cart: { thrusters: { visible: boolean } }) => !cart.thrusters.visible,
+  )).toBe(true);
+  // Exercise texture changes over the live loop: an empty/filled swap must
+  // never resize either vehicle or its operator.
+  const seenCartTextures = new Set<string>();
+  const seenThrusterLengths = new Set<number>();
+  const seenRivetDirections = new Set<boolean>();
+  await expect.poll(async () => {
+    const lead = JSON.parse((await canvas.getAttribute('data-animation'))!).surfaceHauler;
+    for (const cart of [lead, lead.assistants[0]]) {
+      expect(cart).toMatchObject({ cartWidth: 64, cartHeight: 64, catWidth: 52, catHeight: 52 });
+      seenCartTextures.add(cart.cartTexture);
+    }
+    const rivet = lead.assistants[0];
+    expect(rivet.thrusters.visible).toBe(true);
+    expect(rivet.thrusters.jets).toHaveLength(2);
+    for (const [index, sourceX] of [48, 99].entries()) {
+      const jet = rivet.thrusters.jets[index];
+      expect(jet.x).toBeCloseTo(rivet.cartX + (rivet.flipX ? -1 : 1) * (sourceX / 128 - 0.5) * 64);
+      expect(jet.y).toBeCloseTo(rivet.cartY);
+      expect(jet.length).toBeGreaterThanOrEqual(5);
+      expect(jet.length).toBeLessThanOrEqual(7.5);
+      seenThrusterLengths.add(Math.round(jet.length * 100));
+    }
+    seenRivetDirections.add(rivet.flipX);
+    return {
+      textures: [...seenCartTextures].sort(),
+      directions: seenRivetDirections.size,
+      animated: seenThrusterLengths.size > 2,
+    };
+  }, { timeout: 15_000, intervals: [100] }).toEqual({
+    textures: [
+      'hauler-rivet-cart-empty', 'hauler-rivet-cart-filled',
+      'hauler-tobi-cart-empty', 'hauler-tobi-cart-filled',
+    ],
+    directions: 2,
+    animated: true,
+  });
+  await clickHauler(1);
+  await assignment.getByRole('button', { name: 'Use default Hauler' }).click();
+  await expect(assignment).toContainText('Cat changed. The new assignment is saved.');
+  await expect(assignment).toContainText('Default Hauler');
+  await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+  await equip(3, 'Tobi');
+  await expect.poll(bindings).toEqual(expect.arrayContaining([
+    expect.objectContaining({ slotKey: 'hauler:1', assignedAssetId: null }),
+    expect.objectContaining({ slotKey: 'hauler:3', assignedAssetId: 'hauler:SR:tobi:walk' }),
+  ]));
+  const restored = JSON.parse((await canvas.getAttribute('data-animation'))!).surfaceHauler;
+  expect(restored).toMatchObject({ cartWidth: 46, cartHeight: 46, catWidth: 52, catHeight: 52 });
+  expect(restored.assistants[1]).toMatchObject({ cartWidth: 64, cartHeight: 64, catWidth: 52, catHeight: 52 });
+  // Removing Rivet must clear both jets; moving him to the lead exercises the
+  // same effect on slot 1, not just the assistant renderer.
+  await clickHauler(2);
+  await assignment.getByRole('button', { name: 'Use default Hauler' }).click();
+  await expect(assignment).toContainText('Cat changed. The new assignment is saved.');
+  await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+  await expect.poll(async () => JSON.parse((await canvas.getAttribute('data-animation'))!)
+    .surfaceHauler.assistants[0].thrusters).toEqual({ visible: false, jets: [] });
+  await equip(1, 'Rivet');
+  await expect.poll(async () => JSON.parse((await canvas.getAttribute('data-animation'))!)
+    .surfaceHauler.thrusters.jets.length).toBe(2);
+  await page.waitForFunction(() => {
+    const crew = JSON.parse(document.querySelector('canvas')!.getAttribute('data-animation')!).surfaceHauler;
+    return crew.cartX > 120 && crew.cartX < 180 && !crew.catFlipX;
+  });
+  await page.screenshot({ path: testInfo.outputPath('rivet-thrusters-mobile.png') });
+  expect(errors).toEqual([]);
 });

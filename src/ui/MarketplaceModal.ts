@@ -7,7 +7,7 @@ import {
   getMarketplaceStatePresentation,
   type MarketplaceAvailabilityState,
 } from './marketplaceStatePresentation';
-import type { CatRosterState } from '../core';
+import { calculateCatRoleEffect, type CatRosterState } from '../core';
 import type {
   MarketplaceCommandResult,
   MarketplaceListingRecord,
@@ -15,7 +15,7 @@ import type {
   MarketplaceListingsResult,
 } from '../platform/web/marketplace';
 
-type RoleFilter = 'All roles' | 'Elevator' | 'Warehouse' | 'Miner';
+type RoleFilter = 'All roles' | 'Elevator' | 'Warehouse' | 'Miner' | 'Hauler';
 type RarityFilter = 'All rarities' | 'N' | 'R' | 'SR' | 'SSR' | 'UR';
 type AttributeKey = 'power' | 'speed' | 'capacity' | 'efficiency';
 
@@ -67,24 +67,28 @@ const ROLE_LABELS = {
   elevator: 'Elevator',
   warehouse: 'Warehouse',
   miner: 'Miner',
+  hauler: 'Hauler',
 } as const satisfies Record<MarketplaceAssetRecord['roleId'], Exclude<RoleFilter, 'All roles'>>;
 
 const ROLE_SKILLS = {
   elevator: 'Lift Mastery',
   warehouse: 'Storage Mastery',
   miner: 'Mining Mastery',
+  hauler: 'Hauling Mastery',
 } as const;
 
 const ROLE_ICON_IDS = {
   elevator: 'role-elevator',
   warehouse: 'role-warehouse',
   miner: 'role-miner',
+  hauler: 'role-hauler',
 } as const;
 
 const SKILL_ICON_IDS = {
   elevator: 'skill-lift-mastery',
   warehouse: 'skill-storage-mastery',
   miner: 'skill-mining-mastery',
+  hauler: 'skill-hauling-mastery',
 } as const;
 
 const ATTRIBUTE_LABELS: Readonly<Record<AttributeKey, string>> = {
@@ -119,6 +123,24 @@ function formatPurchaseError(code: string): string {
 }
 
 const PREVIEW_FIXTURES = [
+  {
+    assetId: 'hauler:SR:tobi:walk',
+    price: 18000,
+    hourly: 180,
+    level: 1,
+    attributes: { power: 60, speed: 75, capacity: 70, efficiency: 70 },
+    roleScore: 71,
+    skillBonusPercent: 22,
+  },
+  {
+    assetId: 'hauler:SSR:rivet:walk',
+    price: 42000,
+    hourly: 420,
+    level: 1,
+    attributes: { power: 80, speed: 95, capacity: 92, efficiency: 90 },
+    roleScore: 91.7,
+    skillBonusPercent: 28,
+  },
   {
     assetId: 'elevator-cargo-cat:SSR:mofy:idle',
     price: 24000,
@@ -225,6 +247,7 @@ const ROLE_FILTERS: readonly RoleFilter[] = [
   'Elevator',
   'Warehouse',
   'Miner',
+  'Hauler',
 ];
 
 const RARITY_FILTERS: readonly RarityFilter[] = ['All rarities', 'N', 'R', 'SR', 'SSR', 'UR'];
@@ -233,7 +256,7 @@ type SortOption = 'Featured' | 'Price: low' | 'Price: high';
 const SORT_OPTIONS: readonly SortOption[] = ['Featured', 'Price: low', 'Price: high'];
 
 /**
- * Buy keeps the nine deterministic catalog contracts. Rent, Sell, and My
+ * Buy keeps the eleven deterministic catalog contracts. Rent, Sell, and My
  * listings are server projections, so transaction state and ownership never
  * come from a local draft or a client-only fixture.
  */
@@ -319,6 +342,10 @@ export class MarketplaceModal {
   public open(): void {
     if (this.#dialog.open) {
       return;
+    }
+    if (this.#purchaseState !== 'pending') {
+      this.#purchaseState = 'idle';
+      this.#purchaseAssetId = null;
     }
     this.#returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.#render();
@@ -755,7 +782,11 @@ export class MarketplaceModal {
       ? 'A helping paw, by the hour.'
       : cat.listingType === 'sale'
         ? 'A permanent specialist contract from another mine.'
-        : 'A new face for your mining crew.';
+        : cat.assetId === 'hauler:SR:tobi:walk'
+          ? 'Electric trolley specialist. One purchased Tobi operates one cart.'
+          : cat.assetId === 'hauler:SSR:rivet:walk'
+            ? 'Maglev specialist with a floating cart. One purchased Rivet operates one cart.'
+            : 'A new face for your mining crew.';
     detail.append(this.#portraitImage(cat), eyebrow, name, description);
     main.append(detail);
 
@@ -785,7 +816,7 @@ export class MarketplaceModal {
       document.createTextNode(cat.primarySkill),
     );
     const skillValue = document.createElement('span');
-    skillValue.textContent = `${cat.skillBonusPercent}% current bonus · Role fit ${cat.roleScore}/100`;
+    skillValue.textContent = `${cat.skillBonusPercent}% ${cat.role === 'Hauler' ? 'bonus to this cart' : 'current bonus'} · Role fit ${cat.roleScore}/100`;
     skill.append(skillTitle, skillValue);
     main.append(skill);
 
@@ -866,11 +897,15 @@ export class MarketplaceModal {
       const success = document.createElement('p');
       success.className = 'market-note';
       success.textContent = `${cat.name} was added to your Collection.`;
+      const buyAnother = this.#button(`Buy another ${cat.name}`, () => {
+        this.#purchaseState = 'confirming';
+        this.#renderDetailsAgain(cat);
+      }, 'market-primary');
       const collection = this.#button('View collection', () => {
         this.#close();
         window.setTimeout(() => this.#onViewCollection?.(), 0);
-      }, 'market-primary');
-      controls.append(success, collection);
+      });
+      controls.append(success, buyAnother, collection);
       return controls;
     }
 
@@ -1271,24 +1306,11 @@ function formatGold(value: string | number): string {
 }
 
 function calculateRoleScoreForDisplay(cat: MarketplaceListingRecord['cat']): number {
-  const weights = cat.roleId === 'elevator'
-    ? { power: 0.1, speed: 0.45, capacity: 0.3, efficiency: 0.15 }
-    : cat.roleId === 'warehouse'
-      ? { power: 0.1, speed: 0.25, capacity: 0.4, efficiency: 0.25 }
-      : { power: 0.45, speed: 0.3, capacity: 0.05, efficiency: 0.2 };
-  return Math.round(
-    cat.attributes.power * weights.power +
-    cat.attributes.speed * weights.speed +
-    cat.attributes.capacity * weights.capacity +
-    cat.attributes.efficiency * weights.efficiency,
-  );
+  return calculateCatRoleEffect(cat).roleScore;
 }
 
 function calculateSkillBonusForDisplay(cat: MarketplaceListingRecord['cat']): number {
-  const score = calculateRoleScoreForDisplay(cat);
-  const base = cat.roleId === 'miner' ? 0 : 0.02;
-  const max = cat.roleId === 'miner' ? 0.25 : 0.28;
-  return base + max * score / 100;
+  return calculateCatRoleEffect(cat).skillBonus;
 }
 
 function formatMarketplaceError(code: string): string {

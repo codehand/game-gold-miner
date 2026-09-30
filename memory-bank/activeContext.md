@@ -2,13 +2,110 @@
 
 ## Current Focus
 
+**Rivet thruster feedback, 2026-09-30 — implemented.** Two cyan/white jets
+with soft glow pulse beneath Rivet's coils, in both directions and all cargo
+states. They track the cart without resizing or shaking the cat/vehicle and
+clear on replacement/inactive slots. Mobile screenshot reviewed; 42 scoped
+unit tests, live purchase/assignment/effect browser regression, lint/build and
+diff checks pass. Presentation only, no new raster assets or saved state.
+Dev server is running on port 5174.
+
+**Purchased Hauler cart size, 2026-09-30 — fixed.** Tobi/Rivet vehicles now
+use 64px boxes instead of 46px (+39%), with visible wheel/coil bottoms aligned
+to the default ground line and Rivet's 4px hover retained. All cats remain
+52px; default handcarts remain 46px. Empty/full swaps preserve scale and origin.
+780 unit tests, live Hauler purchase/equip/reload/default-reset browser test
+(including both cargo textures), lint and build pass. Presentation only;
+no PNG, economy, persistence, or schema change.
+
+**Hauler expansion, 2026-09-30 — implemented, scoped gates passed.**
+Default surface crew keeps wooden handcarts; Tobi SR (18,000 gold) uses an
+electric trolley and Rivet SSR (42,000) a wheel-free maglev. Every purchase is
+one level-1 instance for one `hauler:1..5` slot. The role panel exposes active
+Cart selectors, Change cat and Use default Hauler. Bonuses are averaged only
+over active carts and compose once with warehouse-manager/overflow effects.
+Separate right-facing walk sheets, portraits and empty/full carts passed
+raster QC. Forward migration was applied locally without reset. Unit (779),
+Deno (205), scoped live integration (4), client browser (12), Hauler live
+browser (1), lint/build and schema-copy equality pass. Existing unrelated
+repository-wide E2E/production failures remain open. No commit or production
+deployment was requested; dev server is available on port 5173.
+
+**Mine Overdrive, 2026-09-29 — implemented, scoped gates passed.**
+The free Boost activates once per eight hours, runs all three production
+stages x4 for five real-time minutes, and applies only the active overlap to
+offline rewards. A dedicated modal and bottom-button countdown are wired.
+The configured path uses a server-clock, atomic activation RPC and a
+server-owned row; the client-only path uses localStorage. The 775-test unit
+suite, 204 Deno tests, 134 live server-integration tests, eight focused client
+browser tests, one configured-server browser test, lint and build pass. The
+repository-wide E2E/production suites still have unrelated stale-layout and
+scroll/Marketplace failures; these are not claimed as a passed release gate.
+
+**Free Elevator Pip / purchased Mofy, 2026-09-28 — implemented.** Unassigned
+`elevator:main` now shows the new silver-tabby Pip in both elevator positions.
+Pip is a 2×2/four-frame, 128 px, 220 ms visual baseline with no owned instance
+or bonus. Mofy's existing SSR Marketplace listing and 8-frame runtime art are
+unchanged, but render only after an owned Mofy is assigned. The assignment
+panel identifies Pip and explains how to replace him. Strict raster QC,
+770 unit tests, 11 focused browser tests, lint, and build pass; no
+schema/economy change.
+
+**Default Mica and per-floor purchased Miner assignment, 2026-09-28 — implemented.**
+Every unassigned mine floor now renders Mica's walk/strike art, including
+newly unlocked floors; this baseline is presentation-only and creates no owned
+cat, skill bonus, or save field. The assignment panel identifies Mica as the
+default and offers owned, idle Miner instances for replacement. Forge remains
+Marketplace-only at 36,000 gold per instance; the Buy success view permits
+another purchase with a fresh idempotency key. A forward-only RPC migration
+normalizes the nullable renter check and rejects reusing an Assigned cat in a
+second slot with `cat_not_assignable` instead of a unique-constraint 500.
+
+**Mica walk-direction feedback, 2026-09-28 — fixed.** His previous travel
+frames faced nearly forward, so `flipX` could not visibly distinguish the
+outbound and return routes even though the pure pose already set `facesLeft`
+correctly. A new four-frame right-facing stepping sheet now serves runtime
+travel; the leftward return mirrors that sheet, and mining keeps its separate
+right-facing pickaxe action. The new art matches the shared strike foot line
+and scale. Catalog portrait, route timing, economy, and save format are
+unchanged. Directional browser states, pixel geometry, lint and build pass.
+The full 768-test unit suite also passes.
+
+**Mica in-world animation scale feedback, 2026-09-28 — fixed.** The approved
+catalog idle art occupied 92–95 px of each 128 px cell while Mica's upright
+strike frames occupied about 76 px, producing an obvious size jump at the
+travel/mining transition. The runtime-only idle sheet is now reprocessed from
+the original raw art at a shared 73–75 px body height and aligned to the same
+visible foot line as the attack. Catalog portrait and preview remain unchanged;
+no per-action Phaser scaling, core, or save change was needed. Pixel geometry
+regression, assignment browser tests, lint, build, and 768 unit tests pass.
+
+**Mica miner-animation assignment feedback, 2026-09-28 — implemented.**
+Changing a floor from Forge to the orange Mica previously resolved no local
+runtime sheet and fell back to the generic Step 32A miner; only Forge's asset
+ID enabled the strike action. Mica's approved four-frame idle sheet now has a
+runtime copy, a separate generated four-frame pickaxe sheet, and a role-matched
+registry entry. Both integrated miners select their own attack art by asset ID
+while sharing the gold-impact sprite and progress-driven route. Assignment
+authority, economy, and save format are unchanged.
+
+**Forge mining-action feedback, 2026-09-28 — implemented.** Forge's floor route
+now leaves the white unloader, reaches the gold pile, holds position for a
+four-pose pickaxe strike and a separate four-frame ore-impact effect, then
+returns to the unloader. One progress-driven lap still ends at each core
+delivery milestone; assistants keep their workforce-derived phase offsets.
+New attack and impact sheets are separate from Forge's idle sheet, with raw
+sources, reproducible processing and provenance retained under `art-source/`.
+The presentation adds no save fields or production changes.
+
 **Bottom menu redesign, 2026-09-27 — implemented.** Browser feedback found the
 former purple/gold shared strip mismatched the mine and requested independent
 icons. Five transparent 96×96 PNGs now load as separate Phaser textures and
 display at 42×42. `BottomNavigationView` draws the HUD-navy backdrop,
 slate-steel tiles, gold divider, labels and press feedback in code, with five
-64×64 hit regions in the unchanged 360×80 safe area. Boost and Map remain
-future behavior; no save, economy, network or schema contract changed.
+64×64 hit regions in the unchanged 360×80 safe area. Map remains future
+behavior; the later Mine Overdrive work now gives Boost gameplay and a
+server-owned activation row.
 
 **Mine-floor workforce cap/productivity feedback, 2026-09-27 — implemented.**
 The mine-floor rule now keeps `rawCount = 1 + floor(mineShaftLevel / 50)`,

@@ -1,5 +1,11 @@
 import type { OfflineIncomeConfig } from '../../config';
 import { GameNumber } from '../numbers/GameNumber';
+import {
+  BOOST_MULTIPLIER,
+  EMPTY_BOOST_STATE,
+  boostOverlapMs,
+  type BoostState,
+} from '../boost/boost';
 
 /**
  * Server-milestone Step 22: the offline reward as a value, with no state and no
@@ -26,6 +32,7 @@ export function calculateOfflineGrant(
   currentTimestampMs: number,
   savedProductionRatePerSecond: GameNumber,
   config: OfflineIncomeConfig,
+  boost: BoostState = EMPTY_BOOST_STATE,
 ): OfflineGrant {
   assertTimestamp(receivedAtTimestampMs, 'Saved timestamp');
   assertTimestamp(currentTimestampMs, 'Current timestamp');
@@ -44,8 +51,13 @@ export function calculateOfflineGrant(
     config.capDurationMs,
   );
   const creditedSeconds = creditedDurationMs / 1_000;
+  const boostSeconds = boostOverlapMs(
+    boost,
+    receivedAtTimestampMs,
+    receivedAtTimestampMs + creditedDurationMs,
+  ) / 1_000;
   const reward = savedProductionRatePerSecond
-    .multiply(creditedSeconds)
+    .multiply(creditedSeconds + (BOOST_MULTIPLIER - 1) * boostSeconds)
     .multiply(config.efficiency);
 
   return { elapsedDurationMs, creditedDurationMs, reward };

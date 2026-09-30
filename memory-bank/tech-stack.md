@@ -73,7 +73,7 @@ Triển khai hiện tại giữ toàn bộ 15 tầng trong core/config và chỉ
 
 Popup DOM responsive hiện dùng chung cho tầng mỏ, tháp elevator và warehouse. View-model thuần cung cấp thuộc tính cùng giá x1/x5/MAX; `MineSimulationDriver` thực hiện batch upgrade nguyên tử và gọi persistence một lần. Phaser giữ quyền render thế giới nhưng nhường toàn bộ input khi popup mở. Không có thay đổi stack hay schema.
 
-Cosmetic clock của Phaser luôn chạy route hauler 5.2 giây cho mèo chính và mọi assistant. `warehouse.inputQueue` chỉ quyết định texture xe đầy/rỗng và hiệu ứng vàng; queue bằng không không dừng chuyển động. Logic này nằm ở view-model thuần, không chạm simulation hay schema.
+Cosmetic clock của Phaser luôn chạy route hauler 5.2 giây cho mèo chính và mọi assistant. `warehouse.inputQueue` chỉ quyết định texture xe đầy/rỗng và hiệu ứng vàng; queue bằng không không dừng chuyển động. Quy tắc raw/visible crew và productivity overflow nằm trong core; multiplier được áp dụng tại handoff `warehouse.inputQueue` và dùng lại bởi production-rate/offline/anti-cheat, không thêm queue hay field vào schema.
 
 Nếu mục tiêu chỉ là App Store/Google Play và không cần Telegram/web, Godot là lựa chọn thứ hai. Nhưng với game tham chiếu hiện tại, **Phaser + TypeScript là lựa chọn tối ưu nhất**.
 

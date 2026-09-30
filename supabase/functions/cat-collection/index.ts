@@ -19,7 +19,7 @@ export interface CatCollectionRow {
   readonly ownerUserId: string;
   readonly assetId: string;
   readonly displayName: string;
-  readonly roleId: 'elevator' | 'warehouse' | 'miner';
+  readonly roleId: 'elevator' | 'warehouse' | 'miner' | 'hauler';
   readonly rarityTier: 'N' | 'R' | 'SR' | 'SSR' | 'UR';
   readonly level: number;
   readonly attributes: {
@@ -82,7 +82,7 @@ export type PurchaseCat = (userId: string, assetId: string, idempotencyKey: stri
 export type ReplaceAssignment = (
   userId: string,
   command: {
-    readonly catInstanceId: string;
+    readonly catInstanceId: string | null;
     readonly slotKey: string;
     readonly expectedAssignmentRevision: number;
   },
@@ -259,7 +259,7 @@ export async function handleRequest(
     const body = await readObject(request);
     if (
       body === null ||
-      !isNonEmptyString(body.catInstanceId) ||
+      (body.catInstanceId !== null && !isNonEmptyString(body.catInstanceId)) ||
       !isNonEmptyString(body.slotKey) ||
       !isSafeNonNegativeInteger(body.expectedAssignmentRevision)
     ) {
@@ -638,7 +638,7 @@ async function readWalletViaSupabase(userId: string): Promise<{
 
 async function replaceAssignmentViaSupabase(
   userId: string,
-  command: { readonly catInstanceId: string; readonly slotKey: string; readonly expectedAssignmentRevision: number },
+  command: { readonly catInstanceId: string | null; readonly slotKey: string; readonly expectedAssignmentRevision: number },
 ): Promise<CatCollectionProjection> {
   const { error } = await serviceClient().rpc('replace_cat_assignment', {
     p_user_id: userId,

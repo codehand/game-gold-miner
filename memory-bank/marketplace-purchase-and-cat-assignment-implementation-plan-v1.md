@@ -20,6 +20,8 @@ remain out of scope.
   ownership, idempotency, and the returned cat instance.
 - A successful purchase creates exactly one `Idle` cat and never auto-assigns
   it to a mine slot.
+- Repeating a seeded-catalog purchase with a new idempotency key creates a
+  separate owned instance; the Buy success view offers that repeat action.
 - The purchase response includes the post-purchase wallet gold and save
   revision. The client adopts both before its next cloud compare-and-swap.
 - Collection and assignment consume the same validated roster projection.

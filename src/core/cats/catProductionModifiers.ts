@@ -8,12 +8,14 @@ export interface CatProductionModifiers {
   readonly miningOutputMultiplierByFloor: Readonly<Record<string, number>>;
   readonly elevatorThroughputMultiplier: number;
   readonly warehouseProcessingMultiplier: number;
+  readonly haulingMultiplierBySlot?: Readonly<Record<string, number>>;
 }
 
 export const EMPTY_CAT_PRODUCTION_MODIFIERS: CatProductionModifiers = {
   miningOutputMultiplierByFloor: {},
   elevatorThroughputMultiplier: 1,
   warehouseProcessingMultiplier: 1,
+  haulingMultiplierBySlot: {},
 };
 
 /**
@@ -25,6 +27,7 @@ export function createCatProductionModifiers(
 ): CatProductionModifiers {
   const cats = new Map(roster.cats.map((cat) => [cat.catInstanceId, cat]));
   const miningOutputMultiplierByFloor: Record<string, number> = {};
+  const haulingMultiplierBySlot: Record<string, number> = {};
   let elevatorThroughputMultiplier = 1;
   let warehouseProcessingMultiplier = 1;
 
@@ -42,6 +45,8 @@ export function createCatProductionModifiers(
       elevatorThroughputMultiplier = multiplier;
     } else if (assignment.slotKey === 'warehouse:main') {
       warehouseProcessingMultiplier = multiplier;
+    } else if (assignment.slotKey.startsWith('hauler:')) {
+      haulingMultiplierBySlot[assignment.slotKey] = multiplier;
     }
   }
 
@@ -49,7 +54,23 @@ export function createCatProductionModifiers(
     miningOutputMultiplierByFloor,
     elevatorThroughputMultiplier,
     warehouseProcessingMultiplier,
+    haulingMultiplierBySlot,
   };
+}
+
+/** Each active cart owns one equal share; inactive slots never add a bonus. */
+export function getHaulingMultiplier(
+  modifiers: CatProductionModifiers,
+  activeCartCount: number,
+): number {
+  if (!Number.isInteger(activeCartCount) || activeCartCount < 1 || activeCartCount > 5) {
+    throw new Error('Active hauler count must be between one and five.');
+  }
+  let total = 0;
+  for (let index = 1; index <= activeCartCount; index += 1) {
+    total += modifiers.haulingMultiplierBySlot?.[`hauler:${index}`] ?? 1;
+  }
+  return total / activeCartCount;
 }
 
 export function getMiningOutputMultiplier(

@@ -92,6 +92,49 @@ async function readCollection(accessToken: string): Promise<CatCollectionRespons
 }
 
 describe('cat collection and role assignment against the live stack', () => {
+  it('buys individual Haulers, forbids reuse, and restores default without losing ownership', async () => {
+    const guest = await createGuestIdentity();
+    await uploadWallet(guest.accessToken);
+    const purchase = async (assetId: string, idempotencyKey: string) => {
+      const response = await requestCollection(guest.accessToken, '/v1/purchase', {
+        method: 'POST', body: JSON.stringify({ assetId, idempotencyKey }),
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      return await response.json() as CatCollectionResponse;
+    };
+    const first = await purchase('hauler:SR:tobi:walk', 'hauler-tobi-0001');
+    expect(first.walletGold).toBe('82000');
+    expect(first.assignments).toHaveLength(0);
+    const second = await purchase('hauler:SR:tobi:walk', 'hauler-tobi-0002');
+    expect(second.walletGold).toBe('64000');
+    const third = await purchase('hauler:SSR:rivet:walk', 'hauler-rivet-0001');
+    expect(third.walletGold).toBe('22000');
+    expect(new Set(third.cats.map((cat) => cat.catInstanceId)).size).toBe(3);
+    const tobi = first.cats[0];
+    const anotherTobi = second.cats.find((cat) => cat.catInstanceId !== tobi.catInstanceId)!;
+    const assign = (id: string | null, slotKey: string, revision: number) =>
+      requestCollection(guest.accessToken, '/v1/assignment', {
+        method: 'POST', body: JSON.stringify({ catInstanceId: id, slotKey, expectedAssignmentRevision: revision }),
+      });
+    expect((await assign(tobi.catInstanceId, 'hauler:1', 0)).status).toBe(200);
+    const reuse = await assign(tobi.catInstanceId, 'hauler:2', 1);
+    expect(reuse.status).toBe(409);
+    expect((await reuse.json()).error.code).toBe('cat_not_assignable');
+    expect((await assign(anotherTobi.catInstanceId, 'hauler:6', 1)).status).toBe(409);
+    expect((await assign(anotherTobi.catInstanceId, 'warehouse:main', 1)).status).toBe(409);
+    expect((await assign(anotherTobi.catInstanceId, 'hauler:2', 1)).status).toBe(200);
+    expect((await assign(null, 'hauler:1', 1)).status).toBe(409);
+    const reset = await assign(null, 'hauler:1', 2);
+    expect(reset.status, await reset.clone().text()).toBe(200);
+    const persisted = await readCollection(guest.accessToken);
+    expect(persisted.cats).toHaveLength(3);
+    expect(persisted.assignments).toEqual([{ slotKey: 'hauler:2', catInstanceId: anotherTobi.catInstanceId }]);
+    expect(persisted.cats.find((cat) => cat.catInstanceId === tobi.catInstanceId)).toMatchObject({
+      ownerUserId: guest.userId, availabilityState: 'Idle', assignedSlotKey: null,
+    });
+    expect((await assign(tobi.catInstanceId, 'hauler:3', 3)).status).toBe(200);
+  });
+
   it('requires auth and keeps purchase ownership/idempotency server-authoritative', async () => {
     const unauthenticated = await fetch(`${COLLECTION_URL}/v1/collection`, {
       headers: { apikey: LOCAL_ANON_KEY },
@@ -136,6 +179,18 @@ describe('cat collection and role assignment against the live stack', () => {
     expect(replayProjection.cats[0].catInstanceId).toBe(firstProjection.cats[0].catInstanceId);
     expect(replayProjection.walletGold).toBe('64000');
     expect(replayProjection.saveRevision).toBe(firstProjection.saveRevision);
+
+    const second = await requestCollection(guest.accessToken, '/v1/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ assetId: 'miner:SSR:forge:idle', idempotencyKey: 'phase3-purchase-0001-b' }),
+    });
+    expect(second.status).toBe(200);
+    const secondProjection = await second.json() as CatCollectionResponse;
+    expect(secondProjection.cats).toHaveLength(2);
+    expect(secondProjection.cats.map((cat) => cat.catInstanceId)).toContain(firstProjection.cats[0].catInstanceId);
+    expect(new Set(secondProjection.cats.map((cat) => cat.catInstanceId)).size).toBe(2);
+    expect(secondProjection.walletGold).toBe('28000');
+    expect(secondProjection.saveRevision).toBe(3);
   });
 
   it('filters assignment by role and revision, then persists the replacement', async () => {
@@ -182,6 +237,18 @@ describe('cat collection and role assignment against the live stack', () => {
       slotKey: 'miner:floor-1',
       catInstanceId: miner.catInstanceId,
     });
+
+    const duplicateFloor = await requestCollection(guest.accessToken, '/v1/assignment', {
+      method: 'POST',
+      body: JSON.stringify({
+        catInstanceId: miner.catInstanceId,
+        slotKey: 'miner:floor-2',
+        expectedAssignmentRevision: 1,
+      }),
+    });
+    const duplicateFloorResult = await duplicateFloor.json();
+    expect(duplicateFloor.status, JSON.stringify(duplicateFloorResult)).toBe(409);
+    expect(duplicateFloorResult.error.code).toBe('cat_not_assignable');
 
     const stale = await requestCollection(guest.accessToken, '/v1/assignment', {
       method: 'POST',

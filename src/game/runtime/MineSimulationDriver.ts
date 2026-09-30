@@ -30,6 +30,12 @@ import {
   type CatRosterState,
   type FloorUnlockFailureReason,
   type GameState,
+  type BoostState,
+  EMPTY_BOOST_STATE,
+  boostEndsAtMs,
+  isBoostActive,
+  BOOST_MULTIPLIER,
+  validateBoostState,
   type UpgradePurchaseFailureReason,
   type UpgradePurchaseResult,
 } from '../../core';
@@ -68,12 +74,15 @@ export interface MineCommandSink {
 export interface MineRuntimePort extends MineSnapshotSource, MineCommandSink {
   /** Optional for lightweight scene fixtures; the production driver exposes the live projection. */
   readonly catRoster?: CatRosterState;
+  readonly boostState?: BoostState;
+  getBoostRemainingMs?(): number;
 }
 
 export interface MineSimulationDriverOptions {
   readonly state: GameState;
   /** Account-owned cat projection loaded with the active save. */
   readonly catRoster?: CatRosterState;
+  readonly boostState?: BoostState;
   /** Balance data the HUD's income estimate is derived from. */
   readonly balance: BaseGameBalanceConfig;
   /** Injected wall clock in milliseconds, normally `Date.now`. */
@@ -91,6 +100,7 @@ export class MineSimulationDriver implements MineRuntimePort {
   readonly #onCommandApplied: (() => void) | null;
   #state: GameState;
   #catRoster: CatRosterState;
+  #boostState: BoostState;
   #productionModifiers: CatProductionModifiers;
   #snapshot: MineViewModel;
 
@@ -100,9 +110,10 @@ export class MineSimulationDriver implements MineRuntimePort {
     this.#onCommandApplied = options.onCommandApplied ?? null;
     this.#state = options.state;
     this.#catRoster = options.catRoster ?? createEmptyCatRoster();
+    this.#boostState = validateBoostState(options.boostState ?? EMPTY_BOOST_STATE);
     validateCatRoster(this.#catRoster);
     this.#productionModifiers = createCatProductionModifiers(this.#catRoster);
-    this.#snapshot = createMineViewModel(options.state, options.balance, this.#productionModifiers);
+    this.#snapshot = this.#deriveSnapshot(options.state);
   }
 
   public get state(): GameState {
@@ -111,6 +122,21 @@ export class MineSimulationDriver implements MineRuntimePort {
 
   public get catRoster(): CatRosterState {
     return this.#catRoster;
+  }
+
+  public get boostState(): BoostState {
+    return this.#boostState;
+  }
+
+  public getBoostRemainingMs(): number {
+    if (!isBoostActive(this.#boostState, this.#now())) return 0;
+    const end = boostEndsAtMs(this.#boostState);
+    return end === null ? 0 : Math.max(0, end - this.#now());
+  }
+
+  public replaceBoostState(boostState: BoostState): void {
+    this.#boostState = validateBoostState(boostState);
+    this.#snapshot = this.#deriveSnapshot(this.#state);
   }
 
   /**
@@ -140,6 +166,7 @@ export class MineSimulationDriver implements MineRuntimePort {
       elapsedMs,
       this.#balance,
       this.#productionModifiers,
+      this.#boostState,
     );
 
     // Only a completed fixed tick can change a displayed value. A frame shorter
@@ -149,7 +176,9 @@ export class MineSimulationDriver implements MineRuntimePort {
     // the scene a new object to rebind. Advancing the tick counter is exactly
     // the condition, because `advanceSimulation` increments it once per tick
     // and nothing else in the pipeline touches production state.
-    if (nextState.simulationTick === this.#state.simulationTick) {
+    if (nextState.simulationTick === this.#state.simulationTick &&
+      isBoostActive(this.#boostState, nextState.lastUpdateTimestampMs) ===
+        isBoostActive(this.#boostState, this.#state.lastUpdateTimestampMs)) {
       this.#state = nextState;
 
       return this.#snapshot;
@@ -229,11 +258,7 @@ export class MineSimulationDriver implements MineRuntimePort {
     validateCatRoster(catRoster);
     this.#catRoster = catRoster;
     this.#productionModifiers = createCatProductionModifiers(catRoster);
-    this.#snapshot = createMineViewModel(
-      this.#state,
-      this.#balance,
-      this.#productionModifiers,
-    );
+    this.#snapshot = this.#deriveSnapshot(this.#state);
   }
 
   #purchaseUpgrade(
@@ -274,10 +299,15 @@ export class MineSimulationDriver implements MineRuntimePort {
 
   #setState(state: GameState): void {
     this.#state = state;
-    this.#snapshot = createMineViewModel(
+    this.#snapshot = this.#deriveSnapshot(state);
+  }
+
+  #deriveSnapshot(state: GameState): MineViewModel {
+    return createMineViewModel(
       state,
       this.#balance,
       this.#productionModifiers,
+      isBoostActive(this.#boostState, state.lastUpdateTimestampMs) ? BOOST_MULTIPLIER : 1,
     );
   }
 }

@@ -62,7 +62,8 @@ When the user clicks a cat currently visible in the mine:
 
 ## 2. v1 role slots and assignment defaults
 
-The approved Marketplace roles are `Elevator`, `Warehouse`, and `Miner`.
+The approved Marketplace roles are `Elevator`, `Warehouse`, `Miner`, and
+`Hauler` (2026-09-29 expansion).
 `Unloader` remains future-only unless separately approved.
 
 V1 defines these assignment slots:
@@ -72,9 +73,17 @@ V1 defines these assignment slots:
 | `miner:<floorId>` | `Miner` | One cat for each eligible unlocked mine floor |
 | `elevator:main` | `Elevator` | The shared elevator operation |
 | `warehouse:main` | `Warehouse` | The shared warehouse operation |
+| `hauler:1` … `hauler:5` | `Hauler` | One surface cart each; only active crew slots are exposed |
 
 Rules:
 
+- Unassigned Haulers use the free handcart baseline, with no owned instance
+  or skill bonus. Tobi SR costs 18,000 gold; Rivet SSR costs 42,000 gold, each
+  starting at level 1. The role panel includes active Cart buttons and an
+  explicit Use default Hauler action; it returns the owned cat to Idle.
+- Every unlocked `miner:<floorId>` with no owned assignment displays the free
+  Mica baseline; this is presentation only, not an owned instance or skill
+  bonus. Assigning a purchased Miner replaces Mica on that floor alone.
 - A slot contains at most one cat instance.
 - A cat instance can occupy at most one active slot at a time.
 - A cat's role is immutable and determines the slots it can occupy.
@@ -116,7 +125,7 @@ The authoritative instance contract is:
 | `ownerUserId` | Server-derived owner; never accepted from the client body |
 | `assetId` | Stable blueprint/visual identity from the allowlisted catalog |
 | `displayName` | Player-facing name for this instance |
-| `roleId` | Immutable `elevator`, `warehouse`, or `miner` role |
+| `roleId` | Immutable `elevator`, `warehouse`, `miner`, or `hauler` role |
 | `rarityTier` | Immutable rarity for the instance |
 | `level` | Current instance level |
 | `attributes` | Authoritative `power`, `speed`, `capacity`, `efficiency` values |
@@ -259,6 +268,14 @@ The affected metric is determined by role:
 | `Miner` | Mining yield/output rate for the assigned floor |
 | `Elevator` | Elevator throughput/cycle rate |
 | `Warehouse` | Warehouse processing/conversion rate |
+| `Hauler` | Its own cart's equal share of surface throughput |
+
+Hauler score is `0.1*power + 0.4*speed + 0.35*capacity + 0.15*efficiency`;
+Hauling Mastery is `0.02 + 0.28*score/100`. Tobi's score is 71 (+21.88% to his
+cart); Rivet's is 91.7 (+27.676%). For N active carts, use the mean of their
+`1 + bonus` values (default = 1). Inactive slots add nothing. Multiply that
+mean by existing `rawCount/visibleCount` productivity and the warehouse
+manager multiplier once, in both simulation and derived production rates.
 
 Rules:
 

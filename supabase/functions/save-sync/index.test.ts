@@ -1161,6 +1161,41 @@ Deno.test('handleSaveDownload derives the offlineGrant from the server receipt, 
   assert.equal(grant.creditedDurationMs, 60_000);
 });
 
+Deno.test('handleSaveDownload credits only the server-owned Boost overlap', async () => {
+  const frozenNowMs = Date.now();
+  const receivedAt = new Date(frozenNowMs - 60_000).toISOString();
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt,
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const originalNow = Date.now;
+  Date.now = () => frozenNowMs;
+  try {
+    const fetchGrant = async (lastActivatedAtMs: number | null) => {
+      const response = await handleRequest(getSaveRequest(), noopDeps({
+        resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+        readCurrentSave: async () => stored,
+        readBoostState: async () => ({ lastActivatedAtMs }),
+      }));
+      assert.equal(response.status, 200);
+      return await response.json();
+    };
+    const baseline = await fetchGrant(null);
+    const boosted = await fetchGrant(frozenNowMs - 30_000);
+    assert.deepEqual(boosted.boost, { lastActivatedAtMs: frozenNowMs - 30_000 });
+    assert.equal(boosted.offlineGrant.creditedDurationMs, 60_000);
+    assert.equal(
+      GameNumber.deserialize(boosted.offlineGrant.reward).serialize(),
+      GameNumber.deserialize(baseline.offlineGrant.reward).multiply(2.5).serialize(),
+    );
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Server-milestone Step 25 — abuse limits.
 //

@@ -25,7 +25,7 @@ import {
 } from '../../src/game/layout';
 import {
   calculateMaterialPileSteps,
-  calculateMinerPatrolPose,
+  calculateMinerWorkPose,
   MINER_PATROL_PERIOD_MS,
 } from '../../src/game/view-model';
 import { createSaveDocument } from '../../src/persistence';
@@ -245,7 +245,7 @@ test('binds the first floor group and both shared stages to a known core snapsho
     expect(rendered.showsGoldPile, `${label} fixed gold decoration`).toBe(source.isUnlocked);
     expect(rendered.goldPileDisplaySize, `${label} fixed gold decoration size`).toBe(52);
     expect(rendered.hasThinSoilLayer, `${label} soil thickness`).toBe(index > 0);
-    const expectedMinerPose = calculateMinerPatrolPose(
+    const expectedMinerPose = calculateMinerWorkPose(
       source.extractionProgress * MINER_PATROL_PERIOD_MS,
       FLOOR_PANEL.minerPatrol.x + 8,
       FLOOR_PANEL.minerPatrol.x + FLOOR_PANEL.minerPatrol.width - 8,
@@ -379,6 +379,51 @@ test('binds the first floor group and both shared stages to a known core snapsho
     'material pile must be drawn at its layout size, not the artwork size',
   ).not.toBe(filledPile);
   expect(browserErrors).toEqual([]);
+});
+
+test('default Mica strikes the gold pile with a separate impact', async ({ page }) => {
+  const baseFixture = createFixtureState();
+  const fixture = {
+    ...baseFixture,
+    floors: baseFixture.floors.map((floor, index) => index === 0
+      ? withFloor(floor, { extractionProgress: 0.56 })
+      : floor),
+  };
+  await page.clock.install({ time: FIXED_TIME });
+  await page.clock.setFixedTime(FIXED_TIME);
+  await seedActiveSave(page, fixture);
+  await page.goto('/');
+  await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute('data-boot-scene', 'BootScene');
+
+  await expect.poll(async () => {
+    const [floor] = await readRenderedFloors(page);
+    return floor.miningImpactVisible &&
+      floor.minerCrew[0]?.textureKey === 'marketplace-runtime-miner-mica-attack' &&
+      Math.abs(floor.minerPatrolX - (FLOOR_PANEL.minerPatrol.x + FLOOR_PANEL.minerPatrol.width - 8)) < 0.01;
+  }, { timeout: 8_000 }).toBe(true);
+});
+
+test('default Mica returns to the unloader with the impact hidden', async ({ page }) => {
+  const baseFixture = createFixtureState();
+  const fixture = {
+    ...baseFixture,
+    floors: baseFixture.floors.map((floor, index) => index === 0
+      ? withFloor(floor, { extractionProgress: 0.825 })
+      : floor),
+  };
+  await page.clock.install({ time: FIXED_TIME });
+  await page.clock.setFixedTime(FIXED_TIME);
+  await seedActiveSave(page, fixture);
+  await page.goto('/');
+  await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute('data-boot-scene', 'BootScene');
+
+  await expect.poll(async () => {
+    const [floor] = await readRenderedFloors(page);
+    return !floor.miningImpactVisible &&
+      floor.minerCrew[0]?.textureKey === 'marketplace-runtime-miner-mica-walk-right' &&
+      floor.minerFacesLeft &&
+      Math.abs(floor.minerPatrolX - (FLOOR_PANEL.minerPatrol.x + FLOOR_PANEL.minerPatrol.width / 2)) < 0.01;
+  }).toBe(true);
 });
 
 for (const scenario of [

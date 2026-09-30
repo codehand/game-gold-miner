@@ -48,6 +48,7 @@ export interface CreateGameOptions {
   readonly animationSpeedMultiplier?: number;
   readonly onSettings?: (onClosed: () => void) => void;
   readonly onLeaderboard?: (onClosed: () => void) => void;
+  readonly onBoost?: (onClosed: () => void) => void;
   readonly onCollection?: (onClosed: () => void) => void;
   readonly onCatSlot?: (slotKey: CatSlotKey, onClosed: () => void) => void;
   readonly onMarketplacePurchase?: (assetId: string) => Promise<MarketplacePurchaseResult>;
@@ -90,6 +91,7 @@ export function createGame(
         animationSpeedMultiplier: options.animationSpeedMultiplier,
         onSettings: options.onSettings,
         onLeaderboard: options.onLeaderboard,
+        onBoost: options.onBoost,
         onCollection: options.onCollection,
         onCatSlot: options.onCatSlot,
         onMarketplacePurchase: options.onMarketplacePurchase,

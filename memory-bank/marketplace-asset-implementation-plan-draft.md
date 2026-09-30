@@ -611,6 +611,54 @@ validation above. Selected runtime assets may replace the role-appropriate
 presentation sprites; future roles and unapproved catalog variants remain
 catalog-only.
 
+### 2026-09-28 follow-up — same-role Mica miner
+
+- Mica is now an approved in-world miner variant. Its separate four-frame idle
+  and attack sheets are loaded locally alongside Forge, and the assigned cat's
+  asset ID selects the matching presentation texture without changing mining
+  simulation or save data.
+- Both miners use the same travel-to-pile, attack-and-impact, return-to-unloader
+  presentation cycle. The attack frames retain each cat's visual identity; the
+  gold impact effect is shared. Missing textures still fall back to the normal
+  miner animation.
+- Validation: native-scale screenshot review, build, lint, 768 unit tests, and
+  12 focused browser tests passed. The earlier Phase 7 record remains a record
+  of its original 2026-09-19 gate rather than the current asset inventory.
+
+### 2026-09-28 follow-up — Mica in-world scale correction
+
+- The original Mica idle source occupied 92–95 px in each 128 px frame, while
+  the upright attack art occupied 76 px. Reprocess the approved raw idle art
+  into a separate runtime-only 2×2 sheet with a shared scale and matching foot
+  baseline; leave the catalog sheet and portrait unchanged.
+- The public runtime idle PNG is a direct copy of the corrected source sheet.
+  Browser pixel checks constrain idle height and foot line against the upright
+  strike poses; assignment browser tests inspect both travel and attack states.
+
+### 2026-09-28 follow-up — Mica walk direction
+
+- The first runtime travel sheet reused front-facing catalog idle art, so
+  horizontal mirroring did not communicate the return direction. The corrected
+  2×2 walk sheet is authored consistently facing right, with four stepping
+  poses, Mica's approved identity, a shared 128 px cell, and the strike sheet's
+  foot baseline. Return travel mirrors these same frames to face left.
+- The former idle-runtime source remains as provenance; the runtime registry,
+  manifest, local PNG, and browser regression now use the directional sheet.
+  The Marketplace catalog portrait and mining simulation are unchanged.
+
+### 2026-09-28 follow-up — free Elevator Pip and purchased Mofy
+
+- Pip is a new original N-tier silver tabby in a blue-steel lift uniform, with
+  a brass elevator insignia and control lever. His 2×2/four-frame idle sheet
+  is loaded for the unassigned Elevator slot; both shaft and surface copies use
+  it. The matching portrait appears in the assignment panel, not Marketplace.
+- Mofy's existing SSR sheet and purchasable blueprint remain unchanged. His
+  runtime texture is now selected only when an owned instance is assigned to
+  `elevator:main`; ownership without assignment leaves Pip visible. The free
+  visual has no Collection instance or production modifier.
+- Raw generation, exact prompt, strict-QC processing, transparent sheet, and
+  provenance are retained under `art-source/cat-role-catalog/elevator-cargo-cat/n/pip/`.
+
 ## 11. Phase 8 — Release audit and provenance
 
 ### Inputs

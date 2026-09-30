@@ -8,6 +8,14 @@ enforced by shipped code and restated as a contract in `architecture.md` or
 Not part of the contract. `activeContext.md` keeps only decisions that still
 constrain code not yet written.
 
+## Mica as the free floor baseline — 2026-09-28
+
+- Treat unassigned Mica as the mine floor's presentation baseline, not as a
+  free owned cat instance. This preserves server ownership and keeps the base
+  production rate unchanged while making a newly opened floor visibly staffed.
+- One Marketplace purchase creates one owned Miner instance. It may replace
+  the baseline on one floor only; another floor requires another idle instance.
+
 ## Independent bottom-navigation icons — 2026-09-27
 
 - The mine's HUD and buildings, not the old ornate menu reference, now set the
@@ -216,3 +224,32 @@ stretched the source strip.
 - Keep the helper shared by extraction, theoretical production rates, offline
   projections, and anti-cheat in-flight allowances. This preserves one
   authoritative formula without adding a save-state workforce field or queue.
+## 2026-09-28 — Elevator default is a free visual, not a free owned cat
+
+The shared `elevator:main` slot uses Pip while unassigned; Pip is original
+N-tier art but is not a Marketplace blueprint, Collection instance, or source
+of a role bonus. Mofy remains the paid SSR blueprint and replaces Pip only
+when a server-owned instance is assigned. This mirrors the Mica/Forge floor
+pattern without changing purchase authority or save schema.
+
+## Mine Overdrive clock and economy — 2026-09-29
+
+The first Boost is free, x4 for five minutes, and repeatable only after eight
+hours. It advances all three existing simulation stages rather than
+multiplying wallet gold or adding a new resource. The timer continues while
+away; offline income gets only the exact active-window overlap within the
+existing two-hour real-time cap. Configured play uses an atomic server-clock
+activation row and server-owned grant/progress checks. The client-only build
+uses a separate localStorage timestamp, leaving the save document unchanged.
+
+## Haulers are per-cart specialists — 2026-09-30
+
+Keep free wooden-handcart workers on unassigned surface slots, without owned
+instances or bonuses. Tobi SR and Rivet SSR are level-1 purchases at 18,000 /
+42,000 gold; their electric and maglev vehicles follow their assigned instance.
+Use five stable slots, exposing only the warehouse-unlocked crew. One instance
+can occupy one slot; NULL-ID assignment explicitly restores the free default.
+Average active cart multipliers so one purchase never buffs five carts as if
+five copies had been bought. Preserve the old workforce/overflow formula.
+Use four genuinely authored walk frames and separate vehicle images, recorded
+as an art-policy exception; rarity is not padded by duplicating walk frames.

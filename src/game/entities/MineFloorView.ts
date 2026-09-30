@@ -6,6 +6,10 @@ import {
 } from '../assets/placeholderAssets';
 import type { MarketplaceRuntimeAnimationAsset } from '../assets/marketplaceRuntimeAssets';
 import {
+  MINER_MINING_IMPACT_ASSET,
+  resolveMinerMiningAttackAsset,
+} from '../assets/marketplaceRuntimeAssets';
+import {
   toFillColor,
   calculateMineFloorPanelLayout,
   BADGE_BACKGROUND,
@@ -28,10 +32,11 @@ import {
   calculateMineFloorMinerAssistantPose,
   calculateMineFloorMinerCount,
   interpolateNormalizedProgressForward,
-  calculateMinerPatrolPose,
+  calculateMinerWorkPose,
   calculateGeneratedAssetFrame,
   MINE_FLOOR_MINER_ASSISTANT_COUNT,
   MINER_PATROL_PERIOD_MS,
+  type MinerWorkPose,
   type MineFloorViewModel,
   type PurchaseFeedbackViewModel,
 } from '../view-model';
@@ -94,8 +99,9 @@ export interface RenderedFloorState {
   readonly minerPatrolX: number;
   /** Visible base miner plus every level-derived assistant on this floor. */
   readonly activeMinerCount: number;
-  /** Measured poses prove the visible miners are independently positioned. */
+  /** Measured poses expose every visible miner on the shared patrol line. */
   readonly minerCrew: readonly RenderedMineFloorMinerState[];
+  readonly miningImpactVisible: boolean;
   /** Locked floors have no shaft to upgrade, so they show no control. */
   readonly showsUpgradeControl: boolean;
   /** The control's own read-back: price, enabled state, and press feedback. */
@@ -162,6 +168,7 @@ export class MineFloorView {
   readonly #statusBackground: Phaser.GameObjects.Rectangle;
   readonly #miner: Phaser.GameObjects.Sprite;
   readonly #minerAssistants: readonly Phaser.GameObjects.Sprite[];
+  readonly #miningImpacts: readonly Phaser.GameObjects.Sprite[];
   readonly #unloader: Phaser.GameObjects.Sprite;
   readonly #goldContainer: Phaser.GameObjects.Image;
   readonly #goldContainerSize: { readonly width: number; readonly height: number };
@@ -186,6 +193,7 @@ export class MineFloorView {
   #minerDisplaySize: number;
   #minerFrameCount: number;
   #minerFrameDurationMs: number;
+  #miningAttackTextureKey: string | null = null;
   #extractionProgress = 0;
   #extractionProgressFrom = 0;
   #extractionTransitionStartMs = 0;
@@ -210,6 +218,10 @@ export class MineFloorView {
     this.#minerDisplaySize = options.minerAnimation.displaySize;
     this.#minerFrameCount = options.minerAnimation.frameCount;
     this.#minerFrameDurationMs = options.minerAnimation.frameDurationMs;
+    this.#miningAttackTextureKey = this.#resolveMiningAttackTextureKey(
+      scene,
+      options.minerAnimation,
+    );
     this.#goldContainerSize = {
       width: panel.goldContainer.width,
       height: panel.goldContainer.height,
@@ -344,6 +356,20 @@ export class MineFloorView {
     this.#goldPile = scene.add
       .image(panel.goldPile.x + panel.goldPile.width / 2, panel.goldPile.y + panel.goldPile.height / 2, PLACEHOLDER_TEXTURES.goldPile)
       .setDisplaySize(GOLD_PILE_DISPLAY_SIZE, GOLD_PILE_DISPLAY_SIZE);
+    this.#miningImpacts = Array.from(
+      { length: MINE_FLOOR_MINER_ASSISTANT_COUNT + 1 },
+      () => scene.add
+        .sprite(
+          panel.goldPile.x + panel.goldPile.width / 2,
+          panel.goldPile.y + panel.goldPile.height / 2,
+          scene.textures.exists(MINER_MINING_IMPACT_ASSET.textureKey)
+            ? MINER_MINING_IMPACT_ASSET.textureKey
+            : PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+          0,
+        )
+        .setDisplaySize(42, 42)
+        .setVisible(false),
+    );
     const queueLineY = panel.goldContainer.y - 8;
     this.#materialQueue = scene.add
       .text(panel.goldContainer.x + 18, queueLineY, '', {
@@ -440,6 +466,7 @@ export class MineFloorView {
       this.#miner,
       this.#lockIcon,
       this.#goldPile,
+      ...this.#miningImpacts,
       this.#goldCoin,
       this.#materialQueue,
       this.#backlog,
@@ -471,6 +498,10 @@ export class MineFloorView {
     this.#minerDisplaySize = animation.displaySize;
     this.#minerFrameCount = animation.frameCount;
     this.#minerFrameDurationMs = animation.frameDurationMs;
+    this.#miningAttackTextureKey = this.#resolveMiningAttackTextureKey(
+      this.#root.scene,
+      animation,
+    );
 
     for (const miner of [this.#miner, ...this.#minerAssistants]) {
       miner
@@ -591,10 +622,7 @@ export class MineFloorView {
     this.#unlockControl.applyFeedback(feedback);
   }
 
-  /**
-   * Gives the generated miner a restrained cosmetic bob. Extraction still
-   * completes exactly when the core says so.
-   */
+  /** Moves every visible miner along the shared horizontal patrol line. */
   public applyAnimation(animationTimeMs: number, renderTimeMs: number): void {
     const visualExtractionProgress = interpolateNormalizedProgressForward(
       this.#extractionProgressFrom,
@@ -602,23 +630,16 @@ export class MineFloorView {
       Math.max(0, renderTimeMs - this.#extractionTransitionStartMs),
       SIMULATION_STEP_MS,
     );
-    const pose = calculateMinerPatrolPose(
+    const pose = calculateMinerWorkPose(
       visualExtractionProgress * MINER_PATROL_PERIOD_MS,
       this.#minerStartX,
       this.#minerEndX,
     );
 
-    this.#miner
-      .setFrame(calculateGeneratedAssetFrame(
-        animationTimeMs,
-        this.#minerFrameCount,
-        this.#minerFrameDurationMs,
-      ))
-      .setY(this.#minerRestY)
-      .setX(pose.x)
-      .setFlipX(pose.facesLeft);
+    this.#applyMinerPose(this.#miner, this.#miningImpacts[0], pose, animationTimeMs);
     this.#minerAssistants.forEach((assistant, index) => {
       if (index >= this.#activeMinerCount - 1) {
+        this.#miningImpacts[index + 1].setVisible(false);
         return;
       }
 
@@ -630,19 +651,56 @@ export class MineFloorView {
         this.#minerEndX,
       );
 
-      assistant
-        .setFrame(calculateGeneratedAssetFrame(
-          animationTimeMs + assistantPose.animationTimeOffsetMs,
-          this.#minerFrameCount,
-          this.#minerFrameDurationMs,
-        ))
-        .setPosition(
-          assistantPose.x,
-          this.#minerRestY + assistantPose.yOffset,
-        )
-        .setFlipX(assistantPose.facesLeft);
+      this.#applyMinerPose(
+        assistant,
+        this.#miningImpacts[index + 1],
+        assistantPose,
+        animationTimeMs + assistantPose.animationTimeOffsetMs,
+      );
     });
     this.#unloader.setFrame(calculateGeneratedAssetFrame(animationTimeMs, 4, 220));
+  }
+
+  #resolveMiningAttackTextureKey(
+    scene: Phaser.Scene,
+    animation: MarketplaceRuntimeAnimationAsset,
+  ): string | null {
+    const attack = resolveMinerMiningAttackAsset(animation.assetId);
+    return attack !== null &&
+      scene.textures.exists(attack.textureKey) &&
+      scene.textures.exists(MINER_MINING_IMPACT_ASSET.textureKey)
+      ? attack.textureKey
+      : null;
+  }
+
+  #applyMinerPose(
+    miner: Phaser.GameObjects.Sprite,
+    impact: Phaser.GameObjects.Sprite,
+    pose: MinerWorkPose,
+    animationTimeMs: number,
+  ): void {
+    const attackTextureKey = this.#miningAttackTextureKey;
+    const isStriking = attackTextureKey !== null && pose.phase === 'mining';
+    const textureKey = isStriking
+      ? attackTextureKey
+      : this.#minerTextureKey;
+    if (miner.texture.key !== textureKey) {
+      miner.setTexture(textureKey, 0);
+    }
+    miner
+      .setFrame(isStriking
+        ? pose.strikeFrame
+        : calculateGeneratedAssetFrame(
+            animationTimeMs,
+            this.#minerFrameCount,
+            this.#minerFrameDurationMs,
+          ))
+      .setPosition(pose.x, this.#minerRestY)
+      .setFlipX(pose.facesLeft);
+    impact
+      .setFrame(pose.impactFrame)
+      .setVisible(this.#root.visible && miner.visible &&
+        this.#miningAttackTextureKey !== null && pose.impactVisible);
   }
 
   /** The upgrade control's read-back alone, for the scene's control diagnostic. */
@@ -704,6 +762,7 @@ export class MineFloorView {
       minerPatrolX: this.#miner.x,
       activeMinerCount: minerCrew.length,
       minerCrew,
+      miningImpactVisible: this.#miningImpacts.some((impact) => impact.visible),
       showsUpgradeControl: upgradeControl.isVisible,
       upgradeControl,
       showsUnlockControl: unlockControl.isVisible,

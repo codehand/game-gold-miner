@@ -36,6 +36,8 @@ import {
   SURFACE_ELEVATOR_TOWER_CENTER_X,
   SURFACE_ELEVATOR_TOWER_HEIGHT,
   SURFACE_ELEVATOR_TOWER_WIDTH,
+  SURFACE_GOLD_POUR_X,
+  SURFACE_GOLD_POUR_Y,
   SURFACE_HAULER_END_X,
   SURFACE_HAULER_CART_SIZE,
   SURFACE_HAULER_START_X,
@@ -371,7 +373,7 @@ test('reports a full floor queue while transport is the slowest stage', async ({
 test('loads a surface cart beneath the chute and pushes it toward the warehouse', async ({
   page,
 }) => {
-  await bootPausedFixture(page, createTransportLimitedState());
+  await bootPausedFixture(page, createWarehouseLevelState(100));
 
   type SurfaceHaulerReadBack = {
     surfaceHauler: {
@@ -395,6 +397,12 @@ test('loads a surface cart beneath the chute and pushes it toward the warehouse'
         cartHeight: number;
       }[];
       goldPourVisible: boolean;
+      goldPours: readonly {
+        visible: boolean;
+        x: number;
+        y: number;
+        frame: number;
+      }[];
     };
   };
 
@@ -420,6 +428,29 @@ test('loads a surface cart beneath the chute and pushes it toward the warehouse'
   expect(loading.surfaceHauler.cartHeight).toBe(SURFACE_HAULER_CART_SIZE);
   expect(loading.surfaceHauler.catX).toBeLessThan(loading.surfaceHauler.cartX);
   expect(loading.surfaceHauler.catFlipX).toBe(false);
+
+  const observedGoldPourIndexes = new Set<number>();
+  await expect.poll(async () => {
+    const animation = await readJsonAttribute<SurfaceHaulerReadBack>(
+      page,
+      'data-animation',
+    );
+
+    animation.surfaceHauler.goldPours.forEach((goldPour, index) => {
+      if (goldPour.visible) {
+        observedGoldPourIndexes.add(index);
+        expect(goldPour.frame).toBeGreaterThanOrEqual(0);
+        expect(goldPour.frame).toBeLessThan(4);
+        expect(goldPour.x).toBe(SURFACE_GOLD_POUR_X);
+        expect(goldPour.y).toBe(SURFACE_GOLD_POUR_Y);
+      }
+    });
+
+    return observedGoldPourIndexes.size;
+  }, {
+    message: 'every visible cart receives the shared gold-pour effect at the chute',
+    timeout: 8_000,
+  }).toBe(5);
 
   await expect.poll(async () => {
     const animation = await readJsonAttribute<SurfaceHaulerReadBack>(
@@ -591,6 +622,29 @@ test('adds one visible transport cat at each ten warehouse levels', async ({
     animation.surfaceHauler.catFlipX,
     ...visibleAssistants.map((assistant) => assistant.flipX),
   ]).size, 'phase-shifted cats may face different route directions').toBe(2);
+});
+
+test('caps the visible transport crew and converts overflow into productivity', async ({
+  page,
+}) => {
+  await bootPausedFixture(page, createWarehouseLevelState(100));
+
+  const animation = await readJsonAttribute<{
+    surfaceHauler: {
+      rawCatCount: number;
+      activeCatCount: number;
+      activeCartCount: number;
+      productivityMultiplier: number;
+      assistants: readonly { visible: boolean }[];
+    };
+  }>(page, 'data-animation');
+
+  expect(animation.surfaceHauler.rawCatCount).toBe(11);
+  expect(animation.surfaceHauler.activeCatCount).toBe(5);
+  expect(animation.surfaceHauler.activeCartCount).toBe(5);
+  expect(animation.surfaceHauler.productivityMultiplier).toBe(2.2);
+  expect(animation.surfaceHauler.assistants.filter((assistant) => assistant.visible))
+    .toHaveLength(4);
 });
 
 test('stops the enlarged elevator beside the floor gold container', async ({

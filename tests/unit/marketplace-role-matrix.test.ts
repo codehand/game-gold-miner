@@ -53,6 +53,7 @@ describe('Marketplace Phase 0 role matrix', () => {
     expect(matrix.schemaVersion).toBe(1);
     expect(matrix.status).toBe('approved-phase-0');
     expect(matrix.roles.map((role) => role.roleId)).toEqual([
+      'hauler',
       'elevator',
       'warehouse',
       'miner',
@@ -85,6 +86,7 @@ describe('Marketplace Phase 0 role matrix', () => {
     expect(displaySizes.get('elevator')).toBe(CAT_RUNTIME_DISPLAY_SIZE);
     expect(displaySizes.get('warehouse')).toBe(SURFACE_WAREHOUSE_MANAGER_SIZE);
     expect(displaySizes.get('miner')).toBe(MINE_FLOOR_CHARACTER_DISPLAY_SIZE);
+    expect(displaySizes.get('hauler')).toBe(52);
     expect(matrix.futureRoles[0]?.runtimeDisplaySize).toBe(MINE_FLOOR_CHARACTER_DISPLAY_SIZE);
   });
 
@@ -115,6 +117,7 @@ describe('Marketplace Phase 0 role matrix', () => {
         'warehouse-manager',
         'elevator-cargo-cat',
         'miner',
+        'hauler',
         'surface-elevator-tower',
       ]),
     );

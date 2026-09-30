@@ -76,7 +76,9 @@ Recovery code (Step 14)
 **`## Complete Database Schema`** — subsections: How a `GameNumber` is stored ·
 Storage of the save document (`text`, not `jsonb`) · Tables · Column reference ·
 Indexes, and the ones deliberately absent · Row-level security · Relationships
-and deletion · Recovery-code hashing · What Step 3 does not design
+and deletion · Recovery-code hashing · What Step 3 does not design · Mine
+Overdrive schema extension (one server-owned activation row per account) ·
+Hauler role/slot extension and full collection table definitions
 
 `techContext.md` carries the same `## Complete Database Schema` subsections
 byte-identically, plus `## Implemented Toolchain`, `## Verified Commands`,
@@ -91,10 +93,10 @@ file only when you need the provenance of a specific step or decision.
 
 | File | Holds |
 |---|---|
-| `completed-log.md` | Finished work: base-game Steps 1–37, server Steps 1–24, and independent bottom-menu assets (2026-09-27). |
-| `acceptance-gates.md` | Passed gates with evidence, including independent bottom-menu assets; features deferred at the Step 37 close. |
-| `decision-log.md` | Settled decisions and rationale, including the 2026-09-27 independent-icon decision superseding the old full strip. |
-| `risks-resolved.md` | Risks closed by code, each with the reason it closed. |
+| `completed-log.md` | Finished work: base-game Steps 1–37, server Steps 1–24, menu/miner art, free role defaults, Mine Overdrive and the 2026-09-30 individual Hauler expansion. |
+| `acceptance-gates.md` | Passed gates with evidence, including role defaults, Mine Overdrive, and the 2026-09-30 Hauler scoped gate; features deferred at the Step 37 close. |
+| `decision-log.md` | Settled decisions and rationale, including free role baselines, Mine Overdrive, and per-cart Hauler specialists. |
+| `risks-resolved.md` | Risks closed by code, each with the reason it closed, including the duplicate-assignment 500. |
 | `step-implementation-map.md` | Which server step produced which package, migration, and test. |
 | `phase-narrative.md` | The prose account of how each phase unfolded. |
 | `incident-log.md` | Four closed base-game defect reports. |

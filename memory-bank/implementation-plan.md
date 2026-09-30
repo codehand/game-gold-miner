@@ -68,9 +68,9 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 ### Step 10: Implement extraction
 
-**Instructions:** Make each unlocked floor complete extraction cycles according to its configured duration and level-adjusted yield. Completed output must enter the floor's material queue and must not directly increase spendable gold.
+**Instructions:** Make each unlocked floor advance extraction according to its configured duration and level-adjusted yield. Derive the floor worker count from the shared level rule (one worker plus one at levels 50/100/150/200), and add `cycleYield / workerCount` to the floor's material queue whenever one worker reaches the unloading cat. A full cycle still sums to the same level-adjusted yield and must not directly increase spendable gold.
 
-**Test:** Advance one floor to immediately before, exactly at, and beyond one cycle boundary. Confirm output is created only at the boundary and overflow time carries into the next cycle.
+**Test:** Advance one floor to immediately before, exactly at, and beyond each worker-delivery boundary. Confirm one equal chunk appears per worker arrival, a full cycle preserves the configured yield, and overflow time carries into the next cycle.
 
 ### Step 11: Implement the shared elevator
 
@@ -212,21 +212,23 @@ Managers, boosts, gift drops, premium currency, shops, tasks, social systems, Te
 
 **Step 32A approved revision:** Implement the locked `layout1.png` floor composition and first asset pack: walking miner with runtime direction flip, unloading attendant plus empty/filled gold-container states, edge-to-edge floor backgrounds and a fixed decorative gold pile on every unlocked floor, and separate shaft/cabin/cargo-cat elevator visuals. Smooth each miner's fixed-step progress target across rendered frames without changing production timing. Repeat the shaft texture at native vertical scale across dynamic mine depth; never stretch one bitmap over all fifteen floors. Cabin stops align with the gold-container centre and use cosmetic easing at every stop; its return route crosses the mine boundary on the same fixed X axis and ends inside a generated surface headhouse with a top gold hopper and right discharge chute. Keep that route in world coordinates so mine-camera scrolling changes only visibility, never travel distance or the tower endpoint. Position the asymmetric tower so its open bay shares the underground shaft axis. The surface uses an original low-contrast blue-sky landscape behind the headhouse, invariant-size empty/filled delivery carts, worker cats, and right-flush warehouse. Every visible worker owns one cart on its independent route pose; runtime texture swaps must reapply one semantic cart display box so differing source resolutions cannot change apparent size. The headhouse and warehouse replace their legacy cards; compact code-rendered level/upgrade badges retain 44×50 touch targets and existing commands. This does not implement deferred Manager gameplay. Use self-hosted Fredoka SemiBold/Bold, an icon-led 52 px HUD whose centre reports authoritative `warehouse.inputQueue` with a warehouse icon, two-decimal abbreviated tiers, and balanced character bounds. This remains inside Step 32 and must pass its validation gate before Step 33 starts.
 
-**Step 32A warehouse crew revision:** Keep one base surface-hauler cat and reveal
-one additional presentation-only assistant at each warehouse level multiple of
-10, capped at ten assistants plus the lead at level 100. Arrange assistants at
-independently phase-shifted horizontal route positions on one shared baseline,
-reuse the current hauler sheet, and keep every worker cycling tower→warehouse→tower
-even while the tower queue is empty. Queue state controls only the gold-pour and
-filled-cart feedback, never route movement. Do not change throughput, authoritative
-state, or save schema.
+**Step 32A warehouse crew revision:** Keep the raw surface-hauler progression
+`1 + floor(min(warehouseLevel, 100) / 10)` but expose at most five visible cats.
+Arrange assistants at independently phase-shifted horizontal route positions on
+one shared baseline, reuse the current hauler sheet, and keep every worker
+cycling tower→warehouse→tower even while the tower queue is empty. Queue state
+controls only the gold-pour and filled-cart feedback, never route movement. Once
+the raw count exceeds five, apply `rawCount / visibleCount` productivity at the
+existing `warehouse.inputQueue` handoff so aggregate capacity is preserved; no
+additional saved queue or schema field is needed.
 
 **Step 32A mine-floor crew revision:** Keep one base miner on every unlocked
-floor and reveal one additional presentation-only miner at floor levels 50,
-100, 150, and 200, capped at five visible miners. Apply the same thresholds to
-all floors, pool the four assistants once per floor, and give them independently
-phase-shifted patrol poses and shallow lanes. Do not multiply extraction,
-authoritative state, or save schema.
+floor and reveal one additional miner at floor levels 50, 100, 150, and 200,
+capped at five visible miners. Apply the same thresholds to all floors, pool
+the four assistants once per floor, and give them independently phase-shifted
+patrol poses on one shared horizontal baseline. The phase milestones match the
+core's per-worker delivery chunks: each arrival updates that floor's queue, but
+the complete cycle yield remains unchanged and no save field is added.
 
 ## Phase 6 — Integration and Base-Game Exit Criteria
 

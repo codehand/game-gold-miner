@@ -1603,6 +1603,23 @@ body {
   font-size: 12px;
 }
 
+.cat-assignment-hauler-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.cat-assignment-hauler-slots button {
+  flex: 1 1 48px;
+  min-height: 44px;
+}
+
+.cat-assignment-hauler-slots button[aria-pressed="true"] {
+  outline: 2px solid #f5c15c;
+  outline-offset: -2px;
+}
+
 .cat-assignment-current {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);
@@ -1828,3 +1845,50 @@ body {
     font-size: 18px;
   }
 }
+/* Mine Overdrive uses the mine's steel/navy shell and restrained gold accent. */
+.boost-dialog {
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+  padding: 0;
+  border: 2px solid #c58d36;
+  border-radius: 20px;
+  background: #11243a;
+  color: #f5f8fb;
+  box-shadow: 0 24px 80px #000a;
+}
+
+.boost-dialog::backdrop { background: #030d1ddc; }
+
+.boost-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #162f49;
+  border-bottom: 1px solid #52718b;
+}
+
+.boost-dialog-header h1 { margin: 0; font-size: 22px; }
+
+.boost-dialog button {
+  min-height: 44px;
+  border: 1px solid #8c693d;
+  border-radius: 10px;
+  background: #2e4962;
+  color: #fff8e8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.boost-dialog button:disabled { cursor: default; opacity: 0.7; }
+.boost-dialog :focus-visible { outline: 3px solid #8ee5e3; outline-offset: 2px; }
+.boost-dialog-close { width: 44px; font-size: 27px !important; line-height: 1; }
+.boost-dialog-content { padding: 20px; text-align: center; }
+.boost-dialog-mark { color: #ffd061; font-size: 38px; font-weight: 700; text-shadow: 0 3px 10px #e69e4380; }
+.boost-dialog-content p { margin: 12px 0; line-height: 1.4; }
+.boost-dialog-note, .boost-dialog-content small { color: #b9cadb; font-size: 12px; }
+.boost-dialog-status { color: #ffd778; font-weight: 700; }
+.boost-dialog-action { width: 100%; margin: 8px 0 14px; background: #a36a28 !important; font-weight: 700 !important; }
+.boost-dialog-error { color: #ffc5bd; }

@@ -28,5 +28,6 @@ export {
   createCatProductionModifiers,
   EMPTY_CAT_PRODUCTION_MODIFIERS,
   getMiningOutputMultiplier,
+  getHaulingMultiplier,
   type CatProductionModifiers,
 } from './catProductionModifiers';

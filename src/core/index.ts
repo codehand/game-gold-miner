@@ -1,4 +1,18 @@
 export {
+  activateBoost,
+  boostAvailableAtMs,
+  boostEndsAtMs,
+  boostOverlapMs,
+  EMPTY_BOOST_STATE,
+  isBoostActive,
+  validateBoostState,
+  BOOST_COOLDOWN_MS,
+  BOOST_DURATION_MS,
+  BOOST_MULTIPLIER,
+  type BoostActivationResult,
+  type BoostState,
+} from './boost/boost';
+export {
   calculateMineProductionRates,
   calculateTheoreticalFloorExtractionRate,
   type FloorProductionRate,

@@ -137,10 +137,14 @@ describe('local Supabase stack configuration', () => {
     );
   });
 
-  it('uses the LAN Vite origin as the Auth fallback and allows browser OAuth callbacks', () => {
+  it('uses the LAN Vite origin as the Auth fallback and allows default/fallback browser OAuth callbacks', () => {
     expect(config).toMatch(/site_url = "http:\/\/192\.168\.1\.203:5173"/);
     expect(config).toContain('"http://192.168.1.203:5173"');
     expect(config).toContain('"http://192.168.*.*:5173"');
+    expect(config).toContain('"http://192.168.1.203:5174"');
+    expect(config).toContain('"http://192.168.*.*:5174"');
+    expect(config).toContain('"http://localhost:5174"');
+    expect(config).toContain('"http://127.0.0.1:5174"');
   });
 
   it('keeps the Edge Function CORS policy aligned with the LAN OAuth origin', () => {
@@ -307,6 +311,7 @@ describe('every Edge Function', () => {
     'recovery-code',
     'leaderboard-read',
     'cat-collection',
+    'boost',
   ];
 
   it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(
@@ -890,7 +895,8 @@ describe('the Step 17 cloud-save reconcile trigger in src/main.ts', () => {
     const body = trigger.slice(0, trigger.indexOf('\n}\n') + 3);
 
     expect(body).toContain('.catch(');
-    expect(body).toContain('void runCloudSaveReconcile()');
+    expect(body).toContain('runCloudSaveReconcile()');
+    expect(body).toContain('refreshServerBoostStatus()');
   });
 
   it('unbinds the save lifecycle before reloading, so pagehide cannot journal the stale pre-adoption document (2026-09-13 review)', () => {

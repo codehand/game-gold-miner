@@ -2,6 +2,7 @@ import type { OfflineIncomeConfig } from '../../config';
 import { GameNumber } from '../numbers/GameNumber';
 import type { GameState } from '../state/GameState';
 import { calculateOfflineGrant } from './calculateOfflineGrant';
+import { EMPTY_BOOST_STATE, type BoostState } from '../boost/boost';
 
 export interface OfflineIncomeCalculation {
   readonly state: GameState;
@@ -25,12 +26,14 @@ export function calculateOfflineIncome(
   currentTimestampMs: number,
   savedProductionRatePerSecond: GameNumber,
   config: OfflineIncomeConfig,
+  boost: BoostState = EMPTY_BOOST_STATE,
 ): OfflineIncomeCalculation {
   const grant = calculateOfflineGrant(
     savedAtTimestampMs,
     currentTimestampMs,
     savedProductionRatePerSecond,
     config,
+    boost,
   );
 
   return {

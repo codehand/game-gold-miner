@@ -44,6 +44,35 @@ function withFloorLevel(state: GameState, floorIndex: number, level: number): Ga
 }
 
 describe('evaluateProgressBound (Step 23)', () => {
+  it('allows only server-recorded Boost overlap in the offline-claim bound', () => {
+    const previous = freshState();
+    const rate = calculateMineProductionRates(previous, BASE_GAME_BALANCE)
+      .effectiveProductionPerSecond;
+    const candidate = {
+      ...previous,
+      warehouse: {
+        ...previous.warehouse,
+        totalOfflineGoldClaimed: rate.multiply(180),
+      },
+    };
+    const intervalStartMs = TIMESTAMP_MS;
+    const input = {
+      previous,
+      candidate,
+      elapsedMs: 60_000,
+      intervalStartMs,
+      config: BASE_GAME_BALANCE,
+    };
+    expect(evaluateProgressBound(input)?.counter).toBe('state.warehouse.totalOfflineGoldClaimed');
+    expect(evaluateProgressBound({
+      ...input,
+      boostState: { lastActivatedAtMs: intervalStartMs },
+    })).toBeNull();
+    expect(evaluateProgressBound({
+      ...input,
+      boostState: { lastActivatedAtMs: intervalStartMs + 40_000 },
+    })?.counter).toBe('state.warehouse.totalOfflineGoldClaimed');
+  });
   it('accepts an honest no-upgrade session at any length', () => {
     for (const durationMs of [1_000, 60_000, 2 * 60 * 60 * 1_000, 24 * 60 * 60 * 1_000]) {
       const previous = freshState();

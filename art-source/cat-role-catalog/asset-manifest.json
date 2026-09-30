@@ -32,6 +32,37 @@
   ],
   "roles": [
     {
+      "roleId": "hauler",
+      "roleName": "Surface cart operator",
+      "runtimeBehavior": "One owned cat per cart slot, default handcart when unassigned. SR electric trolley; SSR levitating maglev.",
+      "animationPolicyOverride": "4 authored walk frames at 200ms; preserve actual frames instead of duplicating to 8.",
+      "provenance": "art-source/cat-role-catalog/hauler/provenance.md",
+      "variants": [
+        {
+          "assetId": "hauler:SR:tobi:walk",
+          "characterName": "Tobi",
+          "rarityTier": "SR",
+          "runtimeIntegrated": true,
+          "transparentSheet": "art-source/cat-role-catalog/hauler/sr/tobi/walk/sheet-transparent.png",
+          "runtimePath": "public/assets/marketplace/runtime/hauler/tobi-walk-4f-sheet.png",
+          "frameCount": 4,
+          "frameSize": "128x128",
+          "frameDurationMs": 200
+        },
+        {
+          "assetId": "hauler:SSR:rivet:walk",
+          "characterName": "Rivet",
+          "rarityTier": "SSR",
+          "runtimeIntegrated": true,
+          "transparentSheet": "art-source/cat-role-catalog/hauler/ssr/rivet/walk/sheet-transparent.png",
+          "runtimePath": "public/assets/marketplace/runtime/hauler/rivet-walk-4f-sheet.png",
+          "frameCount": 4,
+          "frameSize": "128x128",
+          "frameDurationMs": 200
+        }
+      ]
+    },
+    {
       "roleId": "unloader",
       "roleName": "Floor-head unloading attendant",
       "defaultRarityTier": "N",
@@ -358,11 +389,30 @@
       "roleName": "Elevator cargo steward",
       "codeAlias": "elevatorCargoCat",
       "defaultRarityTier": "N",
-      "currentRuntimeAsset": "public/assets/marketplace/runtime/elevator/mofy-8f-sheet.png",
-      "currentRuntimeTextureKey": "marketplace-runtime-elevator-mofy",
-      "runtimeBehavior": "Marketplace runtime preview uses Mofy as the role presentation; the Step 32A cargo cat remains the fallback.",
+      "currentRuntimeAsset": "public/assets/defaults/elevator/pip-4f-sheet.png",
+      "currentRuntimeTextureKey": "default-elevator-pip",
+      "runtimeBehavior": "Unassigned Elevator slot uses free Pip as a presentation-only baseline. Mofy appears only after an owned instance is assigned; the Step 32A cargo cat remains the missing-asset fallback.",
       "variants": [
-        { "rarityTier": "N", "status": "baseline-existing", "reference": "current Step 32A elevator cargo cat" },
+        {
+          "rarityTier": "N",
+          "characterName": "Pip",
+          "assetId": "elevator-cargo-cat:N:pip:idle",
+          "status": "free-runtime-baseline-not-sold",
+          "rawCandidate": "art-source/cat-role-catalog/elevator-cargo-cat/n/pip/idle/raw.png",
+          "transparentSheet": "art-source/cat-role-catalog/elevator-cargo-cat/n/pip/idle/processed/sheet-transparent.png",
+          "animationPreview": "art-source/cat-role-catalog/elevator-cargo-cat/n/pip/idle/processed/animation.gif",
+          "runtimeAsset": "public/assets/defaults/elevator/pip-4f-sheet.png",
+          "runtimePortrait": "public/assets/defaults/elevator/pip-portrait.png",
+          "runtimeTextureKey": "default-elevator-pip",
+          "grid": "2x2",
+          "frameSize": "128x128",
+          "frameCount": 4,
+          "frameDurationMs": 220,
+          "visualLocks": ["silver-gray tabby with cream muzzle", "blue-steel elevator uniform and cap", "brass lift badge and control lever", "compact friendly worker silhouette"],
+          "qc": { "emptyFrames": 0, "edgeTouchFrames": 0, "pasteClampedFrames": 0, "bodyScaleCv": 0.0028148278673624833, "alphaValidated": true },
+          "runtimeIntegrated": true,
+          "provenance": "art-source/cat-role-catalog/elevator-cargo-cat/n/pip/provenance.md"
+        },
         { "rarityTier": "R", "status": "awaiting-user-reference" },
         { "rarityTier": "SR", "status": "awaiting-user-reference" },
         {
@@ -485,17 +535,21 @@
       "defaultRarityTier": "N",
       "currentRuntimeAsset": "public/assets/marketplace/runtime/miner/forge-8f-sheet.png",
       "currentRuntimeTextureKey": "marketplace-runtime-miner-forge",
-      "runtimeBehavior": "Marketplace runtime preview uses Forge as the role presentation; the Step 32A miner remains the fallback.",
+      "runtimeBehavior": "Forge is the unassigned default, Mica renders when assigned, and the Step 32A miner remains the missing-asset fallback. Both integrated miners have separate pickaxe action sheets and share the gold-impact effect.",
       "variants": [
         {
           "rarityTier": "N",
           "characterName": "Mica",
           "assetId": "miner:N:mica:idle",
-          "status": "phase-3-preview-canonical",
+          "status": "runtime-integrated",
           "designReference": "art-source/cat-role-catalog/miner/n/mica/reference/miner-n-mica-design-reference.png",
           "rawCandidate": "art-source/cat-role-catalog/miner/n/mica/raw/miner-n-mica-idle-raw-v1.png",
           "transparentSheet": "art-source/cat-role-catalog/miner/n/mica/processed/sheet-transparent.png",
           "animationPreview": "art-source/cat-role-catalog/miner/n/mica/processed/animation.gif",
+          "runtimeAsset": "public/assets/marketplace/runtime/miner/mica-walk-right-4f-sheet.png",
+          "runtimeSourceSheet": "art-source/cat-role-catalog/miner/n/mica/walk-right/sheet-feet-aligned.png",
+          "runtimeTextureKey": "marketplace-runtime-miner-mica-walk-right",
+          "miningAttackSheet": "public/assets/marketplace/runtime/miner/mica-attack-4f-sheet.png",
           "contextPreview": "art-source/cat-role-catalog/miner/n/mica/miner-n-mica-context-preview.png",
           "grid": "2x2",
           "frameSize": "128x128",
@@ -518,7 +572,7 @@
             "alphaValidated": true,
             "nativeScaleContextReviewed": true
           },
-          "runtimeIntegrated": false,
+          "runtimeIntegrated": true,
           "provenance": "art-source/cat-role-catalog/miner/n/mica/provenance.md"
         },
         {
@@ -532,6 +586,7 @@
           "animationPreview": "art-source/cat-role-catalog/miner/ssr/forge/processed-8f/animation.gif",
           "runtimeAsset": "public/assets/marketplace/runtime/miner/forge-8f-sheet.png",
           "runtimeTextureKey": "marketplace-runtime-miner-forge",
+          "miningAttackSheet": "public/assets/marketplace/runtime/miner/forge-attack-4f-sheet.png",
           "contextPreview": "art-source/cat-role-catalog/miner/ssr/forge/miner-ssr-forge-context-preview.png",
           "grid": "4x2",
           "frameSize": "128x128",

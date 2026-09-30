@@ -7,8 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { MARKETPLACE_ASSETS } from '../../src/ui/marketplaceAssetRegistry';
 import { MARKETPLACE_ICONS } from '../../src/ui/marketplaceIconRegistry';
 import {
+  MARKETPLACE_RUNTIME_ANIMATION_ASSETS,
   MARKETPLACE_RUNTIME_ASSET_IDS,
-  MARKETPLACE_RUNTIME_ROLE_ASSETS,
 } from '../../src/game/assets/marketplaceRuntimeAssets';
 
 interface ManifestVariant {
@@ -62,7 +62,7 @@ describe('Marketplace release audit', () => {
       .filter((assetId): assetId is string => typeof assetId === 'string');
 
     expect(new Set(runtimeManifestIds)).toEqual(new Set(MARKETPLACE_RUNTIME_ASSET_IDS));
-    for (const asset of Object.values(MARKETPLACE_RUNTIME_ROLE_ASSETS)) {
+    for (const asset of MARKETPLACE_RUNTIME_ANIMATION_ASSETS) {
       const runtimePath = resolve('public', asset.publicPath.slice(1));
       const sourcePath = resolve(asset.sourceSheetPath);
 
@@ -74,6 +74,6 @@ describe('Marketplace release audit', () => {
     }
     expect(existsSync(resolve('public/assets/marketplace/icons/marketplace-icons.svg'))).toBe(true);
     expect(existsSync(resolve('public/assets/marketplace/icons/manifest.json'))).toBe(true);
-    expect(MARKETPLACE_ICONS).toHaveLength(16);
+    expect(MARKETPLACE_ICONS).toHaveLength(18);
   });
 });

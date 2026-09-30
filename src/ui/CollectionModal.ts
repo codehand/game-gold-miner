@@ -18,7 +18,7 @@ export interface CollectionModalOptions {
 
 export type CollectionModalStatus = 'loading' | 'ready' | 'stale' | 'error';
 
-type RoleFilter = 'All roles' | 'Elevator' | 'Warehouse' | 'Miner';
+type RoleFilter = 'All roles' | 'Elevator' | 'Warehouse' | 'Miner' | 'Hauler';
 type RarityFilter = 'All rarities' | 'N' | 'R' | 'SR' | 'SSR' | 'UR';
 type StateFilter = 'All states' | CatInstance['availabilityState'];
 type SortOption = 'Updated' | 'Name' | 'Level';
@@ -28,16 +28,19 @@ const ROLE_LABELS: Readonly<Record<CatRole, string>> = {
   elevator: 'Elevator',
   warehouse: 'Warehouse',
   miner: 'Miner',
+  hauler: 'Hauler',
 };
 const ROLE_ICON_IDS: Readonly<Record<CatRole, string>> = {
   elevator: 'role-elevator',
   warehouse: 'role-warehouse',
   miner: 'role-miner',
+  hauler: 'role-hauler',
 };
 const SKILL_ICON_IDS: Readonly<Record<CatRole, string>> = {
   elevator: 'skill-lift-mastery',
   warehouse: 'skill-storage-mastery',
   miner: 'skill-mining-mastery',
+  hauler: 'skill-hauling-mastery',
 };
 const ATTRIBUTE_LABELS = {
   power: 'Power',
@@ -201,7 +204,7 @@ export class CollectionModal {
     const filters = document.createElement('div');
     filters.className = 'collection-filters';
     filters.append(
-      this.#select('Role', ['All roles', 'Elevator', 'Warehouse', 'Miner'], this.#role, (value) => {
+      this.#select('Role', ['All roles', 'Elevator', 'Warehouse', 'Miner', 'Hauler'], this.#role, (value) => {
         this.#role = value as RoleFilter;
         this.#render();
       }),

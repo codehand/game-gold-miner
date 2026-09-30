@@ -2,6 +2,81 @@
 
 ## Status Summary
 
+**Rivet thrusters, 2026-09-30 — complete:** two softly animated cyan/white
+jets follow the cart's coil outlets and mirror on return. Default/Tobi/inactive
+slots show no jets. Mobile visual review, 42 scoped unit tests, live browser
+regression (both cargo states/directions, lead/assistant, replacement),
+lint/build and diff checks pass. No economy, save, or source-art changes.
+
+**Purchased Hauler cart size, 2026-09-30 — fixed:** Tobi/Rivet carts enlarged
+to 64px with corrected ground anchors; cats stay 52px, default carts 46px,
+and Rivet keeps its hover. Empty/full and default-reset sizing are covered by
+the live browser regression. 780 unit tests, scoped live browser, lint/build
+pass; no gameplay or schema change.
+
+**Hauler expansion, 2026-09-30 — complete:** Tobi SR/electric trolley and
+Rivet SSR/maglev are purchasable and individually assignable to active carts;
+default reset preserves ownership, reload preserves assignments, and one cat
+cannot occupy two carts. Crew remains capped at five; each cat contributes
+only its own share of hauling bonus. Original assets and provenance retained.
+779 unit / 205 Deno / 4 scoped integration / 12 client browser / 1 live Hauler
+browser tests, lint/build and synchronized DB schema checks pass. Migration
+applied only to local Supabase without reset. Wider pre-existing E2E and
+production-smoke failures remain separate open gates.
+
+**Mine Overdrive, 2026-09-29 — implemented:** x4 mining/elevator/warehouse
+for five real-time minutes, one free activation per eight hours, with exact
+offline overlap and no wallet multiplication. Boost status/activation is
+server-owned when configured and locally cached otherwise. Unit (775), Deno
+(204), server integration (134), focused client browser (8), configured-server
+browser (1), lint and build pass. The whole client E2E suite still reports
+seven failures outside Boost (mine scroll, animation, Marketplace and related
+fixtures); production smoke has stale 58px-navigation expectations and other
+failures. Those broader suite gates remain open and are not attributed to Boost.
+
+**Free Elevator Pip / purchased Mofy, 2026-09-28 — implemented:** Pip replaces
+the former unassigned Mofy visual in the surface and moving cabin. Mofy still
+costs Marketplace gold and appears only when an owned instance is assigned to
+`elevator:main`; an idle owned Mofy does not alter the default. Original 2×2
+Pip art, prompt, provenance and strict raster QC are recorded in the asset
+catalog. 770 unit tests, 11 focused browser tests, lint, and build pass; no save, schema, or
+production-formula change.
+
+**Default Mica / purchased Miner ownership, 2026-09-28 — implemented:**
+unassigned floors show Mica with base production but no owned instance;
+Marketplace can repeatedly buy Forge, one server-owned instance per charge,
+and the assignment picker uses only idle owned cats. The RPC now returns a
+business rejection if one instance is submitted for a second floor. Focused
+unit, client browser, live server integration, lint and build gates pass.
+
+**Mica travel direction feedback, 2026-09-28 — fixed:** new right-facing
+four-frame walk art replaces the nearly front-facing in-world travel sheet;
+the existing `facesLeft` pose flips it for the leftward return. The separate
+mining attack and Marketplace portrait are unchanged. Strict raster QC,
+native-scale screenshots of outbound/strike/return, seven focused browser
+tests, 768 full unit tests, lint, and build pass. No gameplay or save change.
+
+**Mica animation scale feedback, 2026-09-28 — fixed:** the runtime-only idle
+sheet now matches the upright mining sheet in apparent size and foot baseline;
+the Marketplace catalog art is unchanged. The new sprite-pixel regression,
+six focused browser tests, 768 unit tests, lint, build, and native-scale
+attack/travel screenshot review pass. No simulation or save schema change.
+
+**Mica miner-animation assignment feedback, 2026-09-28 — implemented:**
+Mica no longer renders the generic fallback after same-role assignment. His
+own four-frame idle/travel sheet and new four-frame strike sheet use the same
+75 px runtime contract as Forge; the gold-impact effect is shared. Asset QC,
+native-scale browser review, 768 unit tests, lint, build, and 12 focused
+browser tests pass. No simulation or save schema change.
+
+**Forge mining-action feedback, 2026-09-28 — implemented:** the miner now
+travels from the white unloader to the gold pile, stops for a dedicated
+four-frame pickaxe swing and separate four-frame gold impact, then returns to
+deliver. All visible Forge miners use the same action with staggered core
+delivery phases. Sprite processing strict QC, the full 766-test unit suite,
+lint, build and eight focused browser tests (including strike/return) pass;
+economy and save state remain unchanged.
+
 **Bottom menu redesign, 2026-09-27 — implemented:** replaced the mismatched
 purple/gold shared strip with five separate transparent 96×96 icon PNGs and
 code-drawn HUD-navy/slate-steel menu chrome. The fixed region remains 360×80;

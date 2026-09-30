@@ -9,6 +9,7 @@ import type { GameState, MineFloorState } from '../state/GameState';
 import {
   EMPTY_CAT_PRODUCTION_MODIFIERS,
   getMiningOutputMultiplier,
+  getHaulingMultiplier,
   type CatProductionModifiers,
 } from '../cats';
 import { calculateSurfaceHaulerWorkforce } from '../simulation/surfaceHaulers';
@@ -95,9 +96,9 @@ export function calculateMineProductionRates(
     config.elevator,
     modifiers.elevatorThroughputMultiplier,
   );
-  const surfaceHaulerProductivityMultiplier =
-    calculateSurfaceHaulerWorkforce(state.warehouse.level)
-      .productivityMultiplier;
+  const workforce = calculateSurfaceHaulerWorkforce(state.warehouse.level);
+  const surfaceHaulerProductivityMultiplier = workforce.productivityMultiplier *
+    getHaulingMultiplier(modifiers, workforce.visibleCount);
   const warehouseCapacityPerSecond = calculateStageCapacityPerSecond(
     state.warehouse.capacity,
     config.warehouse,

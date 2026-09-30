@@ -10,6 +10,7 @@ import {
 import { createCatProductionModifiers, type CatRosterState } from '../cats';
 import { calculateMineFloorWorkforce } from '../simulation/mineFloorWorkers';
 import type { GameState } from '../state/GameState';
+import { boostOverlapMs, EMPTY_BOOST_STATE, type BoostState } from '../boost/boost';
 
 /**
  * Server-milestone Step 23: the upper-bound check on an uploaded save.
@@ -79,6 +80,9 @@ export interface ProgressBoundInput {
   readonly previous: GameState;
   readonly candidate: GameState;
   readonly elapsedMs: number;
+  /** Server receipt for the previous accepted row; used only with server-owned Boost state. */
+  readonly intervalStartMs?: number;
+  readonly boostState?: BoostState;
   readonly config: BaseGameBalanceConfig;
   /** Optional for legacy callers; V3 server bounds pass both projections. */
   readonly previousCatRoster?: CatRosterState;
@@ -94,7 +98,15 @@ export function evaluateProgressBound(
     throw new Error('Progress bound tolerance must be a finite, non-negative number.');
   }
 
-  const seconds = Math.max(0, input.elapsedMs) / 1_000;
+  const realElapsedMs = Math.max(0, input.elapsedMs);
+  const overlapMs = input.intervalStartMs === undefined
+    ? 0
+    : boostOverlapMs(
+      input.boostState ?? EMPTY_BOOST_STATE,
+      input.intervalStartMs,
+      input.intervalStartMs + realElapsedMs,
+    );
+  const seconds = (realElapsedMs + 3 * overlapMs) / 1_000;
   const headroom = 1 + tolerance;
   const modifiers = input.candidateCatRoster === undefined
     ? undefined

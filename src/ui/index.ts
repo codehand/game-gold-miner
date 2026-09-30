@@ -1,4 +1,9 @@
 export {
+  BoostModal,
+  type BoostCommandResult,
+  type BoostModalOptions,
+} from './BoostModal';
+export {
   MineShaftUpgradeModal,
   type MineShaftUpgradeModalOptions,
   type RenderedMineShaftUpgradeModalState,

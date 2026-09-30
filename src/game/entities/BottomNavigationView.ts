@@ -47,6 +47,9 @@ const BUTTON_RADIUS = 11;
 export class BottomNavigationView {
   readonly #root: Phaser.GameObjects.Container;
   readonly #items: readonly RenderedBottomNavigationItem[];
+  #boostLabel: Phaser.GameObjects.Text | null = null;
+  #boostBadge: Phaser.GameObjects.Text | null = null;
+  #boostSeconds = -1;
 
   public constructor(
     scene: Phaser.Scene,
@@ -125,6 +128,18 @@ export class BottomNavigationView {
     return this.#items;
   }
 
+  /** One text update per elapsed second; none on unchanged render frames. */
+  public setBoostRemainingMs(remainingMs: number): void {
+    const seconds = Math.max(0, Math.ceil(remainingMs / 1_000));
+    if (seconds === this.#boostSeconds) return;
+    this.#boostSeconds = seconds;
+    if (this.#boostLabel === null || this.#boostBadge === null) return;
+    this.#boostLabel.setText(seconds === 0
+      ? 'Boost'
+      : `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`);
+    this.#boostBadge.setVisible(seconds > 0);
+  }
+
   #createButton(
     scene: Phaser.Scene,
     definition: NavigationItemDefinition,
@@ -147,6 +162,20 @@ export class BottomNavigationView {
         color: NAVIGATION_ICON,
       })
       .setOrigin(0.5);
+    const badge = definition.key === 'boost'
+      ? scene.add.text(22, -26, '×4', {
+          fontFamily: FONT_FAMILY,
+          fontStyle: FONT_STYLE_SEMIBOLD,
+          fontSize: '10px',
+          color: '#ffe08b',
+          backgroundColor: '#6b4518',
+          padding: { x: 3, y: 1 },
+        }).setOrigin(0.5).setVisible(false)
+      : null;
+    if (definition.key === 'boost') {
+      this.#boostLabel = label;
+      this.#boostBadge = badge;
+    }
     let isPressed = false;
 
     const drawTile = (pressed: boolean): void => {
@@ -181,6 +210,7 @@ export class BottomNavigationView {
 
     drawTile(false);
     button.add([tile, icon, label]);
+    if (badge !== null) button.add(badge);
     button
       .setSize(width, height)
       .setInteractive(

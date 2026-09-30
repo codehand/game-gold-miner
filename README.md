@@ -46,14 +46,15 @@ Open the printed URL. A first-time player starts with 100 gold and floor 1
 already open; production runs automatically with no tapping required.
 
 For phone/browser testing on the same LAN, run `npm run dev -- --host
-0.0.0.0` and open the printed `192.168.x.x:5173` URL. The local Supabase Auth
-configuration allows that LAN origin and uses `192.168.1.203:5173` as its
-fallback site URL for the current dev machine; update that one value in
-`supabase/config.toml` if the machine receives a different LAN IP, then restart
-the local Supabase stack. The browser also rewrites the local loopback
-Supabase API host to the same LAN host, so another device does not try to call
-its own `127.0.0.1`. The account modal keeps OAuth return errors visible
-instead of leaving the player on an indefinite loading state.
+0.0.0.0` and open the printed `192.168.x.x:5173` URL (or `:5174` when
+`:5173` is already occupied). The local Supabase Auth configuration allows
+both LAN dev origins and uses `192.168.1.203:5173` as its fallback site URL for
+the current dev machine; update that one value in `supabase/config.toml` if
+the machine receives a different LAN IP, then restart the local Supabase
+stack. The browser also rewrites the local loopback Supabase API host to the
+same LAN host on either dev port, so another device does not try to call its
+own `127.0.0.1`. The account modal keeps OAuth return errors visible instead
+of leaving the player on an indefinite loading state.
 
 ## Commands
 

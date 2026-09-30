@@ -8,6 +8,13 @@ Not part of the contract.
 
 ## Closed
 
+- **An owned cat could reach the unique-assignment constraint when reused on a
+  second floor, producing HTTP 500.** *Closed 2026-09-28:* the trading-era RPC's
+  renter comparison produced SQL `NULL` for owned cats and skipped its
+  availability guard. A forward-only migration normalizes that comparison to
+  `false` and checks `assigned_slot_key`, returning 409 `cat_not_assignable`
+  before any assignment write. Live integration coverage proves the response.
+
 - **Approved Marketplace sheets could break offline boot or leak renderer state
   into gameplay.** *Closed 2026-09-19:* Phase 7 loads only stable local runtime
   copies, resolves a bundled placeholder when a copy is unavailable, and keeps

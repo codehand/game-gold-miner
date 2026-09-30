@@ -485,7 +485,7 @@ function validateSerializedCat(value: unknown, path: string): CatInstance {
     path,
   );
 
-  const roleId = assertEnum(cat.roleId, ['elevator', 'warehouse', 'miner'], `${path}.roleId`) as CatRole;
+  const roleId = assertEnum(cat.roleId, ['elevator', 'warehouse', 'miner', 'hauler'], `${path}.roleId`) as CatRole;
   const rarityTier = assertEnum(cat.rarityTier, ['N', 'R', 'SR', 'SSR', 'UR'], `${path}.rarityTier`) as CatRarityTier;
   const availabilityState = assertEnum(
     cat.availabilityState,
@@ -919,7 +919,7 @@ function parseSlotKey(value: unknown, path: string): CatSlotKey {
   if (value === 'elevator:main' || value === 'warehouse:main') {
     return value;
   }
-  if (value.startsWith('miner:') && value.length > 'miner:'.length) {
+  if ((value.startsWith('miner:') && value.length > 'miner:'.length) || /^hauler:[1-5]$/.test(value)) {
     return value as CatSlotKey;
   }
   throw new SaveDocumentError(`${path} must be a supported role slot key.`);

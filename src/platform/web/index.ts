@@ -1,4 +1,10 @@
 export {
+  LOCAL_BOOST_STORAGE_KEY,
+  readLocalBoostState,
+  writeLocalBoostState,
+} from './boostStorage';
+export { requestBoostViaFetch, type BoostServerResponse } from './boostApi';
+export {
   bindSaveLifecycle,
   type SaveLifecycleTargets,
 } from './bindSaveLifecycle';
