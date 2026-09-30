@@ -535,7 +535,7 @@
       "defaultRarityTier": "N",
       "currentRuntimeAsset": "public/assets/marketplace/runtime/miner/forge-8f-sheet.png",
       "currentRuntimeTextureKey": "marketplace-runtime-miner-forge",
-      "runtimeBehavior": "Forge is the unassigned default, Mica renders when assigned, and the Step 32A miner remains the missing-asset fallback. Both integrated miners have separate pickaxe action sheets and share the gold-impact effect.",
+      "runtimeBehavior": "Mica is the free default. Purchased Forge uses pickaxe actions; purchased Boru uses four chassis-aligned excavator actions. Ownership is per instance per floor; missing assets use the safe fallback.",
       "variants": [
         {
           "rarityTier": "N",
@@ -611,6 +611,25 @@
           },
           "runtimeIntegrated": true,
           "provenance": "art-source/cat-role-catalog/miner/ssr/forge/provenance.md"
+        },
+        {
+          "rarityTier": "SSR",
+          "characterName": "Boru",
+          "assetId": "miner:SSR:boru:idle",
+          "status": "runtime-integrated",
+          "runtimeIntegrated": true,
+          "grid": "4x2",
+          "frameSize": "128x128",
+          "frameCount": 8,
+          "frameDurationMs": 110,
+          "rawCandidate": "art-source/cat-role-catalog/miner/ssr/boru/travel-empty/processed/raw-sheet.png",
+          "transparentSheet": "art-source/cat-role-catalog/miner/ssr/boru/travel-empty/aligned/sheet-transparent.png",
+          "animationPreview": "art-source/cat-role-catalog/miner/ssr/boru/travel-empty/aligned/animation.gif",
+          "runtimeAsset": "public/assets/marketplace/runtime/miner/boru-travel-empty-8f-sheet.png",
+          "runtimeTextureKey": "marketplace-runtime-miner-boru-travel-empty",
+          "actions": ["travel-empty", "scoop", "travel-loaded", "deposit"],
+          "outputOrigin": [64, 112],
+          "provenance": "art-source/cat-role-catalog/miner/ssr/boru/provenance.md"
         },
         { "rarityTier": "R", "status": "awaiting-user-reference" },
         { "rarityTier": "SR", "status": "awaiting-user-reference" },

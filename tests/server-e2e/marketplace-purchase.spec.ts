@@ -85,6 +85,34 @@ async function clickFirstMiner(page: Page): Promise<void> {
   );
 }
 
+test('buys Boru, assigns the excavator to a Miner floor and preserves it on reload', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedSave(page);
+  await page.goto('/');
+  const canvas = page.locator('#game-viewport canvas');
+  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
+  await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
+  await expect.poll(() => page.locator('#app').getAttribute('data-cloud-save-upload'), { timeout: 15_000 })
+    .toMatch(/uploaded|same-progress/);
+  await buy(page, 'Boru', '42,000');
+  await clickFirstMiner(page);
+  const assignment = page.getByRole('dialog', { name: 'Assigned cat' });
+  await expect(assignment).toContainText('Default miner');
+  await assignment.getByRole('button', { name: 'Change cat' }).click();
+  const boruCandidate = assignment.locator('.cat-assignment-candidate').filter({ hasText: 'Boru' });
+  await expect(boruCandidate.locator('img')).toHaveAttribute('src', /catalog\/miner\/ssr\/boru\/idle-1\.png/);
+  await boruCandidate.screenshot({ path: testInfo.outputPath('boru-candidate.png') });
+  await boruCandidate.click();
+  await assignment.getByRole('button', { name: 'Confirm change' }).click();
+  await expect(assignment).toContainText('Cat changed. The new assignment is saved.');
+  await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+  await expect.poll(() => canvas.getAttribute('data-cat-runtime-bindings')).toContain('miner:SSR:boru:idle');
+  await page.screenshot({ path: testInfo.outputPath('boru-live-assigned.png') });
+  await page.reload();
+  await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await expect.poll(() => canvas.getAttribute('data-cat-runtime-bindings')).toContain('miner:SSR:boru:idle');
+});
+
 test('performs live Buy purchases against Supabase', async ({ page }) => {
   await seedSave(page);
   await page.goto('/');

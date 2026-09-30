@@ -47,6 +47,13 @@ replace Mica. One Forge cannot serve two floors at once, so replacing every
 floor requires one purchased Miner instance per floor. The Marketplace Buy
 result allows another purchase of the same blueprint.
 
+Boru is a purchased SSR Miner operating a compact excavator, initially priced
+at 42,000 gold (Power 96, Speed 68, Capacity 95, Efficiency 90). He drives empty
+to the ore, lowers/curls/lifts the bucket, returns with visible gold and tips it
+beside the white receiving cat. One purchase equips one floor, not every floor.
+Five visible workers and level overflow productivity remain unchanged; the
+animation is presentation-only and awards no extra gold. Balance is provisional.
+
 The single Elevator slot likewise starts with Pip, a free visual operator
 without an owned instance or production bonus. Mofy is a Marketplace-only
 blueprint: buying one creates one owned Mofy, and only assigning that instance

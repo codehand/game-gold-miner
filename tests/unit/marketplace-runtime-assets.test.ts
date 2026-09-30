@@ -25,6 +25,7 @@ describe('Marketplace runtime asset contract', () => {
       'warehouse-manager:SR:baron:idle',
       'miner:N:mica:idle',
       'miner:SSR:forge:idle',
+      'miner:SSR:boru:idle',
       'hauler:SR:tobi:walk',
       'hauler:SSR:rivet:walk',
     ]);
@@ -83,6 +84,7 @@ describe('Marketplace runtime asset contract', () => {
         MARKETPLACE_RUNTIME_MINER_VARIANTS.forge.textureKey,
         MARKETPLACE_RUNTIME_MINER_VARIANTS.forge.publicPath,
       ],
+      [MARKETPLACE_RUNTIME_MINER_VARIANTS.boru.textureKey, MARKETPLACE_RUNTIME_MINER_VARIANTS.boru.publicPath],
       ['marketplace-runtime-hauler-tobi', '/assets/marketplace/runtime/hauler/tobi-walk-4f-sheet.png'],
       ['marketplace-runtime-hauler-rivet', '/assets/marketplace/runtime/hauler/rivet-walk-4f-sheet.png'],
     ]);

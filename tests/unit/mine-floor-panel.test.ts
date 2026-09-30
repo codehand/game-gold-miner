@@ -18,6 +18,10 @@ describe('approved mine-floor panel layout', () => {
     expect(layout.minerPatrol.x).toBeLessThan(layout.goldPile.x);
     expect(layout.levelControl.x + layout.levelControl.width).toBe(278);
     expect(layout.goldPile.x + layout.goldPile.width / 2).toBe(232);
+    // The pile's alpha bounds end at source Y=106. At 52px display size,
+    // its visible base should meet the 122px floor line (within one pixel).
+    const visiblePileBottom = layout.goldPile.y + layout.goldPile.height / 2 + (106 - 64) * 52 / 128;
+    expect(visiblePileBottom).toBeCloseTo(layout.minerPatrol.y + layout.minerPatrol.height, 0);
     expect(layout.floorBadge).toEqual({
       x: 14.5,
       y: 38.5,

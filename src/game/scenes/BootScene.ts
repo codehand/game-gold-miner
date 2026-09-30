@@ -22,6 +22,7 @@ import { HaulerThrusterView } from '../entities/HaulerThrusterView';
 import { NAVIGATION_ICON_ASSETS } from '../assets/navigationAssets';
 import {
   MINER_MINING_ATTACK_ASSETS,
+  BORU_ACTION_ASSETS,
   MINER_MINING_IMPACT_ASSET,
   MARKETPLACE_RUNTIME_ANIMATION_ASSETS,
   MARKETPLACE_RUNTIME_ROLE_ASSETS,
@@ -98,6 +99,8 @@ import {
 import type { MineRuntimePort } from '../runtime';
 import {
   advanceAnimationTimeMs,
+  advanceSurfaceHaulerTrip,
+  type SurfaceHaulerTrip,
   assertAnimationSpeedMultiplier,
   assertRenderableMineViewModel,
   beginMineScrollGesture,
@@ -107,7 +110,6 @@ import {
   calculateSurfaceHaulerAssistantOffset,
   calculateSurfaceHaulerAssistantPose,
   calculateSurfaceHaulerCount,
-  calculateSurfaceHaulerPose,
   describeMineScroll,
   describePurchaseFeedback,
   dragMineScroll,
@@ -283,6 +285,7 @@ export class BootScene extends Phaser.Scene {
   #haulerCartAssets = Array.from({ length: 5 }, () => resolveHaulerCartAsset(null));
   #haulerFrameDurations = Array.from({ length: 5 }, () => 160);
   #haulerThrusters: readonly HaulerThrusterView[] = [];
+  #haulerTrips: Array<SurfaceHaulerTrip | null> = [];
   #surfaceGoldPours: readonly Phaser.GameObjects.Sprite[] = [];
   #marketplace: MarketplaceModal | null = null;
   #floorUpgradeModal: MineShaftUpgradeModal | null = null;
@@ -349,6 +352,8 @@ export class BootScene extends Phaser.Scene {
     }
     for (const asset of [
       ...Object.values(MINER_MINING_ATTACK_ASSETS),
+      ...Object.entries(BORU_ACTION_ASSETS)
+        .filter(([action]) => action !== 'travel-empty').map(([, asset]) => asset),
       MINER_MINING_IMPACT_ASSET,
     ]) {
       this.load.spritesheet(asset.textureKey, asset.publicPath, {
@@ -359,6 +364,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   public create(): void {
+    this.#haulerTrips = Array.from({ length: 5 }, () => null);
     // Before any view, because the material sprites are built from the loaded
     // artwork and every floor and stage binds one on its first snapshot.
     createBacklogTextures(this);
@@ -418,6 +424,7 @@ export class BootScene extends Phaser.Scene {
       // The owning surface container destroys the Graphics; discard references
       // so a scene restart creates exactly one fresh effect per cart.
       this.#haulerThrusters = [];
+      this.#haulerTrips = [];
     });
 
     this.#bindSnapshot(this.#source.snapshot, true);
@@ -841,10 +848,13 @@ export class BootScene extends Phaser.Scene {
       // warehouse input queue. Elevator cargo still underground or returning
       // cannot fill a cart or create a pour before it reaches that queue.
       const towerHasGold = this.#viewModel.warehouse.queueSteps > 0;
-      const pose = calculateSurfaceHaulerPose(
+      const trip = advanceSurfaceHaulerTrip(
+        this.#haulerTrips[0],
         this.#animationTimeMs,
         towerHasGold,
       );
+      this.#haulerTrips[0] = trip;
+      const pose = trip.pose;
       const cartX = Phaser.Math.Linear(
         SURFACE_HAULER_START_X,
         SURFACE_HAULER_END_X,
@@ -889,15 +899,24 @@ export class BootScene extends Phaser.Scene {
           assistant.setVisible(false);
           assistantCart?.setVisible(false);
           goldPours[index + 1]?.setVisible(false);
+          this.#haulerTrips[index + 1] = null;
           continue;
         }
 
-        const assistantPose = calculateSurfaceHaulerAssistantPose(
+        const route = calculateSurfaceHaulerAssistantPose(
           this.#animationTimeMs,
-          towerHasGold,
+          false,
           index,
           activeHaulerCount,
         );
+        const assistantTrip = advanceSurfaceHaulerTrip(
+          this.#haulerTrips[index + 1],
+          this.#animationTimeMs,
+          towerHasGold,
+          route.animationTimeOffsetMs,
+        );
+        this.#haulerTrips[index + 1] = assistantTrip;
+        const assistantPose = { ...route, ...assistantTrip.pose };
         const assistantRouteX = Phaser.Math.Linear(
           SURFACE_HAULER_START_X,
           SURFACE_HAULER_END_X,
@@ -907,7 +926,10 @@ export class BootScene extends Phaser.Scene {
           index,
           assistantPose.facesLeft,
         );
-        const assistantCartX = assistantRouteX + offset.x;
+        // Formation spread is only for travel. Every cart must actually stop
+        // at the same chute and warehouse, not unload short of the receiver.
+        const travelSpread = Math.sin(Math.PI * assistantPose.routeProgress);
+        const assistantCartX = assistantRouteX + offset.x * travelSpread;
         const assistantCartY = SURFACE_HAULER_CART_Y + offset.y;
         const assistantX = assistantCartX + (assistantPose.facesLeft
           ? SURFACE_HAULER_CAT_GAP
@@ -1871,6 +1893,8 @@ export class BootScene extends Phaser.Scene {
             cartWidth: this.#surfaceHaulerCart.displayWidth,
             cartHeight: this.#surfaceHaulerCart.displayHeight,
             cartTexture: this.#surfaceHaulerCart.texture.key,
+            phase: this.#haulerTrips[0]?.pose.phase,
+            hasCargo: this.#haulerTrips[0]?.hasCargo ?? false,
             thrusters: this.#haulerThrusters[0]?.renderedState,
             catX: this.#surfaceHaulerCat.x,
             catY: this.#surfaceHaulerCat.y,
@@ -1904,6 +1928,8 @@ export class BootScene extends Phaser.Scene {
               cartWidth: this.#surfaceHaulerAssistantCarts[index]?.displayWidth ?? 0,
               cartHeight: this.#surfaceHaulerAssistantCarts[index]?.displayHeight ?? 0,
               cartTexture: this.#surfaceHaulerAssistantCarts[index]?.texture.key ?? '',
+              phase: this.#haulerTrips[index + 1]?.pose.phase,
+              hasCargo: this.#haulerTrips[index + 1]?.hasCargo ?? false,
               thrusters: this.#haulerThrusters[index + 1]?.renderedState,
             })),
             goldPourVisible: this.#surfaceGoldPours[0].visible,

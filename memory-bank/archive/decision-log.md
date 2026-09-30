@@ -253,3 +253,11 @@ Average active cart multipliers so one purchase never buffs five carts as if
 five copies had been bought. Preserve the old workforce/overflow formula.
 Use four genuinely authored walk frames and separate vehicle images, recorded
 as an art-policy exception; rarity is not padded by duplicating walk frames.
+
+## Boru excavator Miner — 2026-09-30
+
+User explicitly approved the Boru calico/mini-excavator concept. Keep the
+existing Miner role and one-owned-instance-per-floor rule, not a new vehicle
+inventory. Four eight-frame actions are tied to extraction progress, with
+whole-machine mirroring and one track origin. Initial 42,000-gold pricing and
+96/68/95/90 attributes are provisional balance, not a new production formula.

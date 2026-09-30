@@ -67,6 +67,8 @@ export {
 } from './purchaseControl';
 export {
   advanceAnimationTimeMs,
+  advanceSurfaceHaulerTrip,
+  type SurfaceHaulerTrip,
   assertAnimationSpeedMultiplier,
   calculateConveyorOffsetPx,
   calculateCycleMarkerOffsetPx,

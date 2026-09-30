@@ -14,19 +14,23 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     await page.mouse.click(box.x + (bounds.x + bounds.width / 2) * box.width / 360, box.y + (bounds.y + bounds.height / 2) * box.height / 640);
     const dialog = page.getByRole('dialog', { name: 'Marketplace' });
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator('.market-card')).toHaveCount(9);
+    await expect(dialog.locator('.market-card')).toHaveCount(12);
     expect(await dialog.locator('.market-card img').evaluateAll((images) => (
       images.every((image) => image.getAttribute('src')?.includes('/assets/marketplace/catalog/'))
     ))).toBe(true);
-    await expect(dialog.locator('[data-icon^="role-"]')).toHaveCount(9);
+    await expect(dialog.locator('[data-icon^="role-"]')).toHaveCount(12);
     await page.getByRole('searchbox', { name: 'Search cats' }).fill('Mofy');
     await expect(dialog.locator('.market-card')).toHaveCount(1);
     await page.getByRole('button', { name: 'Buy', exact: true }).click();
     await page.getByRole('searchbox').fill('');
     await page.getByLabel('Role', { exact: true }).selectOption('Miner');
-    await expect(dialog.locator('.market-card')).toHaveCount(2);
+    await expect(dialog.locator('.market-card')).toHaveCount(3);
     await page.getByLabel('Role', { exact: true }).selectOption('All roles');
-    await expect(dialog.locator('.market-card')).toHaveCount(9);
+    await expect(dialog.locator('.market-card')).toHaveCount(12);
+    await page.getByRole('searchbox', { name: 'Search cats' }).fill('Boru');
+    await expect(dialog.locator('.market-card')).toHaveCount(1);
+    await dialog.locator('.market-card').screenshot({ path: `test-results/boru-market-card-${viewport.width}.png` });
+    await page.getByRole('searchbox', { name: 'Search cats' }).fill('');
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.screenshot({ path: `test-results/marketplace-${viewport.width}.png` });
     await page.keyboard.press('Escape');
@@ -37,6 +41,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
 test('Rent, Sell, and My listings use live projections and commands', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(async () => {
+    document.querySelector<HTMLElement>('#app')!.style.display = 'none';
     const modulePath = '/src/ui/MarketplaceModal.ts';
     const { MarketplaceModal } = await import(/* @vite-ignore */ modulePath);
     const cat = {

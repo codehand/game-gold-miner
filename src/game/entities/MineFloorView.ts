@@ -7,8 +7,10 @@ import {
 import type { MarketplaceRuntimeAnimationAsset } from '../assets/marketplaceRuntimeAssets';
 import {
   MINER_MINING_IMPACT_ASSET,
+  BORU_ACTION_ASSETS,
   resolveMinerMiningAttackAsset,
 } from '../assets/marketplaceRuntimeAssets';
+import { calculateExcavatorPose } from '../view-model/excavatorAnimation';
 import {
   toFillColor,
   calculateMineFloorPanelLayout,
@@ -630,6 +632,27 @@ export class MineFloorView {
       Math.max(0, renderTimeMs - this.#extractionTransitionStartMs),
       SIMULATION_STEP_MS,
     );
+    const isExcavator = this.#minerAssetId === 'miner:SSR:boru:idle' &&
+      Object.values(BORU_ACTION_ASSETS).every((asset) => this.#root.scene.textures.exists(asset.textureKey));
+    if (isExcavator) {
+      [this.#miner, ...this.#minerAssistants].forEach((miner, index) => {
+        this.#miningImpacts[index].setVisible(false);
+        if (index >= this.#activeMinerCount) return;
+        const progress = (visualExtractionProgress + index / this.#activeMinerCount) % 1;
+        // At the ore stop the lowered bucket enters the foreground pile's
+        // visible silhouette; the pile is already drawn after the crew.
+        const pose = calculateExcavatorPose(progress, this.#minerStartX + 6, this.#minerEndX + 4);
+        miner.setTexture(BORU_ACTION_ASSETS[pose.action].textureKey, pose.frame)
+          .setOrigin(0.5, 112 / 128)
+          .setDisplaySize(this.#minerDisplaySize, this.#minerDisplaySize)
+          .setPosition(pose.x, this.#minerRestY + MINE_FLOOR_CHARACTER_DISPLAY_SIZE * (117 / 128 - 0.5))
+          .setFlipX(pose.facesLeft);
+      });
+      this.#unloader.setFrame(calculateGeneratedAssetFrame(animationTimeMs, 4, 220));
+      return;
+    }
+    // Switching back to a walking miner must also restore its sprite origin.
+    [this.#miner, ...this.#minerAssistants].forEach((miner) => miner.setOrigin(0.5));
     const pose = calculateMinerWorkPose(
       visualExtractionProgress * MINER_PATROL_PERIOD_MS,
       this.#minerStartX,

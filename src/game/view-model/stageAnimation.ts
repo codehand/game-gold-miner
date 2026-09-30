@@ -66,6 +66,54 @@ export interface SurfaceHaulerPose {
   readonly frame: number;
 }
 
+/** Transient presentation state, owned independently by each visible cart. */
+export interface SurfaceHaulerTrip {
+  readonly animationTimeMs: number;
+  readonly animationTimeOffsetMs: number;
+  readonly lap: number;
+  readonly hasCargo: boolean;
+  readonly pose: SurfaceHaulerPose;
+}
+
+/**
+ * Latch a pickup only while under the chute, then keep it until the warehouse
+ * handoff. A changing tower queue must never fill/empty carts in transit.
+ * Reload, clock rewind, rephasing or a new lap cannot invent a past pickup.
+ * This state is cosmetic: it never moves currency or enters a save document.
+ */
+export function advanceSurfaceHaulerTrip(
+  previous: SurfaceHaulerTrip | null,
+  animationTimeMs: number,
+  towerHasGold: boolean,
+  animationTimeOffsetMs = 0,
+): SurfaceHaulerTrip {
+  assertAnimationTime(animationTimeMs);
+  assertAnimationTime(animationTimeOffsetMs);
+  const routeTimeMs = animationTimeMs + animationTimeOffsetMs;
+  const lap = Math.floor(routeTimeMs / SURFACE_HAULER_PERIOD_MS);
+  const route = calculateSurfaceHaulerPose(routeTimeMs, true);
+  const wrappedSameLap = previous !== null &&
+    previous.animationTimeMs >= ANIMATION_TIME_WRAP_MS - SURFACE_HAULER_PERIOD_MS &&
+    animationTimeMs < SURFACE_HAULER_PERIOD_MS &&
+    previous.lap === lap + ANIMATION_TIME_WRAP_MS / SURFACE_HAULER_PERIOD_MS;
+  const sameTrip = previous !== null &&
+    previous.animationTimeOffsetMs === animationTimeOffsetMs &&
+    ((previous.lap === lap && previous.animationTimeMs <= animationTimeMs) || wrappedSameLap);
+  let hasCargo = sameTrip && previous.hasCargo;
+
+  if (route.phase === 'loading' && towerHasGold) hasCargo = true;
+  if (route.phase === 'returning' ||
+      (route.phase === 'unloading' && !route.cartIsFilled)) hasCargo = false;
+
+  return {
+    animationTimeMs,
+    animationTimeOffsetMs,
+    lap,
+    hasCargo,
+    pose: calculateSurfaceHaulerPose(routeTimeMs, hasCargo),
+  };
+}
+
 export interface MinerPatrolPose {
   readonly x: number;
   readonly facesLeft: boolean;
@@ -276,11 +324,11 @@ export function easeElevatorTravelProgress(progress: number): number {
 }
 
 /**
- * Cosmetic surface-delivery loop with cargo feedback driven by tower gold.
+ * Pure route pose, using this trip's latched pickup (not the live tower queue).
  *
  * The worker always visits the tower, travels to the warehouse, and returns.
- * Material only controls the pour and filled-cart appearance, so an empty
- * tower produces an empty round trip rather than parking the crew. No value
+ * `advanceSurfaceHaulerTrip` owns pickup/drop-off history for scene rendering.
+ * Material only controls the pour and filled-cart appearance. No value
  * from this pose is fed back into production or persistence.
  */
 export function calculateSurfaceHaulerPose(

@@ -222,6 +222,15 @@ const PREVIEW_FIXTURES = [
     roleScore: 85,
     skillBonusPercent: 21,
   },
+  {
+    assetId: 'miner:SSR:boru:idle',
+    price: 42000,
+    hourly: 420,
+    level: 1,
+    attributes: { power: 96, speed: 68, capacity: 95, efficiency: 90 },
+    roleScore: 86,
+    skillBonusPercent: 22,
+  },
 ] as const;
 
 const CATS: readonly CatListing[] = PREVIEW_FIXTURES.map((fixture) => {

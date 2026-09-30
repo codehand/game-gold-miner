@@ -377,6 +377,7 @@ test('loads a surface cart beneath the chute and pushes it toward the warehouse'
 
   type SurfaceHaulerReadBack = {
     surfaceHauler: {
+      phase: string;
       cartX: number;
       cartWidth: number;
       cartHeight: number;
@@ -452,22 +453,22 @@ test('loads a surface cart beneath the chute and pushes it toward the warehouse'
     timeout: 8_000,
   }).toBe(5);
 
+  let delivering = loading;
   await expect.poll(async () => {
-    const animation = await readJsonAttribute<SurfaceHaulerReadBack>(
+    delivering = await readJsonAttribute<SurfaceHaulerReadBack>(
       page,
       'data-animation',
     );
 
-    return animation.surfaceHauler.cartX;
+    // A position alone also matches the empty return leg. Capture the actual
+    // outbound snapshot instead of racing a second read against the handoff.
+    return delivering.surfaceHauler.phase === 'delivering' &&
+      delivering.surfaceHauler.cartX > SURFACE_HAULER_START_X + 20 &&
+      delivering.surfaceHauler.cartX < SURFACE_HAULER_END_X - 10;
   }, {
     message: 'the filled cart eases from the chute toward the warehouse',
     timeout: 6_500,
-  }).toBeGreaterThan(SURFACE_HAULER_START_X + 20);
-
-  const delivering = await readJsonAttribute<SurfaceHaulerReadBack>(
-    page,
-    'data-animation',
-  );
+  }).toBe(true);
 
   expect(delivering.surfaceHauler.cartX).toBeLessThanOrEqual(
     SURFACE_HAULER_END_X,

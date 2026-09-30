@@ -2,6 +2,37 @@
 
 ## Current Focus
 
+**Mine-floor gold pile grounding, 2026-09-30 — fixed locally.** The shared
+pile layout is 7 logical pixels lower so the visible ore (not its transparent
+canvas) meets the floor line. Mining impacts follow the same anchor; miners,
+excavator, economy and saves are unchanged. Unit, Boru 1/5-worker browser,
+lint and build pass; scoop screenshot reviewed. Uncommitted.
+
+**Boru feedback polish, 2026-09-30 — verified locally.** The catalog portrait
+is a separate 128px derivative with 116x92 visible bounds, shared by Marketplace
+and the assignment picker; the in-floor sheets keep their size. The scoop stop
+is 16 logical pixels closer to the pile so the foreground gold hides the
+lowered bucket. Card/candidate and scoop screenshots reviewed; focused unit,
+client browser, live Buy/assign and lint/build checks passed. Uncommitted.
+
+**Boru SSR Miner, 2026-09-30 — implemented and locally verified.**
+Four eight-frame excavator sheets now follow extraction progress: empty travel,
+scoop/lift, loaded return, deposit beside the white cat. Shared scale/track
+anchor; one purchased instance per floor, default Mica unchanged. Local catalog
+migration applied: 42,000 gold, stats 96/68/95/90. Live Buy -> assignment ->
+reload passed; 805 unit tests, four focused browser tests and lint/build pass.
+One/five-worker mobile screenshots reviewed. No save/schema structure or core
+production changes. Catalog migration is local only; no production deployment.
+Uncommitted; the compact five-machine crew can overlap on its shared lane.
+
+**Surface cart cargo feedback, 2026-09-30 — fixed.** Each cart now latches a
+pickup under the chute and retains it until the warehouse handoff, independent
+of later tower-queue changes. Empty departures cannot fill in transit. Default,
+Tobi and Rivet share the rule; formation spread fades at both physical stops.
+790 unit tests, five focused client browser tests, the live Hauler assignment
+test, lint/build and diff checks pass. Mobile before/after screenshots reviewed.
+No economy/save/schema changes; dev server 5174 responds. Not yet committed.
+
 **Rivet thruster feedback, 2026-09-30 — implemented.** Two cyan/white jets
 with soft glow pulse beneath Rivet's coils, in both directions and all cargo
 states. They track the cart without resizing or shaking the cat/vehicle and

@@ -1,5 +1,16 @@
 # Marketplace preview portraits
 
+## Boru excavator — 2026-09-30
+
+`miner:SSR:boru:idle` uses an original approved calico excavator operator.
+Four independent eight-frame sheets (empty travel, scoop/lift, loaded travel,
+deposit) share one scale profile and chassis root. Source, exact prompts,
+generation IDs and QC: `art-source/cat-role-catalog/miner/ssr/boru/provenance.md`.
+Runtime copies: `runtime/miner/boru-*-8f-sheet.png`; portrait:
+`catalog/miner/ssr/boru/idle-1.png`. The portrait is independently cropped and
+enlarged from empty-travel frame 1 for Marketplace and assignment thumbnails;
+the four in-game sheets remain at their original scale. No third-party artwork.
+
 ## Hauler expansion — 2026-09-29
 
 `hauler:SR:tobi:walk` and `hauler:SSR:rivet:walk` are original generated

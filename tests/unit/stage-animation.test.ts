@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   advanceAnimationTimeMs,
+  advanceSurfaceHaulerTrip,
   assertAnimationSpeedMultiplier,
   calculateConveyorOffsetPx,
   calculateCycleMarkerOffsetPx,
@@ -413,6 +414,71 @@ describe('surface hauler loop', () => {
     expect(() => calculateSurfaceHaulerPose(-1, true)).toThrow(
       /finite non-negative/,
     );
+  });
+});
+
+describe('surface cart pickup and handoff memory', () => {
+  it.each([0, 1, 2, 3, 4])('keeps cart %i loaded until its warehouse handoff despite queue changes', (slot) => {
+    const offset = SURFACE_HAULER_PERIOD_MS * slot / 5;
+    const at = (phase: number) => SURFACE_HAULER_PERIOD_MS * (1 + phase) - offset;
+    let trip = advanceSurfaceHaulerTrip(null, at(0.08), true, offset);
+    expect(trip.pose.goldPourVisible).toBe(true);
+    expect(trip.pose.cartIsFilled).toBe(false);
+    // Even if the core consumes the tower queue before the pour completes,
+    // this particular cart has received a load and owns its visual history.
+    trip = advanceSurfaceHaulerTrip(trip, at(0.15), false, offset);
+    expect(trip.pose.cartIsFilled).toBe(true);
+    for (const phase of [0.21, 0.4, 0.61, 0.62, 0.67]) {
+      trip = advanceSurfaceHaulerTrip(trip, at(phase), false, offset);
+      expect(trip.pose.cartIsFilled).toBe(true);
+      expect(trip.pose.goldPourVisible).toBe(false);
+    }
+    expect(trip.pose).toMatchObject({ phase: 'unloading', routeProgress: 1 });
+    trip = advanceSurfaceHaulerTrip(trip, at(0.69), true, offset);
+    expect(trip.pose).toMatchObject({ phase: 'unloading', routeProgress: 1, cartIsFilled: false });
+    expect(trip.hasCargo).toBe(false);
+    trip = advanceSurfaceHaulerTrip(trip, at(0.85), true, offset);
+    expect(trip.pose.cartIsFilled).toBe(false);
+    trip = advanceSurfaceHaulerTrip(trip, at(1.15), false, offset);
+    expect(trip.pose.cartIsFilled).toBe(false);
+  });
+
+  it('does not pick up new tower gold while delivering an empty cart', () => {
+    let trip = advanceSurfaceHaulerTrip(null, 500, false);
+    trip = advanceSurfaceHaulerTrip(trip, 2_000, true);
+    expect(trip.pose).toMatchObject({ phase: 'delivering', cartIsFilled: false });
+    trip = advanceSurfaceHaulerTrip(trip, 3_400, true);
+    expect(trip.pose.cartIsFilled).toBe(false);
+    trip = advanceSurfaceHaulerTrip(trip, 6_000, true);
+    expect(trip.pose).toMatchObject({ phase: 'loading', cartIsFilled: true });
+  });
+
+  it('can pick up a refill while still waiting under the chute', () => {
+    let trip = advanceSurfaceHaulerTrip(null, 100, false);
+    trip = advanceSurfaceHaulerTrip(trip, 800, true);
+    expect(trip.pose).toMatchObject({ phase: 'loading', cartIsFilled: true, goldPourVisible: true });
+    trip = advanceSurfaceHaulerTrip(trip, 2_000, false);
+    expect(trip.pose.cartIsFilled).toBe(true);
+  });
+
+  it('never invents an earlier pickup when booting or skipping a full lap', () => {
+    expect(advanceSurfaceHaulerTrip(null, 2_000, true).hasCargo).toBe(false);
+    const loaded = advanceSurfaceHaulerTrip(null, 800, true);
+    const skipped = advanceSurfaceHaulerTrip(loaded, 7_000, true);
+    expect(skipped.hasCargo).toBe(false);
+  });
+
+  it('isolates carts and resets history when an offset changes or the clock rewinds', () => {
+    const loaded = advanceSurfaceHaulerTrip(null, 800, true);
+    expect(advanceSurfaceHaulerTrip(null, 800, false).hasCargo).toBe(false);
+    expect(advanceSurfaceHaulerTrip(loaded, 2_000, false, 1_000).hasCargo).toBe(false);
+    expect(advanceSurfaceHaulerTrip(loaded, 600, false).hasCargo).toBe(false);
+  });
+
+  it('keeps an assistant load across the cosmetic clock wrap within the same trip', () => {
+    const loaded = advanceSurfaceHaulerTrip(null, ANIMATION_TIME_WRAP_MS - 1_500, true, 2_000);
+    const wrapped = advanceSurfaceHaulerTrip(loaded, 100, false, 2_000);
+    expect(wrapped.pose).toMatchObject({ phase: 'delivering', cartIsFilled: true });
   });
 });
 

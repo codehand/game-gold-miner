@@ -3437,3 +3437,40 @@ active carts' bonuses and composes with existing overflow/manager effects once.
 Forward-only local migration preserves current saves and the V3/IndexedDB-v1
 format. Full unit/Deno and scoped client/server gates passed; dev server was
 restarted at localhost:5173. No commit or production deploy performed.
+
+### Surface cart cargo lifecycle feedback (2026-09-30)
+
+Replaced live tower-queue-driven full/empty rendering with independent
+transient trip memory. A pickup under the chute persists through travel until
+the warehouse handoff; empty trips do not fill from later tower refills.
+History resets for inactive/rephased/new trips and scene restart, while normal
+cosmetic-clock wrap preserves an ongoing assistant trip. Cart spacing fades
+to zero at both endpoints. No production, currency, persistence or schema
+change; default/Tobi/Rivet screenshots verified before and after handoff.
+
+### Boru excavator Miner (2026-09-30)
+
+User approved the calico/navy-brass concept, then authorized implementation.
+Generated four separate eight-frame action sheets, normalized one scale and
+track anchor, registered portrait/runtime IDs and implemented core-progress
+driven empty travel -> scoop/lift -> loaded return -> deposit. Boru costs
+42,000 gold with stats 96/68/95/90 under the existing Miner bonus formula.
+Existing per-instance/per-floor assignment applies; free Mica and workforce
+rules are unchanged. Catalog-only local migration applied without reset.
+No production deployment, user-account purchase, save reset or commit.
+
+### Boru portrait and scoop feedback (2026-09-30)
+
+Enlarged a separate catalog portrait from the first aligned empty-travel frame
+to 116x92 visible pixels in its 128px canvas. Marketplace and Miner assignment
+both use it; four runtime animation sheets and in-floor machine dimensions
+remain unchanged. The scoop endpoint moved 16 logical pixels into the gold
+pile so the foreground pile occludes the lowered bucket. No economy, save or
+schema changes; not committed or deployed.
+
+### Mine-floor gold pile grounding (2026-09-30)
+
+Lowered the shared gold-pile layout anchor 7 logical pixels. This compensates
+for transparent padding at the bottom of the existing art, placing visible ore
+on the floor line across all unlocked mine floors. Mining effects follow the
+same anchor; miner and excavator routes, production and saves are unchanged.

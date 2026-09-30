@@ -2,6 +2,28 @@
 
 ## Status Summary
 
+**Mine-floor gold pile grounding, 2026-09-30 — fixed:** moved the shared
+pile/impact anchor 7 logical pixels down, aligning visible ore with the floor
+line. Unit and Boru 1/5-worker browser checks, screenshot, lint/build pass;
+no gameplay or save changes, uncommitted.
+
+**Boru portrait/scoop feedback, 2026-09-30 — fixed:** enlarged separate
+catalog portrait in Marketplace and Miner picker, with runtime art unchanged;
+shifted scoop endpoint into the foreground gold pile. Focused visual, unit and
+browser verification completed. No save/economy change; not committed.
+
+**Boru SSR Miner, 2026-09-30:** approved calico/excavator integrated into
+Marketplace and Miner assignment; catalog-only migration applied locally.
+Four independent eight-frame sheets; 805 unit tests, lint/build, four focused
+client browser tests and live purchase/equip/reload pass. One/five-worker mobile
+views reviewed. Local migration only; no production deployment or commit.
+
+**Surface cart cargo feedback, 2026-09-30 — fixed:** per-cart pickup memory
+keeps gold visible until warehouse delivery; later tower refills cannot fill
+departed carts. All cart variants pass the same empty/full lifecycle checks.
+790 unit / 5 focused client browser / 1 live Hauler browser tests, lint/build
+and diff checks pass. Presentation-only change, no new save fields.
+
 **Rivet thrusters, 2026-09-30 — complete:** two softly animated cyan/white
 jets follow the cart's coil outlets and mirror on return. Default/Tobi/inactive
 slots show no jets. Mobile visual review, 42 scoped unit tests, live browser

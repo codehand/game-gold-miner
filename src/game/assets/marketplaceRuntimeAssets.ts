@@ -119,6 +119,21 @@ export const MARKETPLACE_RUNTIME_ELEVATOR_VARIANTS = {
 
 /** Purchased miner variants keep their own identity when assigned to a floor. */
 export const MARKETPLACE_RUNTIME_MINER_VARIANTS = {
+  boru: {
+    assetId: 'miner:SSR:boru:idle',
+    roleId: 'miner',
+    characterName: 'Boru',
+    textureKey: 'marketplace-runtime-miner-boru-travel-empty',
+    publicPath: '/assets/marketplace/runtime/miner/boru-travel-empty-8f-sheet.png',
+    sourceSheetPath: 'art-source/cat-role-catalog/miner/ssr/boru/travel-empty/aligned/sheet-transparent.png',
+    frameSizePx: 128,
+    frameCount: 8,
+    frameDurationMs: 110,
+    displaySize: 110,
+    fallbackTextureKey: PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+    fallbackFrameCount: 4,
+    fallbackFrameDurationMs: 220,
+  },
   forge: {
     assetId: 'miner:SSR:forge:idle',
     roleId: 'miner',
@@ -143,6 +158,15 @@ export interface MinerMiningActionAsset {
   readonly frameSizePx: number;
   readonly frameCount: number;
 }
+
+export const BORU_ACTION_ASSETS = Object.fromEntries(
+  (['travel-empty', 'scoop', 'travel-loaded', 'deposit'] as const).map((action) => [action, {
+    textureKey: `marketplace-runtime-miner-boru-${action}`,
+    publicPath: `/assets/marketplace/runtime/miner/boru-${action}-8f-sheet.png`,
+    frameSizePx: 128,
+    frameCount: 8,
+  }]),
+) as Readonly<Record<import('../view-model/excavatorAnimation').ExcavatorAction, MinerMiningActionAsset>>;
 
 /** The action sheet follows the selected miner; the ore impact is shared. */
 export const MINER_MINING_ATTACK_ASSETS: Readonly<Record<string, MinerMiningActionAsset>> = {
@@ -173,6 +197,7 @@ export const MARKETPLACE_RUNTIME_ANIMATION_ASSETS = [
   MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse,
   MARKETPLACE_RUNTIME_ROLE_ASSETS.miner,
   MARKETPLACE_RUNTIME_MINER_VARIANTS.forge,
+  MARKETPLACE_RUNTIME_MINER_VARIANTS.boru,
   ...(['tobi', 'rivet'] as const).map((name): MarketplaceRuntimeAnimationAsset & { assetId: string } => ({
     ...MARKETPLACE_RUNTIME_ROLE_ASSETS.hauler,
     assetId: name === 'tobi' ? 'hauler:SR:tobi:walk' : 'hauler:SSR:rivet:walk',

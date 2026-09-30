@@ -69,8 +69,9 @@ export function calculateMineFloorPanelLayout(
     unloaderCat: region(48, 59, 58, 62),
     // Travel spans from the unloading cat to the gold pile before turning.
     minerPatrol: region(100, 60, 112, 62),
-    // Centred under the timber support, but clear of the floor seam.
-    goldPile: region(208, 84, 48, 28),
+    // The 128px pile art has transparent pixels below the ore; this offset
+    // grounds its visible base on the timber floor rather than floating above it.
+    goldPile: region(208, 91, 48, 28),
     // Open floors use the compact vertical Level badge from layout1.png.
     levelControl: region(234, 42, MIN_TOUCH_TARGET_PX, 50),
     // Locked floors still need enough width for their Unlock price.

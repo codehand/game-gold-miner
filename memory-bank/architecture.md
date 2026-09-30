@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Hauler expansion (2026-09-29): four owned-cat roles, eleven Marketplace
+Hauler/Boru expansion (2026-09-29/30): four owned-cat roles, twelve Marketplace
 blueprints. Stable `hauler:1..5` bindings hot-swap each cat and its own vehicle.
 Defaults create no instance/bonus. The current-slot modal exposes active Cart
 selectors and an explicit NULL-ID default-reset command. The pure
@@ -2338,7 +2338,7 @@ and recovery poses at 110 ms per frame; this does not affect gameplay.
 The term `rarityTier` is used in asset metadata to avoid collision with the
 existing numeric stage `level`. The existing Step 32A `unloader` sheet remains
 the receiving-position fallback and the baseline candidate for `unloader:N`.
-After Phase 7 and the default-role follow-ups, seven role assets are runtime
+After Phase 7 and the default-role follow-ups, eight role assets are runtime
 integrated: Pip (`elevator-cargo-cat:N:pip:idle`) as the free Elevator visual,
 Mofy (`elevator-cargo-cat:SSR:mofy:idle`) as its purchased/assigned replacement,
 Baron (`warehouse-manager:SR:baron:idle`) at the warehouse, and
@@ -2351,6 +2351,23 @@ separate textures with identical per-identity scale/origin in both cargo states.
 Paid carts use their visible wheels/coils as the vertical origin, aligned to the
 default handcart's ground line; Rivet floats 4px above that line. Cat size and
 route spacing are unchanged by the 2026-09-30 cart-size feedback fix.
+
+Boru (`miner:SSR:boru:idle`) adds a purchased excavator Miner. Four 512x256
+RGBA sheets contain eight 128px frames each. `excavatorAnimation.ts` maps one
+core extraction lap to empty travel (0-.32), scoop/lift (.32-.58), loaded
+return (.58-.84), deposit (.84-1); no simulation writes. Crew copies retain
+the existing 1/count phase spacing. The view uses a 110px canvas envelope,
+track root (64,112), the same ground line as Mica, and mirrors the full machine
+on return/deposit. Normal miner origins are restored when replacing Boru.
+`normalize-boru-assets.py` translates generated frames to the chassis root,
+without per-frame scaling. The source/provenance lives under `miner/ssr/boru`.
+The Marketplace/assignment portrait is a separate alpha-cropped derivative,
+116x92 visible pixels in a 128px canvas. Boru's scoop endpoint is offset
+16 logical pixels into the foreground gold pile; the pile is drawn after the
+miner so it covers the lowered bucket. This does not change mining output.
+The shared `goldPile` panel region starts at Y=91 rather than Y=84: the
+128px art's transparent lower padding means its visible bottom now meets the
+floor line at roughly Y=122; mining impacts use this same panel anchor.
 `HaulerThrusterView` adds two cyan/white procedural jets under Rivet's source
 coil anchors (48/128 and 99/128 X, 89/128 Y). One reusable Graphics per cart
 sits behind the vehicle in the surface container. Cosmetic-clock breathing
@@ -2387,7 +2404,7 @@ The screen pulls; the core never pushes. `MineSimulationDriver` holds authoritat
 
 Each production stage retains authoritative state in its view model. For a floor, extraction progress feeds the ping-pong patrol across the full corridor from the unloader to the gold pile, so position and facing freeze with a paused core while walk frames stay cosmetic; the phase-shifted miners share one Y baseline and line up with the core's per-worker queue-delivery milestones. The cabin's vertical position follows its signed route direction, floor target, and leg progress, remapped through pure smootherstep easing so visual velocity reaches zero at both ends without changing leg duration. Each underground stop uses the semantic Y centre of that floor's gold container. Underground and surface cabin twins share the shaft-centre X coordinate `36`; only Y changes, so entry into the tower is perfectly vertical. The asymmetric tower v2 is positioned around that semantic bay axis rather than forcing the cabin toward its full texture centre, and adds a right-side mounting bracket for its code-rendered level badge. Its hopper has filled and empty texture variants: `warehouse.queueSteps > 0` shows the gold-filled tower, while zero swaps to the empty steel-bin artwork; both retain identical 128×128 runtime bounds. A fixed-layer cabin twin fades in after boundary entry to bridge the camera seam without duplicating simulation state. A 720×328 original sky/mountain/meadow landscape is displayed at 360×164 as the bottom surface-art layer, behind the tower, delivery objects, warehouse, and foreground ground strip. The legacy elevator and warehouse cards are hidden while their bound `SharedStageView` instances remain read-back models; the generated tower, right-flush 140×140 warehouse building, and explicit compact level badges route to the corresponding upgrade commands. The elevator badge region is `(106,48,44,50)`, placing its 30×34 chrome immediately beside and higher than the chute; the warehouse region remains `(263,0,44,50)`. The 56 px warehouse supervisor is mirrored left and its four-frame idle is cosmetic only. Number plaques inside the shaft are omitted because the cave panels already provide number-only floor badges.
 
-Decoration is a separate clock. `BootScene` accumulates `advanceAnimationTimeMs(frameDelta × animationSpeedMultiplier)` and drives only cosmetic sprite frames, conveyors, and the surface delivery loop. Pure `calculateSurfaceHaulerPose` always divides a 5,200 ms lap into tower collection, delivery, warehouse stop, and empty return; whether `warehouse.inputQueue` has material changes only the pour and filled-cart flags, never whether the worker moves. Core `calculateSurfaceHaulerWorkforce` derives the raw count from warehouse level, caps `visibleCount` at five, and gives overflow to the visible crew through `productivityMultiplier = rawCount / visibleCount`; `calculateSurfaceHaulerCount` renders that `visibleCount`. `calculateSurfaceHaulerAssistantPose` distributes every active assistant around that same loop even when all carts are empty; `calculateSurfaceHaulerAssistantOffset` adds mirrored horizontal spacing with zero Y offset so all cats and carts share one baseline. Each cat therefore owns an independent phase, frame, horizontal position, facing, and one paired cart rather than copying the lead transform or sharing its vehicle. Every paired cart follows its cat's route pose, and `BootScene` gives the lead plus every visible cart its own gold-pour sprite at the same fixed chute-mouth coordinate, with visibility/frame driven by that cart's loading pose. The cart's empty and filled files have different native dimensions, so every `setTexture` is immediately followed by the same per-identity display size (46×46 default, 64×64 Tobi/Rivet); diagnostics publish measured cart bounds, active cat/cart counts, assistant poses, and per-cart pour state to prevent texture-driven scale pulses, missing carts, exact crew overlap, or vertical lane drift. `advanceSimulation` applies the surface multiplier at the existing warehouse input handoff, and `calculateMineProductionRates` exposes the same value to HUD, offline, and anti-cheat consumers; no extra saved queue is needed. Mine crews follow a related but gameplay-visible cadence: the core imports the shared worker-count rule, adds one equal `cycleYield / workerCount` chunk to the floor queue at each delivery milestone, and the view phase-shifts all miners on one Y baseline to those milestones. This keeps total cycle production unchanged while making each arrival readable.
+Decoration is a separate clock. `BootScene` accumulates `advanceAnimationTimeMs(frameDelta × animationSpeedMultiplier)` and drives only cosmetic sprite frames, conveyors, and the surface delivery loop. Pure `calculateSurfaceHaulerPose` always divides a 5,200 ms lap into tower collection, delivery, warehouse stop, and empty return; `advanceSurfaceHaulerTrip` latches a pickup only during loading. Each cart retains that cargo despite later `warehouse.inputQueue` changes, clearing it at the warehouse handoff (68% of the lap). A refill cannot fill a cart already in transit. The crew keeps moving even without cargo. Core `calculateSurfaceHaulerWorkforce` derives the raw count from warehouse level, caps `visibleCount` at five, and gives overflow to the visible crew through `productivityMultiplier = rawCount / visibleCount`; `calculateSurfaceHaulerCount` renders that `visibleCount`. `calculateSurfaceHaulerAssistantPose` distributes every active assistant around that same loop even when all carts are empty; `calculateSurfaceHaulerAssistantOffset` adds mirrored horizontal spacing with zero Y offset; the scene fades that spread with `sin(π × routeProgress)` so every cart reaches the same exact chute/warehouse stops. Each cat therefore owns an independent phase, frame, horizontal position, facing, and one paired cart rather than copying the lead transform or sharing its vehicle. Every paired cart follows its cat's route pose, and `BootScene` gives the lead plus every visible cart its own gold-pour sprite at the same fixed chute-mouth coordinate, with visibility/frame driven by that cart's loading pose. The cart's empty and filled files have different native dimensions, so every `setTexture` is immediately followed by the same per-identity display size (46×46 default, 64×64 Tobi/Rivet); diagnostics publish measured cart bounds, active cat/cart counts, assistant poses, and per-cart pour state to prevent texture-driven scale pulses, missing carts, exact crew overlap, or vertical lane drift. `advanceSimulation` applies the surface multiplier at the existing warehouse input handoff, and `calculateMineProductionRates` exposes the same value to HUD, offline, and anti-cheat consumers; no extra saved queue is needed. Mine crews follow a related but gameplay-visible cadence: the core imports the shared worker-count rule, adds one equal `cycleYield / workerCount` chunk to the floor queue at each delivery milestone, and the view phase-shifts all miners on one Y baseline to those milestones. This keeps total cycle production unchanged while making each arrival readable.
 
 The same separation governs floor crew movement: authoritative extraction progress remains the route input, while frame timing remains cosmetic; however, the shared shaft-level workforce is intentionally consumed by core extraction to schedule equal visible-worker queue-delivery chunks and apply overflow productivity. The renderer never writes authoritative state, and the visible miner count never grows beyond the pooled five-cat cap.
 
@@ -2997,6 +3014,12 @@ The store has no auto-increment key, secondary indexes, foreign keys, relationsh
 The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
 
 ### Cat collection schema extension — 2026-09-19
+
+Catalog data addition, 2026-09-30: migration
+`20260930100000_add_boru_miner.sql` inserts `miner:SSR:boru:idle` (Boru,
+Miner/SSR, price 42000, Power/Speed/Capacity/Efficiency 96/68/95/90).
+No table, column, constraint, index or relationship changes; existing
+purchase idempotency and per-instance assignment uniqueness apply.
 
 The forward-only migration `20260919100000_create_cat_collection.sql` adds
 `cat_blueprints` (allowlisted asset, role, rarity, price, and default

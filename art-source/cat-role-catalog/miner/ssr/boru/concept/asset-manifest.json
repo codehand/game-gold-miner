@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "art_direction_brief": "design-brief.md",
+  "assets": [
+    {
+      "id": "boru-excavator-concept",
+      "role": "Miner character visual target, proposed SSR",
+      "path": "boru-excavator-concept.png",
+      "status": "concept-approved",
+      "technical": {
+        "alpha": true,
+        "frames": 1,
+        "anchor": "track baseline, not runtime calibrated",
+        "filtering": "nearest for future sprite import"
+      },
+      "visual_locks": ["calico identity", "navy and brass excavator", "right-facing", "open operator seat", "compact articulated boom"],
+      "source": {
+        "kind": "generated",
+        "url_or_tool": "built-in image_gen",
+        "created_at": "2026-09-30",
+        "license": "Generated concept for this project; no third-party stock asset used. No separate license assertion made.",
+        "prompt_or_source_record": "prompt-used.txt; transparency-edit-prompt.txt",
+        "raw_generation": "exec-52af1946-68a4-4681-99d4-b3560b967564.png",
+        "transparency_edit": "exec-0eae98e9-826b-404c-8da4-49dfde4865e1.png",
+        "style_references": [
+          "art-source/cat-role-catalog/miner/n/mica/walk-right/processed/walk-1.png",
+          "public/assets/marketplace/catalog/hauler/sr/tobi/idle-1.png"
+        ]
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": "Concept PNG alpha only; production animation gates pending",
+        "approved_by": "User, 2026-09-30: ok duyệt"
+      }
+    }
+  ]
+}

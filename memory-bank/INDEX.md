@@ -93,9 +93,9 @@ file only when you need the provenance of a specific step or decision.
 
 | File | Holds |
 |---|---|
-| `completed-log.md` | Finished work: base-game Steps 1–37, server Steps 1–24, menu/miner art, free role defaults, Mine Overdrive and the 2026-09-30 individual Hauler expansion. |
+| `completed-log.md` | Finished work: base-game Steps 1–37, server Steps 1–24, menu/miner art, free role defaults, Mine Overdrive, individual Haulers and Boru excavator Miner. |
 | `acceptance-gates.md` | Passed gates with evidence, including role defaults, Mine Overdrive, and the 2026-09-30 Hauler scoped gate; features deferred at the Step 37 close. |
-| `decision-log.md` | Settled decisions and rationale, including free role baselines, Mine Overdrive, and per-cart Hauler specialists. |
+| `decision-log.md` | Settled decisions and rationale, including free role baselines, Mine Overdrive, per-cart Haulers and Boru excavator Miner. |
 | `risks-resolved.md` | Risks closed by code, each with the reason it closed, including the duplicate-assignment 500. |
 | `step-implementation-map.md` | Which server step produced which package, migration, and test. |
 | `phase-narrative.md` | The prose account of how each phase unfolded. |

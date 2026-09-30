@@ -27,6 +27,17 @@ type MarketplaceAssetDefinition = Omit<MarketplaceAssetRecord, 'runtimeIntegrate
 
 const MARKETPLACE_ASSET_DEFINITIONS = [
   {
+    assetId: 'miner:SSR:boru:idle',
+    roleId: 'miner',
+    assetFamilyId: 'miner',
+    rarityTier: 'SSR',
+    characterSlug: 'boru',
+    characterName: 'Boru',
+    portraitPath: '/assets/marketplace/catalog/miner/ssr/boru/idle-1.png',
+    sourcePortraitPath: 'art-source/cat-role-catalog/miner/ssr/boru/portrait/idle-1.png',
+    catalogStatus: 'runtime-integrated',
+  },
+  {
     assetId: 'hauler:SR:tobi:walk',
     roleId: 'hauler',
     assetFamilyId: 'hauler',

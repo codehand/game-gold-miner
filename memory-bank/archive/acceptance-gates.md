@@ -466,3 +466,50 @@ No gameplay, save, schema, or catalog-price change.
   Complete Database Schema blocks pass. The local migration was applied
   without reset. Production deployment and unrelated broad E2E gates are not
   claimed by this scoped release check.
+
+### Surface cart cargo lifecycle feedback gate (2026-09-30)
+
+- 790 unit tests pass, including per-slot cargo retention, late refills, empty
+  trips, lap skips, rephasing, clock rewind and normal wrap. Sandbox subprocess
+  timeout in the unrelated bundle scan was resolved by rerunning outside it.
+- Five focused client browser tests pass: actual empty/full textures for
+  default/Tobi/Rivet after the tower empties, empty departure despite refill,
+  warehouse-only handoff, chute loading and empty routes. The older delivery
+  check now samples the outbound phase, not the same X position on return.
+- Live Hauler purchase/assignment/reload/reset/thruster browser test passes;
+  lint, build and whitespace checks pass. Broader unrelated release gates were
+  not rerun or claimed here.
+
+### Boru excavator Miner gate (2026-09-30)
+
+- 805 unit tests / 70 files pass; includes route endpoints, action ordering,
+  direction, frame ranges, five-worker offsets and four runtime RGBA sheets.
+- Four client browser tests pass: Boru one/five-worker phase rendering and
+  Mica replacement, default role presentation, existing Mica geometry.
+- Live Supabase browser Buy 42,000 -> assign Miner -> reload passes with a
+  disposable test account; no real user's account or wallet was modified.
+- Four strict processor runs pass at the shared 0.72 profile; chassis
+  registration has no clipping. Four 512x256 RGBA/alpha reports pass. Mobile
+  screenshots of all phases reviewed at one and five workers; the five large
+  machines can overlap on the existing compact shared lane.
+- Lint, build and diff checks pass. No broad unrelated E2E/server suite or
+  production deployment is claimed. Local catalog migration applied only.
+
+### Boru portrait and scoop polish gate (2026-09-30)
+
+- 128x128 RGBA portrait passes asset QC with 116x92 content bounds; separate
+  Marketplace 390/320px cards and Miner assignment candidate screenshot reviewed.
+- Nine focused client E2E tests, including one/five-worker scoop and exact
+  208px scoop endpoint, pass. A fixture-only Marketplace overlay interception
+  was isolated, then its five-test suite passed on rerun.
+- Disposable live Buy -> assign -> reload browser test passes. 31 focused
+  unit tests, lint, build and diff checks pass. No broad release gate, user
+  purchase or production deployment was performed.
+
+### Mine-floor gold pile grounding gate (2026-09-30)
+
+- Layout unit test checks that the existing 128px asset's visible lower bound
+  meets the 122px floor line after scaling to 52px; four layout tests pass.
+- Boru one/five-worker browser flows pass; the scoop screenshot shows ore on
+  the floor and foreground occlusion retained. Lint, build and diff checks
+  pass. No broad release gate or production deploy is claimed.

@@ -2,6 +2,17 @@
 
 ## Current State
 
+Boru SSR Miner (2026-09-30) uses four generated eight-frame RGBA sheets,
+one preserve-scale profile and chassis-registration pass via
+`scripts/normalize-boru-assets.py`. Runtime sheets are 512x256 with 128px cells;
+the Phaser view uses a 110px envelope and (64,112) track anchor. Presentation
+follows extraction progress; no new core/save fields. Catalog migration
+`20260930100000_add_boru_miner.sql` adds only a blueprint row, applied locally.
+The portrait normalizer separately alpha-crops and scales empty-travel frame 1
+to 116x92 visible pixels on a 128px canvas for both UI surfaces; runtime sheets
+retain their authored scale. The scoop endpoint is 16 logical pixels further
+into the foreground gold pile, which renders after miner sprites.
+
 Hauler expansion (2026-09-29) adds role `hauler`, slots `hauler:1..5`, Tobi SR
 and Rivet SSR, and per-cart asset binding. Cat/cart/portrait PNGs are separate;
 walk sheets use four authored 128px frames at 200ms. Cat boxes remain 52px;
@@ -20,6 +31,14 @@ Rivet's two coil outlets also have a procedural cyan/white thrust effect
 cosmetic clock and cart transform, with smooth 5–7.5px jets at the 64px size,
 soft glow, and no interaction or production effect. Empty/full and both travel
 directions keep the effect; inactive slots and non-Rivet assignments clear it.
+
+Surface cargo feedback (2026-09-30) now uses a per-slot, transient
+`SurfaceHaulerTrip` via `advanceSurfaceHaulerTrip`: pickup is latched only
+under the chute, survives live tower-queue changes, and clears at the
+warehouse handoff. Empty departures stay empty until their next pickup.
+Inactive slots, scene restart, new laps and route rephasing discard obsolete
+history; a normal cosmetic-clock wrap preserves an ongoing assistant trip.
+Formation spread fades to zero at both stops. No core/economy/save change.
 
 All 37 base-game implementation-plan steps are complete and user-validated;
 cat collection Phases 0–9 and the live seeded-catalog Marketplace
@@ -1134,6 +1153,12 @@ The store has no auto-increment key, secondary indexes, foreign keys, relationsh
 The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
 
 ### Cat collection schema extension — 2026-09-19
+
+Catalog data addition, 2026-09-30: migration
+`20260930100000_add_boru_miner.sql` inserts `miner:SSR:boru:idle` (Boru,
+Miner/SSR, price 42000, Power/Speed/Capacity/Efficiency 96/68/95/90).
+No table, column, constraint, index or relationship changes; existing
+purchase idempotency and per-instance assignment uniqueness apply.
 
 The forward-only migration `20260919100000_create_cat_collection.sql` adds
 `cat_blueprints` (allowlisted asset, role, rarity, price, and default
