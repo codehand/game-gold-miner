@@ -89,14 +89,24 @@ test('serves the optimized bundle and every runtime asset from the root base pat
 
   // The bundle is served, not transpiled on demand: a dev server answers module
   // requests under `/src/`, and the built document references hashed assets.
-  const documentReferences = await page.evaluate(() => [
-    ...[...document.querySelectorAll('script[src]')].map((element) =>
+  const { scripts, documentReferences } = await page.evaluate(() => {
+    const scripts = [...document.querySelectorAll('script[src]')].map((element) =>
       element.getAttribute('src'),
-    ),
-    ...[...document.querySelectorAll('link[rel="stylesheet"]')].map((element) =>
-      element.getAttribute('href'),
-    ),
-  ]);
+    );
+    return {
+      scripts,
+      documentReferences: [
+        ...scripts.filter((source) => source !== 'https://telegram.org/js/telegram-web-app.js?63'),
+        ...[...document.querySelectorAll('link[rel="stylesheet"]')].map((element) =>
+          element.getAttribute('href'),
+        ),
+      ],
+    };
+  });
+
+  expect(scripts[0], 'Telegram must provide signed initData before the game boots').toBe(
+    'https://telegram.org/js/telegram-web-app.js?63',
+  );
 
   expect(documentReferences.length).toBeGreaterThan(0);
   for (const reference of documentReferences) {

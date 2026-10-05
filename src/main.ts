@@ -184,9 +184,8 @@ if (import.meta.hot) {
 // linking to a guest session the way Google does. Computed once, synchronously,
 // before either boot chain below decides which one to run: `readTelegramInitData`
 // only ever reads `window.Telegram.WebApp.initData`, so this never blocks or
-// makes a network call, and resolves `null` for every player today (no Mini
-// App host exists yet — `memory-bank/server-threat-model.md` finding F1), so
-// the guest chain below is the only one that ever runs in production right now.
+// makes a network call. Outside Telegram, the SDK provides an empty value
+// and the guest chain below runs instead.
 const telegramInitData = readTelegramInitData();
 let initialAuthSettled: Promise<void> = Promise.resolve();
 

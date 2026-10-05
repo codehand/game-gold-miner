@@ -7,6 +7,9 @@ spendable gold. The player spends that gold on independent stage upgrades and
 sequential floor unlocks, and receives a capped reward for time spent away.
 
 The game runs in a mobile browser at a fixed 360×640 portrait logical viewport.
+The production web build is hosted at
+https://game-gold-miner-sepia.vercel.app/ and opens as a Telegram Mini App from
+the GAME menu button of `@ghn_alo_bot`.
 **The playable game stays fully playable offline** — no account or cloud save is
 required on any path; it boots, plays, and saves entirely in IndexedDB even with
 no network at all. The server milestone is implemented locally and documented
@@ -15,8 +18,9 @@ in `memory-bank/server-milestone-plan.md`; its local Supabase stack lives in
 audit table and Step 33 deletion policy with row-level security, and its
 `save-sync` Edge Function accepts a real upload and download
 (`PUT`/`GET /v1/save`), on top of its original health check. The local
-milestone also contains the player-facing settings and leaderboard surfaces,
-but no hosted production deployment exists yet. The one behavior every player
+milestone also contains the player-facing settings and leaderboard surfaces.
+The production Supabase project is `ntzdbwuouugvadisazge`; its migrations and
+player-facing Edge Functions are deployed. The one behavior every player
 already gets, since
 server-milestone Step 8, is a single non-blocking anonymous-auth call at boot
 (`src/platform/web/guestSession.ts`) that gives a first-time player a real
@@ -183,7 +187,7 @@ IndexedDB transaction may not commit before teardown.
 **Any change to the save shape must bump the schema version and add a migration
 plus tests.**
 
-## Local server stack (server milestone implementation complete)
+## Local server stack
 
 The playable game does not use this. It exists for the milestone in
 `memory-bank/server-milestone-plan.md`, whose design documents are
@@ -201,16 +205,10 @@ npm run supabase:stop
 Ports are the Supabase CLI defaults — API 54321, database 54322, Studio 54323,
 mail 54324 — and do not collide with the client's 5173, 4173, 4174, 4175, or 4176.
 
-`supabase/migrations/` holds eight forward-only migrations: a bootstrap file
-that creates nothing (it only asserts the PostgreSQL 13+ premise the schema
-relies on for `gen_random_uuid()`), one that lands the original six designed
-tables — `profiles`, `saves`, `save_audit`, `recovery_codes`,
-`leaderboard_entries`, `entitlements` — with row-level security enabled and
-exactly the policies `memory-bank/architecture.md`'s RLS matrix names, one
-that adds the sign-up trigger that creates every `profiles` row, three
-recovery-code RPC/grant migrations, one leaderboard decision migration, and
-the Step 32 migration that adds the server-only append-only `account_audit` log,
-and the Step 33 forward-only account-deletion/anonymization migration.
+`supabase/migrations/` holds the forward-only database schema, including
+profiles, cloud saves, recovery codes, leaderboard, cat Collection, Marketplace,
+mine Boost, and V4 portfolio commands. The complete table and RLS contract is
+recorded in `memory-bank/architecture.md` and `memory-bank/techContext.md`.
 `supabase/seed.sql` inserts
 one local-only fixture guest (`auth.users` row plus its `profiles` row) after
 every `supabase db reset`, never applied to a deployed database.
@@ -221,8 +219,23 @@ two required jobs on every push and pull request.
 managed-backup policy (24-hour RPO, seven-copy minimum, best-effort RTO) and
 the separate Auth/secrets recovery procedure. `ops/monitoring.md` defines the
 health, server-error, save-rejection, and auth-failure signals and thresholds.
-Production deployment and credentials do not exist yet; the committed scripts
-are local evidence and release hand-off tools, not a claim of hosted coverage.
+The production Supabase project runs the deployed schema and Edge Functions.
+The backup and monitoring scripts remain local evidence and release hand-off
+tools; they are not a claim that hosted operations drills have run.
+
+**Production setup.** Vercel builds `master` with `npm run build`, publishes
+`dist/`, and provides only the public `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY` build variables. Supabase project
+`ntzdbwuouugvadisazge` owns the database and Edge Functions. After a schema
+change, run `npx supabase link --project-ref ntzdbwuouugvadisazge`,
+`npx supabase db push --dry-run --linked`, then `npx supabase db push --linked`.
+After a server core change, run `npm run build:server-core` before deploying
+affected functions. Keep `TELEGRAM_BOT_TOKEN` and `RECOVERY_CODE_PEPPER` only in
+Supabase Edge Function Secrets. The Telegram BotFather menu button for
+`@ghn_alo_bot` points to the exact HTTPS Vercel URL; the bot's existing message
+automation does not serve the game bundle. Public Auth signups are disabled to
+prevent placeholder-email preemption; the verified Telegram Edge Function uses
+the admin link flow to create an account.
 
 The save-sync endpoints that exist — `/v1/health`, and `/v1/save` accepting a
 bearer token from a real signed-in session:
@@ -331,14 +344,16 @@ placeholder email `telegram-<id>@telegram.invalid` (RFC 2606's reserved
 every time. **This mapping is only safe with `[auth.email] enable_signup =
 false`** (`supabase/config.toml`) — with public signup open, an attacker who
 knows a Telegram id could otherwise claim that placeholder email by
-password before the real user ever signs in; see finding F13 in
+password before the real user ever signs in. Production disables public user
+signups while the server's admin link flow creates verified Telegram accounts;
+see finding F13 in
 `memory-bank/server-threat-model.md` for the full reproduction. `src/platform/telegram/telegramSignIn.ts`'s
 `readTelegramInitData()` reads `window.Telegram.WebApp.initData` (never
-`initDataUnsafe`) and resolves `null` for every player today — no Telegram
-Web App `<script>` tag was added to `index.html`, since that is the still-
-unbuilt Mini App host, a separate and later piece of work; when it does exist,
-`src/main.ts` calls `signInWithTelegram` **instead of** the guest bootstrap,
-"replacing the guest path entirely" rather than linking to it. This is the
+`initDataUnsafe`). `index.html` loads Telegram's official Web App SDK before
+the game bundle. Inside Telegram, `src/main.ts` calls `signInWithTelegram`
+**instead of** the guest bootstrap; outside Telegram the empty `initData`
+selects the browser guest path. Telegram sign-in replaces the guest identity
+rather than linking to it. This is the
 first function called directly from the browser with `fetch()`, so
 `supabase/functions/_shared/http.ts` gained a shared CORS policy — and
 proving it against the real stack found that the local Kong gateway
@@ -346,7 +361,8 @@ unconditionally overwrites every function's `Access-Control-Allow-Origin`
 with `*` regardless, documented in `memory-bank/server-threat-model.md`
 finding F12. `TELEGRAM_BOT_TOKEN` lives in a **third**, separate git-ignored
 env file, `supabase/functions/.env` — auto-loaded by `supabase start`,
-distinct from both the project-root `.env` and `.env.local` — see
+distinct from both the project-root `.env` and `.env.local`. Production stores
+it only in Supabase Edge Function Secrets — see
 `.env.example`. Because verification is self-contained, this step's full test
 (valid `initData` mints a session; tampered/stale/wrong-bot-token payloads
 are each rejected with none issued; the token never leaks) is proven with

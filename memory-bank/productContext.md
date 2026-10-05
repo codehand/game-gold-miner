@@ -25,6 +25,13 @@ Many management games obscure cause and effect or require constant tapping. This
 
 The player claims offline gold, inspects the mine, upgrades the slowest stage, opens deeper floors, assigns managers, activates a boost, and leaves while production continues. Short-term goals are the next upgrade and floor; the prototype's long-term goal is fully automating and optimizing all fifteen floors.
 
+In Telegram, the GAME menu button of `@ghn_alo_bot` opens the same portrait
+game. Telegram supplies a signed identity at launch; a first-time player gets
+an account automatically and a returning player enters the same account without
+an extra registration form. The game verifies that identity on the server before
+loading cloud progress. Browser players can still open the Vercel URL directly
+and play with local storage.
+
 The multi-mine Map expands this journey into six resource locations. One shared
 gold wallet pays for new sites, while only the selected mine earns live gold.
 Previously visited inactive mines display capped offline rewards that enter

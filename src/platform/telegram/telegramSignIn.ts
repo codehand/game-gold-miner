@@ -12,11 +12,9 @@
  * **still-signed** string, never `initDataUnsafe` (that object is the
  * Telegram SDK's own convenience parse of the same data with no signature
  * check, trivially forgeable from devtools, and this module never touches
- * it). No Telegram Web App `<script>` tag is added to `index.html`: that is
- * the still-unbuilt "Mini App host" `memory-bank/server-threat-model.md`
- * finding F1 names as separate, later work, so `window.Telegram` is simply
- * absent for every player today and this always resolves `null` — the
- * anonymous guest path is unaffected until that host exists.
+ * it). `index.html` loads Telegram's Web App SDK before the game bundle;
+ * outside Telegram the SDK exposes an empty `initData`, so the anonymous
+ * guest path remains available in an ordinary browser.
  *
  * `signInWithTelegram` POSTs the raw `initData` to the `telegram-sign-in`
  * Edge Function, which verifies it server-side and returns a `tokenHash`;
@@ -42,8 +40,7 @@ export type TelegramSignInResult =
 
 /**
  * Reads the raw, signed `initData` string Telegram's own Mini App SDK
- * exposes, or `null` when not running inside one (every player today,
- * until the Mini App host exists — see the module doc comment).
+ * exposes, or `null` when not running inside one.
  */
 export function readTelegramInitData(): string | null {
   if (typeof window === 'undefined') {

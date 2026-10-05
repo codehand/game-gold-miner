@@ -2,6 +2,18 @@
 
 ## Current Focus
 
+**Production Telegram Mini App, 2026-10-05 — rollout in progress.** Vercel
+serves `https://game-gold-miner-sepia.vercel.app/` from `master`. Supabase
+project `ntzdbwuouugvadisazge` now has all 19 migrations and seven
+player-facing Edge Functions. The exact Vercel origin is allowed by function
+CORS. `TELEGRAM_BOT_TOKEN` and a generated recovery pepper are in Supabase
+Secrets; public Auth signups are disabled against predictable Telegram
+placeholder-email preemption. `index.html` loads Telegram's Web App SDK before
+the game bundle, letting signed `initData` take the existing server-verified
+sign-in path. The bot menu URL and a real in-Telegram sign-in remain to be
+verified after the new web build reaches production. Focused Telegram tests,
+the production build, lint, secret scan and all 10 production smoke tests pass.
+
 **Multi-mine Map, 2026-10-05 — complete and release-verified.** The V4
 portfolio now provides six purchasable resource sites, one shared wallet, one
 foreground mine, per-mine offline intervals, fixed-price progression,

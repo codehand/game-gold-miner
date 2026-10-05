@@ -2,6 +2,16 @@
 
 ## Status Summary
 
+**Production Telegram Mini App, 2026-10-05 — rollout in progress:** Vercel
+hosts the game; Supabase production has 19 migrations, seven player-facing Edge
+Functions, bot-token and recovery-pepper Secrets. Public Auth signup is off so
+predictable Telegram placeholder emails cannot be claimed through `/signup`.
+The game now loads Telegram's SDK before boot, and the existing Edge Function
+verifies signed `initData` before creating/reusing the player's account. The
+BotFather GAME menu URL and real user sign-in still need live verification.
+Eleven focused unit tests, build, lint, secret scan and 10 production smoke
+tests pass; production CORS preflight and malformed POST behave as expected.
+
 **Multi-mine Map, 2026-10-05 — complete and release-verified:** the six-site
 catalog, V4 portfolio/migration, shared wallet, single foreground runtime,
 fixed-price purchase chain, per-mine offline claim, positional Map and
