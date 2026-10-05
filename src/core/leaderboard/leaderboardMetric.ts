@@ -1,4 +1,6 @@
 import { GameNumber } from '../numbers/GameNumber';
+import { MINE_SITE_IDS } from '../../config/mineSites';
+import type { PortfolioState } from '../portfolio/portfolio';
 import type { GameState } from '../state/GameState';
 
 /**
@@ -39,6 +41,16 @@ export function calculateLifetimeGoldEarned(state: GameState): GameNumber {
   return state.warehouse.totalGoldDelivered.add(
     state.warehouse.totalOfflineGoldClaimed,
   );
+}
+
+/** Every mine's warehouse deliveries and claimed offline grant count once. */
+export function calculatePortfolioLifetimeGoldEarned(portfolio: PortfolioState): GameNumber {
+  return MINE_SITE_IDS.reduce((total, mineId) => {
+    const mine = portfolio.mines[mineId];
+    return mine === undefined ? total : total
+      .add(mine.state.warehouse.totalGoldDelivered)
+      .add(mine.state.warehouse.totalOfflineGoldClaimed);
+  }, GameNumber.from(0));
 }
 
 /** The `leaderboard_entries.metric_exact` / `metric_log10` pair for one value. */

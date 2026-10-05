@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   advanceAnimationTimeMs,
+  advanceSurfaceHaulerTrip,
   assertAnimationSpeedMultiplier,
   calculateConveyorOffsetPx,
   calculateCycleMarkerOffsetPx,
@@ -11,6 +12,7 @@ import {
   interpolateNormalizedProgressForward,
   calculateMinerSwingOffsetPx,
   calculateMinerPatrolPose,
+  calculateMinerWorkPose,
   calculateSurfaceHaulerAssistantOffset,
   calculateSurfaceHaulerAssistantPose,
   calculateSurfaceHaulerCount,
@@ -108,6 +110,33 @@ describe('miner swing', () => {
 });
 
 describe('miner floor patrol', () => {
+  it('travels from the unloader, strikes at the pile, then returns to deliver', () => {
+    const start = calculateMinerWorkPose(0, 100, 170);
+    const outbound = calculateMinerWorkPose(MINER_PATROL_PERIOD_MS * 0.2, 100, 170);
+    const windup = calculateMinerWorkPose(MINER_PATROL_PERIOD_MS * 0.41, 100, 170);
+    const impact = calculateMinerWorkPose(MINER_PATROL_PERIOD_MS * 0.55, 100, 170);
+    const returning = calculateMinerWorkPose(MINER_PATROL_PERIOD_MS * 0.825, 100, 170);
+    const delivered = calculateMinerWorkPose(MINER_PATROL_PERIOD_MS, 100, 170);
+
+    expect(start).toMatchObject({ x: 100, phase: 'outbound', impactVisible: false });
+    expect(outbound).toMatchObject({ x: 135, phase: 'outbound', facesLeft: false });
+    expect(windup).toMatchObject({ x: 170, phase: 'mining', strikeFrame: 0, impactVisible: false });
+    expect(impact).toMatchObject({ x: 170, phase: 'mining', strikeFrame: 2, impactVisible: true });
+    expect(returning).toMatchObject({ x: 135, phase: 'returning', facesLeft: true, impactVisible: false });
+    expect(delivered).toMatchObject({ x: 100, phase: 'outbound', impactVisible: false });
+  });
+
+  it('staggers assistant strikes and returns to match each delivery milestone', () => {
+    const count = 3;
+    const assistants = [0, 1].map((index) =>
+      calculateMineFloorMinerAssistantPose(0, index, count, 100, 170));
+    expect(assistants.map(({ phase }) => phase)).toEqual(['outbound', 'returning']);
+    expect(calculateMineFloorMinerAssistantPose(2 / 3, 0, count, 100, 170).x)
+      .toBeCloseTo(100);
+    expect(calculateMineFloorMinerAssistantPose(1 / 3, 1, count, 100, 170).x)
+      .toBeCloseTo(100);
+  });
+
   it('walks right, turns, walks left, and loops at the approved bounds', () => {
     expect(calculateMinerPatrolPose(0, 100, 170)).toEqual({
       x: 100,
@@ -143,7 +172,7 @@ describe('miner floor patrol', () => {
     expect(calculateMineFloorMinerCount(201)).toBe(5);
   });
 
-  it('phase-shifts floor assistants into shallow independent patrol lanes', () => {
+  it('phase-shifts floor assistants along one shared horizontal patrol line', () => {
     const crew = Array.from({ length: 4 }, (_, assistantIndex) =>
       calculateMineFloorMinerAssistantPose(
         0.25,
@@ -153,8 +182,8 @@ describe('miner floor patrol', () => {
         212,
       ));
 
-    expect(new Set(crew.map(({ x, yOffset }) => `${x}:${yOffset}`)).size).toBe(4);
-    expect(crew.map(({ yOffset }) => yOffset)).toEqual([-4, 4, -7, 7]);
+    expect(crew.map(({ yOffset }) => yOffset)).toEqual([0, 0, 0, 0]);
+    expect(new Set(crew.map(({ yOffset }) => yOffset)).size).toBe(1);
     expect(new Set(crew.map(({ animationTimeOffsetMs }) => animationTimeOffsetMs)).size)
       .toBe(4);
   });
@@ -226,14 +255,15 @@ describe('rendered progress interpolation', () => {
 });
 
 describe('surface hauler loop', () => {
-  it('reveals one assistant every ten warehouse levels through level 100', () => {
+  it('caps the visible crew at five after one assistant every ten levels', () => {
     expect(calculateSurfaceHaulerCount(1)).toBe(1);
     expect(calculateSurfaceHaulerCount(9)).toBe(1);
     expect(calculateSurfaceHaulerCount(10)).toBe(2);
     expect(calculateSurfaceHaulerCount(20)).toBe(3);
-    expect(calculateSurfaceHaulerCount(99)).toBe(10);
-    expect(calculateSurfaceHaulerCount(100)).toBe(11);
-    expect(calculateSurfaceHaulerCount(101)).toBe(11);
+    expect(calculateSurfaceHaulerCount(40)).toBe(5);
+    expect(calculateSurfaceHaulerCount(99)).toBe(5);
+    expect(calculateSurfaceHaulerCount(100)).toBe(5);
+    expect(calculateSurfaceHaulerCount(101)).toBe(5);
   });
 
   it('spaces assistants horizontally on one mirrored route line', () => {
@@ -241,12 +271,12 @@ describe('surface hauler loop', () => {
       x: -8,
       y: 0,
     });
-    expect(calculateSurfaceHaulerAssistantOffset(4, false)).toEqual({
-      x: -16,
+    expect(calculateSurfaceHaulerAssistantOffset(2, false)).toEqual({
+      x: -24,
       y: 0,
     });
-    expect(calculateSurfaceHaulerAssistantOffset(5, true)).toEqual({
-      x: 24,
+    expect(calculateSurfaceHaulerAssistantOffset(3, true)).toEqual({
+      x: 8,
       y: 0,
     });
   });
@@ -345,6 +375,27 @@ describe('surface hauler loop', () => {
     expect(delivering.goldPourVisible).toBe(false);
   });
 
+  it('exposes the same gold-pour event for every loaded crew route', () => {
+    const activeHaulerCount = 5;
+    const loadingPoses = [
+      calculateSurfaceHaulerPose(SURFACE_HAULER_PERIOD_MS * 0.1, true),
+      ...Array.from({ length: activeHaulerCount - 1 }, (_, assistantIndex) =>
+        calculateSurfaceHaulerAssistantPose(
+          SURFACE_HAULER_PERIOD_MS * (
+            1.1 - (assistantIndex + 1) / activeHaulerCount
+          ),
+          true,
+          assistantIndex,
+          activeHaulerCount,
+        ),
+      ),
+    ];
+
+    expect(loadingPoses).toHaveLength(activeHaulerCount);
+    expect(loadingPoses.every((pose) => pose.phase === 'loading')).toBe(true);
+    expect(loadingPoses.every((pose) => pose.goldPourVisible)).toBe(true);
+  });
+
   it('returns the empty cart with the worker facing left', () => {
     const returning = calculateSurfaceHaulerPose(
       SURFACE_HAULER_PERIOD_MS * 0.85,
@@ -363,6 +414,71 @@ describe('surface hauler loop', () => {
     expect(() => calculateSurfaceHaulerPose(-1, true)).toThrow(
       /finite non-negative/,
     );
+  });
+});
+
+describe('surface cart pickup and handoff memory', () => {
+  it.each([0, 1, 2, 3, 4])('keeps cart %i loaded until its warehouse handoff despite queue changes', (slot) => {
+    const offset = SURFACE_HAULER_PERIOD_MS * slot / 5;
+    const at = (phase: number) => SURFACE_HAULER_PERIOD_MS * (1 + phase) - offset;
+    let trip = advanceSurfaceHaulerTrip(null, at(0.08), true, offset);
+    expect(trip.pose.goldPourVisible).toBe(true);
+    expect(trip.pose.cartIsFilled).toBe(false);
+    // Even if the core consumes the tower queue before the pour completes,
+    // this particular cart has received a load and owns its visual history.
+    trip = advanceSurfaceHaulerTrip(trip, at(0.15), false, offset);
+    expect(trip.pose.cartIsFilled).toBe(true);
+    for (const phase of [0.21, 0.4, 0.61, 0.62, 0.67]) {
+      trip = advanceSurfaceHaulerTrip(trip, at(phase), false, offset);
+      expect(trip.pose.cartIsFilled).toBe(true);
+      expect(trip.pose.goldPourVisible).toBe(false);
+    }
+    expect(trip.pose).toMatchObject({ phase: 'unloading', routeProgress: 1 });
+    trip = advanceSurfaceHaulerTrip(trip, at(0.69), true, offset);
+    expect(trip.pose).toMatchObject({ phase: 'unloading', routeProgress: 1, cartIsFilled: false });
+    expect(trip.hasCargo).toBe(false);
+    trip = advanceSurfaceHaulerTrip(trip, at(0.85), true, offset);
+    expect(trip.pose.cartIsFilled).toBe(false);
+    trip = advanceSurfaceHaulerTrip(trip, at(1.15), false, offset);
+    expect(trip.pose.cartIsFilled).toBe(false);
+  });
+
+  it('does not pick up new tower gold while delivering an empty cart', () => {
+    let trip = advanceSurfaceHaulerTrip(null, 500, false);
+    trip = advanceSurfaceHaulerTrip(trip, 2_000, true);
+    expect(trip.pose).toMatchObject({ phase: 'delivering', cartIsFilled: false });
+    trip = advanceSurfaceHaulerTrip(trip, 3_400, true);
+    expect(trip.pose.cartIsFilled).toBe(false);
+    trip = advanceSurfaceHaulerTrip(trip, 6_000, true);
+    expect(trip.pose).toMatchObject({ phase: 'loading', cartIsFilled: true });
+  });
+
+  it('can pick up a refill while still waiting under the chute', () => {
+    let trip = advanceSurfaceHaulerTrip(null, 100, false);
+    trip = advanceSurfaceHaulerTrip(trip, 800, true);
+    expect(trip.pose).toMatchObject({ phase: 'loading', cartIsFilled: true, goldPourVisible: true });
+    trip = advanceSurfaceHaulerTrip(trip, 2_000, false);
+    expect(trip.pose.cartIsFilled).toBe(true);
+  });
+
+  it('never invents an earlier pickup when booting or skipping a full lap', () => {
+    expect(advanceSurfaceHaulerTrip(null, 2_000, true).hasCargo).toBe(false);
+    const loaded = advanceSurfaceHaulerTrip(null, 800, true);
+    const skipped = advanceSurfaceHaulerTrip(loaded, 7_000, true);
+    expect(skipped.hasCargo).toBe(false);
+  });
+
+  it('isolates carts and resets history when an offset changes or the clock rewinds', () => {
+    const loaded = advanceSurfaceHaulerTrip(null, 800, true);
+    expect(advanceSurfaceHaulerTrip(null, 800, false).hasCargo).toBe(false);
+    expect(advanceSurfaceHaulerTrip(loaded, 2_000, false, 1_000).hasCargo).toBe(false);
+    expect(advanceSurfaceHaulerTrip(loaded, 600, false).hasCargo).toBe(false);
+  });
+
+  it('keeps an assistant load across the cosmetic clock wrap within the same trip', () => {
+    const loaded = advanceSurfaceHaulerTrip(null, ANIMATION_TIME_WRAP_MS - 1_500, true, 2_000);
+    const wrapped = advanceSurfaceHaulerTrip(loaded, 100, false, 2_000);
+    expect(wrapped.pose).toMatchObject({ phase: 'delivering', cartIsFilled: true });
   });
 });
 

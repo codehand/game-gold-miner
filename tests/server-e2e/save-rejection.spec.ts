@@ -2,7 +2,12 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { createInitialGameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
+import {
+  PORTFOLIO_SAVE_SCHEMA_VERSION,
+  createSaveDocument,
+  type SaveDocumentV2,
+} from '../../src/persistence';
+import { finishPortfolioBoot } from './portfolioBootFixture';
 
 /**
  * Server-milestone Step 24: rejection handling, the player-facing half.
@@ -128,21 +133,21 @@ test('a rejected upload keeps the save, keeps playing, and shows one notice', as
 
   await seedIndexedDb(page, localDocument());
   await page.goto('/');
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
   await waitForSignedIn(page);
+  await finishPortfolioBoot(page);
 
   // One comprehensible notice reaches the player, with the §4 copy for a
   // rejected document rather than a raw code.
   await expect(page.getByTestId('save-diagnostic')).toHaveAttribute(
     'data-code',
-    'cloud-sync-save-rejected',
+    'portfolio-deferred',
   );
-  await expect(page.getByTestId('save-diagnostic-message')).toContainText('could not be verified');
+  await expect(page.getByTestId('save-diagnostic-message')).toContainText('keep playing on this device');
 
   // The local save is intact: a rejected upload never touches local storage.
   await expect
     .poll(async () => (await readStoredDocument(page))?.schemaVersion ?? null)
-    .toBe(2);
+    .toBe(PORTFOLIO_SAVE_SCHEMA_VERSION);
 
   // The session stays playable: the mine keeps producing gold after the refusal.
   const goldBefore = await readGoldLabel(page);

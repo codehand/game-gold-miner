@@ -20,8 +20,8 @@ export const HUD_HEIGHT = 52;
  * control is the last `MIN_TOUCH_TARGET_PX` of that panel.
  */
 export const SURFACE_HEIGHT = 164;
-/** Fixed icon-only navigation anchored to the bottom edge. */
-export const BOTTOM_NAVIGATION_HEIGHT = 58;
+/** Fixed five-tile navigation anchored to the bottom edge. */
+export const BOTTOM_NAVIGATION_HEIGHT = 80;
 /** Smallest usable scrollable mine viewport. */
 export const MINE_MIN_HEIGHT = 200;
 
@@ -32,9 +32,13 @@ export const MINE_SHAFT_WIDTH = 64;
 export const MINE_SHAFT_FLOOR_GAP = 4;
 export const MINE_SHAFT_RAIL_INSET = 11;
 export const MINE_SHAFT_RAIL_WIDTH = 4;
-/** Near-full-width cabin: the 128 px source remains sharp at this scale. */
-export const MINE_SHAFT_CABIN_SIZE = 62;
-export const MINE_SHAFT_CARGO_CAT_SIZE = 50;
+/** Shaft width is constrained by the 64 px rail column. */
+export const MINE_SHAFT_CABIN_WIDTH = 62;
+export const CAT_RUNTIME_DISPLAY_SIZE = 75;
+/** Extra vertical room keeps the shared runtime cat box clear of the cabin floor. */
+export const MINE_SHAFT_CABIN_HEIGHT = 80;
+/** Aligns the cat's visible feet with the cabin's lower interior floor. */
+export const MINE_SHAFT_CABIN_CAT_Y_OFFSET = -5;
 /** Fixed surface headhouse aligned with the underground shaft. */
 export const SURFACE_ELEVATOR_TOWER_WIDTH = 150;
 export const SURFACE_ELEVATOR_TOWER_HEIGHT = SURFACE_HEIGHT;
@@ -50,8 +54,8 @@ export const SURFACE_WAREHOUSE_CENTER_Y = 88;
 export const SURFACE_WAREHOUSE_WIDTH = 140;
 export const SURFACE_WAREHOUSE_HEIGHT = 140;
 export const SURFACE_WAREHOUSE_MANAGER_X = 258;
-export const SURFACE_WAREHOUSE_MANAGER_Y = 132;
-export const SURFACE_WAREHOUSE_MANAGER_SIZE = 56;
+export const SURFACE_WAREHOUSE_MANAGER_Y = 126;
+export const SURFACE_WAREHOUSE_MANAGER_SIZE = CAT_RUNTIME_DISPLAY_SIZE;
 /** Surface cart route: load beneath the chute, then stop at the warehouse bay. */
 export const SURFACE_HAULER_START_X = 112;
 export const SURFACE_HAULER_END_X = 220;
@@ -208,12 +212,8 @@ export function calculateMineShaftRegion(
     throw new Error('Mine width is too narrow for the elevator shaft.');
   }
 
-  if (MINE_SHAFT_CABIN_SIZE > MINE_SHAFT_WIDTH) {
+  if (MINE_SHAFT_CABIN_WIDTH > MINE_SHAFT_WIDTH) {
     throw new Error('Elevator cabin must fit inside the elevator shaft.');
-  }
-
-  if (MINE_SHAFT_CARGO_CAT_SIZE > MINE_SHAFT_CABIN_SIZE) {
-    throw new Error('Elevator cargo cat must fit inside the cabin.');
   }
 
   if (MINE_SHAFT_RAIL_INSET * 2 + MINE_SHAFT_RAIL_WIDTH > MINE_SHAFT_WIDTH) {

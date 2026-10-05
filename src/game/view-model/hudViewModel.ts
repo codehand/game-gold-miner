@@ -7,7 +7,12 @@
  */
 
 import type { BaseGameBalanceConfig } from '../../config';
-import { calculateMineProductionRates, type GameState } from '../../core';
+import {
+  calculateMineProductionRates,
+  EMPTY_CAT_PRODUCTION_MODIFIERS,
+  type CatProductionModifiers,
+  type GameState,
+} from '../../core';
 import { formatAmount } from './formatAmount';
 
 export interface HudViewModel {
@@ -24,8 +29,10 @@ export interface HudViewModel {
 export function createHudViewModel(
   state: GameState,
   balance: BaseGameBalanceConfig,
+  modifiers: CatProductionModifiers = EMPTY_CAT_PRODUCTION_MODIFIERS,
+  boostMultiplier = 1,
 ): HudViewModel {
-  const rates = calculateMineProductionRates(state, balance);
+  const rates = calculateMineProductionRates(state, balance, modifiers);
 
   return {
     goldLabel: '',
@@ -35,6 +42,6 @@ export function createHudViewModel(
     // The effective rate, already capped at the chain's slowest stage, so the
     // HUD estimates what the mine can deliver rather than what the shafts
     // could extract if transport and conversion were free.
-    incomeValueLabel: formatAmount(rates.effectiveProductionPerSecond),
+    incomeValueLabel: formatAmount(rates.effectiveProductionPerSecond.multiply(boostMultiplier)),
   };
 }

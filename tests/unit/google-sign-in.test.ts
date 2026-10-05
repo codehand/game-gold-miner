@@ -4,6 +4,7 @@ import {
   beginGoogleAccountSwitch,
   beginGoogleSignIn,
   detectGoogleIdentityCollision,
+  readGoogleIdentityReturnError,
   signOutOfSession,
   type GoogleAuthClient,
 } from '../../src/platform/web';
@@ -183,6 +184,28 @@ describe('detectGoogleIdentityCollision', () => {
     });
 
     await expect(detectGoogleIdentityCollision(auth)).resolves.toBe(false);
+  });
+});
+
+describe('readGoogleIdentityReturnError', () => {
+  it('reads the collision code and description from the hash returned by OAuth', () => {
+    expect(readGoogleIdentityReturnError(
+      'http://192.168.1.203:5173/#error=server_error&error_code=identity_already_exists&error_description=Identity+is+already+linked',
+    )).toEqual({
+      code: 'identity_already_exists',
+      description: 'Identity is already linked',
+    });
+  });
+
+  it('reads query parameters too and returns null for an ordinary game URL', () => {
+    expect(readGoogleIdentityReturnError(
+      'http://localhost:5173/?error=server_error&error_code=provider_disabled&error_description=Try+again',
+    )).toEqual({ code: 'provider_disabled', description: 'Try again' });
+    expect(readGoogleIdentityReturnError('http://localhost:5173/')).toBeNull();
+  });
+
+  it('does not throw for a malformed href', () => {
+    expect(readGoogleIdentityReturnError('not a URL')).toBeNull();
   });
 });
 

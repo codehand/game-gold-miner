@@ -25,7 +25,11 @@ The drill runs a real `pg_dump --format=custom --schema=public`, starts a fresh
 reference, and restores the dump with `pg_restore`. It verifies that every
 public application table and row count matches. The current schema contains
 `profiles`, `saves`, `save_audit`, `recovery_codes`, `leaderboard_entries`,
-`entitlements`, and `account_audit`.
+`entitlements`, `account_audit`, the cat-collection tables (`cat_blueprints`,
+`cat_collection_accounts`, `cat_instances`, `cat_assignments`,
+`cat_purchase_requests`), the Marketplace trading tables
+(`cat_marketplace_listings`, `cat_rentals`, `cat_marketplace_requests`),
+`mine_boosts`, and `portfolio_command_receipts`.
 
 The application backup does not restore Supabase Auth internals, sessions,
 identities, Auth provider configuration, Edge Runtime caches, environment

@@ -2,25 +2,25 @@
 
 ## Purpose
 
-This document is the Step 2 deliverable of `memory-bank/server-milestone-plan.md`.
-It specifies the client/server save-sync contract **before either side is
-written**: endpoints, request and response shapes, the error vocabulary, the
+This document began as the Step 2 deliverable of
+`memory-bank/server-milestone-plan.md` and now records the implemented V3/V4
+save-sync contract: endpoints, request and response shapes, the error vocabulary, the
 optimistic-concurrency token, what the client does for each failure and what the
 player sees, the conflict policy for divergent devices, the timestamp-anchoring
 rule, and where the session credential lives.
 
-No server code exists. This step changed no code, no balance value, and no
-schema version.
+The original decisions remain binding; later sections record the implemented
+portfolio command and migration extensions.
 
 ## Status
 
 | Field | Value |
 |---|---|
 | Plan | `memory-bank/server-milestone-plan.md` |
-| Step | 2 of 37 — Design the save-sync protocol |
-| Date | 2026-09-08 |
+| Step | Implemented protocol plus V4 portfolio extension |
+| Date | Updated 2026-10-05 |
 | Depends on | Step 1, `memory-bank/server-threat-model.md` |
-| Gate | Awaiting user validation. Step 3 must not begin before it. |
+| Gate | V4 client/server release verification passed |
 
 ## Decisions this step makes
 
@@ -79,11 +79,11 @@ player-facing copy is fixed in §4 so it can be reviewed without reading code.
 
 ### The save document
 
-The `document` field is a `SaveDocumentV2` exactly as
-`memory-bank/architecture.md` defines it, passed through byte-for-byte in both
-directions. The protocol adds no field to it and rewrites none of it. Examples
-below elide the floor array for readability; the real payload carries all
-fifteen entries.
+The `document` field is a supported save document exactly as
+`memory-bank/architecture.md` defines it. V3 remains accepted during migration;
+V4 is the portfolio document used by current clients. Examples below retain the
+historical V2 shape for readability and provenance; current validators dispatch
+by `schemaVersion` and preserve the exact accepted serialization.
 
 ```json
 {
@@ -459,7 +459,9 @@ Authorization: Bearer <access token>
     "elapsedDurationMs": 3600000,
     "creditedDurationMs": 3600000,
     "reward": "12.5"
-  }
+  },
+  "boost": { "lastActivatedAtMs": null },
+  "serverNowMs": 1788870896789
 }
 ```
 
@@ -467,6 +469,15 @@ Authorization: Bearer <access token>
 for the absence since `receivedAt`, computed from the server's own clock to its
 own `now()` with the shared `calculateOfflineGrant` (7,200,000 ms cap, 0.5
 efficiency). `reward` is a serialized `GameNumber`. A `204` carries no grant.
+The `boost` field is the server-owned last activation; the grant applies x4
+only to its five-minute overlap with the credited interval. The client uses
+this same field to recompute its closed local projection before comparing
+against the server grant. The separate authenticated Boost Edge Function
+exposes `GET /functions/v1/boost/v1/status` and
+`POST /functions/v1/boost/v1/activate`; the latter accepts no client time and
+atomically enforces one free activation per eight hours.
+`serverNowMs` lets the browser map the server-owned activation to its local
+simulation timeline without treating the device clock as activation authority.
 A `200` may still carry `offlineGrant: null` when the stored row cannot be
 parsed well enough to compute one (defense-in-depth — the upload path validates
 every stored document); the client treats a null grant as "no server figure",
@@ -621,6 +632,49 @@ server failure after the caller resolves is recorded as a `rejected` /
 refused as `400 malformed_request` (recorded, with a null revision in the row)
 before it could reach the audit's typed column.
 
+### 10.4 `POST /v1/portfolio/command` — V4 account mutation
+
+Authenticated JSON body has exactly `type`, `baseRevision` (positive integer),
+`idempotencyKey` (UUID), and `mineId` only for `purchase` or `enter`. An
+`enter` may also carry `effectiveAtMs` for a durably staged offline entry:
+
+```json
+{"type":"enter","mineId":"amethyst","effectiveAtMs":1791158400000,"baseRevision":12,"idempotencyKey":"00000000-0000-4000-8000-000000000001"}
+```
+
+Types are `migrate`, `purchase`, `enter`, `suspend`. `migrate` accepts every
+supported V1–V3 save; the others require V4. The server reads the current account row, applies
+the pure portfolio rule with its own clock, validates the V4 document, then
+calls the service-role `apply_portfolio_command` RPC. That transaction compares
+the revision and writes the new save plus an idempotent response receipt.
+The response is `200` with `{status:"applied",revision,receivedAt,document,
+result}`. An exact key replay returns that original body even after the save
+has advanced. Reusing a key for another command or sending a stale revision
+returns `409`; an unmet purchase/entry rule returns `422 save_rejected` with a
+reason. A failed command leaves the save and wallet unchanged. For `enter`,
+`result` includes `claimedSequence` and the capped `grant`; Gold reaches the
+shared wallet only in the accepted transaction. A V3 migration anchors Gold's
+offline start at the last server receipt. A V4 first upload similarly anchors
+all interval timestamps and returns its canonical accepted document, which
+the client must adopt before its next upload.
+
+`effectiveAtMs` is accepted only on `enter` and must equal both the uploaded
+V4 document's `savedAtTimestampMs` and its active mine's
+`state.lastUpdateTimestampMs`; it cannot be after server time. This proves the
+client first froze a foreground snapshot at one exact boundary. The server
+closes the target offline interval at that boundary even when the idempotent
+command arrives later, so retry delay cannot inflate the claim or overlap with
+new foreground earnings. The browser stores the source document, upload phase,
+command and accepted receipt in the per-user version-2 command journal before
+showing provisional play. It clears that journal only after the pending claim
+has been merged into the newer local state and durably saved.
+
+`GET /v1/save` for V4 includes both the selected mine's `offlineGrant` and an
+`offlineGrants` map keyed by owned mines with pending intervals. The configured
+browser client now boots through the V4 reconciler and serialized command
+adapter. The existing V3 upload/download and migration contract remains
+available for old local/cloud documents.
+
 ## 11. Boot order
 
 Cloud latency must never delay the first frame (Step 17). The sequence:
@@ -684,12 +738,16 @@ F11 had guessed.
 `supabase/functions/_shared/http.ts` for every function to reuse rather
 than invented per function:
 
-- Allowed origins are the two known dev origins,
-  `http://127.0.0.1:5173` and `http://localhost:5173` — the same pair
-  `additional_redirect_urls` in `supabase/config.toml` already allow-lists.
-  No deployed origin exists yet (threat model §7.5); add the real one to
-  `ALLOWED_ORIGINS` in `_shared/http.ts` when one does, rather than widening
-  it to a wildcard.
+- Allowed origins are the two known loopback dev origins on each supported Vite
+  port, `http://127.0.0.1:5173`, `http://localhost:5173`, and their `:5174`
+  counterparts, plus the narrowly matched `http://192.168.*.*:5173` and
+  `http://192.168.*.*:5174` LAN development origins used by
+  `vite --host 0.0.0.0` — the same redirect set
+  `supabase/config.toml` allow-lists. The LAN rule is port-specific and only
+  matches private `192.168` hostnames; it is not a wildcard CORS policy for
+  arbitrary sites. No deployed origin exists yet (threat model §7.5); add the
+  real one to `ALLOWED_ORIGINS` in `_shared/http.ts` when one does, rather than
+  widening it to a wildcard.
 - `corsPreflightResponse(request, allowedMethods)` answers `OPTIONS` with
   204, the matched origin (or none), `Access-Control-Allow-Methods`, and
   `Access-Control-Allow-Headers: content-type, authorization` — checked

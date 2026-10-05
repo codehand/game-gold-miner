@@ -1,10 +1,12 @@
-export type AccountIdentityStatus = 'loading' | 'guest' | 'signed-in' | 'unconfigured';
+export type AccountIdentityStatus = 'loading' | 'guest' | 'signed-in' | 'unconfigured' | 'error';
 
 export interface AccountIdentityView {
   readonly status: AccountIdentityStatus;
   readonly userId: string | null;
   readonly email: string | null;
   readonly googleLoginLabel?: string;
+  readonly message?: string;
+  readonly messageTone?: 'info' | 'error';
 }
 
 export interface AccountConflictCandidateView {
@@ -22,7 +24,7 @@ export interface AccountConflictView {
 }
 
 export type AccountActionResult =
-  | { readonly status: 'ok' | 'redirecting' }
+  | { readonly status: 'ok' | 'redirecting' | 'refreshed' }
   | { readonly status: 'error'; readonly reason: string };
 
 export interface AccountSettingsModalOptions {
@@ -31,6 +33,7 @@ export interface AccountSettingsModalOptions {
   readonly getIdentity: () => AccountIdentityView;
   readonly onLogin: () => Promise<AccountActionResult>;
   readonly onLogout: () => Promise<AccountActionResult>;
+  readonly onRetry: () => Promise<AccountActionResult>;
   readonly onConflictChoice: (
     choice: 'local' | 'remote',
   ) => Promise<AccountActionResult>;
@@ -100,6 +103,15 @@ export class AccountSettingsModal {
       this.#render();
       this.#focusInitialControl();
     }
+  }
+
+  /** Repaints an already-open dialog after the async account state changes. */
+  public refresh(): void {
+    if (this.#destroyed || this.#backdrop.hidden || this.#busy || this.#conflict !== null) {
+      return;
+    }
+
+    this.#render();
   }
 
   public close(): void {
@@ -173,6 +185,9 @@ export class AccountSettingsModal {
       actions.append(this.#button('Log out & start fresh', () => void this.#runAction('logout'), 'account-settings-danger'));
     } else if (identity.status === 'unconfigured') {
       status.textContent = 'Cloud account services are not configured in this build.';
+    } else if (identity.status === 'error') {
+      status.textContent = 'Unable to check the account right now.';
+      actions.append(this.#button('Try again', () => void this.#runAction('retry'), 'account-settings-primary'));
     } else {
       status.textContent = 'Checking account…';
     }
@@ -181,6 +196,9 @@ export class AccountSettingsModal {
     version.className = 'account-settings-version';
     version.textContent = `App version ${this.#options.appVersion}`;
     body.append(status, details, actions, version);
+    if (identity.message !== undefined) {
+      this.#appendMessage(body, identity.message, identity.messageTone ?? 'error');
+    }
   }
 
   #renderConflict(body: HTMLElement): void {
@@ -256,7 +274,7 @@ export class AccountSettingsModal {
     return button;
   }
 
-  async #runAction(action: 'login' | 'logout' | 'local' | 'remote'): Promise<void> {
+  async #runAction(action: 'login' | 'logout' | 'local' | 'remote' | 'retry'): Promise<void> {
     if (this.#busy || this.#destroyed) {
       return;
     }
@@ -269,7 +287,9 @@ export class AccountSettingsModal {
         ? await this.#options.onLogin()
         : action === 'logout'
           ? await this.#options.onLogout()
-          : await this.#options.onConflictChoice(action);
+          : action === 'retry'
+            ? await this.#options.onRetry()
+            : await this.#options.onConflictChoice(action);
     } catch (error) {
       result = {
         status: 'error',
@@ -287,6 +307,12 @@ export class AccountSettingsModal {
       return;
     }
 
+    if (result.status === 'refreshed') {
+      this.#busy = false;
+      this.#render();
+      return;
+    }
+
     this.#busy = false;
     this.#render();
     if (result.status === 'error') {
@@ -294,22 +320,35 @@ export class AccountSettingsModal {
     }
   }
 
-  #renderBusy(action: 'login' | 'logout' | 'local' | 'remote'): void {
+  #renderBusy(action: 'login' | 'logout' | 'local' | 'remote' | 'retry'): void {
     this.#dialog.querySelectorAll('button').forEach((button) => {
       button.disabled = true;
     });
     const status = this.#dialog.querySelector<HTMLElement>('[data-testid="account-settings-status"]');
     if (status !== null) {
-      status.textContent = action === 'login' ? 'Opening Google…' : 'Working…';
+      status.textContent = action === 'login'
+        ? 'Opening Google…'
+        : action === 'retry'
+          ? 'Checking account…'
+          : 'Working…';
     }
   }
 
   #renderError(reason: string): void {
-    const error = document.createElement('p');
-    error.className = 'account-settings-error';
-    error.setAttribute('role', 'alert');
-    error.textContent = reason;
-    this.#dialog.querySelector('.account-settings-content')?.prepend(error);
+    const body = this.#dialog.querySelector('.account-settings-content');
+    if (body === null) {
+      return;
+    }
+
+    this.#appendMessage(body, reason, 'error');
+  }
+
+  #appendMessage(body: Element, message: string, tone: 'info' | 'error'): void {
+    const notice = document.createElement('p');
+    notice.className = tone === 'info' ? 'account-settings-notice' : 'account-settings-error';
+    notice.setAttribute('role', tone === 'info' ? 'status' : 'alert');
+    notice.textContent = message;
+    body.prepend(notice);
   }
 
   #focusInitialControl(): void {
@@ -327,6 +366,9 @@ export class AccountSettingsModal {
     }
     if (status === 'unconfigured') {
       return 'Offline / local only';
+    }
+    if (status === 'error') {
+      return 'Unavailable';
     }
     return 'Loading';
   }

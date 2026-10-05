@@ -3,7 +3,11 @@ import {
   calculateOfflineIncome,
   createInitialGameState,
   type GameState,
+  createEmptyCatRoster,
+  type CatRosterState,
   type OfflineIncomeCalculation,
+  type BoostState,
+  EMPTY_BOOST_STATE,
 } from '../core';
 import type { SavePersistenceCoordinator } from './SavePersistenceCoordinator';
 import {
@@ -33,6 +37,7 @@ export type ActiveGameLoadResult =
   | {
       readonly source: 'saved';
       readonly state: GameState;
+      readonly catRoster: CatRosterState;
       readonly loadedSave: LoadedSaveDocument;
       readonly offlineIncome: OfflineIncomeCalculation;
       readonly offlineIncomeSettlementPersisted: boolean;
@@ -41,6 +46,7 @@ export type ActiveGameLoadResult =
   | {
       readonly source: 'fresh';
       readonly state: GameState;
+      readonly catRoster: CatRosterState;
       readonly loadedSave: null;
       readonly offlineIncome: null;
       readonly offlineIncomeSettlementPersisted: null;
@@ -49,6 +55,7 @@ export type ActiveGameLoadResult =
 
 export interface LoadActiveGameOptions {
   readonly onWarning?: (warning: SaveRecoveryWarning) => void;
+  readonly boostState?: BoostState;
 }
 
 export async function loadActiveGame(
@@ -92,11 +99,13 @@ export async function loadActiveGame(
     currentTimestampMs,
     loadedSave.effectiveProductionRatePerSecond,
     config.offlineIncome,
+    options.boostState ?? EMPTY_BOOST_STATE,
   );
   const settledDocument = createSaveDocument(
     offlineIncome.state,
     config,
     currentTimestampMs,
+    loadedSave.catRoster,
   );
 
   persistence.queueSave(settledDocument);
@@ -111,6 +120,7 @@ export async function loadActiveGame(
   return {
     source: 'saved',
     state: offlineIncome.state,
+    catRoster: loadedSave.catRoster,
     loadedSave,
     offlineIncome: availableOfflineIncome,
     offlineIncomeSettlementPersisted,
@@ -126,6 +136,7 @@ function createFreshResult(
   return {
     source: 'fresh',
     state: createInitialGameState(config, currentTimestampMs),
+    catRoster: createEmptyCatRoster(),
     loadedSave: null,
     offlineIncome: null,
     offlineIncomeSettlementPersisted: null,

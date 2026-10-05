@@ -8,6 +8,102 @@ enforced by shipped code and restated as a contract in `architecture.md` or
 Not part of the contract. `activeContext.md` keeps only decisions that still
 constrain code not yet written.
 
+## Mica as the free floor baseline — 2026-09-28
+
+- Treat unassigned Mica as the mine floor's presentation baseline, not as a
+  free owned cat instance. This preserves server ownership and keeps the base
+  production rate unchanged while making a newly opened floor visibly staffed.
+- One Marketplace purchase creates one owned Miner instance. It may replace
+  the baseline on one floor only; another floor requires another idle instance.
+
+## Independent bottom-navigation icons — 2026-09-27
+
+- The mine's HUD and buildings, not the old ornate menu reference, now set the
+  bottom bar's palette: navy, slate-blue steel, warm gold and restrained timber.
+- Ship five separate transparent 96×96 PNG textures, each displayed at 42×42.
+  Draw panel, tile frames, English labels and pressed state in Phaser so an
+  individual icon can be replaced without regenerating a full strip or sheet.
+- Keep five equal 64×64 hit regions inside the unchanged 360×80 layout; preserve
+  keys, callbacks and the presentation-only status of Boost and Map.
+
+This supersedes the two 2026-09-21 full-strip/sprite-sheet decisions below.
+Their original sources remain in `art-source/`; their unused public runtime
+files were removed.
+
+## Mine miner delivery cadence — 2026-09-26
+
+- Treat the mine worker count as a shared derived rule: one worker plus one at
+  shaft levels 50, 100, 150, and 200, capped at five. Keep the rule out of save
+  state so upgrades still derive the current crew from the authoritative level.
+- Schedule floor material delivery at evenly spaced worker milestones. Each
+  miner arrival adds an equal share of the configured cycle yield to that floor's
+  `materialQueue`; the complete cycle yield is unchanged, and spendable gold
+  remains owned by elevator transport plus warehouse conversion.
+- Render the phase-shifted crew on one horizontal patrol baseline. The renderer
+  mirrors milestones and never writes back to the core.
+
+## Reference-driven bottom menu artwork — 2026-09-21
+
+- The supplied visual reference is the source of truth for the menu's outer
+  treatment: one navy/gold strip, five rounded tiles, and a raised active Boost
+  tile in the centre. Use one processed transparent runtime image instead of
+  rebuilding this chrome from multiple code-drawn pieces.
+- Keep code responsible for semantic order, hit regions, callbacks, and
+  accessibility-adjacent interaction behavior. Artwork is presentation-only;
+  the full strip must never become the hit-test boundary.
+- Retain the earlier icon-only generation under `art-source/` for provenance,
+  but do not load it in the runtime after the reference-driven replacement.
+
+The runtime source must be alpha-cropped to the visible menu before display;
+transparent generation margins must not determine the layout box. Fit the
+cropped strip uniformly inside a fixed 360×80 safe region with a small margin,
+while keeping semantic hit regions independent of the artwork so decorative
+shell and active Boost ornaments cannot clip or change interaction geometry.
+Fill the transparent margin with the navigation surface color rather than
+letting the mine background show through as a black seam.
+Ship a high-quality 2× runtime resample of the menu and draw it at an exact
+0.5 texture scale, so the large generated source is not filtered directly into
+the small logical display box and softened in the browser.
+This supersedes the temporary 360×58 presentation fit, which vertically
+stretched the source strip.
+
+## Bottom-navigation sprite sheet — 2026-09-21
+
+- Use one generated transparent 5×1 sprite sheet as the source of truth for
+  the bottom-navigation icon family, with fixed frame order Rewards,
+  Marketplace, Boost, Collection, Map. Keep the raw prompt/source and QC
+  outputs under `art-source/navigation-icons/`; ship only the approved runtime
+  sheet under `public/assets/ui/navigation/`.
+- Keep the existing interactive parent geometry and presentation callbacks.
+  Fit each transparent 256px frame before the shared 0.6 visual scale so the
+  generated art cannot overlap neighboring targets or alter input behavior.
+- Treat the regenerated art as presentation-only. Boost and Map may look
+  production-ready while their game actions remain deferred until their own
+  milestones.
+
+## UI feedback decisions — 2026-09-21
+
+- Treat Marketplace Buy confirmation as one two-choice action group: the
+  explanatory copy and wallet context span the modal, while `Confirm purchase`
+  and `Cancel` share a responsive row so neither choice is pushed below the
+  other on a narrow portrait screen.
+- Treat Collection `ready` with zero cats as the only true empty state. During
+  `loading`, `stale`, or `error`, show state-specific copy and preserve Retry;
+  never display a zero owned-count summary from a failed roster load.
+- Treat a `Listed` Marketplace catalog item as a listing-specific confirmation
+  surface: use `Buy listed cat` and `Back to cats` so the CTA names reflect the
+  active listing, while retaining the explicit confirmation boundary and the
+  existing server-authoritative command.
+
+## Marketplace asset runtime decisions
+
+- **2026-09-19:** The first runtime-integrated Marketplace roles are Mofy for
+  the elevator, Baron for the warehouse, and Forge for miners. Runtime asset
+  identity is presentation-only and must not become authoritative assignment,
+  save, economy, or simulation state; the Unloader remains a future receiving
+  role. A missing runtime sheet must resolve to the existing local placeholder
+  so offline boot remains playable.
+
 ## Settled base-game decisions
 
 - Advance foreground simulation in deterministic 100 ms ticks, carry sub-tick remainder in authoritative state, and credit at most 1,000 ms of simulation per update while consuming the full wall-clock delta.
@@ -73,3 +169,110 @@ constrain code not yet written.
 - Expire a press-result map on its own terms rather than through the controls still on screen, because a purchase can remove the control it was made on.
 - Let a completed change be its own confirmation: a floor that visibly opens says more than a message on a button the same frame removes.
 - Wait for a browser press to be observed rather than assuming a settling time, and grant the paused-clock game loop one step before pressing anything at all.
+
+## Marketplace transaction boundary
+
+- **2026-09-20:** Make Buy live only for the nine seeded v1 catalog rows. Price,
+  wallet deduction, ownership, idempotency, and the returned cat instance stay
+  server-authoritative; the response also returns wallet gold and save revision
+  so the client can continue cloud CAS safely. Keep Rent, Sell, My listings,
+  auctions, and real-money payment as explicit preview/deferred surfaces until
+  their own server contracts and acceptance gates exist.
+
+## Marketplace trading authority — 2026-09-20
+
+- **Server-owned listing state:** prices, listing status, sale ownership,
+  rental ownership, rental expiry, wallet deductions, and idempotency are
+  authoritative in Supabase RPCs; the client only renders returned projections.
+- **Safe sell boundary:** only an owned, unassigned cat can be listed, and an
+  active listing locks the cat out of another listing or assignment until it is
+  cancelled or settled.
+- **Sale versus rental semantics:** Buy transfers the cat permanently; Rent
+  grants temporary use to the renter while legal ownership remains with the
+  seller and the owner is restored when expiry is settled.
+- **Exact-role replacement:** both the owner and active renter can replace a
+  currently assigned cat, but the requested cat must match the mine role and
+  remain idle for that account.
+- **Replay safety:** every Marketplace mutation takes a caller idempotency key
+  so retries return the original result without charging or transferring twice.
+- **Caller-scoped renter projection:** a renter receives a usable collection
+  projection without changing the V4 client save schema; legal ownership stays
+  in `cat_instances` and `cat_rentals`.
+
+## Surface hauler productivity — 2026-09-27
+
+- Preserve the existing raw progression `1 + floor(min(warehouseLevel, 100) / 10)`.
+- Cap the visible surface crew at five cats and keep one cart per visible cat.
+- Convert overflow into shared per-cat productivity with
+  `productivityMultiplier = rawCount / visibleCount`, preserving the aggregate
+  workforce represented by the prior eleven-cat rule.
+- Apply the multiplier at the existing `warehouse.inputQueue` handoff rather
+  than adding a persisted surface queue. Reuse the same core-derived value in
+  foreground simulation, production-rate estimates, offline income, and
+  anti-cheat bounds so all projections agree without a save-schema change.
+
+## Mine-floor workforce productivity — 2026-09-27
+
+- Preserve the mine-floor raw progression as `1 + floor(mineShaftLevel / 50)`;
+  do not cap the derived raw count at level 200.
+- Cap the rendered and delivery-event workforce at five visible miners so the
+  scene's pooled sprites remain bounded.
+- Convert overflow into `productivityMultiplier = rawCount / visibleCount` and
+  apply it to the completed cycle yield. At level 200 the multiplier is `1x`;
+  at level 250 it is `1.2x`; higher levels continue to scale throughput while
+  the screen remains five cats.
+- Keep the helper shared by extraction, theoretical production rates, offline
+  projections, and anti-cheat in-flight allowances. This preserves one
+  authoritative formula without adding a save-state workforce field or queue.
+## 2026-09-28 — Elevator default is a free visual, not a free owned cat
+
+The shared `elevator:main` slot uses Pip while unassigned; Pip is original
+N-tier art but is not a Marketplace blueprint, Collection instance, or source
+of a role bonus. Mofy remains the paid SSR blueprint and replaces Pip only
+when a server-owned instance is assigned. This mirrors the Mica/Forge floor
+pattern without changing purchase authority or save schema.
+
+## Mine Overdrive clock and economy — 2026-09-29
+
+The first Boost is free, x4 for five minutes, and repeatable only after eight
+hours. It advances all three existing simulation stages rather than
+multiplying wallet gold or adding a new resource. The timer continues while
+away; offline income gets only the exact active-window overlap within the
+existing two-hour real-time cap. Configured play uses an atomic server-clock
+activation row and server-owned grant/progress checks. The client-only build
+uses a separate localStorage timestamp, leaving the save document unchanged.
+
+## Haulers are per-cart specialists — 2026-09-30
+
+Keep free wooden-handcart workers on unassigned surface slots, without owned
+instances or bonuses. Tobi SR and Rivet SSR are level-1 purchases at 18,000 /
+42,000 gold; their electric and maglev vehicles follow their assigned instance.
+Use five stable slots, exposing only the warehouse-unlocked crew. One instance
+can occupy one slot; NULL-ID assignment explicitly restores the free default.
+Average active cart multipliers so one purchase never buffs five carts as if
+five copies had been bought. Preserve the old workforce/overflow formula.
+Use four genuinely authored walk frames and separate vehicle images, recorded
+as an art-policy exception; rarity is not padded by duplicating walk frames.
+
+## Boru excavator Miner — 2026-09-30
+
+User explicitly approved the Boru calico/mini-excavator concept. Keep the
+existing Miner role and one-owned-instance-per-floor rule, not a new vehicle
+inventory. Four eight-frame actions are tied to extraction progress, with
+whole-machine mirroring and one track origin. Initial 42,000-gold pricing and
+96/68/95/90 attributes are provisional balance, not a new production formula.
+
+## Multi-mine portfolio and art direction — 2026-10-05
+
+- Keep a single account wallet. Only the mine currently being viewed runs the
+  foreground simulation; other owned mines store bounded offline intervals.
+- Credit an inactive mine's reward to the shared wallet when the player enters
+  that mine. A disconnected configured entry remains pending until server-time
+  validation settles the original boundary exactly once.
+- Use six ordered resources: Gold, Amethyst, Ruby, Sapphire, Emerald and
+  Diamond. Higher-value resources require higher purchase prices and earlier
+  site ownership; the initial Gold mine remains free.
+- Give each resource a complete visual family. Its fifteen floors use upper,
+  middle and deep bands, and walls, ground, ore veins, piles, shafts,
+  structures, surface buildings, cargo, impacts and claim presentation inherit
+  the resource's form and palette.

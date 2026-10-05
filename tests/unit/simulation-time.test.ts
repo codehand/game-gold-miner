@@ -5,12 +5,14 @@ import {
   advanceSimulation,
   calculateMineProductionRates,
   calculateOfflineIncome,
+  createCatProductionModifiers,
   catchUpSimulation,
   createInitialGameState,
   createMineFloorState,
   MAX_CATCH_UP_MS,
   MAX_FOREGROUND_DELTA_MS,
   SIMULATION_STEP_MS,
+  GameNumber,
   type GameState,
 } from '../../src/core';
 
@@ -143,6 +145,76 @@ describe('fixed-step simulation time', () => {
       expect(serialize(initialState)).toEqual(before);
     },
   );
+
+  it('applies miner, elevator, and warehouse cat effects to live state progression', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const modifiers = createCatProductionModifiers({
+      cats: [
+        testCat('miner-1', 'miner'),
+        testCat('elevator-1', 'elevator'),
+        testCat('warehouse-1', 'warehouse'),
+      ],
+      assignments: [
+        { slotKey: 'miner:floor-1', catInstanceId: 'miner-1' },
+        { slotKey: 'elevator:main', catInstanceId: 'elevator-1' },
+        { slotKey: 'warehouse:main', catInstanceId: 'warehouse-1' },
+      ],
+      assignmentRevision: 1,
+      collectionRevision: 1,
+    });
+
+    const minerBase = catchUpSimulation(initialState, 2_000);
+    expect(modifiers.miningOutputMultiplierByFloor['floor-1']).toBeGreaterThan(1);
+    expect(modifiers.elevatorThroughputMultiplier).toBeGreaterThan(1);
+    expect(modifiers.warehouseProcessingMultiplier).toBeGreaterThan(1);
+    const minerBoosted = catchUpSimulation(
+      initialState,
+      2_000,
+      BASE_GAME_BALANCE,
+      modifiers,
+    );
+    expect(minerBoosted.floors[0].totalExtracted.greaterThan(
+      minerBase.floors[0].totalExtracted,
+    )).toBe(true);
+
+    const transportState: GameState = {
+      ...initialState,
+      floors: initialState.floors.map((floor, index) => index === 0
+        ? { ...floor, materialQueue: GameNumber.from(1) }
+        : floor),
+    };
+    const elevatorBase = advanceSimulation(transportState, 100);
+    const elevatorBoosted = advanceSimulation(
+      transportState,
+      100,
+      BASE_GAME_BALANCE,
+      modifiers,
+    );
+    expect(elevatorBoosted.elevator.transitProgress).toBeGreaterThan(
+      elevatorBase.elevator.transitProgress,
+    );
+
+    const warehouseState: GameState = {
+      ...initialState,
+      warehouse: {
+        ...initialState.warehouse,
+        inputQueue: GameNumber.from(400),
+      },
+    };
+    const warehouseBase = catchUpSimulation(warehouseState, 4_800);
+    const warehouseBoosted = catchUpSimulation(
+      warehouseState,
+      4_800,
+      BASE_GAME_BALANCE,
+      modifiers,
+    );
+    expect(warehouseBoosted.warehouse.totalGoldDelivered.greaterThan(
+      warehouseBase.warehouse.totalGoldDelivered,
+    )).toBe(true);
+  });
 });
 
 /**
@@ -244,4 +316,26 @@ function expectProductionState(
 
 function serialize(state: GameState): unknown {
   return JSON.parse(JSON.stringify(state));
+}
+
+function testCat(
+  catInstanceId: string,
+  roleId: 'elevator' | 'warehouse' | 'miner',
+) {
+  return {
+    catInstanceId,
+    ownerUserId: 'user-1',
+    assetId: `${roleId}:SSR:test:idle`,
+    displayName: roleId,
+    roleId,
+    rarityTier: 'SSR' as const,
+    level: 1,
+    attributes: { power: 100, speed: 100, capacity: 100, efficiency: 100 },
+    calculationVersion: 1,
+    availabilityState: 'Assigned' as const,
+    assignedSlotKey: roleId === 'miner'
+      ? 'miner:floor-1'
+      : `${roleId}:main`,
+    updatedAt: TIMESTAMP_MS,
+  };
 }

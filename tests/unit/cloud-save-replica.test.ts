@@ -151,6 +151,25 @@ describe('CloudSaveReplica upload cadence (§9)', () => {
     expect(upload).toHaveBeenLastCalledWith(1, forced);
   });
 
+  it('adopts a revision changed by an external server transaction', async () => {
+    const upload = vi
+      .fn<UploadCloudSave>()
+      .mockResolvedValueOnce(accepted(1))
+      .mockResolvedValueOnce(accepted(9));
+    const { replica } = makeReplica(upload);
+
+    replica.enqueue(freshDocument());
+    await replica.flush();
+    replica.acceptExternalRevision(8);
+
+    const afterPurchase = elevatorProgressDocument();
+    replica.enqueue(afterPurchase, { force: true });
+    await replica.flush();
+
+    expect(upload).toHaveBeenLastCalledWith(8, afterPurchase);
+    expect(replica.baseRevision).toBe(9);
+  });
+
   it('coalesces — only the newest queued document is ever sent', async () => {
     const resolvers: Array<(result: CloudSaveUploadResult) => void> = [];
     const upload = vi

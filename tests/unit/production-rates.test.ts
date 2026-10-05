@@ -4,6 +4,8 @@ import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   calculateMineProductionRates,
   calculateTheoreticalFloorExtractionRate,
+  calculateLevelEffect,
+  createCatProductionModifiers,
   createInitialGameState,
   GameNumber,
   type GameState,
@@ -43,6 +45,32 @@ describe('production rates', () => {
     const expectedRate = GameNumber.from(10)
       .multiply(1.1 ** 2)
       .multiply(1_000 / 2_000);
+
+    expect(rate.equals(expectedRate)).toBe(true);
+  });
+
+  it('applies overflow mine-floor workforce productivity after five visible cats', () => {
+    const initialState = createInitialGameState(
+      BASE_GAME_BALANCE,
+      TIMESTAMP_MS,
+    );
+    const state: GameState = {
+      ...initialState,
+      floors: [
+        {
+          ...initialState.floors[0],
+          mineShaftLevel: 250,
+        },
+        ...initialState.floors.slice(1),
+      ],
+    };
+    const rate = calculateMineProductionRates(state, BASE_GAME_BALANCE)
+      .floors[0].theoreticalExtractionPerSecond;
+    const expectedRate = calculateLevelEffect(
+      BASE_GAME_BALANCE.floors[0].baseYield,
+      250,
+      BASE_GAME_BALANCE.floors[0].upgrade,
+    ).multiply(1.2 * (1_000 / BASE_GAME_BALANCE.floors[0].cycleDurationMs));
 
     expect(rate.equals(expectedRate)).toBe(true);
   });
@@ -89,6 +117,39 @@ describe('production rates', () => {
     calculateMineProductionRates(state, BASE_GAME_BALANCE);
 
     expect(JSON.stringify(state)).toBe(serializedBefore);
+  });
+
+  it('applies an assigned cat to only its role metric', () => {
+    const state = createInitialGameState(BASE_GAME_BALANCE, TIMESTAMP_MS);
+    const miner = {
+      catInstanceId: 'miner-1',
+      ownerUserId: 'user-1',
+      assetId: 'miner:SSR:forge:idle',
+      displayName: 'Forge',
+      roleId: 'miner' as const,
+      rarityTier: 'SSR' as const,
+      level: 7,
+      attributes: { power: 92, speed: 79, capacity: 72, efficiency: 86 },
+      calculationVersion: 1,
+      availabilityState: 'Assigned' as const,
+      assignedSlotKey: 'miner:floor-1' as const,
+      updatedAt: TIMESTAMP_MS,
+    };
+    const modifiers = createCatProductionModifiers({
+      cats: [miner],
+      assignments: [{ slotKey: 'miner:floor-1', catInstanceId: miner.catInstanceId }],
+      assignmentRevision: 1,
+      collectionRevision: 1,
+    });
+
+    const base = calculateMineProductionRates(state, BASE_GAME_BALANCE);
+    const boosted = calculateMineProductionRates(state, BASE_GAME_BALANCE, modifiers);
+
+    expect(boosted.floors[0].theoreticalExtractionPerSecond.greaterThan(
+      base.floors[0].theoreticalExtractionPerSecond,
+    )).toBe(true);
+    expect(boosted.elevatorCapacityPerSecond.equals(base.elevatorCapacityPerSecond)).toBe(true);
+    expect(boosted.warehouseCapacityPerSecond.equals(base.warehouseCapacityPerSecond)).toBe(true);
   });
 });
 

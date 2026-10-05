@@ -16,7 +16,7 @@ Many management games obscure cause and effect or require constant tapping. This
 
 - Understand how gold is produced and spent within 30 seconds.
 - See miners, carts, and storage working concurrently.
-- Recognize floor extraction from miner travel and stalled production from visible gold queues; shared transport stages retain progress bars.
+- Recognize floor extraction from miners walking from the white unloader to the gold pile, striking ore, and returning to deliver; stalled production remains visible in gold queues, while shared transport stages retain progress bars.
 - Feel a noticeable acceleration after every meaningful upgrade.
 - Return to a useful but capped offline reward.
 - Make progress without blockchain, payment, or advertising systems.
@@ -25,21 +25,92 @@ Many management games obscure cause and effect or require constant tapping. This
 
 The player claims offline gold, inspects the mine, upgrades the slowest stage, opens deeper floors, assigns managers, activates a boost, and leaves while production continues. Short-term goals are the next upgrade and floor; the prototype's long-term goal is fully automating and optimizing all fifteen floors.
 
+The multi-mine Map expands this journey into six resource locations. One shared
+gold wallet pays for new sites, while only the selected mine earns live gold.
+Previously visited inactive mines display capped offline rewards that enter
+the wallet when the player returns and claims them. Each site's fifteen floors
+must visibly use its own resource shape, palette and cargo. Local and configured
+accounts use the same V4 Map/portfolio model. Five non-Gold visual families now
+cover surface, structures, shaft, three floor-depth bands, ore, cargo and
+effects, with native-scale browser review. Owned cats belong to the account but
+work in one mine-qualified slot at a time, so switching locations changes the
+visible workforce and its production bonus without duplicating either. If a
+configured player enters another mine while cloud service is unavailable, the
+new mine remains playable and the old offline interval is shown as pending.
+Reconnect validates that interval at the original entry boundary and credits
+the shared wallet once, while preserving foreground progress earned meanwhile.
+
+### Cat collection and role assignment journey
+
+Surface Haulers are a separate role from the Warehouse manager. Each unlocked
+cart starts with a free default cat and wooden handcart. Tobi SR (18,000 gold)
+brings an electric trolley; Rivet SSR (42,000 gold) brings a wheel-free maglev.
+One purchase creates one level-1 instance usable on one cart. Clicking a
+Hauler opens the role panel, with Cart 1–5 buttons for the currently unlocked
+crew, Change cat and Use default Hauler. Returning to default frees the owned
+instance for another cart without selling or deleting it. Buying alone does
+not equip a cat. Crew count still follows warehouse level and caps at five.
+Each assigned cat improves its own equal share of hauling; the crew bonus is
+the average of active cart multipliers and composes with the existing manager
+and overflow bonuses. Cat level is metadata; no new character-level upgrade
+mechanic is introduced by this expansion.
+
+Each unlocked floor starts with Mica as its free visual baseline, without an
+owned Collection instance or cat skill bonus. A purchased Forge enters the
+Collection as one distinct instance; the player must assign it to a floor to
+replace Mica. One Forge cannot serve two floors at once, so replacing every
+floor requires one purchased Miner instance per floor. The Marketplace Buy
+result allows another purchase of the same blueprint.
+
+Boru is a purchased SSR Miner operating a compact excavator, initially priced
+at 42,000 gold (Power 96, Speed 68, Capacity 95, Efficiency 90). He drives empty
+to the ore, lowers/curls/lifts the bucket, returns with visible gold and tips it
+beside the white receiving cat. One purchase equips one floor, not every floor.
+Five visible workers and level overflow productivity remain unchanged; the
+animation is presentation-only and awards no extra gold. Balance is provisional.
+
+The single Elevator slot likewise starts with Pip, a free visual operator
+without an owned instance or production bonus. Mofy is a Marketplace-only
+blueprint: buying one creates one owned Mofy, and only assigning that instance
+to `elevator:main` replaces Pip. Owning Mofy without assigning him does not
+change the mine.
+
+After a signed-in player purchases a cat in Marketplace, the server creates an
+owned cat instance in the player's Collection. Collection cards and detail show
+the instance's portrait, role, rarity, level, attributes, lifecycle state, and
+assignment location. Clicking a cat already active in the mine opens its
+current information and a role-filtered `Change cat` flow. A confirmed
+replacement is server-authoritative and persists the slot across reload and
+re-login; the old instance returns to `Idle`, the new instance becomes
+`Assigned`, and the role's score/skill modifier changes the affected production
+metric. On mine floors, an assigned Forge or Mica keeps that character's own
+appearance while walking, striking the gold pile, and returning to unload;
+the strike effect stays consistent across the role. Offline or stale sessions keep the last safe read-only projection and
+cannot claim a replacement success without authority.
+
+Phases 5–8 deliver the owned-cat Collection/detail surface, the
+server-authoritative mine replacement flow, runtime role-slot binding, and the
+role-based production effect. The Marketplace now also has live fixed-price
+Sell, hourly Rent, and My listings contracts: owners publish idle cats, buyers
+or renters transact through the server, and the resulting wallet, roster,
+assignment, and expiry state is reconciled into the game. None of these
+surfaces is a client-only preview.
+
 ## UX Principles
 
-Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses icon-only, thumb-safe controls with immediate press feedback; the Rewards item now opens the Step 29 leaderboard, while the remaining future-feature items stay discoverable without pretending their screens already exist.
+Prioritize one-thumb controls, readable large-number notation, strong upgrade affordances, short animations, and uninterrupted portrait play. UI must reinforce the production chain instead of covering it. The persistent bottom navigation uses five individually replaceable icon assets on a restrained HUD-navy/slate-steel panel, short labels, thumb-safe controls, and immediate press feedback; the Rewards item opens the Step 29 leaderboard, and Cats opens the current owned-cat Collection list/detail surface. Marketplace confirmations keep listing-specific actions visible together on narrow screens (`Buy listed cat` plus `Back to cats` for a Listed catalog item), while Collection explicitly distinguishes a valid empty roster from a failed or stale load. Account/settings must surface OAuth return and account-check failures with actionable copy and must re-render when asynchronous auth state settles; an already-linked Google identity is sign-in guidance, not a fatal error, and the player must never be stranded on an unexplained loading state. The remaining future-feature items stay discoverable without pretending their screens already exist.
 
 ## Base-Game Delivery Boundary
 
-The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation shell now reserves the bottom 58 logical pixels for five clickable, individually illustrated controls (Rewards, Shop, Boost, Managers, Map); each complete visible tile is scaled to 60% while the thumb-safe hit region stays unchanged. These controls provide press feedback only. Their screens and all manager, boost, gift, shop, task, social, Telegram, monetization, audio, and final-art systems remain deferred.
+The completed base-game milestone includes fifteen sequential floors, one shared elevator, one shared warehouse, gold, independent stage upgrades, milestone multipliers, local saves, and capped offline income. The screen initially exposes floors 1–5; opening floor 5 reveals floors 6–10, and opening floor 10 reveals floors 11–15. Production is automatic without managers. UI copy is English and the logical viewport is 360×640. A compact post-milestone navigation panel reserves the bottom 80 logical pixels for five clickable tiles (Rewards, Shop, Boost, Cats, Map), each with its own transparent icon and 64×64 target. Cats leads to the owned-cat Collection list/detail surface and the mine role-slot assignment flow. Boost opens Mine Overdrive: a free x4 increase to mining, elevator, and warehouse throughput for five real-time minutes, once per eight hours, including only the overlapping part of offline income. Gift, task, social, Telegram, monetization, audio, and other final-art systems remain deferred.
 
 The user-review revision completed on 2026-09-08 reduces the fixed HUD to 52 logical pixels and defines its centre number as the authoritative warehouse input queue (`warehouse.inputQueue`), not gold still travelling inside the elevator cabin. A warehouse icon makes that ownership explicit. The tower hopper, gold pour, loaded cats, and filled surface carts now all empty with that queue; elevator cargo remains visually in transit until surface delivery. The elevator preserves top-down priority by returning whenever a visited floor still has gold, and the surface delivery crew shares one straight baseline.
 
-The delivery crew remains visibly active when the tower is empty: the lead cat and every warehouse-level assistant repeatedly visit the tower, push an empty cart to the warehouse, and return. A positive warehouse input queue adds gold pour and filled-cart feedback to that same route; it does not start or stop the workers.
+The delivery crew remains visibly active when the tower is empty: the lead cat and every warehouse-level assistant repeatedly visit the tower, push an empty cart to the warehouse, and return. A positive warehouse input queue gives every cart its own matching gold-pour and filled-cart feedback when that cart reaches the chute; it does not start or stop the workers. The raw warehouse-level progression is `1 + floor(min(level, 100) / 10)`, but the visible crew is capped at five. Above five raw workers, the overflow becomes a per-cat productivity multiplier (`rawCount / visibleCount`) at the existing `warehouse.inputQueue` handoff, with no additional save field or queue.
 
 The shared elevator shaft remains visually continuous and crisp through all fifteen floors. Its original shaft art repeats at native vertical resolution rather than being stretched to the full mine depth, so rail connectors and braces stay readable while scrolling.
 
-Opening more floors does not reduce the apparent cadence of miner travel: fixed-step extraction targets are blended across rendered frames, keeping walking smooth while authoritative production remains deterministic.
+Opening more floors does not reduce the apparent cadence of miner travel: fixed-step extraction targets are blended across rendered frames, keeping walking smooth while authoritative production remains deterministic. Each floor's level-derived miner crew stays on one horizontal line, and each visible miner arrival adds its equal share of the cycle yield to that floor's material queue. Five visible miners are the presentation cap; raw workers beyond five become `rawCount / visibleCount` productivity for the floor's extraction output. The elevator and warehouse still own transport and spendable-gold conversion, so the top HUD changes only after material reaches the warehouse.
 
 Scrolling to inspect deep floors changes only the player's view. The elevator still travels the complete physical shaft through every intervening floor before entering the surface tower; offscreen distance is never skipped.
 
@@ -52,17 +123,18 @@ Step 37 closed the milestone, validated by the user on 2026-09-08. It reviewed t
 An asset-only cat-role catalog was authorized on 2026-09-08. Every cat role is
 planned across five rarity tiers: `N` normal/gray, `R` rare/green, `SR` super
 rare/blue, `SSR` super-super rare/purple, and `UR` ultra rare/gold. The current
-`unloader` remains the runtime default and is the normal-tier baseline. New
+Unloader remains a separate future role and receiving-position fallback. New
 role/tier art will be created from a user-supplied role name, tier, and design
-reference. Different tier attributes are future design work: this catalog does
-not yet change the playable product, economy, state, save format, or UI.
-Animation fidelity is now part of the asset-only presentation contract: `N`/`R`
-cat roles use four frames in a `2x2` sheet, while `SR`/`SSR`/`UR` roles use
-eight frames in a `4x2` sheet with consistent `128x128` proportions and feet
-anchors. Mofy is the first applied SSR example; its eight poses add deliberate
-ledger inspection, grip adjustment, breathing, and recovery motion without
-changing gameplay or runtime selection. The marketplace portrait remains a
-single extracted frame for compatibility.
+reference. Different tier attributes remain future design work: runtime art
+does not grant gameplay benefits or change the economy, state, save format, or
+schema. Animation fidelity is part of the presentation contract: `N`/`R` cat
+roles use four frames in a `2x2` sheet, while `SR`/`SSR`/`UR` roles use eight
+frames in a `4x2` sheet with consistent `128x128` proportions and feet anchors.
+Phase 7 integrated Mofy, Baron, and Forge as assignable variants. The current
+free Elevator baseline is Pip and the free Miner baseline is Mica; owned Mofy
+appears only after assignment. Their runtime sheets are presentation-only and
+fall back locally when unavailable. The Marketplace portrait remains a single extracted frame
+for card/detail compatibility.
 
 Server-milestone Steps 4 through 7 landed between 2026-09-08 and 2026-09-09,
 closing Phase 1, and change nothing a player can see or do. They are
@@ -117,7 +189,8 @@ choose. The rule lives in `src/persistence/saveConflictPolicy.ts`; only a
 genuine fork reaches the player as a prompt. Making "keeps the ahead save loses
 nothing" true required counting *every* gold source, so an offline reward now
 also increments a new monotonic `warehouse.totalOfflineGoldClaimed` counter
-(save schema version 2, migrated from version 1 by defaulting it to zero) that
+(then-current save schema version 2, now migrated through V3 from version 1 by
+defaulting it to zero) that
 the conflict rule compares. Genuine forks now open the in-game account popup,
 which shows both candidates and lets the player keep the device save or the
 cloud save. The selected branch is settled safely before reload; the

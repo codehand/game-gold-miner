@@ -25,7 +25,7 @@
  * case this module silently skips.
  */
 import type { BaseGameBalanceConfig } from '../../config';
-import { createInitialGameState } from '../../core';
+import { createInitialGameState, validateBoostState, type BoostState } from '../../core';
 import {
   createSaveDocument,
   resolveSaveConflict,
@@ -55,6 +55,8 @@ export interface CloudSaveDownload {
   readonly revision: number;
   /** Step 22's server-computed offline grant; `null` when the server could not compute one. */
   readonly offlineGrant: CloudSaveOfflineGrant | null;
+  readonly boost?: BoostState;
+  readonly serverNowMs?: number;
 }
 
 /** Injected so tests fake the network call instead of hitting a real one. */
@@ -65,6 +67,8 @@ interface CloudSaveDownloadResponseBody {
   readonly receivedAt?: unknown;
   readonly document?: unknown;
   readonly offlineGrant?: unknown;
+  readonly boost?: unknown;
+  readonly serverNowMs?: unknown;
 }
 
 function parseOfflineGrant(value: unknown): CloudSaveOfflineGrant | null {
@@ -131,6 +135,12 @@ export async function downloadCloudSaveViaFetch(
     receivedAtMs: Date.parse(body.receivedAt),
     revision: body.revision,
     offlineGrant: parseOfflineGrant(body.offlineGrant),
+    boost: typeof body.boost === 'object' && body.boost !== null
+      ? validateBoostState(body.boost as BoostState)
+      : undefined,
+    serverNowMs: typeof body.serverNowMs === 'number' && Number.isSafeInteger(body.serverNowMs)
+      ? body.serverNowMs
+      : undefined,
   };
 }
 
@@ -200,6 +210,7 @@ export interface CloudSaveReconcileDeps {
    * at most once.
    */
   readonly onOfflineGrant?: (grant: CloudSaveOfflineGrant, receivedAtMs: number) => void;
+  readonly onBoostState?: (boost: BoostState, serverNowMs?: number) => void;
 }
 
 export async function reconcileCloudSaveAtBoot(
@@ -242,11 +253,13 @@ export async function reconcileCloudSaveAtBoot(
     // case, not an action this module performs.
     if (resolution.kind === 'same-progress') {
       deps.onServerRevision?.(remote.revision);
+      if (remote.boost !== undefined) deps.onBoostState?.(remote.boost, remote.serverNowMs);
       reportOfflineGrant(deps, remote);
       return { kind: 'same-progress' };
     }
     if (resolution.kind === 'local-dominates') {
       deps.onServerRevision?.(remote.revision);
+      if (remote.boost !== undefined) deps.onBoostState?.(remote.boost, remote.serverNowMs);
       reportOfflineGrant(deps, remote);
       return { kind: 'kept-local' };
     }

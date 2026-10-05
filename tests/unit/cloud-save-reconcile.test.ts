@@ -417,7 +417,7 @@ describe('adoptExistingLocalSave (Step 20)', () => {
     expect(forceUpload).toHaveBeenCalledOnce();
 
     const uploaded = forceUpload.mock.calls[0]?.[0] as SaveDocumentV2;
-    expect(uploaded.schemaVersion).toBe(2);
+    expect(uploaded.schemaVersion).toBe(3);
     expect(uploaded.state.warehouse.totalOfflineGoldClaimed).toBe('0');
     // Every other field — including the player's progress — survives exactly.
     expect(uploaded.state.gold).toBe(original.state.gold);

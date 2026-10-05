@@ -31,12 +31,12 @@
  * `whoami-check`'s `ResolveCaller` and `guestSession.ts`'s `GuestAuthClient`.
  */
 
-import type { SaveDocumentV2 } from '../../src/persistence';
+import type { PortfolioSaveDocumentV4, SaveDocumentV2 } from '../../src/persistence';
 
 /** The `GET /v1/save` success body: the stored revision and its document. */
 export interface CloudSaveBody {
   readonly revision: number;
-  readonly document: SaveDocumentV2;
+  readonly document: SaveDocumentV2 | PortfolioSaveDocumentV4;
 }
 
 /**

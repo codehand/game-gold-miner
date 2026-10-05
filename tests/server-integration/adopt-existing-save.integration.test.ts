@@ -22,9 +22,10 @@ import { LOCAL_ANON_KEY } from './authFixture';
  * **byte-for-byte**. The client half — the first-sign-in upload itself — is
  * proven by `tests/server-e2e/adopt-local-save.spec.ts`.
  *
- * The plan's Step 18 interaction note governs the comparison: a pre-milestone
- * save is version 1, Step 18 bumped the schema to version 2, and the migration
- * is lossless, so the adopted document is the *migrated* version-2 document.
+ * The implementation plan's migration note governs the comparison: a
+ * pre-milestone save is version 1, later milestones bumped the schema to
+ * version 3, and the migration is lossless, so the adopted document is the
+ * *migrated* version-3 document.
  * This suite asserts that explicitly rather than pretending the original v1
  * bytes come back.
  */
@@ -100,7 +101,7 @@ async function getSave(accessToken: string): Promise<Response> {
 }
 
 describe('adopt an existing local save on first sign-in (server-milestone Step 20)', () => {
-  it('stores the migrated version-2 document and returns it byte-for-byte', async () => {
+  it('stores the migrated version-3 document and returns it byte-for-byte', async () => {
     const guest = await createGuestIdentity();
     const preMilestone = preMilestoneVersionOneDocument();
     // Exactly what the client uploads: `adoptExistingLocalSave` runs the local
@@ -144,7 +145,7 @@ describe('adopt an existing local save on first sign-in (server-milestone Step 2
     expect(adoptedState.floors).toEqual(originalState.floors);
 
     // The migration is the only difference.
-    expect(body.document.schemaVersion).toBe(2);
+    expect(body.document.schemaVersion).toBe(3);
     expect(adoptedState.warehouse.totalOfflineGoldClaimed).toBe('0');
     const adoptedWarehouse = Object.fromEntries(
       Object.entries(adoptedState.warehouse).filter(

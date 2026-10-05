@@ -28,9 +28,9 @@
  * That later failure surfaces as `error`/`error_code=identity_already_exists`
  * query/hash parameters on the *return* URL, which the Supabase client
  * parses during its own session-detection at the next page load, not as a
- * rejection here. `src/main.ts` records that return as a local routing hint
- * and switches the next guest attempt to `signInWithOAuth`, which resolves the
- * existing Google account instead of trying `linkIdentity` again.
+ * rejection here. `src/main.ts` immediately hands that return to
+ * `signInWithOAuth`, so the player reaches the existing Google account in one
+ * visible sign-in flow instead of having to click a second time.
  *
  * Like `ensureGuestSession`, this never throws: a misconfigured provider or
  * a rejected pre-redirect request must not crash the game, only leave the
@@ -76,6 +76,42 @@ export type SignOutResult =
   | { readonly status: 'unconfigured' }
   | { readonly status: 'signed-out' }
   | { readonly status: 'error'; readonly reason: string };
+
+export interface GoogleIdentityReturnError {
+  readonly code: string;
+  readonly description: string | null;
+}
+
+/**
+ * Reads the OAuth error that Supabase places in either the query string or
+ * hash when the provider flow returns to the app. The helper accepts an href
+ * so the redirect contract is testable without a browser global.
+ */
+export function readGoogleIdentityReturnError(
+  href: string,
+): GoogleIdentityReturnError | null {
+  try {
+    const url = new URL(href);
+    const parameterSets = [
+      url.searchParams,
+      new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash),
+    ];
+
+    for (const params of parameterSets) {
+      const code = params.get('error_code') ?? params.get('error');
+      if (code !== null) {
+        return {
+          code,
+          description: params.get('error_description'),
+        };
+      }
+    }
+  } catch {
+    // A malformed location must not prevent the account surface from opening.
+  }
+
+  return null;
+}
 
 /**
  * Begins Google sign-in: links to the current session if one exists,
@@ -170,9 +206,13 @@ export async function detectGoogleIdentityCollision(
 
   try {
     const { error } = await auth.initialize();
-    const details = (error as { details?: { code?: unknown } } | null)?.details;
+    const details = (error as {
+      code?: unknown;
+      details?: { code?: unknown };
+    } | null);
 
-    return details?.code === 'identity_already_exists';
+    return details?.code === 'identity_already_exists'
+      || details?.details?.code === 'identity_already_exists';
   } catch {
     return false;
   }

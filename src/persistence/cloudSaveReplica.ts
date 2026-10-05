@@ -323,6 +323,21 @@ export class CloudSaveReplica {
   }
 
   /**
+   * Advances the compare-and-swap base after an external server mutation.
+   * Marketplace purchase updates the save row in the same transaction as the
+   * cat purchase, so the next ordinary cloud upload must use that revision
+   * instead of treating the purchase as a conflicting third-party write.
+   */
+  public acceptExternalRevision(revision: number): void {
+    if (!Number.isSafeInteger(revision) || revision < 0) {
+      throw new Error('External cloud revision must be a non-negative safe integer.');
+    }
+    this.#baseRevision = revision;
+    this.#attempt = 0;
+    this.#conflictResolutions = 0;
+  }
+
+  /**
    * Offers the newest document for upload. Coalescing matches the local
    * coordinator: only the most recent document is ever sent. `force: true`
    * (a lifecycle flush, a claimed reward, a post-reconcile upload) bypasses

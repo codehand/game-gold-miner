@@ -1,32 +1,44 @@
 /**
  * Pure cosmetic-animation maths for the three production stages.
  *
- * Everything here is decoration. The core decides when a cycle completes; this
- * module only decides how the screen looks between those decisions, so scaling
- * or freezing it cannot change extraction, transport, conversion, or gold.
- * That separation is the point of `animationSpeedMultiplier`: it multiplies the
- * cosmetic clock only, and no production value is ever derived from it.
+ * The core owns production and delivery milestones. This module only decides
+ * how those milestones look between fixed-step updates, so scaling or
+ * freezing the cosmetic clock cannot change extraction, transport, conversion,
+ * or gold. The shared worker-count rule is imported from the core to keep the
+ * visible crew and per-miner delivery cadence aligned.
  *
  * Kept Phaser-free and browser-free so Node tests can exercise it directly.
  */
+
+import {
+  calculateMineFloorWorkerCount,
+  MINE_FLOOR_WORKER_LEVEL_INTERVAL,
+  MINE_FLOOR_WORKER_MAX_COUNT,
+  MINE_FLOOR_WORKER_MAX_LEVEL,
+  calculateSurfaceHaulerWorkforce,
+  SURFACE_HAULER_LEVEL_INTERVAL as CORE_SURFACE_HAULER_LEVEL_INTERVAL,
+  SURFACE_HAULER_MAX_VISIBLE_COUNT,
+  SURFACE_HAULER_MAX_WAREHOUSE_LEVEL as CORE_SURFACE_HAULER_MAX_WAREHOUSE_LEVEL,
+} from '../../core';
 
 export const DEFAULT_ANIMATION_SPEED_MULTIPLIER = 1;
 /** Generated Step 32A loops contain four equally timed frames. */
 export const GENERATED_ASSET_FRAME_COUNT = 4;
 export const GENERATED_ASSET_FRAME_DURATION_MS = 160;
 export const MINER_PATROL_PERIOD_MS = 3_200;
-/** One base miner, plus one visible assistant per fifty floor levels. */
-export const MINE_FLOOR_MINER_LEVEL_INTERVAL = 50;
-export const MINE_FLOOR_MINER_MAX_LEVEL = 200;
-export const MINE_FLOOR_MINER_MAX_COUNT = 5;
+/** Compatibility names for the presentation layer's public API. */
+export const MINE_FLOOR_MINER_LEVEL_INTERVAL = MINE_FLOOR_WORKER_LEVEL_INTERVAL;
+export const MINE_FLOOR_MINER_MAX_LEVEL = MINE_FLOOR_WORKER_MAX_LEVEL;
+export const MINE_FLOOR_MINER_MAX_COUNT = MINE_FLOOR_WORKER_MAX_COUNT;
 export const MINE_FLOOR_MINER_ASSISTANT_COUNT =
   MINE_FLOOR_MINER_MAX_COUNT - 1;
 /** One load, delivery, unload, and return lap across the surface. */
 export const SURFACE_HAULER_PERIOD_MS = 5_200;
-/** One base worker, plus one visible assistant per ten warehouse levels. */
-export const SURFACE_HAULER_LEVEL_INTERVAL = 10;
-export const SURFACE_HAULER_MAX_WAREHOUSE_LEVEL = 100;
-export const SURFACE_HAULER_MAX_COUNT = 11;
+/** Raw progression is one worker plus one per ten warehouse levels; visible crew is capped in core. */
+export const SURFACE_HAULER_LEVEL_INTERVAL = CORE_SURFACE_HAULER_LEVEL_INTERVAL;
+export const SURFACE_HAULER_MAX_WAREHOUSE_LEVEL =
+  CORE_SURFACE_HAULER_MAX_WAREHOUSE_LEVEL;
+export const SURFACE_HAULER_MAX_COUNT = SURFACE_HAULER_MAX_VISIBLE_COUNT;
 export const SURFACE_HAULER_ASSISTANT_COUNT = SURFACE_HAULER_MAX_COUNT - 1;
 
 export interface SurfaceHaulerAssistantOffset {
@@ -54,31 +66,80 @@ export interface SurfaceHaulerPose {
   readonly frame: number;
 }
 
+/** Transient presentation state, owned independently by each visible cart. */
+export interface SurfaceHaulerTrip {
+  readonly animationTimeMs: number;
+  readonly animationTimeOffsetMs: number;
+  readonly lap: number;
+  readonly hasCargo: boolean;
+  readonly pose: SurfaceHaulerPose;
+}
+
+/**
+ * Latch a pickup only while under the chute, then keep it until the warehouse
+ * handoff. A changing tower queue must never fill/empty carts in transit.
+ * Reload, clock rewind, rephasing or a new lap cannot invent a past pickup.
+ * This state is cosmetic: it never moves currency or enters a save document.
+ */
+export function advanceSurfaceHaulerTrip(
+  previous: SurfaceHaulerTrip | null,
+  animationTimeMs: number,
+  towerHasGold: boolean,
+  animationTimeOffsetMs = 0,
+): SurfaceHaulerTrip {
+  assertAnimationTime(animationTimeMs);
+  assertAnimationTime(animationTimeOffsetMs);
+  const routeTimeMs = animationTimeMs + animationTimeOffsetMs;
+  const lap = Math.floor(routeTimeMs / SURFACE_HAULER_PERIOD_MS);
+  const route = calculateSurfaceHaulerPose(routeTimeMs, true);
+  const wrappedSameLap = previous !== null &&
+    previous.animationTimeMs >= ANIMATION_TIME_WRAP_MS - SURFACE_HAULER_PERIOD_MS &&
+    animationTimeMs < SURFACE_HAULER_PERIOD_MS &&
+    previous.lap === lap + ANIMATION_TIME_WRAP_MS / SURFACE_HAULER_PERIOD_MS;
+  const sameTrip = previous !== null &&
+    previous.animationTimeOffsetMs === animationTimeOffsetMs &&
+    ((previous.lap === lap && previous.animationTimeMs <= animationTimeMs) || wrappedSameLap);
+  let hasCargo = sameTrip && previous.hasCargo;
+
+  if (route.phase === 'loading' && towerHasGold) hasCargo = true;
+  if (route.phase === 'returning' ||
+      (route.phase === 'unloading' && !route.cartIsFilled)) hasCargo = false;
+
+  return {
+    animationTimeMs,
+    animationTimeOffsetMs,
+    lap,
+    hasCargo,
+    pose: calculateSurfaceHaulerPose(routeTimeMs, hasCargo),
+  };
+}
+
 export interface MinerPatrolPose {
   readonly x: number;
   readonly facesLeft: boolean;
 }
 
-export interface MineFloorMinerAssistantPose extends MinerPatrolPose {
+export interface MinerWorkPose extends MinerPatrolPose {
+  readonly phase: 'outbound' | 'mining' | 'returning';
+  /** Frame of Forge's dedicated four-pose pickaxe action. */
+  readonly strikeFrame: number;
+  readonly impactVisible: boolean;
+  readonly impactFrame: number;
+}
+
+export interface MineFloorMinerAssistantPose extends MinerWorkPose {
   readonly yOffset: number;
   readonly animationTimeOffsetMs: number;
 }
 
-/** Presentation-only miner count derived from one floor's shaft level. */
-export function calculateMineFloorMinerCount(mineShaftLevel: number): number {
-  if (!Number.isSafeInteger(mineShaftLevel) || mineShaftLevel < 1) {
-    throw new Error('Mine-shaft level must be a positive safe integer.');
-  }
-
-  const cappedLevel = Math.min(mineShaftLevel, MINE_FLOOR_MINER_MAX_LEVEL);
-
-  return 1 + Math.floor(cappedLevel / MINE_FLOOR_MINER_LEVEL_INTERVAL);
-}
+/** Compatibility alias; the authoritative rule lives in the core. */
+export const calculateMineFloorMinerCount = calculateMineFloorWorkerCount;
 
 /**
- * Places one assistant on an independently phased patrol with a shallow lane.
- * Core extraction progress still drives every route; these offsets only keep
- * a growing cosmetic crew readable inside the same floor corridor.
+ * Places one assistant on the shared horizontal patrol line.
+ * Core extraction progress drives every route, and the phase offset makes each
+ * visible worker reach the unloading cat at one of the cycle's delivery
+ * milestones. All miners intentionally share one Y baseline.
  */
 export function calculateMineFloorMinerAssistantPose(
   extractionProgress: number,
@@ -111,40 +172,74 @@ export function calculateMineFloorMinerAssistantPose(
     throw new Error('Active mine-floor assistant index is outside the crew.');
   }
 
-  const progressOffset = (assistantIndex + 1) / (activeMinerCount + 1);
+  const progressOffset = (assistantIndex + 1) / activeMinerCount;
   const assistantProgress = (extractionProgress + progressOffset) % 1;
   const animationTimeOffsetMs = progressOffset * MINER_PATROL_PERIOD_MS;
-  const patrol = calculateMinerPatrolPose(
+  const patrol = calculateMinerWorkPose(
     assistantProgress * MINER_PATROL_PERIOD_MS,
     startX,
     endX,
   );
-  const laneMagnitude = 4 + Math.floor(assistantIndex / 2) * 3;
-
   return {
     ...patrol,
-    yOffset: assistantIndex % 2 === 0 ? -laneMagnitude : laneMagnitude,
+    yOffset: 0,
     animationTimeOffsetMs,
+  };
+}
+
+/** One authoritative extraction lap: leave the unloader, mine, then deliver. */
+export function calculateMinerWorkPose(
+  animationTimeMs: number,
+  startX: number,
+  endX: number,
+): MinerWorkPose {
+  assertAnimationTime(animationTimeMs);
+  if (!Number.isFinite(startX) || !Number.isFinite(endX) || endX < startX) {
+    throw new Error('Miner patrol bounds must be finite and ordered.');
+  }
+
+  const phase = (animationTimeMs % MINER_PATROL_PERIOD_MS) / MINER_PATROL_PERIOD_MS;
+  if (phase < 0.4) {
+    return {
+      x: startX + (endX - startX) * phase / 0.4,
+      facesLeft: false,
+      phase: 'outbound',
+      strikeFrame: 0,
+      impactVisible: false,
+      impactFrame: 0,
+    };
+  }
+  if (phase < 0.65) {
+    const miningProgress = (phase - 0.4) / 0.25;
+    const strikeFrame = Math.min(3, Math.floor(miningProgress * 4));
+    return {
+      x: endX,
+      facesLeft: false,
+      phase: 'mining',
+      strikeFrame,
+      impactVisible: miningProgress >= 0.5,
+      impactFrame: Math.min(3, Math.floor(Math.max(0, miningProgress - 0.5) * 8)),
+    };
+  }
+  return {
+    x: endX - (endX - startX) * (phase - 0.65) / 0.35,
+    facesLeft: true,
+    phase: 'returning',
+    strikeFrame: 3,
+    impactVisible: false,
+    impactFrame: 0,
   };
 }
 
 /**
  * Presentation-only worker count derived from warehouse progression.
  *
- * Level 1 starts with one worker. Levels 10, 20, ... 100 reveal one more
- * assistant each, and levels beyond the current cap keep the level-100 crew.
+ * Level 1 starts with one worker. Levels 10, 20, ... 40 reveal one more
+ * visible assistant each. Levels 50 and above keep the five-cat visible crew;
+ * overflow workforce becomes authoritative per-cat productivity in the core.
  */
 export function calculateSurfaceHaulerCount(warehouseLevel: number): number {
-  if (!Number.isSafeInteger(warehouseLevel) || warehouseLevel < 1) {
-    throw new Error('Warehouse level must be a positive safe integer.');
-  }
-
-  const cappedLevel = Math.min(
-    warehouseLevel,
-    SURFACE_HAULER_MAX_WAREHOUSE_LEVEL,
-  );
-
-  return 1 + Math.floor(cappedLevel / SURFACE_HAULER_LEVEL_INTERVAL);
+  return calculateSurfaceHaulerWorkforce(warehouseLevel).visibleCount;
 }
 
 /**
@@ -229,11 +324,11 @@ export function easeElevatorTravelProgress(progress: number): number {
 }
 
 /**
- * Cosmetic surface-delivery loop with cargo feedback driven by tower gold.
+ * Pure route pose, using this trip's latched pickup (not the live tower queue).
  *
  * The worker always visits the tower, travels to the warehouse, and returns.
- * Material only controls the pour and filled-cart appearance, so an empty
- * tower produces an empty round trip rather than parking the crew. No value
+ * `advanceSurfaceHaulerTrip` owns pickup/drop-off history for scene rendering.
+ * Material only controls the pour and filled-cart appearance. No value
  * from this pose is fed back into production or persistence.
  */
 export function calculateSurfaceHaulerPose(

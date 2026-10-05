@@ -2,7 +2,62 @@
 
 ## Current Status
 
-All 37 implementation-plan steps are complete and user-validated; Step 37 was validated on 2026-09-08, closing the base-game milestone. Step 37 changed no runtime code: it added `README.md`, corrected documentation that still described a four-floor mine and a round-robin elevator, and repeated the mobile benchmark against the full fifteen-floor scene. The physical mid-range Android Chrome pass and a human 30-second-comprehension playtest remain open caveats rather than blocking gates. This document describes the delivered base game and the server milestone layered over it. Server Steps 33–36 have passed their implementation gates, and Step 37 closed the server documentation/evidence milestone on 2026-09-19. Earlier server steps that await user validation remain labeled in `progress.md`; no hosted production deployment or credentials are claimed. The IndexedDB database schema version remains 1; the save-document schema is version 2; the local Supabase schema contains seven public tables, with Step 33 deletion/anonymization and a 30-day audit-retention purge.
+Multi-mine Map (2026-10-05) is implemented and release-verified. Local and configured
+clients use one strict V4 six-site portfolio with a shared wallet, one active
+mine, per-mine offline intervals, durable purchase/switch/claim, a positional
+Map and mine-qualified cat assignments. Configured boot reconciles V3/V4
+local/cloud documents, serializes revision-checked commands and adopts
+authoritative Collection/Marketplace wallet and roster results. Boost retains
+one account cooldown and binds its activation to the selected mine through an
+atomic save/receipt RPC. Returning-account missing/corrupt-save cases preserve
+recoverable data; a cloud-unavailable boot keeps the local portfolio playable.
+
+The five non-Gold resource families include three reviewed depth bands,
+surface, structures, shaft, ore, default/paid cargo, pour and impact art.
+Boru uses resource overlays and claim UI reuses site identity art. Native
+360×640 capture matrices cover all sites at upper, middle and deep positions.
+Configured mine entry during a cloud outage freezes the target interval as a
+V4 `pendingClaim`, persists the upload/command/receipt transaction, and begins
+foreground play at the exact saved boundary. Retry or reload settles the
+server-authoritative grant once into the newer local runtime and resumes sync.
+
+Hauler/Boru expansion (2026-09-29/30): four owned-cat roles, twelve Marketplace
+blueprints. Stable `hauler:1..5` bindings hot-swap each cat and its own vehicle.
+Defaults create no instance/bonus. The current-slot modal exposes active Cart
+selectors and an explicit NULL-ID default-reset command. The pure
+`getHaulingMultiplier` averages active cart bonuses and composes once with
+overflow and Warehouse manager modifiers in rates and fixed-step conversion.
+HUD/offline/progress bounds reuse the shared calculation. Server/schema
+details are in the synchronized Complete Database Schema below.
+
+All 37 base-game implementation-plan steps are complete and user-validated;
+post-milestone cat collection Phases 0–9 and the live seeded-catalog
+Marketplace Buy/Sell/Rent/My listings flows are implemented. The IndexedDB
+database schema version remains 1; configured and unconfigured clients write
+save V4 while V3 remains a supported migration input;
+Supabase now owns the relational cat blueprint, collection, instance,
+assignment, and purchase-request tables described below. The physical
+mid-range Android Chrome pass and a human 30-second-comprehension playtest
+remain open base-game caveats rather than blocking the cat implementation.
+The 2026-09-21 browser feedback pass also closes three presentation defects:
+Marketplace purchase confirmation keeps listing-specific actions in one
+responsive row, and Collection distinguishes a failed load from a valid empty
+roster.
+The 2026-09-27 menu redesign replaces the shared purple/gold strip with five
+independent 96×96 transparent icon textures. A navy/slate-steel panel, five
+equal code-drawn tiles and labels, and warm-gold divider match the mine HUD and
+surface art. Each item has a 64×64 hit region; the existing keys and callbacks
+remain. Boost now has a five-minute x4 simulation window and an eight-hour
+server-owned cooldown; that menu's prior placeholder Map has since become the
+shared local/configured multi-mine overlay.
+
+Server-milestone Steps 33–36 have passed their implementation gates, and Step 37
+closed the server documentation/evidence milestone on 2026-09-19. Earlier server
+steps that await user validation remain labeled in `progress.md`; no hosted
+production deployment or credentials are claimed. The local Supabase schema
+contains seventeen public tables, including the Step 32 append-only
+`account_audit` table with Step 33 deletion/anonymization and a 30-day
+audit-retention purge.
 
 ## Implemented Foundation
 
@@ -10,10 +65,11 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 |---|---|
 | `index.html`, `src/main.ts`, `src/style.css` | Browser entry point, self-hosted Fredoka 600/700 loading before Phaser startup, `viewport-fit=cover` opt-in, safe-area-inset host padding around the `#game-viewport` Phaser parent, game startup, and hot-reload cleanup. |
 | `src/game/layout/mineLayout.ts`, `src/game/layout/palette.ts`, `src/game/layout/index.ts` | Pure Phaser-free portrait geometry and palette: logical viewport constants, HUD/surface/mine regions, scrollable mine content height, floor-slot regions, diagnostic region serialization, and the `#rrggbb` colors both the scene and the browser pixel probes read. |
-| `src/game/view-model/mineViewModel.ts`, `src/game/view-model/mineShaftUpgradeModal.ts`, `src/game/view-model/hudViewModel.ts`, `src/game/view-model/purchaseControl.ts`, `src/game/view-model/formatAmount.ts`, `src/game/view-model/stageAnimation.ts`, `src/game/view-model/index.ts` | Pure Phaser-free presentation logic. The snapshot view model derives per-floor heading, level, visibility, lock status, progress ratio and label, queued-amount label, discrete pile height and backlog state, plus each shared stage's level, capacity, held amount, queue blocks, running/backed-up status, and cycle progress, and carries both HUD and open-floor detail models. The floor-modal module derives output/cycle, cycle time, waiting material, next output, and x1/x5/MAX batch choices from authoritative state and core quotes. The HUD module derives icon-led spendable gold, the authoritative warehouse input queue from `warehouse.inputQueue`, and income values from authoritative state and the core's effective production rate, with empty duplicate captions. The purchase-control module derives each priced control's action caption, price, enabled state, command target, and stable key, plus the lifetime of a press result; it covers shared-stage upgrades, floor selection badges, and floor unlocks. The format module is the single abbreviated-amount formatter every displayed quantity goes through. The animation module holds the cosmetic clock maths and workforce rules. |
-| `src/game/runtime/MineSimulationDriver.ts`, `src/game/runtime/index.ts` | Phaser-free live bridge between the core and the screen: holds authoritative state and the balance data prices and the HUD estimate are derived from, advances state to an injected wall clock on each pull, memoizes the derived snapshot, routes upgrade presses to the matching core command, and accepts state replaced by a command. |
-| `src/game/entities/HudView.ts`, `src/game/entities/BottomNavigationView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar. `BottomNavigationView` owns the fixed icon-only five-button shell, thumb-safe hit regions, and press animation; activation is presentation-only and changes no authoritative state. `PurchaseControlView` is the one pressable purchase button shared by floor panels and both shared stages. |
+| `src/game/view-model/mineViewModel.ts`, `src/game/view-model/mineShaftUpgradeModal.ts`, `src/game/view-model/hudViewModel.ts`, `src/game/view-model/purchaseControl.ts`, `src/game/view-model/formatAmount.ts`, `src/game/view-model/stageAnimation.ts`, `src/game/view-model/index.ts` | Pure Phaser-free presentation logic. The snapshot view model derives per-floor heading, level, visibility, lock status, progress ratio and label, queued-amount label, discrete pile height and backlog state, plus each shared stage's level, capacity, held amount, queue blocks, running/backed-up status, and cycle progress, and carries both HUD and open-floor detail models. The floor-modal module derives output/cycle, cycle time, waiting material, next output, and x1/x5/MAX batch choices from authoritative state and core quotes. The HUD module derives icon-led spendable gold, the authoritative warehouse input queue from `warehouse.inputQueue`, and income values from authoritative state and the core's effective production rate, with empty duplicate captions. The purchase-control module derives each priced control's action caption, price, enabled state, command target, and stable key, plus the lifetime of a press result; it covers shared-stage upgrades, floor selection badges, and floor unlocks. The format module is the single abbreviated-amount formatter every displayed quantity goes through. The animation module holds the cosmetic clock and surface/mine crew phase maths while importing both authoritative worker-count rules. |
+| `src/game/runtime/MineSimulationDriver.ts`, `src/game/runtime/index.ts` | Phaser-free live bridge between the core and the screen: holds authoritative state and the balance data prices, HUD estimate, and cat-derived production modifiers are derived from, advances state to an injected wall clock on each pull, memoizes the derived snapshot, routes upgrade presses to the matching core command, and accepts state or cat roster projections replaced by authoritative commands. |
+| `src/game/entities/HudView.ts`, `src/game/entities/BottomNavigationView.ts`, `src/game/entities/MineFloorView.ts`, `src/game/entities/SharedStageView.ts`, `src/game/entities/PurchaseControlView.ts`, `src/game/entities/index.ts` | Reusable Phaser views that build their own game objects once, rebind through `applySnapshot`, move decoration through `applyAnimation`, show press results through `applyUpgradeFeedback` and `applyUnlockFeedback`, and report what they actually display through `describeRenderedState`. `MineFloorView` smooths each 100 ms authoritative extraction-progress target across rendered frames and settles at that target without changing core timing. `HudView` owns the fixed top bar. `BottomNavigationView` combines five independent icon textures with code-drawn panel, tiles, labels, and pressed states; its 64×64 hit regions keep activation presentation-only. `PurchaseControlView` is the one pressable purchase button shared by floor panels and both shared stages. |
 | `src/game/assets/placeholderAssets.ts` | Semantic Phaser texture keys, public paths, and native shaft-texture dimensions for the original Step 32 family plus the Step 32A floor, filled/empty elevator-tower, warehouse, and supervisor pack loaded by `BootScene.preload`. |
+| `src/game/assets/navigationAssets.ts`, `public/assets/ui/navigation/icons/`, `art-source/navigation-icons-v2/` | Typed registry of five independent navigation texture keys, paths and labels; generated raw PNGs, art brief, prompt manifest and reproducible 96×96 RGBA normalization. The former full-menu strip under `art-source/navigation-menu/` remains historical provenance and is not loaded. |
 | `src/game/assets/backlogTextures.ts` | Generates the solid backlog-colour silhouette once at boot from the source sprite, so the cue survives a Canvas fallback that would drop a WebGL-only tint. |
 | `src/game/entities/setTextColor.ts` | The shared guard that compares a Phaser text colour before writing it, because `Text.setColor` re-rasterizes and re-uploads the caption texture on every call. |
 | `src/game/layout/mineFloorPanel.ts` | Pure semantic geometry for the approved 288×132 floor composition; renderer and browser probes share its anchors and regions. |
@@ -27,7 +83,7 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `playwright.performance.config.ts`, `tests/performance/mobile-performance.spec.ts`, `performance-results/` | Step 35 optimized-build Google Chrome benchmark, Pixel 5 mobile emulation plus 4× CPU throttling, constant-memory frame histogram, post-GC heap/DOM/listener sampling, live-sampled Phaser object and unlocked-floor counts, alternating scroll-latency probes, asset/startup measurement, budget assertions, and retained raw/human-readable reports. |
 | `tests/unit/architecture.test.ts` | Regression coverage proving the core, layout, view-model, and simulation-driver boundaries accept pure TypeScript and reject renderer, adapter, and browser dependencies. |
 | `scripts/dev-simulator.mjs` | iPhone Simulator preview workflow retained from Step 2. |
-| `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer with both stage views, and the mine content layer with fifteen pooled floor views revealed in groups of five; repeats the shaft artwork through a native-height `TileSprite` rather than stretching it across the full mine; keeps the elevator's top-of-shaft world endpoint independent of mine-camera scroll and maps its surface twin from that same physical route; pulls the newest snapshot from its source on every frame, binds the filled/empty tower, gold pour, every surface cart, and every loaded-hauler pose exclusively to the warehouse input queue, advances the separate cosmetic animation clock from the frame delta, clips the mine through a dedicated camera viewport, and records startup, renderer, layout, rendered-view, HUD, and animation diagnostics on the game canvas. |
+| `src/game/scenes/BootScene.ts` | Single scene that builds the fixed HUD layer, the shared surface layer with both stage views, and the mine content layer with fifteen pooled floor views revealed in groups of five; repeats the shaft artwork through a native-height `TileSprite` rather than stretching it across the full mine; keeps the elevator's top-of-shaft world endpoint independent of mine-camera scroll and maps its surface twin from that same physical route; pulls the newest snapshot from its source on every frame, binds the filled/empty tower, every surface cart, and one matching gold-pour sprite per visible cart exclusively to the warehouse input queue and each hauler pose, while keeping every pour at the chute's one fixed mouth coordinate; resolves `slot → cat instance → asset → runtime sheet` for every role, hot-rebinds only after a new authoritative assignment revision, advances the separate cosmetic animation clock from the frame delta, clips the mine through a dedicated camera viewport, and records runtime fallback/identity diagnostics on the game canvas. |
 | `src/config/balance.ts`, `src/config/types.ts`, `src/config/validateBalance.ts` | Provisional fifteen-floor/shared-stage data, its public types, and fail-fast startup validation. |
 | `src/core/numbers/GameNumber.ts` | Immutable numeric boundary backed privately by break_infinity.js, with arithmetic, comparison, string serialization, and normalized `mantissa`/`exponent` parts for display code. |
 | `src/core/state/GameState.ts`, `src/core/state/createInitialGameState.ts` | Renderer-free authoritative state contracts and deterministic fresh-state construction from validated balance data plus an explicit timestamp. |
@@ -38,10 +94,13 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/core/progression/calculateLevelEffect.ts` | Shared level-growth and cumulative milestone-effect calculation used by state creation, simulation, rates, and upgrades. |
 | `src/core/progression/unlocks.ts` | Immutable sequential floor-unlock command with explicit prerequisite, affordability, duplicate, and missing-floor outcomes, plus `describeFloorUnlock`, which reports one locked floor's price, prerequisite, and both gates from the same predicate the command uses. |
 | `src/core/progression/upgrades.ts` | Pure next-upgrade pricing plus immutable mine-shaft, elevator, and warehouse purchase commands that apply level-derived yield/capacity effects with explicit results. |
-| `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, and config-driven mine-floor extraction. |
+| `src/core/simulation/advanceSimulation.ts` | Immutable elapsed-time advancement through bounded 100 ms fixed ticks, authoritative remainder carry, config-driven mine-floor extraction with per-visible-worker delivery milestones and overflow workforce productivity, and surface-delivery productivity at the warehouse handoff. |
+| `src/core/simulation/mineFloorWorkers.ts` | Shared derived mine-floor raw/visible workforce and overflow productivity rule used by extraction, production rates, anti-cheat bounds, and the Phaser presentation crew. |
+| `src/core/simulation/surfaceHaulers.ts` | Shared raw/visible surface-hauler workforce calculation and overflow productivity multiplier; it keeps the visible crew capped without adding save state. |
 | `src/core/simulation/catchUpSimulation.ts` | Bounded slice-by-slice advancement across a gap in the render loop, so a hidden tab is simulated rather than consumed. |
 | `src/core/simulation/advanceElevator.ts` | Capacity-limited sequential floor route, load-sensitive leg timing, signed route description, and surface delivery to the warehouse input queue. |
 | `src/core/simulation/advanceWarehouse.ts` | Timed capacity-limited warehouse conversion from input material into spendable and cumulative delivered gold. |
+| `src/core/cats/` | Renderer-free cat ownership/assignment invariants, role score/effect calculation, slot comparison, and derived miner/elevator/warehouse production modifiers. |
 | `src/persistence/saveSchema.ts`, `src/persistence/index.ts` | Version-1 plain-JSON save schema, serializer, strict validator, migration dispatcher, runtime deserializer, and persistence exports. |
 | `src/persistence/ActiveSaveRepository.ts` | Storage-agnostic interface for loading and replacing the one active save document. |
 | `src/persistence/DexieActiveSaveRepository.ts` | Dexie 4.4.5 adapter for the version-1 `cat-mine-idle` IndexedDB database and fixed `active` record. |
@@ -52,9 +111,11 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/persistence/ReplicatingActiveSaveRepository.ts` | Server-milestone Step 19: composes the local repository with a cloud replica behind `ActiveSaveRepository`. Reads local only; writes local first and awaits it before offering the same document to the replica; `forceCloudUpload` is the §9 forced-trigger entry point. |
 | `src/persistence/cloudSaveReplica.ts` | Server-milestone Step 19: pure, injected upload policy — §9's 60 s interval, coalescing, forced bypass, bounded retry backoff, and §7's `409` handling through `resolveSaveConflict`. Holds no `fetch`, no DOM type, and no storage. |
 | `src/platform/web/cloudSaveUpload.ts` | Server-milestone Step 19: the single network call (`PUT /v1/save`), mapping every §4 status to `CloudSaveUploadResult` and refreshing the session once on `unauthenticated`. Never throws. |
-| `src/platform/web/supabaseClient.ts` | Server-milestone Step 8: builds the browser's Supabase client from `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, or returns `null` without attempting any network call when either is unset. |
+| `src/platform/web/supabaseClient.ts` | Server-milestone Step 8: builds the browser's Supabase client from `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, or returns `null` without attempting any network call when either is unset; a local loopback API URL is mapped to the page's `192.168.x.x` host for LAN Vite review. |
 | `src/platform/web/guestSession.ts` | Server-milestone Step 8: `ensureGuestSession` reuses an existing session or signs in anonymously through an injected `GuestAuthClient` collaborator, never throwing — every failure resolves to a typed `sign-in-failed`/`unconfigured` result instead. |
 | `src/ui/OfflineRewardModal.ts`, `src/ui/MineShaftUpgradeModal.ts` | Accessible DOM overlays: offline reward claim/save/retry, and the live mine-floor detail with attributes plus x1/x5/MAX CTAs. The floor overlay blocks background Phaser input until dismissed and rebinds after each purchase. |
+| `src/ui/CollectionModal.ts`, `src/ui/MarketplaceModal.ts` | Accessible DOM overlays for owned-cat list/detail and Marketplace. Collection consumes the validated roster projection, distinguishes ready/empty from loading/stale/error states, and keeps retryable failures from masquerading as zero owned cats; Marketplace's Buy, Rent, Sell, and My listings tabs perform server-backed confirm/pending/success/error flows through authenticated callbacks. |
+| `src/ui/CatAssignmentModal.ts` | Authoritative current-role panel and replacement picker. It filters candidates by exact slot role and assignable state, owns only transient selection/pending UI state, submits the minimal expected-revision command, and applies a returned roster projection only after success. |
 | `src/ui/SaveDiagnosticBanner.ts` | Non-blocking DOM notice that surfaces save-recovery warnings and persistence diagnostics, de-duplicated by code and dismissible. |
 
 ## Current File Responsibilities
@@ -81,7 +142,7 @@ All 37 implementation-plan steps are complete and user-validated; Step 37 was va
 | `src/core/` | Owns renderer-independent numbers, authoritative state, fixed-step timing, the production pipeline, derived rates, upgrades, milestones, sequential unlocks, deterministic economy analysis, offline-income calculation, pending-reward claim transitions, and the server-side progress bound on an uploaded save (`src/core/anti-cheat/progressBound.ts`). |
 | `src/config/` | Owns typed data-driven starting values, unlocks, stage timing/capacity, upgrade curves, milestones, and validation. |
 | `src/game/` | Owns the Phaser game configuration, semantic placeholder-asset manifest, pure portrait geometry, pure presentation models and cosmetic animation maths, live simulation driver, reusable HUD/floor/shared-stage/purchase views, generated-sprite presentation, interactive controls, scroll input, and the single scene that pulls snapshots into them. |
-| `src/ui/` | Owns the offline-reward modal, live mine-floor upgrade modal, and save-diagnostic notice. The HUD remains a Phaser view. |
+| `src/ui/` | Owns the offline-reward modal, live mine-floor upgrade modal, owned-cat Collection list/detail modal, server-backed seeded Buy modal, and save-diagnostic notice. The HUD remains a Phaser view. |
 | `src/persistence/` | Owns the save-document boundary, storage interface, Dexie active-save adapter, debounce/failure coordinator, runtime deserialization, and recovery-aware active-game loading. |
 | `src/platform/web/` | Owns the implemented save lifecycle binding and, since server-milestone Step 8, the Supabase client factory and anonymous guest-session bootstrap — the first `src/` code that makes a network call, never awaited before boot and never throwing. Broader browser lifecycle translation remains future work. |
 | `public/assets/placeholder/` | Runtime original placeholder sprites, art-direction brief, and provenance manifest. Generated source and processor outputs live in `art-source/placeholder/` so production builds ship only the semantic runtime files. |
@@ -123,7 +184,7 @@ Within each fixed tick, all floors advance extraction in configured order, then 
 
 ## Extraction Contract
 
-Every unlocked floor advances extraction on each fixed tick using its configured cycle duration. A completed cycle yields `baseYield × outputGrowthRate^(mineShaftLevel - 1) × cumulativeMilestoneMultiplier`. Completed output is added immutably to that floor's `materialQueue` and `totalExtracted`, while normalized overflow progress carries into the next cycle. Locked floors remain inert, and extraction never changes global gold, elevator state, warehouse state, or transport totals.
+Every unlocked floor advances extraction on each fixed tick using its configured cycle duration. Its raw workforce is `1 + floor(mineShaftLevel / 50)`, while the visible workforce is `min(rawCount, 5)`. The full cycle yield is `baseYield × outputGrowthRate^(mineShaftLevel - 1) × cumulativeMilestoneMultiplier`; each visible-worker delivery boundary adds `cycleYield / visibleCount × productivityMultiplier` to that floor's `materialQueue` and `totalExtracted`, where `productivityMultiplier = rawCount / visibleCount`. Thus levels above 200 retain five visible miners while increasing extraction throughput. Normalized overflow progress carries into the next cycle. Locked floors remain inert, and extraction never changes global gold, elevator state, warehouse state, or transport totals.
 
 ## Elevator Transport Contract
 
@@ -131,11 +192,11 @@ When any unlocked floor has waiting material, the shared elevator departs the su
 
 ## Warehouse Conversion Contract
 
-The warehouse idles with no input. While input exists, it advances normalized conversion progress using the configured 1,200 ms cycle. Material remains in `inputQueue` until the cycle boundary; completion consumes the lesser of input and warehouse capacity, adds that amount 1:1 to global `gold` and `totalGoldDelivered`, and leaves excess for later cycles. Progress resets when the queue empties. For a state with no seeded material, conservation is `totalExtracted = floor queues + elevator carried material + warehouse input + totalGoldDelivered`.
+The warehouse idles with no input. While input exists, it advances normalized conversion progress using the configured 1,200 ms cycle. Material remains in `inputQueue` until the cycle boundary; completion consumes the lesser of input and warehouse capacity, adds that amount 1:1 to global `gold` and `totalGoldDelivered`, and leaves excess for later cycles. `advanceSimulation` composes the warehouse cat modifier with the surface-hauler productivity multiplier at this existing input handoff; the warehouse state shape and conversion semantics remain unchanged. Progress resets when the queue empties. For a state with no seeded material, conservation is `totalExtracted = floor queues + elevator carried material + warehouse input + totalGoldDelivered`.
 
 ## Production Rate Contract
 
-Production rates are pure derived values and are not stored in authoritative state. Each floor's theoretical extraction per second includes level growth and the cumulative milestone multiplier, including a theoretical value for locked floors. Aggregate mine extraction sums only unlocked floors. Elevator and warehouse throughput use their milestone-aware authoritative capacity multiplied by `1,000 / cycleDurationMs`; effective mine production is the minimum of aggregate extraction and those two shared-stage rates. The result also identifies the limiting stage, with deterministic extraction → elevator → warehouse precedence for exact ties.
+Production rates are pure derived values and are not stored in authoritative state. Each floor's theoretical extraction per second includes level growth, the cumulative milestone multiplier, and the mine-floor `rawCount / visibleCount` productivity multiplier, including a theoretical value for locked floors. Aggregate mine extraction sums only unlocked floors. Elevator throughput uses its milestone-aware authoritative capacity multiplied by `1,000 / cycleDurationMs`; warehouse throughput uses the same conversion plus `calculateSurfaceHaulerWorkforce(warehouse.level).productivityMultiplier`. Effective mine production is the minimum of aggregate extraction and those two shared-stage rates. The result also identifies the limiting stage, with deterministic extraction → elevator → warehouse precedence for exact ties. Offline income, HUD income, and anti-cheat bounds consume this same derived result and in-flight floor-yield rule.
 
 ## Upgrade Purchase Contract
 
@@ -161,15 +222,23 @@ The newest debounced save must equal the policy-derived authoritative document e
 
 ## Lifecycle Persistence Contract
 
-Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-2 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
+Before a hidden or pagehide save is stamped, the browser host advances the driver to the event's wall-clock boundary. The same document is written synchronously to the lifecycle journal and asynchronously queued for the authoritative IndexedDB record. If teardown aborts IndexedDB, the next boot validates both candidates, selects the newer valid version-3 document, persists the settled result to IndexedDB, and then clears the journal. Hidden-tab gaps run the real pipeline at foreground rate; closed-page gaps use saved-rate offline efficiency. Each elapsed interval is consumed by exactly one path.
 
-## Save Document Schema — Version 2
+For the local V4 portfolio path, hiding/pagehide suspends the selected mine at
+the event boundary and writes its offline interval. Resuming selects the newer
+valid V3/V4 candidate, migrates if needed, and claims the selected mine's
+capped offline interval through a durable write before foreground simulation
+restarts. Inactive owned mines remain data-only and retain their own intervals.
+The configured backend still follows the V3 paragraph above until the server
+portfolio protocol is implemented.
 
-Version 2 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation. Version 2 added `state.warehouse.totalOfflineGoldClaimed` (Server-milestone Step 18); a version-1 document is upgraded by defaulting that counter to `"0"`, which is exact because no version-1 save recorded an offline claim in it.
+## Save Document Schema — Version 3
+
+Version 3 is a strict plain-JSON document. Unknown properties are rejected. Runtime `GameNumber` values serialize as finite decimal/scientific strings and are reconstructed only after validation. Version 2 added `state.warehouse.totalOfflineGoldClaimed`; Version 3 adds the plain-data cat projection (`cats`, `assignments`, and revisions). Version-1 and version-2 documents migrate to an empty collection with no assignments; renderer state is never serialized.
 
 | Path | JSON type | Constraints / relationship |
 |---|---|---|
-| `schemaVersion` | integer | Required; exactly `2`. A version-`1` document is upgraded by the migration dispatcher. Missing and unsupported versions fail. |
+| `schemaVersion` | integer | Required; exactly `3`. Version-1 and version-2 documents are upgraded by the migration dispatcher. Missing and unsupported versions fail. |
 | `savedAtTimestampMs` | number | Non-negative safe integer; cannot precede `state.lastUpdateTimestampMs`. |
 | `effectiveProductionRatePerSecond` | string | Finite non-negative serialized `GameNumber`; authoritative rate snapshot used by offline-income calculation. |
 | `state` | object | Exact serialized authoritative state described below. |
@@ -198,12 +267,27 @@ Version 2 is a strict plain-JSON document. Unknown properties are rejected. Runt
 | `state.warehouse.conversionProgress` | number | Finite value in `[0, 1)`; zero when input is zero. |
 | `state.warehouse.totalGoldDelivered` | string | Finite non-negative serialized `GameNumber`; lifetime warehouse deliveries. |
 | `state.warehouse.totalOfflineGoldClaimed` | string | Finite non-negative serialized `GameNumber`; lifetime `claimOfflineReward` grants. Monotonic, and part of the save-conflict progress vector. Defaults to `"0"` when a version-1 document is migrated. |
+| `cats` | array | Validated account-visible cat instances with opaque instance identity, stable `assetId`, role, rarity, level, four attributes, calculation version, availability, optional slot, and timestamp. No texture, frame, or Phaser object is allowed. |
+| `assignments` | array | Unique explicit `slotKey` → `catInstanceId` pairs with exact role compatibility and one-cat/one-slot invariants. |
+| `assignmentRevision` | integer | Non-negative revision for optimistic assignment concurrency. |
+| `collectionRevision` | integer | Non-negative collection projection revision for stale-data diagnostics. |
 
-`createSaveDocument` derives the rate snapshot and serializes state, `migrateSaveDocument` is the single version-dispatch entry point (upgrading a version-1 document by defaulting `state.warehouse.totalOfflineGoldClaimed` to `"0"` and stamping version 2), `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
+`createSaveDocument` derives the rate snapshot and serializes state plus an optional validated cat roster, `migrateSaveDocument` is the single version-dispatch entry point (upgrading version 1's offline counter and version 1/2 documents' empty cat projection), `validateSaveDocument` enforces this schema and configured relationships, and `deserializeSaveDocument` reconstructs `GameNumber` instances and the plain cat roster only after successful migration and validation. Level-derived capacities are compared through their canonical serialized form so valid floating-point-backed upgrade effects survive JSON and IndexedDB round trips exactly.
+
+## Save Document Schema — Version 4 Portfolio
+
+Configured and unconfigured clients plus save-sync use one strict `PortfolioSaveDocumentV4`. `schemaVersion` is exactly `4`; `savedAtTimestampMs` is a non-negative safe integer; `walletGold` is the sole non-negative numeric string for spendable gold. `activeMineId` is one configured id or `null`; `selectedMineId` is an owned configured id and equals the active id when active; `boostMineId` is `null` or an owned configured id. `mines` is keyed only by the six authored site ids and always contains Gold. Every owned prerequisite site must also exist. Unknown fields are rejected.
+
+Each `mines[id]` contains the exact V3 `state` fields except `gold`, plus non-negative `purchasedAtMs`, `visitCount`, `offlineSequence` and `lastClaimedSequence`; `offline` is `null` or `{ sequence, startedAtMs, savedRatePerSecond }`, and `pendingClaim` is `null` or that interval plus `endedAtMs`. Rates are non-negative numeric strings and timestamps/sequences must match the mine state, visits and claim cursors. A purchased but unvisited mine has neither interval. Normally the active mine has no `offline` interval and every previously visited inactive mine has one; during an unavailable configured entry, the active target may retain exactly one older `pendingClaim` while earning live from its later entry boundary. Another switch is blocked until that claim settles. `cats`, `assignments`, `assignmentRevision` and `collectionRevision` retain the V3 cat-field and revision constraints, but V4 assignment keys are `mine:<ownedMineId>:<role slot>`. The same short role slot may be occupied in different mines by different owned cats; one cat cannot occupy two slots. V3 and early local V4 short keys migrate to Gold; early V4 documents without `pendingClaim` migrate to `null`. The active scene projects only its mine's qualified assignments to short keys. V1/V2/V3 load into a suspended Gold portfolio before a durable V4 write. The server accepts bounded V4 routine saves against existing V4 rows, while only its command RPC may change ownership, the active mine or offline claims. Configured clients reconcile and adopt the canonical V4 document before runtime starts.
 
 ## Save Recovery Contract
 
 `loadActiveGame` is the application load boundary above raw persistence. Empty storage creates a normal fresh state without a warning. A valid document is fully migrated, validated, and deserialized before any authoritative state is returned. If migration or validation fails, no field from the candidate enters runtime state: the loader classifies unsupported schema versions as incompatible and all other invalid candidates as corrupt, records a stable warning with a detached structured-clone snapshot when safe, and creates a complete fresh state at the caller-provided timestamp. Diagnostic callbacks are best-effort and cannot turn a recoverable persistence or save-format failure into an uncaught exception. The invalid IndexedDB record is not mutated during recovery.
+
+The local V4 loader instead preserves a corrupt candidate and stops portfolio
+boot with a recovery notice; it never overwrites that candidate with a fresh
+portfolio. It compares valid IndexedDB and lifecycle-journal candidates by
+timestamp, preferring V4 at a tie, and migrates V1–V3 to a suspended Gold site.
 
 ## Offline Income Contract
 
@@ -211,7 +295,24 @@ Offline income is configured with a 7,200,000 ms cap and 0.5 efficiency. One pur
 
 `calculateOfflineIncome` clamps credited time to the cap, returns `rate × creditedSeconds × efficiency` as a `GameNumber`, awards zero for a receipt at or after the current time, and immutably replaces `lastUpdateTimestampMs` with the injected current time. During a valid `loadActiveGame`, that timestamp-settled state is serialized with a freshly derived rate snapshot and force-flushed before a positive pending reward is returned. A second load at the same timestamp therefore returns zero reward. If settlement persistence fails, the session continues with a save diagnostic but the exposed reward is zero so an unconsumed interval cannot be claimed and then duplicated.
 
-The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The version-2 save schema and the version-1 IndexedDB schema are unchanged by a claim beyond the two counters it legitimately moves: only the post-claim authoritative snapshot is stored.
+The browser creates a pending-reward view model only for a positive calculated reward. Its accessible modal displays credited duration and the exact serialized reward. `claimOfflineReward` adds that value once to a new authoritative state and consumes the pending value; a call with no pending value is an identity result. Browser orchestration applies that state to the simulation driver, force-persists it before dismissing the modal, and guards the claim with a consumed-once flag rather than a cached state candidate: production continues while the modal is open, so a retry after a failed write saves the mine as it is at that moment and still adds the reward exactly once. The V3 save schema and the version-1 IndexedDB schema are unchanged by a claim beyond the counters and data-only cat projection they legitimately carry: only the post-claim authoritative snapshot is stored.
+
+Mine Overdrive is a separate clocked entitlement, not a save-document field.
+`lastActivatedAtMs` derives both a half-open five-minute active window and the
+next free activation at eight hours. `catchUpSimulation` splits exactly at the
+window boundaries and runs the existing fixed-step mining, elevator, and
+warehouse pipeline at x4 virtual time inside them. `calculateOfflineGrant`
+adds three times the active-window overlap to credited real time before
+applying the existing 50% efficiency and two-hour real-time cap; it never
+multiplies stockpiled gold. A configured client takes the server-owned Boost
+row from its authenticated status/download response, reprojects the closed
+local offline interval before displaying the server-capped grant, and never
+trusts a browser-posted activation time. The server response includes its
+`serverNowMs`, allowing the browser to map the activation to its own simulation
+clock when device time is skewed. Unconfigured play caches the same
+single timestamp in localStorage. The server's progress bound allows x4
+production only over the overlap with that server-owned row. Boost activation
+does not change the V3 save document or IndexedDB schema.
 
 ## Portrait Layout Contract
 
@@ -223,10 +324,10 @@ The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inse
 |---|---|---|
 | `hud` | `0,0,360,52` | Compact fixed top HUD; icon-plus-value pairs without duplicate captions. |
 | `surface` | `0,52,360,164` | Shared elevator and warehouse panels. |
-| `mine` | `0,216,360,366` | Clipped viewport the mine content scrolls behind; ends above fixed navigation. |
-| `bottomNavigation` | `0,582,360,58` | Compact fixed five-icon navigation shell at the bottom safe edge. |
+| `mine` | `0,216,360,344` | Clipped viewport the mine content scrolls behind; ends above fixed navigation. |
+| `bottomNavigation` | `0,560,360,80` | Compact fixed five-tile navigation shell at the bottom safe edge. |
 
-The complete visible navigation controls — chrome and icon together — render at 60% of their authored size inside unchanged 48×44 standard and 62×50 Boost hit regions. The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT` (474). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 366-pixel mine region scrolls by 314. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel cabin and 50-pixel cargo cat, exposes explicit fit constraints, and renders no shaft plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
+The bottom navigation uses five independent 96×96 RGBA icon files displayed at 42×42. Its solid navy 360×80 backdrop, warm-gold top divider, equal slate-steel tiles, labels, and pressed fills are drawn by Phaser, not baked into an image. Five 64×64 hit regions are centred in 72-pixel slots and do not depend on icon alpha or decoration. The layout rejects non-finite or non-positive dimensions and any height below `HUD_HEIGHT + SURFACE_HEIGHT + MINE_MIN_HEIGHT + BOTTOM_NAVIGATION_HEIGHT` (496). The initially revealed five edge-to-edge 288×132 floor slots plus 10-pixel top/bottom padding produce 680 logical pixels of content, so the 344-pixel mine region scrolls by 336. Content height expands to ten and fifteen slots only when the corresponding reveal gate opens. `calculateFloorSlotRegion(index)` returns each slot relative to the content origin. The 64-pixel shaft uses a 62-pixel-wide by 80-pixel-high cabin and the same 75-pixel semantic cat display box used by floor miners and surface role slots; the width stays within the shaft, while the cat's `-5` center-Y offset aligns its visible feet with the upper edge of the cabin's lower interior frame. The shaft renders no plaques. A 4-pixel shaft inset, 4-pixel shaft-to-floor gap, zero inter-floor gap, and zero right inset preserve the approved 288-pixel floor width and continuous cave backdrop.
 
 `MIN_TOUCH_TARGET_PX` is 44 and `assertTouchTargetRegion` rejects any smaller interactive region. The visible shared-stage cards are replaced by art, so their live level/upgrade controls are compact 30×34 badges inside 44×50 hit regions: the elevator region is `(106,48,44,50)` relative to the surface and sits immediately right of and no lower than the discharge tray; the warehouse region is `(263,0,44,50)` and places its chrome above the roof. The hidden `SharedStageView` controls remain read-back models only. The surface strip remains 164 pixels tall.
 
@@ -256,7 +357,7 @@ Presentation is a two-layer read of authoritative state. `createMineViewModel(st
 
 `MineFloorView` and `SharedStageView` build their game objects once inside a supplied `LayoutRegion` and change only through `applySnapshot`. An open floor shows a 17×17 number-only badge with 10.5 px text, one baseline-aligned coin-plus-amount queue label, the receiving container and unloader, a miner whose position/facing derive from authoritative extraction progress, a fixed 52×52 layout1-referenced gold mound, and 30×34 visible `Level N` chrome shifted 5 px right inside a 44×50 touch target. The decorative mound stays visible regardless of queue fullness. A zero queue uses the empty-cart asset; any positive queue swaps to the generated filled-cart asset and reapplies the same semantic display bounds. It does not draw a duplicate `Floor N` heading or extraction bar. Floor one uses the full cave ceiling frame; floors two onward use a named crop that halves the soil/rock seam without changing slot geometry. Locked floors retain the wider unlock control.
 
-Every unlocked floor derives its presentation crew from `mineShaftLevel` through one shared pure rule: one base miner, then one assistant at levels 50, 100, 150, and 200, capped at five visible miners above level 200. `MineFloorView` pools four assistant sprites once, reveals only the reached count, and gives each a phase-shifted progress-driven patrol plus a shallow personal Y lane and cosmetic frame offset. This is identical across floor instances and does not multiply yield, mutate authoritative state, or add save fields. Rendered diagnostics publish the active count and every measured miner pose.
+Every unlocked floor derives its presentation crew from `mineShaftLevel` through one shared pure rule: one base miner, then one assistant at levels 50, 100, 150, and 200, capped at five visible miners above level 200. `MineFloorView` pools four assistant sprites once, reveals only the reached count, and gives each a phase-shifted progress-driven route on the same horizontal baseline plus a cosmetic frame offset. Each lap travels from the white unloader to the gold pile, holds for a pickaxe strike, then returns to deliver. Forge and Mica each use their own four-frame attack sheet and travel sheet, while the pooled four-frame gold-impact effect is shared. Mica's travel sheet is authored facing right and mirrors horizontally on the leftward return; both directions keep the same 128 px cell and foot baseline. The active attack texture is selected by the assigned cat's stable asset ID; an unavailable sheet uses the safe role fallback. The phase milestones mirror the core's per-worker delivery cadence; they update the floor queue one miner at a time without multiplying the complete cycle yield, mutating unrelated authoritative state, or adding save fields. Rendered diagnostics publish the active count, every measured miner pose, and impact visibility.
 
 Queue fullness is still derived as four discrete `materialPileSteps` measured against one elevator trip for diagnostics and bottleneck logic, but it does not resize or hide the environmental gold mound. The receiving cart's empty/filled texture and numeric queue readout carry the visible material-state distinction.
 
@@ -274,7 +375,7 @@ remote repository with §9's upload cadence and §7's `409` half (19).
 
 `GET /v1/save` and `PUT /v1/save` on a Supabase Edge Function are the only save
 path; `saves` denies client writes entirely, so PostgREST is never used for a
-save. A `SaveDocumentV2` crosses the wire byte-for-byte — the protocol adds no
+save. A `SaveDocumentV3` crosses the wire byte-for-byte — the protocol adds no
 field to it and rewrites none of it. A server-owned monotonic `revision`
 provides optimistic concurrency: an upload carries the `baseRevision` it started
 from, and a stale one is refused with the server's current revision and
@@ -296,7 +397,7 @@ distinction Step 23 makes. Excluding `gold` is sound only because every gold
 *source* is vectored: Step 18 added `warehouse.totalOfflineGoldClaimed` so an
 offline reward can no longer move `gold` without moving the vector (see the
 Step 18 section below). The predicate is pure, operates on two
-`SaveDocumentV2` values, and belongs in `src/persistence` — `src/core` must not
+`SaveDocumentV3` values, and belongs in `src/persistence` — `src/core` must not
 learn that saves exist. It holds only while those fields are monotonic, so a
 prestige or reset mechanic would have to revise it in the same change, and a new
 gold source would have to join the vector.
@@ -579,11 +680,16 @@ only discovers it after the player has chosen an account on Google's own
 page and the browser returns with `error_code=identity_already_exists` on
 the *return* URL, a fresh page load the client's own session-detection
 parses — long after `beginGoogleSignIn`'s promise already resolved
-`redirecting`. Nothing in `src/` reads those return-URL parameters yet; that
-read (or an `onAuthStateChange` subscription) is what Step 13's collision
-handling requires, not this function. Confirmed live during this step's own
-verification below: attempting to re-link an already-linked identity
-produced no consent screen at all, only an immediate redirect back carrying
+`redirecting`. `readGoogleIdentityReturnError` now reads both query and hash
+forms before the URL is cleaned, and `main.ts` keeps a collision as actionable
+guest copy (`Sign in with Google`) instead of discarding it; `main.ts` starts
+the `signInWithOAuth` handoff immediately, while the copy is an informational
+fallback rather than a fatal error if that handoff fails. If account
+inspection fails for another reason, the settings modal shows an unavailable
+state with retry; an already-open modal also repaints when the non-blocking
+identity bootstrap settles. Confirmed live during this step's own verification
+below: attempting to re-link an already-linked identity produced no consent
+screen at all, only an immediate redirect back carrying
 `error_code=identity_already_exists`, with the existing session and account
 untouched.
 
@@ -598,14 +704,28 @@ a second, separate git-ignored `.env` file (`.gitignore` already covers both
 application OAuth client with `http://127.0.0.1:54321/auth/v1/callback` (the
 fixed local GoTrue callback) as its authorized redirect URI — no domain
 needed, since Google permits `localhost`/`127.0.0.1` redirects in
-development, unlike Step 11's Apple.
+development, unlike Step 11's Apple. For LAN browser review, local
+`supabase/config.toml` uses the active `http://192.168.1.203:5173` origin as
+`site_url`, allow-lists that exact URL and the
+`http://192.168.*.*:5173`/`:5174` globs, plus matching loopback origins, while
+the client passes the exact origin that started the OAuth flow, including
+`http://localhost:5174` when Vite falls back because `:5173` is occupied. The LAN
+`site_url` is intentional: it makes the Auth fallback device-reachable even
+if a provider or SDK path omits `redirectTo`; update it and restart the local
+stack if the host's DHCP address changes.
+`getSupabaseApiUrl()` also maps the checked-in local `127.0.0.1:54321` API
+host to that same LAN hostname when the page is served from `192.168.x.x:5173`
+or `:5174`, so a phone does not resolve loopback against itself; deployed
+HTTPS URLs are never rewritten.
 
 `HudView.ts` now adds a compact settings control beside the income value. It
 opens `src/ui/AccountSettingsModal.ts`, a DOM modal with keyboard focus,
 account status/email/user id, app version, and either Google sign-in or
 logout-and-reset. The modal keeps auth effects injected from `src/main.ts`,
 while the DEV-only `window.catMineIdleAccount` hook remains for guided
-verification and collision diagnostics.
+verification and collision diagnostics. The modal has an injected refresh
+callback so asynchronous auth state cannot leave it showing `Loading` after
+the boot result is known.
 
 **What nothing local can prove.** A real human completing Google's own
 consent screen is the one thing no test double, local mock, or CI runner can
@@ -1088,7 +1208,7 @@ cloud save on first sign-in rather than let a fresh one replace it.
 `src/platform/web/cloudSaveReconcile.ts`'s `adoptExistingLocalSave` is the
 named operation. It reads whichever document the lifecycle-safe repository
 would load, runs it through the shared `validateSaveDocument` — which migrates
-version 1 to version 2, expanding a legacy four-floor payload and defaulting
+version 1 through V3, expanding a legacy four-floor payload and defaulting
 `warehouse.totalOfflineGoldClaimed` to `"0"` — and hands the migrated document
 to the Step 19 replica's `forceCloudUpload`. It never throws: a missing local
 record resolves `no-local-save`, a corrupt or unreadable one `unreadable`, and a
@@ -1098,7 +1218,7 @@ forced-upload collaborator that breaks its non-throwing contract `upload-failed`
 `src/main.ts`'s boot-reconcile trigger (`forceCloudUploadLatestLocalDocument`)
 delegates to it on `no-cloud-save` and `kept-local`. `no-cloud-save` is the
 first-sign-in path: the account has no cloud save, so the local save becomes
-the cloud save. The adopted document is therefore the **migrated** version-2
+the cloud save. The adopted document is therefore the **migrated** version-3
 document, not the original version-1 bytes — the plan's Step 18 interaction
 note records that, and the tests compare against the migrated document rather
 than pretending the v1 bytes come back. The upload path already carries the
@@ -2060,13 +2180,12 @@ the missing piece — detecting and resolving the one collision Google's
 `linkIdentity` can produce that `resolveSaveConflict` alone cannot get the
 caller into:
 
-- `detectGoogleIdentityCollision` (`src/platform/web/googleSignIn.ts`) calls
-  `client.auth.initialize()` — the SDK's own memoized boot-URL parser,
-  already triggered once by `ensureGuestSession`'s `getSession()`, so a
-  second call is free and returns the cached result — and reads
-  `error.details?.code === 'identity_already_exists'`, mirrored from the
-  SDK's own internal check (`GoTrueClient._initialize`) since no
-  higher-level named constant exists for it.
+- `readGoogleIdentityReturnError` (`src/platform/web/googleSignIn.ts`) reads
+  both query and hash return parameters before the app removes them;
+  `detectGoogleIdentityCollision` also calls `client.auth.initialize()` — the
+  SDK's own memoized boot-URL parser, already triggered once by
+  `ensureGuestSession`'s `getSession()` — and accepts the collision code from
+  either the top-level or nested auth error shape.
 - `beginGoogleAccountSwitch` always calls `signInWithOAuth`, never
   `linkIdentity`, regardless of whether a guest session already exists:
   GoTrue never reveals *which* account a colliding identity belongs to, so
@@ -2085,7 +2204,9 @@ The production account popup now owns the normal login/logout entry point;
 `main.ts`'s `DEV`-only `window.catMineIdleAccount` hook still carries
 `beginGoogleAccountSwitch` for the rare post-redirect collision, alongside the
 `data-google-identity-collision` diagnostic published by
-`detectGoogleIdentityCollision`.
+`detectGoogleIdentityCollision`. The popup preserves the collision message as
+informational fallback guidance, refreshes after async identity resolution,
+and offers retry when account inspection fails generically.
 
 ### Recovery code (Step 14)
 
@@ -2384,22 +2505,77 @@ example, with eight deliberate ledger-inspection, grip-adjustment, breathing,
 and recovery poses at 110 ms per frame; this does not affect gameplay.
 
 The term `rarityTier` is used in asset metadata to avoid collision with the
-existing numeric stage `level`. The existing Step 32A `unloader` sheet is the
-default runtime fallback and the baseline candidate for `unloader:N`. Future
-role/tier assets remain under `art-source/` until they pass deterministic raster
-QA and explicit visual approval. The current catalog phase creates no runtime
-loader entry, selection rule, gameplay attribute, authoritative state field,
-balance input, persistence field, or save/database schema change.
+existing numeric stage `level`. The existing Step 32A `unloader` sheet remains
+the receiving-position fallback and the baseline candidate for `unloader:N`.
+After Phase 7 and the default-role follow-ups, eight role assets are runtime
+integrated: Pip (`elevator-cargo-cat:N:pip:idle`) as the free Elevator visual,
+Mofy (`elevator-cargo-cat:SSR:mofy:idle`) as its purchased/assigned replacement,
+Baron (`warehouse-manager:SR:baron:idle`) at the warehouse, and
+Forge (`miner:SSR:forge:idle`) plus Mica (`miner:N:mica:idle`) on mine floors,
+and Tobi (`hauler:SR:tobi:walk`) / Rivet (`hauler:SSR:rivet:walk`) on individually
+assigned carts. Haulers use 52px cat boxes, 46px default handcarts, 64px
+Tobi/Rivet carts, and four authored walk
+frames at 200ms (recorded premium-policy override). Their empty/full carts are
+separate textures with identical per-identity scale/origin in both cargo states.
+Paid carts use their visible wheels/coils as the vertical origin, aligned to the
+default handcart's ground line; Rivet floats 4px above that line. Cat size and
+route spacing are unchanged by the 2026-09-30 cart-size feedback fix.
+
+Boru (`miner:SSR:boru:idle`) adds a purchased excavator Miner. Four 512x256
+RGBA sheets contain eight 128px frames each. `excavatorAnimation.ts` maps one
+core extraction lap to empty travel (0-.32), scoop/lift (.32-.58), loaded
+return (.58-.84), deposit (.84-1); no simulation writes. Crew copies retain
+the existing 1/count phase spacing. The view uses a 110px canvas envelope,
+track root (64,112), the same ground line as Mica, and mirrors the full machine
+on return/deposit. Normal miner origins are restored when replacing Boru.
+`normalize-boru-assets.py` translates generated frames to the chassis root,
+without per-frame scaling. The source/provenance lives under `miner/ssr/boru`.
+The Marketplace/assignment portrait is a separate alpha-cropped derivative,
+116x92 visible pixels in a 128px canvas. Boru's scoop endpoint is offset
+16 logical pixels into the foreground gold pile; the pile is drawn after the
+miner so it covers the lowered bucket. This does not change mining output.
+The shared `goldPile` panel region starts at Y=91 rather than Y=84: the
+128px art's transparent lower padding means its visible bottom now meets the
+floor line at roughly Y=122; mining impacts use this same panel anchor.
+`HaulerThrusterView` adds two cyan/white procedural jets under Rivet's source
+coil anchors (48/128 and 99/128 X, 89/128 Y). One reusable Graphics per cart
+sits behind the vehicle in the surface container. Cosmetic-clock breathing
+continues through loading, delivery, unloading and empty return, mirrors with
+the cart, and clears immediately for inactive/default/Tobi slots. Scene-owned
+graphics are recreated on restart; no timers, emitters, raster changes, or
+simulation effects are introduced.
+Unassigned carts retain the Step 32A cat/handcart. The chute origin stays fixed.
+The unassigned `elevator:main` slot renders Pip's 2×2/4-frame sheet at 220 ms
+and keeps `catInstanceId` and `assignedAssetId` null. An owned but Idle Mofy
+does not replace Pip; assignment binds Mofy's original 4×2/8-frame sheet at
+110 ms. Pip has no Marketplace listing, owned instance, skill bonus, or save
+field. Both surface and moving-cabin Elevator sprites follow the same binding.
+Mica is the free presentation default on unassigned floors (with no owned
+instance or bonus); Forge renders only when his owned instance is assigned.
+An owned Mica can also be assigned explicitly. The two surface role slots and
+mine-floor miners use the shared 75 px display box so surface and underground cats
+remain visually consistent after assignment changes, including the moving shaft
+copy. The moving shaft copy uses that same 75 px box inside a 62 px wide by
+80 px high cabin; the cat center is 5 px above the cabin center so the visible
+feet stand on the upper edge of the lower interior frame while the shaft width
+remains unchanged.
+`BootScene` resolves local four- or eight-frame runtime sheets and falls back
+to the bundled 4-frame placeholders when a copy
+is unavailable. Runtime identity, display frames, and animation timing remain
+presentation-only: they add no gameplay attribute, authoritative state field,
+balance input, persistence field, or save/database schema change. Future
+role/tier assets remain under `art-source/` until deterministic raster QA and
+explicit visual approval pass.
 
 ## Live Production Stage Contract
 
 The screen pulls; the core never pushes. `MineSimulationDriver` holds authoritative state, and each rendered frame `BootScene.update` asks it to advance. The driver credits `now() - state.lastUpdateTimestampMs` through `catchUpSimulation`, where `now` is injected so `Date.now()` stays in `src/main.ts`. That delta is not always a frame: the browser stops the render loop for a hidden tab, so it is routinely a whole absence, and `advanceSimulation`'s per-call `MAX_FOREGROUND_DELTA_MS` bound — which exists so one slow frame cannot pay out a burst — would consume the rest unsimulated. `catchUpSimulation` walks the gap in credited-size slices instead, exactly rather than approximately, because the sub-tick remainder is carried in authoritative state. The walk is bounded at `MAX_CATCH_UP_MS` (two hours, matching the offline-income horizon) so resuming cannot freeze the tab; time past the bound is still consumed by `lastUpdateTimestampMs`, since a timestamp left behind real time would hand the same interval to offline income on the next load. Nothing about the frame — its rate, its delta, its animation speed — enters that calculation, so equal wall-clock time produces equal state at any frame rate, and a frozen clock is a paused mine that still renders. A clock that moves backwards credits nothing and leaves the authoritative timestamp ahead until real time catches up. The driver memoizes its derived snapshot and re-derives it only when a fixed tick completed. A sixty-frame second completes ten ticks, so most frames leave a state differing solely in timestamp and sub-tick remainder; those hand back the same object and the scene skips rebinding by identity, with its renderable guard ordered behind that check. `replaceState` always re-derives, because a command changes displayed values without completing a tick. The rendered-state read-back that browser tests assert against is gated on `import.meta.env.DEV`, so a shipped build neither runs nor contains it. Commands replace state through `replaceState`, which the offline-reward claim uses before the next frame continues from it.
 
-Each production stage retains authoritative state in its view model. For a floor, extraction progress feeds the ping-pong patrol across the full corridor from the unloader to the gold pile, so position and facing freeze with a paused core while walk frames stay cosmetic. The cabin's vertical position follows its signed route direction, floor target, and leg progress, remapped through pure smootherstep easing so visual velocity reaches zero at both ends without changing leg duration. Each underground stop uses the semantic Y centre of that floor's gold container. Underground and surface cabin twins share the shaft-centre X coordinate `36`; only Y changes, so entry into the tower is perfectly vertical. The asymmetric tower v2 is positioned around that semantic bay axis rather than forcing the cabin toward its full texture centre, and adds a right-side mounting bracket for its code-rendered level badge. Its hopper has filled and empty texture variants: `warehouse.queueSteps > 0` shows the gold-filled tower, while zero swaps to the empty steel-bin artwork; both retain identical 128×128 runtime bounds. A fixed-layer cabin twin fades in after boundary entry to bridge the camera seam without duplicating simulation state. A 720×328 original sky/mountain/meadow landscape is displayed at 360×164 as the bottom surface-art layer, behind the tower, delivery objects, warehouse, and foreground ground strip. The legacy elevator and warehouse cards are hidden while their bound `SharedStageView` instances remain read-back models; the generated tower, right-flush 140×140 warehouse building, and explicit compact level badges route to the corresponding upgrade commands. The elevator badge region is `(106,48,44,50)`, placing its 30×34 chrome immediately beside and higher than the chute; the warehouse region remains `(263,0,44,50)`. The 56 px warehouse supervisor is mirrored left and its four-frame idle is cosmetic only. Number plaques inside the shaft are omitted because the cave panels already provide number-only floor badges.
+Each production stage retains authoritative state in its view model. For a floor, extraction progress feeds the ping-pong patrol across the full corridor from the unloader to the gold pile, so position and facing freeze with a paused core while walk frames stay cosmetic; the phase-shifted miners share one Y baseline and line up with the core's per-worker queue-delivery milestones. The cabin's vertical position follows its signed route direction, floor target, and leg progress, remapped through pure smootherstep easing so visual velocity reaches zero at both ends without changing leg duration. Each underground stop uses the semantic Y centre of that floor's gold container. Underground and surface cabin twins share the shaft-centre X coordinate `36`; only Y changes, so entry into the tower is perfectly vertical. The asymmetric tower v2 is positioned around that semantic bay axis rather than forcing the cabin toward its full texture centre, and adds a right-side mounting bracket for its code-rendered level badge. Its hopper has filled and empty texture variants: `warehouse.queueSteps > 0` shows the gold-filled tower, while zero swaps to the empty steel-bin artwork; both retain identical 128×128 runtime bounds. A fixed-layer cabin twin fades in after boundary entry to bridge the camera seam without duplicating simulation state. A 720×328 original sky/mountain/meadow landscape is displayed at 360×164 as the bottom surface-art layer, behind the tower, delivery objects, warehouse, and foreground ground strip. The legacy elevator and warehouse cards are hidden while their bound `SharedStageView` instances remain read-back models; the generated tower, right-flush 140×140 warehouse building, and explicit compact level badges route to the corresponding upgrade commands. The elevator badge region is `(106,48,44,50)`, placing its 30×34 chrome immediately beside and higher than the chute; the warehouse region remains `(263,0,44,50)`. The 56 px warehouse supervisor is mirrored left and its four-frame idle is cosmetic only. Number plaques inside the shaft are omitted because the cave panels already provide number-only floor badges.
 
-Decoration is a separate clock. `BootScene` accumulates `advanceAnimationTimeMs(frameDelta × animationSpeedMultiplier)` and drives only cosmetic sprite frames, conveyors, and the surface delivery loop. Pure `calculateSurfaceHaulerPose` always divides a 5,200 ms lap into tower collection, delivery, warehouse stop, and empty return; whether `warehouse.inputQueue` has material changes only the pour and filled-cart flags, never whether the worker moves. `calculateSurfaceHaulerCount` derives one base cat plus one assistant at every ten warehouse levels, capped at eleven total at level 100. `calculateSurfaceHaulerAssistantPose` distributes every active assistant around that same loop even when all carts are empty; `calculateSurfaceHaulerAssistantOffset` adds mirrored horizontal spacing with zero Y offset so all cats and carts share one baseline. Each cat therefore owns an independent phase, frame, horizontal position, facing, and one paired cart rather than copying the lead transform or sharing its vehicle. Every paired cart follows its cat's route pose. The cart's empty and filled files have different native dimensions, so every `setTexture` is immediately followed by the same semantic 46×46 display size; diagnostics publish measured cart bounds, active cat/cart counts, and assistant poses to prevent texture-driven scale pulses, missing carts, exact crew overlap, or vertical lane drift. The multiplier and workforce visuals reach nothing authoritative, so scaling, freezing, or adding assistants cannot change production or gold.
+Decoration is a separate clock. `BootScene` accumulates `advanceAnimationTimeMs(frameDelta × animationSpeedMultiplier)` and drives only cosmetic sprite frames, conveyors, and the surface delivery loop. Pure `calculateSurfaceHaulerPose` always divides a 5,200 ms lap into tower collection, delivery, warehouse stop, and empty return; `advanceSurfaceHaulerTrip` latches a pickup only during loading. Each cart retains that cargo despite later `warehouse.inputQueue` changes, clearing it at the warehouse handoff (68% of the lap). A refill cannot fill a cart already in transit. The crew keeps moving even without cargo. Core `calculateSurfaceHaulerWorkforce` derives the raw count from warehouse level, caps `visibleCount` at five, and gives overflow to the visible crew through `productivityMultiplier = rawCount / visibleCount`; `calculateSurfaceHaulerCount` renders that `visibleCount`. `calculateSurfaceHaulerAssistantPose` distributes every active assistant around that same loop even when all carts are empty; `calculateSurfaceHaulerAssistantOffset` adds mirrored horizontal spacing with zero Y offset; the scene fades that spread with `sin(π × routeProgress)` so every cart reaches the same exact chute/warehouse stops. Each cat therefore owns an independent phase, frame, horizontal position, facing, and one paired cart rather than copying the lead transform or sharing its vehicle. Every paired cart follows its cat's route pose, and `BootScene` gives the lead plus every visible cart its own gold-pour sprite at the same fixed chute-mouth coordinate, with visibility/frame driven by that cart's loading pose. The cart's empty and filled files have different native dimensions, so every `setTexture` is immediately followed by the same per-identity display size (46×46 default, 64×64 Tobi/Rivet); diagnostics publish measured cart bounds, active cat/cart counts, assistant poses, and per-cart pour state to prevent texture-driven scale pulses, missing carts, exact crew overlap, or vertical lane drift. `advanceSimulation` applies the surface multiplier at the existing warehouse input handoff, and `calculateMineProductionRates` exposes the same value to HUD, offline, and anti-cheat consumers; no extra saved queue is needed. Mine crews follow a related but gameplay-visible cadence: the core imports the shared worker-count rule, adds one equal `cycleYield / workerCount` chunk to the floor queue at each delivery milestone, and the view phase-shifts all miners on one Y baseline to those milestones. This keeps total cycle production unchanged while making each arrival readable.
 
-The same separation governs floor crews: authoritative extraction progress remains the only route input, while the number of visible miners comes from the existing shaft level and their frame/phase/lane differences are cosmetic. No miner sprite count is consulted by the simulation.
+The same separation governs floor crew movement: authoritative extraction progress remains the route input, while frame timing remains cosmetic; however, the shared shaft-level workforce is intentionally consumed by core extraction to schedule equal visible-worker queue-delivery chunks and apply overflow productivity. The renderer never writes authoritative state, and the visible miner count never grows beyond the pooled five-cat cap.
 
 ## HUD Contract
 
@@ -2420,6 +2596,19 @@ A direct press goes to `MineSimulationDriver.purchase(target)`; every floor/elev
 The result is shown on the pressed control for `PURCHASE_FEEDBACK_DURATION_MS` (1,200 ms): `Upgraded!` or `Unlocked!` on green, `Need more gold`, `Level too low`, or `Unavailable` on red, in place of the action and price. `describePurchaseFeedback(feedback, nowMs)` is pure and expires the message, and the scene runs it on the Phaser scene clock rather than the cosmetic animation clock, so how long a message stays readable cannot change with animation speed. The scene expires its whole feedback map each frame rather than only the entries whose control is still on screen: the map is keyed by control and so is bounded either way, but a successful unlock hides the control that was pressed, and collecting through live controls alone would leave that result in place until the control came back. `BootScene` rebinds the snapshot and republishes diagnostics immediately on a press instead of waiting for the next tick. Because that expiry runs on the frame clock, every control re-renders on every frame, so the render path must cost nothing when nothing changed: text colours are compared before they are written, since `Text.setColor` — unlike `Text.setText` — repaints the caption's canvas and re-uploads its texture on every call. A browser test counts repaints across idle frames and requires zero.
 
 `BootScene` publishes `data-purchase-controls`: every visible control's key, rendered labels, enabled appearance, live feedback, and its pressable rectangle in screen coordinates. Floor controls are drawn through the mine camera, so their world rectangle is offset by that camera's viewport and scroll. Surface-stage entries come from the two visible compact badge instances rather than the hidden legacy card controls; the main camera leaves their world and screen rectangles equal. This is what lets a browser test aim a real press at a real control instead of assuming a coordinate.
+
+The Marketplace Buy confirmation is a two-action decision: the confirmation
+copy and wallet context span the modal width, while the action pair shares one
+responsive grid row. A `Listed` catalog item uses domain-specific
+`Buy listed cat` and `Back to cats` actions; the generic `Confirm purchase` /
+`Cancel` labels remain for any non-listed purchase path. After a successful
+seeded-catalog Buy, the detail offers `Buy another` so a
+second purchase of the same blueprint creates a separate owned instance;
+reopening the Marketplace also resets transient purchase feedback. Collection
+summary copy is state-aware: only `ready` renders an owned-count/revision summary;
+`loading`, `stale`, and `error` use explicit status copy. A failed read
+therefore cannot be mistaken for a valid empty collection, which is reserved
+for a successful projection whose `cats` array is empty.
 
 ## Floor Unlock Contract
 
@@ -2482,15 +2671,19 @@ Step 4's bootstrap migration
 (`supabase/migrations/20260908120000_bootstrap_platform_requirements.sql`, which
 creates nothing — it only asserts the PostgreSQL 13+ premise this block relies on
 for `gen_random_uuid()`). The original six tables, the Step 32
-`account_audit` table, and Step 33's anonymization/retention columns and
-deletion functions, with the row-level-security policies in the matrix
-below, exist in the local development database after `supabase db reset`;
-**no deployed database contains them**, because no deployment exists yet. This
+`account_audit` table and Step 33's anonymization/retention columns and
+deletion functions, the five cat-collection tables, the three Marketplace
+trading tables, and the later `mine_boosts` and `portfolio_command_receipts`
+tables, with the row-level-security policies in the matrix below, exist in the
+local development database after `supabase db reset`; **no deployed database
+contains them**, because no deployment exists yet. This
 block and its twin in the other document are
 byte-identical by construction and must be changed together, in the same change
 as every future migration, exactly as `AGENTS.md` requires.
 
-Full protocol context is in `memory-bank/server-save-sync-protocol.md`; the
+The cat collection extension is a second forward-only migration,
+`supabase/migrations/20260919120000_create_cat_collection.sql`, adding five
+service-role-owned tables and two transactional RPCs. Full protocol context is in `memory-bank/server-save-sync-protocol.md`; the
 threat model and recorded defaults it obeys are in
 `memory-bank/server-threat-model.md`.
 
@@ -2500,7 +2693,7 @@ Three rules, and they differ by location.
 
 1. **Inside a save document, nothing changes.** `GameNumber` values stay
    serialized decimal/scientific strings inside the document text, exactly as
-   the version-2 save schema already defines them. The server neither reformats
+   the version-3 save schema already defines them. The server neither reformats
    nor re-serializes them.
 2. **Anywhere SQL must sort or rank a `GameNumber`, store two columns.**
    `*_exact text` holds the canonical serialized form and is the only value ever
@@ -3075,7 +3268,7 @@ grant execute on function public.purge_expired_account_audit(timestamptz)
 | `saves` | `user_id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade; one row per user |
 | `saves` | `revision` | bigint | no | — | `> 0`; monotonic, `+1` per accepted upload; the D2 concurrency token |
 | `saves` | `schema_version` | integer | no | — | `> 0`; denormalized from the document for migration sweeps |
-| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV2` |
+| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; validated serialized V3 or V4 save document |
 | `saves` | `received_at` | timestamptz | no | `now()` | server clock; the D3 anchor for every elapsed-time calculation |
 | `saves` | `previous_revision` | bigint | yes | — | `< revision`; null-together with the other two `previous_*` columns |
 | `saves` | `previous_document_json` | text | yes | — | ≤ 65536 bytes; one generation of rollback |
@@ -3155,7 +3348,12 @@ schema.
 `saves` denying every client write is the rule the whole anti-cheat design rests
 on: row-level security cannot re-simulate a save, so it cannot judge one, and a
 client that could reach `saves` through PostgREST would make Phase 4 decoration.
-Step 15 establishes it and Step 26 attacks it.
+The table and this exact policy already existed from the Step 5 migration;
+Step 15 (implemented 2026-09-12) added the live-stack evidence
+(`tests/server-integration/saves-rls.integration.test.ts`) that select-own,
+insert, update, delete, and upsert all behave exactly as this matrix says —
+insert/upsert refused `403`/`42501`, update/delete affecting zero rows, own-row
+select working both before and after a row exists. Step 26 attacks it.
 
 `leaderboard_entries` is world-readable by design — that is what a leaderboard
 is. It carries its own `display_name` snapshot precisely so that publishing a
@@ -3216,6 +3414,31 @@ There is deliberately **no per-code failed-attempt counter**: a wrong code
 usually matches no row at all, so counting per code would miss the attack.
 Throttling belongs per caller and per address, in Step 25.
 
+A 2026-09-12 review of Step 14 fixed five issues in the Edge Function itself
+(the highest: a failed session mint after a successful redemption
+permanently burned the code with no session ever delivered — now reverted;
+see `architecture.md`'s Step 14 review entry for all five). One of them
+changed the address the interim rate limiter keys on: `extractCallerAddress`
+now reads the *last* `X-Forwarded-For` hop (the platform gateway's own,
+unforgeable one) rather than the first (client-suppliable) one, and the
+threshold rose from 10 to 30 attempts/minute — confirmed live that the local
+gateway supplies this trusted hop for every request regardless of what the
+client sends, so the higher threshold absorbs legitimate traffic sharing one
+observed address without weakening the real backstop, the code's own
+128-bit entropy.
+
+A 2026-09-13 follow-up review fixed five more issues: the rotation
+migration's own comment overstated what atomicity guarantees (corrected
+above, in the schema section); the atomicity fix had no committed
+behavioral test (added two); the revert path could itself collide with the
+one-active-code index in a narrow window (fixed with its own RPC,
+`revert_recovery_code_redemption`, also in the schema section); the
+rate-limit sweep ran on every request rather than being gated by map size;
+and — a consequence of the address fix above — the whole integration suite
+was found to share one real rate-limit bucket with no way to reset it,
+fixed with a token-gated `POST /v1/test-only-reset-rate-limit` route (see
+`architecture.md`'s Step 14 review entries for full detail on all five).
+
 ### What Step 3 does not design
 
 - The Step 32 account audit log was not designed in Step 3. Step 32 now defines
@@ -3231,8 +3454,12 @@ Throttling belongs per caller and per address, in Step 25.
   `board_key = 'lifetime-gold'`), tie-break by ascending `updated_at`. No
   table, index, or RLS change was needed to decide them — a season or period
   is a `board_key` value, not a schema change, exactly as designed here.
-- Rate-limit counters — Step 25, which may use platform facilities rather than
-  tables.
+- Rate-limit counters — settled by Step 25, which chose **no table**: the shared
+  limiter keeps a fixed-window `Map` per worker
+  (`supabase/functions/_shared/rateLimit.ts`), pruned past a size threshold.
+  It is best-effort rather than a durable guarantee — see `architecture.md`'s
+  Step 25 section for why that is accepted at this scale — so no migration was
+  added for it.
 - `offlineGrant` and anything Step 22 needs beyond `received_at`, which already
   anchors it.
 
@@ -3241,17 +3468,413 @@ Throttling belongs per caller and per address, in Step 25.
 | Object store | Field | Type | Required / nullable | Key / constraint |
 |---|---|---|---|---|
 | `saves` | `id` | string | Required, non-null | Primary key via key path `id`; application writes only the literal `active`. |
-| `saves` | `document` | structured-clone-compatible `SaveDocumentV2` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
+| `saves` | `document` | structured-clone-compatible `SaveDocumentV3` or local `PortfolioSaveDocumentV4` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
 
-The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, a legacy version-1 save (including the former four-floor prefix, expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults) is migrated to version 2 by defaulting `warehouse.totalOfflineGoldClaimed` to `"0"`; the IndexedDB database version remains `1`.
+The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, legacy version-1 or version-2 saves (including the former four-floor prefix, expanded to fifteen floors before validation) and version-3 saves migrate to a version-4 portfolio for both local and configured play. Version 1 defaults `warehouse.totalOfflineGoldClaimed` to `"0"`; older shapes gain an empty cat projection. IndexedDB database version remains `1`.
 
 **Synchronous lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1`.
 
 | Key | Value | Lifetime / relationship |
 |---|---|---|
-| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV2` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV3` or local `PortfolioSaveDocumentV4` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+| `cat-mine-idle:portfolio-command:<user UUID>` | JSON version `2` transaction envelope containing one validated command, its canonical V4 source document or `null`, upload base revision or `null`, accepted server receipt or `null`, and diagnostic `writtenAtMs` | Scoped to the authenticated account. Written before upload; advanced after upload and command acceptance; removed only after the accepted document or merged pending claim is durably represented locally. A legacy bare command remains readable for replay. |
 
-The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
+The lifecycle journal introduces no new save schema version and is not a second progression store. The portfolio command journal is a transaction log: its source snapshot freezes the exact `effectiveAtMs` boundary and its receipt closes ambiguous network outcomes without double execution. Malformed, unsupported or wrong-account journal values never override a valid IndexedDB snapshot.
+
+### Cat collection schema extension — 2026-09-19
+
+Catalog data addition, 2026-09-30: migration
+`20260930100000_add_boru_miner.sql` inserts `miner:SSR:boru:idle` (Boru,
+Miner/SSR, price 42000, Power/Speed/Capacity/Efficiency 96/68/95/90).
+No table, column, constraint, index or relationship changes; existing
+purchase idempotency and per-instance assignment uniqueness apply.
+
+The forward-only migration `20260919120000_create_cat_collection.sql` adds
+`cat_blueprints` (allowlisted asset, role, rarity, price, and default
+attributes), `cat_collection_accounts` (per-owner assignment and collection
+revisions), `cat_instances` (one server-owned cat instance per purchase),
+`cat_assignments` (unique owner/slot and unique cat constraints), and
+`cat_purchase_requests` (owner/idempotency replay protection). All five tables
+have RLS enabled, no client policies, and service-role-only mutation. The
+`cat_instances` check constraints enforce approved roles, four attributes in
+`[0,100]`, calculation version `1`, known lifecycle states, and the
+`Assigned`/`assigned_slot_key` relationship. Assignment uniqueness prevents
+one cat from occupying two slots.
+
+Full collection table definitions (current role/slot constraints); the rental
+columns, constraints, and renter index are listed in the trading extension
+immediately below. Primary/unique keys create their corresponding indexes;
+there are no additional collection indexes beyond those shown.
+
+```sql
+create table public.cat_blueprints (
+  asset_id       text primary key,
+  display_name   text not null,
+  role_id        text not null,
+  rarity_tier    text not null,
+  price_exact    numeric not null,
+  power          integer not null,
+  speed          integer not null,
+  capacity       integer not null,
+  efficiency     integer not null,
+  constraint cat_blueprints_asset_id_length check (char_length(asset_id) between 1 and 128),
+  constraint cat_blueprints_display_name_length check (char_length(display_name) between 1 and 64),
+  constraint cat_blueprints_role_known check (role_id in ('elevator', 'warehouse', 'miner', 'hauler')),
+  constraint cat_blueprints_rarity_known check (rarity_tier in ('N', 'R', 'SR', 'SSR', 'UR')),
+  constraint cat_blueprints_price_positive check (price_exact > 0),
+  constraint cat_blueprints_attributes_range check (
+    power between 0 and 100 and speed between 0 and 100 and
+    capacity between 0 and 100 and efficiency between 0 and 100
+  )
+);
+
+create table public.cat_collection_accounts (
+  user_id              uuid primary key references auth.users(id) on delete cascade,
+  assignment_revision  bigint not null default 0,
+  collection_revision  bigint not null default 0,
+  updated_at           timestamptz not null default now(),
+  constraint cat_collection_assignment_revision_non_negative check (assignment_revision >= 0),
+  constraint cat_collection_revision_non_negative check (collection_revision >= 0)
+);
+
+create trigger cat_collection_accounts_set_updated_at
+  before update on public.cat_collection_accounts
+  for each row execute function public.set_updated_at();
+
+create table public.cat_instances (
+  cat_instance_id    uuid primary key default gen_random_uuid(),
+  owner_user_id      uuid not null references auth.users(id) on delete cascade,
+  asset_id           text not null references public.cat_blueprints(asset_id),
+  display_name       text not null,
+  role_id            text not null,
+  rarity_tier        text not null,
+  level              integer not null default 1,
+  power              integer not null,
+  speed              integer not null,
+  capacity           integer not null,
+  efficiency         integer not null,
+  calculation_version integer not null default 1,
+  availability_state text not null default 'Idle',
+  assigned_slot_key  text null,
+  updated_at         timestamptz not null default now(),
+  constraint cat_instances_display_name_length check (char_length(display_name) between 1 and 64),
+  constraint cat_instances_role_known check (role_id in ('elevator', 'warehouse', 'miner', 'hauler')),
+  constraint cat_instances_rarity_known check (rarity_tier in ('N', 'R', 'SR', 'SSR', 'UR')),
+  constraint cat_instances_level_positive check (level > 0),
+  constraint cat_instances_attributes_range check (
+    power between 0 and 100 and speed between 0 and 100 and
+    capacity between 0 and 100 and efficiency between 0 and 100
+  ),
+  constraint cat_instances_calculation_version check (calculation_version = 1),
+  constraint cat_instances_state_known check (availability_state in ('Idle', 'Assigned', 'Listed', 'Rented', 'Expired', 'Locked')),
+  constraint cat_instances_assigned_state_consistent check (
+    (availability_state = 'Assigned') = (assigned_slot_key is not null)
+  )
+);
+
+create index cat_instances_owner_state_idx
+  on public.cat_instances (owner_user_id, availability_state, role_id, updated_at desc);
+
+create trigger cat_instances_set_updated_at
+  before update on public.cat_instances
+  for each row execute function public.set_updated_at();
+
+create table public.cat_assignments (
+  owner_user_id       uuid not null references auth.users(id) on delete cascade,
+  slot_key            text not null,
+  cat_instance_id     uuid not null unique references public.cat_instances(cat_instance_id) on delete cascade,
+  assignment_revision bigint not null,
+  updated_at          timestamptz not null default now(),
+  primary key (owner_user_id, slot_key),
+  constraint cat_assignments_slot_format check (
+    slot_key = 'elevator:main' or slot_key = 'warehouse:main' or slot_key ~ '^miner:.+
+  ),
+  constraint cat_assignments_revision_positive check (assignment_revision > 0)
+);
+
+create index cat_assignments_owner_idx
+  on public.cat_assignments (owner_user_id, updated_at desc);
+
+create trigger cat_assignments_set_updated_at
+  before update on public.cat_assignments
+  for each row execute function public.set_updated_at();
+
+create table public.cat_purchase_requests (
+  owner_user_id       uuid not null references auth.users(id) on delete cascade,
+  idempotency_key     text not null,
+  cat_instance_id     uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  price_exact         numeric not null,
+  created_at          timestamptz not null default now(),
+  primary key (owner_user_id, idempotency_key),
+  constraint cat_purchase_requests_key_length check (char_length(idempotency_key) between 8 and 128),
+  constraint cat_purchase_requests_price_positive check (price_exact > 0)
+);
+
+ or slot_key ~ '^hauler:[1-5]
+  ),
+  constraint cat_assignments_revision_positive check (assignment_revision > 0)
+);
+
+create index cat_assignments_owner_idx
+  on public.cat_assignments (owner_user_id, updated_at desc);
+
+create trigger cat_assignments_set_updated_at
+  before update on public.cat_assignments
+  for each row execute function public.set_updated_at();
+
+create table public.cat_purchase_requests (
+  owner_user_id       uuid not null references auth.users(id) on delete cascade,
+  idempotency_key     text not null,
+  cat_instance_id     uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  price_exact         numeric not null,
+  created_at          timestamptz not null default now(),
+  primary key (owner_user_id, idempotency_key),
+  constraint cat_purchase_requests_key_length check (char_length(idempotency_key) between 8 and 128),
+  constraint cat_purchase_requests_price_positive check (price_exact > 0)
+);
+
+
+  ),
+  constraint cat_assignments_revision_positive check (assignment_revision > 0)
+);
+
+create index cat_assignments_owner_idx
+  on public.cat_assignments (owner_user_id, updated_at desc);
+
+create trigger cat_assignments_set_updated_at
+  before update on public.cat_assignments
+  for each row execute function public.set_updated_at();
+
+create table public.cat_purchase_requests (
+  owner_user_id       uuid not null references auth.users(id) on delete cascade,
+  idempotency_key     text not null,
+  cat_instance_id     uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  price_exact         numeric not null,
+  created_at          timestamptz not null default now(),
+  primary key (owner_user_id, idempotency_key),
+  constraint cat_purchase_requests_key_length check (char_length(idempotency_key) between 8 and 128),
+  constraint cat_purchase_requests_price_positive check (price_exact > 0)
+);
+```
+
+`purchase_cat_instance(user, assetId, idempotencyKey)` locks the caller's
+existing V3 save, derives the blueprint price and role from the server
+allowlist, debits serialized save gold, creates an Idle instance, and records
+the idempotency result in one transaction. The purchase projection also reads
+the committed `walletGold` and `saveRevision`; `src/main.ts` applies those
+values before the next local/cloud save, and `CloudSaveReplica` accepts the
+external revision so the purchase cannot be mistaken for a third-party
+conflict. `replace_cat_assignment(user,
+catInstanceId, slotKey, expectedAssignmentRevision)` locks the owner revision
+and candidate, validates ownership/state/exact role, returns the prior cat to
+Idle, assigns the candidate, and increments the revision atomically. The
+`cat-collection` Edge Function is the only public API; it derives the caller
+from the bearer token and returns a caller-scoped projection.
+
+### Marketplace trading schema extension — 2026-09-20
+
+The forward-only migration `20260920100000_create_marketplace_trading.sql`
+extends `cat_instances` with `renter_user_id` and `rental_expires_at`, then
+adds three service-role-owned tables. All three have RLS enabled, no client
+policies, and no direct browser grants.
+
+```sql
+alter table public.cat_instances
+  add column renter_user_id uuid null references auth.users(id) on delete set null,
+  add column rental_expires_at timestamptz null;
+
+-- The two columns are both null or both set. A rental belongs to another user,
+-- and the instance may be Rented or Assigned while that renter uses it.
+constraint cat_instances_rental_pair
+  check ((renter_user_id is null) = (rental_expires_at is null));
+constraint cat_instances_rental_owner_distinct
+  check (renter_user_id is null or renter_user_id <> owner_user_id);
+constraint cat_instances_rental_state_consistent
+  check (renter_user_id is null or availability_state in ('Rented', 'Assigned'));
+
+create table public.cat_marketplace_listings (
+  listing_id uuid primary key default gen_random_uuid(),
+  seller_user_id uuid not null references auth.users(id) on delete cascade,
+  cat_instance_id uuid not null references public.cat_instances(cat_instance_id) on delete cascade,
+  listing_type text not null check (listing_type in ('sale', 'rent')),
+  price_exact numeric not null check (price_exact > 0 and price_exact = trunc(price_exact) and price_exact <= 1000000000),
+  status text not null default 'Active' check (status in ('Active', 'Sold', 'Rented', 'Cancelled', 'Expired')),
+  buyer_user_id uuid null references auth.users(id) on delete set null,
+  renter_user_id uuid null references auth.users(id) on delete set null,
+  duration_hours integer null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz null
+);
+
+create table public.cat_rentals (
+  rental_id uuid primary key default gen_random_uuid(),
+  listing_id uuid not null unique references public.cat_marketplace_listings(listing_id) on delete cascade,
+  cat_instance_id uuid not null unique references public.cat_instances(cat_instance_id) on delete cascade,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  renter_user_id uuid not null references auth.users(id) on delete cascade,
+  hourly_price_exact numeric not null,
+  duration_hours integer not null check (duration_hours between 1 and 24),
+  total_price_exact numeric not null,
+  started_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  status text not null default 'Active' check (status in ('Active', 'Expired')),
+  updated_at timestamptz not null default now()
+);
+
+create table public.cat_marketplace_requests (
+  requester_user_id uuid not null references auth.users(id) on delete cascade,
+  idempotency_key text not null,
+  operation text not null check (operation in ('create_listing', 'cancel_listing', 'buy_listing', 'rent_listing')),
+  result_id uuid not null,
+  created_at timestamptz not null default now(),
+  primary key (requester_user_id, idempotency_key)
+);
+```
+
+The listing table has a partial unique index on `cat_instance_id` for `Active`
+rows, plus active browse and seller-history indexes. `cat_rentals` has renter
+and owner state indexes. `cat_instances` has a renter-state index. The
+listing shape constraints keep buyer/renter ids consistent with `Sold`/`Rented`
+statuses, and all price values are positive integer gold amounts capped at
+`1,000,000,000`.
+
+`settle_due_cat_rentals()` is the lazy expiry boundary. It locks due rentals,
+removes any renter assignment, returns the instance to the owner's `Idle`
+roster, marks the rental and listing `Expired`, clears renter metadata, and
+bumps collection plus renter assignment revisions. `create_cat_listing`,
+`cancel_cat_listing`, `buy_cat_listing`, and `rent_cat_listing` are security
+definer RPCs exposed only to `service_role`. They enforce idle ownership,
+single-active-listing, self-trade, wallet, exact-price, 1–24-hour duration,
+and idempotency rules in one transaction. Buy transfers title and credits the
+seller; rent credits the owner while preserving title and setting a server
+expiry. Buyer/renter and seller/owner save rows are locked in UUID order to
+avoid a cross-trade deadlock.
+
+`replace_cat_assignment` now accepts either an owner's idle cat or the caller's
+active rented cat, while preserving the exact role check. The Edge Function
+routes are authenticated `GET /v1/listings`, `POST /v1/listings`, and
+`POST /v1/listings/:id/{cancel,buy,rent}`. Listing projections include the
+exact current cat stats and seller display name; rented users receive a
+caller-scoped usable roster projection while legal ownership remains in the
+server tables. The browser never writes marketplace tables directly.
+
+The forward-only migration `20260928100000_reject_assigned_cat_reuse.sql`
+normalizes a nullable renter comparison to `false` for owned cats and checks
+`assigned_slot_key` before assigning. A second-floor request for an already
+Assigned instance now returns `cat_not_assignable` (HTTP 409) instead of
+falling through to the unique constraint and an opaque HTTP 500. Table shapes,
+indexes, roles, and grants are unchanged.
+
+### Hauler role and slot extension — 2026-09-29
+
+`20260929100000_add_hauler_role.sql` expands `cat_blueprints_role_known` and
+`cat_instances_role_known` to `elevator | warehouse | miner | hauler` and
+`cat_assignments_slot_format` with the exact regex `^hauler:[1-5]$`. Existing
+columns, keys, indexes, RLS policies and grants are unchanged. It adds two
+blueprints: `hauler:SR:tobi:walk` at 18,000 gold (power60/speed75/capacity70/
+efficiency70) and `hauler:SSR:rivet:walk` at 42,000 (80/95/92/90). Purchases
+still create one level-1 Idle instance per new idempotency key.
+
+The replaced `replace_cat_assignment` RPC keeps owner/renter checks, row locks,
+revision validation and unique-instance guarantees. Explicit NULL cat ID means
+return to the free default on a Hauler slot only: delete that assignment,
+return its cat to Idle (or Rented for an active rental), and increment both
+revisions atomically. Missing IDs remain malformed API requests. Non-Hauler
+NULL commands are rejected. Five persistent slot keys exist; UI exposes only
+warehouse-unlocked carts, and inactive slots contribute no production bonus.
+No migration rewrites player saves or creates owned default cats. Save V3 and
+IndexedDB v1 stay unchanged; V3 validators now accept the Hauler role/slots.
+
+### Mine Overdrive schema extension — 2026-09-29
+
+`public.mine_boosts` stores one row per account. Columns: `user_id uuid NOT
+NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE`, `mine_id text
+NOT NULL`, `last_activated_at timestamptz NOT NULL`, and `updated_at timestamptz
+NOT NULL DEFAULT now()`. `mine_boosts_mine_known` restricts `mine_id` to
+`gold | amethyst | ruby | sapphire | emerald | diamond`. The primary key is its
+only index. RLS is enabled and all table privileges are revoked from `anon` and
+`authenticated`; no client policy exists. The row's foreign key deletes it with
+its `auth.users` owner. An unconfigured local game uses a separate best-effort
+Boost localStorage cache.
+
+`20261003100000_bind_boost_to_portfolio_mine.sql` backfills existing rows to
+Gold, makes `mine_id` required, drops `activate_mine_boost(uuid)`, and defines
+`activate_portfolio_mine_boost(uuid,text,bigint,uuid,text) returns jsonb`. The
+security-definer RPC takes the per-user advisory lock, replays a matching
+portfolio command receipt, locks the V4 save row, validates the active mine and
+base revision, enforces the account-wide eight-hour cooldown, writes the bound
+mine into both `mine_boosts.mine_id` and `document.boostMineId`, advances the
+save revision, and inserts the receipt in one transaction. Cooldown responses
+report the mine and activation time without changing the save. Execution is
+revoked from PUBLIC, `anon` and `authenticated` and granted only to
+`service_role`.
+
+### Portfolio command receipts and atomic save shift — 2026-10-02
+
+`20261002100000_portfolio_command_receipts.sql` adds the seventh public
+table, `portfolio_command_receipts`. It stores the response to each accepted
+account command so a retry after timeout returns the original result without
+charging or claiming again.
+
+| Column | Type | Null | Default | Constraint |
+|---|---|---|---|---|
+| `user_id` | uuid | no | — | PK part 1; FK → `auth.users(id)` on delete cascade |
+| `idempotency_key` | uuid | no | — | PK part 2 |
+| `fingerprint` | text | no | — | exactly 64 lowercase hex characters; SHA-256 of canonical command type, mine ID and base revision |
+| `base_revision` | bigint | no | — | > 0 |
+| `resulting_revision` | bigint | no | — | exactly `base_revision + 1` |
+| `response_json` | jsonb | no | — | exact accepted response, ≤ 131072 serialized bytes |
+| `created_at` | timestamptz | no | `now()` | receipt creation time |
+
+The composite primary key `(user_id, idempotency_key)` is the table's only
+index. RLS is enabled; `anon` and `authenticated` have no table privileges
+or policies. The service role alone reads receipts. Deleting the owner through
+`auth.users` cascades to receipts.
+
+`public.apply_portfolio_command(uuid, uuid, text, bigint, text, timestamptz,
+jsonb) returns jsonb` is a security-definer RPC with an empty search path.
+Execution is revoked from PUBLIC, `anon` and `authenticated` and granted
+only to `service_role`. It takes a per-user transaction advisory lock, looks
+up a prior receipt first, then locks the `saves` row. A matching fingerprint
+replays the stored response; a different fingerprint refuses the reused key.
+For a new command it checks the base revision, writes schema V4 and shifts the
+previous document/receipt fields, and inserts its response receipt in the same
+transaction. A concurrent routine upload or command can win the save revision;
+the loser receives a conflict and cannot commit a second debit or claim.
+The Edge Function validates the input and computes the new portfolio before
+calling this RPC; the database enforces atomic persistence and replay. The
+`saves.document_json` column now holds either validated V3 or V4 JSON, within
+its existing 65536-byte constraint. This migration changes no IndexedDB or
+localStorage journal columns.
+
+### Portfolio wallet and mine-scoped Collection projection — 2026-10-02
+
+`20261002110000_portfolio_wallet_marketplace.sql` changes no table columns,
+indexes, foreign keys or RLS policies. It replaces the
+`cat_assignments_slot_format` check to admit legacy Gold slots and exact
+`mine:(gold|amethyst|ruby|sapphire|emerald|diamond):<role slot>` keys.
+`<role slot>` is `elevator:main`, `warehouse:main`, `miner:<non-colon floor>`
+or `hauler:[1-5]`. A cat remains unique across all mines by the existing
+`cat_assignments.cat_instance_id` unique constraint.
+
+The migration defines `save_wallet_gold(jsonb)`,
+`save_with_wallet_gold(jsonb,numeric)`,
+`persist_wallet_document(uuid,jsonb)` and
+`sync_portfolio_cat_roster(uuid,boolean)`. These helper RPCs revoke execution
+from PUBLIC, `anon` and `authenticated`; the existing service-role
+Collection RPCs call them within their transactions. V3 wallet writes use
+`state.gold`; V4 wallet writes use `walletGold`. A wallet transaction advances
+the `saves.revision`, shifts `previous_revision`,
+`previous_document_json` and `previous_received_at`, preserves
+`schema_version`, and then refreshes the V4 `cats`, `assignments` and
+Collection revisions from relational rows. Listing, cancellation, assignment
+and rental expiry refresh that projection and advance the save revision when
+no wallet write already did so. V3 documents retain their existing roster
+handling. The replaced assignment RPC validates that a mine-qualified slot
+belongs to an owned site in the V4 save before changing the relational
+assignment. The save, relational rows and Collection response remain one
+database transaction. No IndexedDB or localStorage journal schema changes.
 
 ## Closed incident reports
 
