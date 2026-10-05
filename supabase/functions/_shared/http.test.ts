@@ -65,6 +65,14 @@ Deno.test('corsHeaders reflects an allow-listed dev origin', () => {
   });
 });
 
+Deno.test('corsHeaders reflects the exact production game origin', () => {
+  assert.deepEqual(corsHeaders('https://game-gold-miner-sepia.vercel.app'), {
+    'access-control-allow-origin': 'https://game-gold-miner-sepia.vercel.app',
+    vary: 'Origin',
+  });
+  assert.deepEqual(corsHeaders('https://other-game.vercel.app'), {});
+});
+
 Deno.test('corsHeaders reflects a LAN Vite origin without allowing arbitrary sites', () => {
   assert.deepEqual(corsHeaders('http://192.168.1.203:5173'), {
     'access-control-allow-origin': 'http://192.168.1.203:5173',

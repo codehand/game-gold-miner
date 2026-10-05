@@ -2,6 +2,19 @@
 
 ## Current State
 
+Hosted deployment (2026-10-05): Vercel project `game-gold-miner` serves the
+Vite build at `https://game-gold-miner-sepia.vercel.app/` with public Supabase
+URL/publishable-key build variables. Supabase project
+`ntzdbwuouugvadisazge` has all 19 forward migrations and the seven
+player-facing Edge Functions deployed. `index.html` loads Telegram's Web App
+SDK before `src/main.ts` so `@ghn_alo_bot` can pass signed `initData` to the
+server verifier. `TELEGRAM_BOT_TOKEN` and `RECOVERY_CODE_PEPPER` live in
+Supabase Secrets; the bot token is absent from the client bundle. Production
+Auth has public signups disabled to protect predictable placeholder emails;
+admin `generateLink` remains the account-creation path after HMAC validation.
+The production CORS allowlist includes the exact Vercel origin. No relational
+or save schema change was needed for this host integration.
+
 Multi-mine Map (2026-10-05) is implemented and release-verified. Configured and
 unconfigured clients use local save V4 for a six-site portfolio, one wallet,
 one active mine and per-mine offline claims. Configured boot reconciles V3/V4
@@ -97,7 +110,8 @@ Server-milestone Steps 33–37 are implementation-closed (2026-09-19): account
 deletion with 30-day audit anonymization, a real public-schema backup/restore
 drill, monitoring alerts, and a 20-player save-sync load run. The local Supabase
 schema contains seventeen public tables, including the append-only
-`account_audit` table; no hosted production deployment exists.
+`account_audit` table; the hosted deployment was completed later on
+2026-10-05.
 
 Implementation followed the ordered, test-gated sequence in `memory-bank/implementation-plan.md`. That plan defined 37 base-game steps and every one passed its stated validation. It is now a completed record rather than a queue of work; post-milestone scope needs its own ordered, test-gated plan.
 
@@ -114,7 +128,7 @@ retryable offline state. Step 32 adds the server-only account audit timeline;
 Step 33 adds authenticated account deletion, audit anonymization, and a
 30-day purge boundary. Step 31 and Step 32 remain implemented but await user
 validation; Steps 33–37 have closed implementation gates. The repository has
-no hosted production deployment or production credentials. The final Step 36
+hosted production deployment was added on 2026-10-05. The final Step 36
 client benchmark ran for 600,000 ms under Pixel 5/Chrome 4× CPU emulation and
 passed with 16.7 ms frame p95, constant 695 Phaser objects, constant 399 DOM
 nodes, and 73.7 ms scroll-input p95.

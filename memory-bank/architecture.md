@@ -860,20 +860,31 @@ are documented there rather than duplicated here.
 **Client side**, `src/platform/telegram/telegramSignIn.ts`: `readTelegramInitData()`
 reads `window.Telegram.WebApp.initData` — the raw, still-signed string,
 never `initDataUnsafe`, the SDK's own unverified convenience parse — and
-resolves `null` for every player today, since no Telegram Web App
-`<script>` tag was added to `index.html` (that is the still-unbuilt Mini App
-host, finding F1, deliberately separate work). `signInWithTelegram` POSTs
+resolves `null` outside Telegram. `index.html` now loads Telegram's official
+Web App SDK before the game bundle, so a launch from `@ghn_alo_bot` supplies
+the signed value. `signInWithTelegram` POSTs
 the raw `initData` to the function and completes `verifyOtp` on success;
 same never-throws, typed-result shape as `guestSession.ts`/`googleSignIn.ts`.
 `src/main.ts` computes `readTelegramInitData()` once at boot, before either
 identity chain runs: a non-null result calls `signInWithTelegram` **instead
 of** `ensureGuestSession` — "Inside Telegram this replaces the guest path
 entirely," the step's own words, not a linking flow the way Google's is —
-so today, with the detector always `null`, the guest bootstrap is the only
-chain that ever runs; `supabaseClientPromise` now has three independent
+the browser guest bootstrap runs when the detector is `null`;
+`supabaseClientPromise` has three independent
 consumers (Telegram, guest, and the Step 10 DEV hook), and the Telegram
 chain carries its own `.catch`, the same lesson Step 10's own review
 already applied to the DEV hook.
+
+**Hosted path (2026-10-05):** Vercel serves the Vite bundle at
+`https://game-gold-miner-sepia.vercel.app/`; the bot menu button opens that
+URL as a Telegram Mini App. Supabase project `ntzdbwuouugvadisazge` holds the
+forward-only schema and deployed player-facing Edge Functions. The bot token
+is an Edge Function Secret, never a Vite variable. Public Auth signups are
+disabled in production so an attacker cannot pre-create a predictable
+`telegram-<id>@telegram.invalid` row; the server's admin link flow still
+creates a row after a valid HMAC check. The shared CORS policy allows the
+exact Vercel origin. No save or relational schema changed for the Mini App
+host.
 
 `describeError` moved out of `src/platform/web/` to
 `src/platform/describeError.ts`, shared by `web/` and the new `telegram/`
