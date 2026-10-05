@@ -94,7 +94,13 @@ async function buy(page: Page, name: string, price: string): Promise<void> {
       purchase: (element as HTMLElement).dataset.portfolioCatPurchase,
     })).then(JSON.stringify)}`);
   }
+  const canvas = page.locator('#game-viewport canvas');
+  const closesBefore = Number((await canvas.getAttribute('data-marketplace-close-count')) ?? '0');
   await marketplace.getByRole('button', { name: 'Close marketplace' }).click();
+  // Scene input is re-enabled only by the dialog's queued `close` event, which
+  // also bumps this count. A canvas press sent before it lands on disabled
+  // input and is dropped, so the next `openShop` must wait for it.
+  await expect(canvas).toHaveAttribute('data-marketplace-close-count', String(closesBefore + 1));
 }
 
 async function clickFirstMiner(page: Page): Promise<void> {
@@ -213,19 +219,24 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
     if (await offline.isVisible()) await offline.getByRole('button', { name: 'Claim', exact: true }).click();
     // The warehouse manager legitimately overlaps unloading carts. Click the
     // lead while it is on the open middle of the route, not under that actor.
-    await page.waitForFunction(() => {
-      const data = document.querySelector('#game-viewport canvas')?.getAttribute('data-animation');
-      const crew = data ? JSON.parse(data).surfaceHauler : null;
-      return crew && crew.catX > 110 && crew.catX < 190;
-    });
-    const animation = JSON.parse((await canvas.getAttribute('data-animation'))!);
-    const crew = animation.surfaceHauler;
-    const cat = { x: crew.catX, y: crew.catY };
-    const [surfaceX, surfaceY] = (await canvas.getAttribute('data-layout-surface'))!.split(',').map(Number);
-    const box = (await canvas.boundingBox())!;
-    await page.mouse.click(box.x + (surfaceX + cat.x) * box.width / 360, box.y + (surfaceY + cat.y) * box.height / 640);
+    // The Hauler keeps walking between reading its position and the click
+    // landing, and scene input returns only after the previous dialog's queued
+    // `close` event; either can drop one press, so re-aim until it opens.
     const dialog = page.getByRole('dialog', { name: 'Assigned cat' });
-    await expect(dialog).toBeVisible();
+    await expect(async () => {
+      await page.waitForFunction(() => {
+        const data = document.querySelector('#game-viewport canvas')?.getAttribute('data-animation');
+        const crew = data ? JSON.parse(data).surfaceHauler : null;
+        return crew && crew.catX > 110 && crew.catX < 190;
+      });
+      const animation = JSON.parse((await canvas.getAttribute('data-animation'))!);
+      const crew = animation.surfaceHauler;
+      const cat = { x: crew.catX, y: crew.catY };
+      const [surfaceX, surfaceY] = (await canvas.getAttribute('data-layout-surface'))!.split(',').map(Number);
+      const box = (await canvas.boundingBox())!;
+      await page.mouse.click(box.x + (surfaceX + cat.x) * box.width / 360, box.y + (surfaceY + cat.y) * box.height / 640);
+      await expect(dialog).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
     await dialog.getByRole('button', { name: `Cart ${slot}`, exact: true }).click();
     await expect(dialog).toContainText(`Slot hauler:${slot}`);
   };
@@ -238,6 +249,7 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
     await assignment.getByRole('button', { name: 'Confirm change' }).click();
     await expect(assignment).toContainText('Cat changed. The new assignment is saved.');
     await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+    await expect(assignment).toBeHidden();
   };
   const bindings = async () => JSON.parse((await canvas.getAttribute('data-cat-runtime-bindings'))!);
   await equip(1, 'Tobi');
@@ -250,6 +262,7 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
   await clickHauler(3);
   await expect(assignment.getByRole('button', { name: 'No compatible cats' })).toBeDisabled();
   await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+  await expect(assignment).toBeHidden();
   await page.screenshot({ path: testInfo.outputPath('hauler-crew-mobile.png') });
 
   await page.reload();
@@ -314,6 +327,7 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
   await expect(assignment).toContainText('Cat changed. The new assignment is saved.');
   await expect(assignment).toContainText('Default Hauler');
   await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+  await expect(assignment).toBeHidden();
   await equip(3, 'Tobi');
   await expect.poll(bindings).toEqual(expect.arrayContaining([
     expect.objectContaining({ slotKey: 'hauler:1', assignedAssetId: null }),
@@ -328,6 +342,7 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
   await assignment.getByRole('button', { name: 'Use default Hauler' }).click();
   await expect(assignment).toContainText('Cat changed. The new assignment is saved.');
   await assignment.getByRole('button', { name: 'Close assigned cat' }).click();
+  await expect(assignment).toBeHidden();
   await expect.poll(async () => JSON.parse((await canvas.getAttribute('data-animation'))!)
     .surfaceHauler.assistants[0].thrusters).toEqual({ visible: false, jets: [] });
   await equip(1, 'Rivet');
