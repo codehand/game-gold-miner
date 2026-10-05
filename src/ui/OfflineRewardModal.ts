@@ -1,3 +1,4 @@
+import { getMineSite, type MineSiteId } from '../config';
 import type { GameNumber, PendingOfflineReward } from '../core';
 import { describeAmountTier } from '../game/view-model';
 
@@ -7,6 +8,7 @@ export const OFFLINE_REWARD_SAVE_FAILURE_MESSAGE =
 export interface OfflineRewardModalOptions {
   readonly parent: HTMLElement;
   readonly pendingReward: PendingOfflineReward;
+  readonly mineId?: MineSiteId;
   readonly onClaim: () => Promise<boolean>;
 }
 
@@ -34,6 +36,21 @@ export function showOfflineRewardModal(
   const title = document.createElement('h1');
   title.id = 'offline-reward-title';
   title.textContent = 'Offline reward';
+
+  const mine = options.mineId === undefined ? null : getMineSite(options.mineId);
+  const mineIdentity = document.createElement('div');
+  mineIdentity.className = 'offline-reward-mine';
+  if (mine !== null) {
+    dialog.style.setProperty('--mine-accent', mine.mapColor);
+    const landmark = document.createElement('img');
+    landmark.src = `/assets/sites/landmarks/${mine.id}.svg`;
+    landmark.alt = '';
+    landmark.width = 58;
+    landmark.height = 58;
+    const label = document.createElement('p');
+    label.textContent = `${mine.name} · ${mine.resourceName}`;
+    mineIdentity.append(landmark, label);
+  }
 
   const creditedTime = document.createElement('p');
   creditedTime.className = 'offline-reward-time';
@@ -98,7 +115,9 @@ export function showOfflineRewardModal(
   };
 
   claimButton.addEventListener('click', handleClaim);
-  dialog.append(eyebrow, title, creditedTime, reward, status, claimButton);
+  dialog.append(eyebrow, title);
+  if (mine !== null) dialog.append(mineIdentity);
+  dialog.append(creditedTime, reward, status, claimButton);
   backdrop.append(dialog);
   options.parent.append(backdrop);
   claimButton.focus();

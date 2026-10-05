@@ -1,0 +1,554 @@
+{
+  "travel-empty": [
+    {
+      "frame": 0,
+      "translation": [
+        3,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        56,
+        111,
+        113
+      ]
+    },
+    {
+      "frame": 1,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        56,
+        110,
+        113
+      ]
+    },
+    {
+      "frame": 2,
+      "translation": [
+        3,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        56,
+        111,
+        113
+      ]
+    },
+    {
+      "frame": 3,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        56,
+        110,
+        113
+      ]
+    },
+    {
+      "frame": 4,
+      "translation": [
+        2,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        55,
+        110,
+        114
+      ]
+    },
+    {
+      "frame": 5,
+      "translation": [
+        2,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        57,
+        110,
+        114
+      ]
+    },
+    {
+      "frame": 6,
+      "translation": [
+        2,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        55,
+        110,
+        114
+      ]
+    },
+    {
+      "frame": 7,
+      "translation": [
+        2,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        57,
+        110,
+        114
+      ]
+    }
+  ],
+  "scoop": [
+    {
+      "frame": 0,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        40,
+        59,
+        117,
+        113
+      ]
+    },
+    {
+      "frame": 1,
+      "translation": [
+        4,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        40,
+        60,
+        115,
+        114
+      ]
+    },
+    {
+      "frame": 2,
+      "translation": [
+        6,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        40,
+        60,
+        114,
+        114
+      ]
+    },
+    {
+      "frame": 3,
+      "translation": [
+        10,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        41,
+        60,
+        112,
+        114
+      ]
+    },
+    {
+      "frame": 4,
+      "translation": [
+        2,
+        0
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        40,
+        58,
+        115,
+        113
+      ]
+    },
+    {
+      "frame": 5,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        59,
+        116,
+        113
+      ]
+    },
+    {
+      "frame": 6,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        55,
+        120,
+        113
+      ]
+    },
+    {
+      "frame": 7,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        55,
+        119,
+        113
+      ]
+    }
+  ],
+  "travel-loaded": [
+    {
+      "frame": 0,
+      "translation": [
+        3,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        56,
+        111,
+        113
+      ]
+    },
+    {
+      "frame": 1,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        56,
+        110,
+        113
+      ]
+    },
+    {
+      "frame": 2,
+      "translation": [
+        3,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        56,
+        111,
+        113
+      ]
+    },
+    {
+      "frame": 3,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        56,
+        110,
+        113
+      ]
+    },
+    {
+      "frame": 4,
+      "translation": [
+        2,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        55,
+        110,
+        114
+      ]
+    },
+    {
+      "frame": 5,
+      "translation": [
+        3,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        56,
+        111,
+        113
+      ]
+    },
+    {
+      "frame": 6,
+      "translation": [
+        3,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        55,
+        111,
+        114
+      ]
+    },
+    {
+      "frame": 7,
+      "translation": [
+        3,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        57,
+        111,
+        114
+      ]
+    }
+  ],
+  "deposit": [
+    {
+      "frame": 0,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        56,
+        111,
+        113
+      ]
+    },
+    {
+      "frame": 1,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        37,
+        56,
+        116,
+        113
+      ]
+    },
+    {
+      "frame": 2,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        56,
+        118,
+        113
+      ]
+    },
+    {
+      "frame": 3,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        37,
+        56,
+        111,
+        113
+      ]
+    },
+    {
+      "frame": 4,
+      "translation": [
+        4,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        39,
+        54,
+        114,
+        113
+      ]
+    },
+    {
+      "frame": 5,
+      "translation": [
+        2,
+        2
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        55,
+        114,
+        114
+      ]
+    },
+    {
+      "frame": 6,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        54,
+        116,
+        113
+      ]
+    },
+    {
+      "frame": 7,
+      "translation": [
+        2,
+        1
+      ],
+      "trackRoot": [
+        64,
+        112
+      ],
+      "bounds": [
+        38,
+        54,
+        112,
+        113
+      ]
+    }
+  ]
+}

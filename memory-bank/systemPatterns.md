@@ -33,6 +33,23 @@ Persistence and Platform Adapters
 - Unlock deeper floors only through a distinct immutable command after the immediately previous floor is unlocked at its configured shaft level; deduct once and initialize the target from balance data. Derive what a locked floor shows from the same private predicate that command uses, so the description and the charge cannot disagree.
 - Analyze provisional balance with a deterministic one-second automated playthrough: prioritize eligible unlocks, reserve their cost once prerequisites are met, otherwise buy the affordable upgrade with the greatest modeled effective-rate increase, and use next-unlock progress plus configured order for exact ties.
 - Use events/commands between presentation and core logic; never mutate economy state directly from a scene.
+- Keep generated UI art reproducible and renderer-safe: retain the prompt, raw
+  source, processed output, and deterministic QC metadata under `art-source/`,
+  copy only the approved transparent runtime artwork into `public/assets/`,
+  and keep texture keys and display sizes in a typed asset module. For repeated
+  menu controls, ship each icon as an independent texture while drawing chrome,
+  labels, and interaction states in code. Keep semantic hit regions independent
+  of decorative alpha so icon padding cannot reduce touch coverage.
+- Keep async UI states semantically distinct: a successful empty projection may say
+  “empty”, but loading, stale, and failed reads must expose their own status and
+  retry path rather than rendering a zero-count fallback as if it were data.
+- Keep a destructive and a cancel CTA in the same responsive action group when
+  they are one confirmation decision; let the explanatory copy span the group,
+  but do not stack the two choices on narrow portrait screens.
+- Make Marketplace CTA labels describe the current lifecycle state: a `Listed`
+  catalog item confirms with `Buy listed cat` and exits with `Back to cats`,
+  rather than presenting generic purchase/cancel labels that obscure the
+  listing context.
 - Advance foreground simulation through 100 ms fixed ticks, retain sub-tick remainder in authoritative state, and credit at most 1,000 ms per update after suspension while consuming the full wall-clock delta.
 - Advance extraction only for unlocked floors, retain normalized overflow progress, and place completed level-adjusted output in the producing floor's local queue without changing spendable gold.
 - Encode the elevator route in its legacy signed cursor: non-negative means descending toward that floor, negative `-(index + 1)` means returning from that floor. Load only on arrival, snap a pickup that consumes the computed remainder to exact configured capacity, never pass a floor whose queue remains, slow each leg linearly with load up to 75% at full capacity, and deliver only on reaching the surface.
@@ -76,7 +93,7 @@ Persistence and Platform Adapters
 - Treat a gap in the render loop as elapsed time to be simulated, not as one oversized frame. The per-call foreground bound guards against a slow frame paying out a burst; a hidden tab returns the whole absence at once, so walk it in credited-size slices, bound the walk so resuming cannot freeze the tab, and consume the authoritative timestamp in full whether or not the time was credited.
 - Share the away-time *horizon* between catch-up and offline income, but not the *rate*. A tab left open counts as online and is credited at full pipeline rate; a closed one is credited through `offlineIncome.efficiency`, so the same two hours is worth about twice as much backgrounded. That is a balance decision, not an oversight, and it is invisible to every test that checks only one of the two paths — pin the ratio directly so applying the efficiency to catch-up, or dropping it from offline income, fails loudly.
 - Give every production stage its own indicator driven by authoritative progress, and render waiting material wherever it can accumulate as discrete blocks measured against the capacity of the stage that removes it.
-- Keep the cosmetic clock strictly separate from the simulation clock: scale it with a validated multiplier and drive only decoration with it. Gate machinery that communicates production activity on authoritative state, but let the surface hauler crew continuously patrol; its queue predicate controls cargo/pour feedback rather than movement.
+- Keep the cosmetic clock strictly separate from the simulation clock: scale it with a validated multiplier and drive only decoration with it. Gate machinery that communicates production activity on authoritative state, but let the surface hauler crew continuously patrol; its queue predicate controls cargo/pour feedback rather than movement. Derive the visible crew cap and overflow productivity in the core, and apply that productivity at the existing `warehouse.inputQueue` handoff so derived rates, foreground simulation, offline income, and anti-cheat bounds cannot disagree.
 - For progress-driven travel, map authoritative normalized progress through a pure endpoint-preserving easing function only when positioning the rendered object. Never feed eased progress back into route state, production timing, load calculations, or persistence.
 - When authoritative progress arrives on a fixed-step cadence, interpolate only the rendered value from its current pose to the newest target over one fixed step. Traverse normalized wraps forward, settle exactly on the target, and never extrapolate indefinitely when the core pauses; this removes 10 Hz snapping without making cosmetic time authoritative.
 - Never report a bottleneck a stage cannot observe from its own state; a full elevator car is one full trip, so transport pressure belongs in the floor queue/cart diagnostic rather than the decorative gold mound.
@@ -88,17 +105,18 @@ Persistence and Platform Adapters
   not new saved presentation state. Pool the maximum crew once, reveal only the
   reached assistants, and phase-shift each worker horizontally around one
   shared route baseline without copying transforms or changing throughput.
-- Reuse that workforce rule per mine floor: one base miner plus one assistant
-  every 50 shaft levels through level 200. Apply the same pure count function to
-  every floor view, cap the pool at five visible miners, and keep all assistant
+- Reuse that workforce rule per mine floor: one base miner plus one raw worker
+  every 50 shaft levels. Apply the same pure workforce function to every floor
+  view, cap the pool at five visible miners, and convert overflow to
+  `rawCount / visibleCount` extraction productivity while keeping assistant
   poses downstream of authoritative extraction progress.
 - Pool one cart beside every pooled surface worker and bind both objects to the
   same independent route pose. A visible cat without its own visible cart, or
   multiple cats sharing the lead cart, violates the workforce presentation.
 - Treat `warehouse.inputQueue` as the sole material source for the entire
   surface-delivery presentation. Elevator cargo is still in transit: it must
-  not enable the gold-pour effect, filled carts, or loaded hauler poses before
-  the core transfers it into the tower queue at surface arrival.
+  not enable any per-cart gold-pour effect, filled carts, or loaded hauler poses
+  before the core transfers it into the tower queue at surface arrival.
 - Keep every surface hauler moving through the full collection/delivery/return
   route even when that source is empty; absence of gold means an empty cart and
   no pour, not an idle worker.

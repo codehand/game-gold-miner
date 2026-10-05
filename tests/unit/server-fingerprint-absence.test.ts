@@ -68,7 +68,12 @@ const BANNED_SIGNALS: readonly string[] = [
   'device-memory',
   'devicepixelratio',
   'hardwareconcurrency',
-  'fingerprint',
+  // Portfolio commands use a SHA-256 fingerprint of their canonical command
+  // body for idempotent replay. That is not a device or browser characteristic.
+  'devicefingerprint',
+  'browserfingerprint',
+  'clientfingerprint',
+  'fingerprintjs',
   'webgl',
   'canvas',
   'getcontext(',

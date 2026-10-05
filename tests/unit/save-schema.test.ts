@@ -5,6 +5,9 @@ import {
   advanceSimulation,
   calculateMineProductionRates,
   createInitialGameState,
+  createEmptyCatRoster,
+  assignCatToSlot,
+  createCatProductionModifiers,
   simulateEconomyProgression,
   type GameState,
 } from '../../src/core';
@@ -47,6 +50,44 @@ describe('versioned save schema', () => {
       state.warehouse.capacity.serialize(),
     );
     expect(() => JSON.parse(JSON.stringify(document))).not.toThrow();
+  });
+
+  it('round-trips the V3 cat projection without renderer state', () => {
+    const state = createInitialGameState(BASE_GAME_BALANCE, TIMESTAMP_MS);
+    const catRoster = {
+      ...createEmptyCatRoster(),
+      cats: [{
+        catInstanceId: 'cat-1',
+        ownerUserId: 'user-1',
+        assetId: 'miner:SSR:forge:idle',
+        displayName: 'Forge',
+        roleId: 'miner' as const,
+        rarityTier: 'SSR' as const,
+        level: 12,
+        attributes: { power: 92, speed: 79, capacity: 72, efficiency: 86 },
+        calculationVersion: 1,
+        availabilityState: 'Idle' as const,
+        assignedSlotKey: null,
+        updatedAt: TIMESTAMP_MS,
+      }],
+    };
+    const assigned = assignCatToSlot(catRoster, 'miner:floor-1', 'cat-1', 0, TIMESTAMP_MS + 1);
+    expect(assigned.success).toBe(true);
+    if (!assigned.success) return;
+
+    const document = createSaveDocument(state, BASE_GAME_BALANCE, TIMESTAMP_MS, assigned.state);
+    const loaded = deserializeSaveDocument(JSON.parse(JSON.stringify(document)), BASE_GAME_BALANCE);
+    const expectedRate = calculateMineProductionRates(
+      state,
+      BASE_GAME_BALANCE,
+      createCatProductionModifiers(assigned.state),
+    ).effectiveProductionPerSecond;
+
+    expect(document.schemaVersion).toBe(3);
+    expect(document.effectiveProductionRatePerSecond).toBe(expectedRate.serialize());
+    expect(loaded.catRoster).toEqual(assigned.state);
+    expect(JSON.stringify(document)).not.toContain('textureKey');
+    expect(JSON.stringify(document)).not.toContain('animation');
   });
 
   it('validates and deserializes a JSON round trip exactly', () => {
@@ -177,8 +218,8 @@ describe('versioned save schema', () => {
     );
     expect(() => migrateSaveDocument({
       ...document,
-      schemaVersion: 3,
-    })).toThrow(/Unsupported save schema version 3/);
+      schemaVersion: 4,
+    })).toThrow(/Unsupported save schema version 4/);
   });
 
   it.each([

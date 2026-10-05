@@ -1,4 +1,14 @@
 export {
+  LOCAL_BOOST_STORAGE_KEY,
+  readLocalBoostState,
+  writeLocalBoostState,
+} from './boostStorage';
+export {
+  requestBoostViaFetch,
+  type BoostActivationCommand,
+  type BoostServerResponse,
+} from './boostApi';
+export {
   bindSaveLifecycle,
   type SaveLifecycleTargets,
 } from './bindSaveLifecycle';
@@ -13,13 +23,17 @@ export {
   beginGoogleAccountSwitch,
   beginGoogleSignIn,
   detectGoogleIdentityCollision,
+  readGoogleIdentityReturnError,
   signOutOfSession,
   type GoogleAuthClient,
+  type GoogleIdentityReturnError,
   type GoogleSignInResult,
   type SignOutResult,
 } from './googleSignIn';
 export {
   createSupabaseClient,
+  getSupabaseApiUrl,
+  resolveSupabaseApiUrl,
   type SupabaseClient,
 } from './supabaseClient';
 export {
@@ -40,6 +54,41 @@ export {
   WebLifecycleSaveJournal,
   type KeyValueStorage,
 } from './WebLifecycleSaveJournal';
+export {
+  loadPortfolioSession,
+  resumePortfolioSession,
+  type PortfolioSessionLoadResult,
+} from './portfolioSession';
+export {
+  PortfolioCloudGateway,
+  type PortfolioCloudAccepted,
+  type PortfolioCloudAuth,
+  type PortfolioCloudCommand,
+  type PortfolioCloudResult,
+  type PortfolioCloudSnapshot,
+} from './portfolioCloudGateway';
+export {
+  PortfolioCloudCommands,
+  type PortfolioCommandAction,
+  type PortfolioCommandOutcome,
+  type PendingPortfolioCommand,
+} from './portfolioCloudCommands';
+export {
+  PORTFOLIO_COMMAND_JOURNAL_PREFIX,
+  PortfolioCommandJournal,
+} from './portfolioCommandJournal';
+export {
+  reconcilePortfolioCloudAtBoot,
+  type PortfolioCloudBootOutcome,
+} from './portfolioCloudReconcile';
+export {
+  resumePortfolioCloudMine,
+  type PortfolioCloudResumeOutcome,
+} from './portfolioCloudResume';
+export {
+  bootstrapPortfolioCloudSession,
+  type PortfolioCloudSessionOutcome,
+} from './portfolioCloudSession';
 export {
   generateRecoveryCode,
   redeemRecoveryCode,
@@ -84,3 +133,26 @@ export {
   type LeaderboardPlayer,
   type LeaderboardSnapshot,
 } from './leaderboard';
+export {
+  loadCatCollectionViaFetch,
+  purchaseCatViaFetch,
+  replaceCatAssignmentViaFetch,
+  type CatCollectionAuthClient,
+  type CatCollectionCommandResult,
+  type CatCollectionFetch,
+  type CatCollectionLoadResult,
+  type CatCollectionUnavailableReason,
+} from './catCollection';
+export {
+  buyMarketplaceListingViaFetch,
+  cancelMarketplaceListingViaFetch,
+  createMarketplaceListingViaFetch,
+  loadMarketplaceListingsViaFetch,
+  rentMarketplaceListingViaFetch,
+  type MarketplaceCommandResult,
+  type MarketplaceListingRecord,
+  type MarketplaceListingStatus,
+  type MarketplaceListingType,
+  type MarketplaceListingsResult,
+  type MarketplaceUnavailableReason,
+} from './marketplace';

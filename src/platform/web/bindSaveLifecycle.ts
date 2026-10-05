@@ -12,11 +12,11 @@ interface VisibilityEventTarget extends LifecycleEventTarget {
   readonly visibilityState: string;
 }
 
-export interface SaveLifecycleTargets {
+export interface SaveLifecycleTargets<TDocument = SaveDocumentV2> {
   readonly page?: LifecycleEventTarget | null;
   readonly visibility?: VisibilityEventTarget | null;
   readonly journal?: {
-    write(document: SaveDocumentV2): void;
+    write(document: TDocument): void;
   } | null;
   /**
    * Server-milestone Step 19: §9's forced cloud-upload triggers. A lifecycle
@@ -25,13 +25,13 @@ export interface SaveLifecycleTargets {
    * `bindSaveLifecycle` itself only fires and forgets — so a throwing or slow
    * callback here can never delay the local journal write or the flush.
    */
-  readonly onForceSave?: ((document: SaveDocumentV2) => void) | null;
+  readonly onForceSave?: ((document: TDocument) => void) | null;
 }
 
-export function bindSaveLifecycle(
-  coordinator: SavePersistenceCoordinator,
-  createCurrentDocument: () => SaveDocumentV2,
-  targets: SaveLifecycleTargets = {},
+export function bindSaveLifecycle<TDocument = SaveDocumentV2>(
+  coordinator: SavePersistenceCoordinator<TDocument>,
+  createCurrentDocument: () => TDocument,
+  targets: SaveLifecycleTargets<TDocument> = {},
 ): () => void {
   const pageTarget = targets.page ?? getDefaultPageTarget();
   const visibilityTarget =

@@ -156,12 +156,29 @@ max_indexes = 5
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
-# in emails.
-site_url = "http://127.0.0.1:5173"
+# in emails. Keep the LAN origin as the local default so an OAuth flow that
+# falls back to SITE_URL still returns to a device-reachable address.
+site_url = "http://192.168.1.203:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
-# A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://127.0.0.1:5173", "http://localhost:5173"]
+# A list of URLs or glob patterns that auth providers are permitted to redirect to post authentication.
+# Keep loopback origins and allow the LAN origins used by `vite --host
+# 0.0.0.0`. Vite uses :5174 when its default :5173 is already occupied.
+# Supabase Auth supports glob patterns here; the app still passes
+# `window.location.origin` as redirectTo so OAuth returns to the origin that
+# started the flow. Keep the current LAN IP exact as well as the private-LAN
+# globs: the exact entry is the safe fallback for the active dev machine, while
+# the glob supports another 192.168.x.x address when the router leases a new IP.
+additional_redirect_urls = [
+  "http://192.168.1.203:5173",
+  "http://192.168.*.*:5173",
+  "http://192.168.1.203:5174",
+  "http://192.168.*.*:5174",
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+  "http://127.0.0.1:5174",
+  "http://localhost:5174",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -448,6 +465,11 @@ allow_dynamic_registration = false
 enabled = true
 verify_jwt = false
 
+# Authenticated Mine Overdrive status/activation; token is verified in the handler.
+[functions.boost]
+enabled = true
+verify_jwt = false
+
 # Server-milestone Step 6 proof, not part of the save-sync protocol: reproduces
 # a fixed ten-minute simulation run through the real `src/core`/`src/config`/
 # save-document code and returns the result for a client-side test to compare
@@ -479,6 +501,12 @@ verify_jwt = false
 # `leaderboard_entries.user_id` server-side because the public table grant
 # deliberately withholds that column.
 [functions.leaderboard-read]
+enabled = true
+verify_jwt = false
+
+# Cat Collection v1 authenticates the bearer token inside the handler and
+# performs ownership/assignment writes through service-role RPCs.
+[functions.cat-collection]
 enabled = true
 verify_jwt = false
 

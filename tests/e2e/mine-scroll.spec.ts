@@ -41,13 +41,12 @@ const ELEVATOR_KEY = 'elevator';
  * store stays 360x640, so these hold at any host viewport.
  *
  * `MINE_FLOOR_BOTTOM_PROBE` is the one that proves the content actually moved
- * on screen rather than only in a diagnostic. Four floors of content are 514
- * logical pixels tall inside a 404-pixel region. At rest this point is inside
- * a floor panel; scrolled to the bottom it reaches the padding below the fifth
- * slot, where only the mine's own background shows.
+ * on screen rather than only in a diagnostic. The mine ends at logical y=560;
+ * the navigation row occupies the 80 pixels below it. This probe stays inside
+ * the mine while comparing the viewport before and after a drag.
  */
 const HUD_PROBE: readonly [number, number] = [180, 30];
-const MINE_FLOOR_BOTTOM_PROBE: readonly [number, number] = [220, 578];
+const MINE_FLOOR_BOTTOM_PROBE: readonly [number, number] = [220, 548];
 /**
  * Empty HUD background, painted on the very first frame. The canvas reads back
  * as opaque black until a frame has actually been presented, and the scene
@@ -120,7 +119,7 @@ test('scrolls the mine with a drag while the fixed layers stay put', async ({
 
   // Dragging up past the end of the content, so the scroll clamps rather than
   // stopping wherever the gesture happened to finish.
-  await dragMine(page, { x: 6, y: 570 }, -(atRest.maxScrollY + 60));
+  await dragMine(page, { x: 6, y: 540 }, -(atRest.maxScrollY + 60));
 
   await expect
     .poll(async () => (await readMineScroll(page)).scrollY, {
@@ -153,7 +152,7 @@ test('scrolls the mine with a drag while the fixed layers stay put', async ({
   ).toEqual(elevatorBefore.screenBounds);
 
   // Dragging back down returns the mine to the top and clamps there too.
-  await dragMine(page, { x: 6, y: 300 }, atRest.maxScrollY + 60);
+  await dragMine(page, { x: 6, y: 220 }, atRest.maxScrollY + 60);
 
   await expect
     .poll(async () => (await readMineScroll(page)).scrollY, {
@@ -261,7 +260,7 @@ test('buys from a control before scrolling, and from one only scrolling reveals'
     'the deepest floor starts below the mine viewport',
   ).toBe(false);
 
-  await dragMine(page, { x: 6, y: 570 }, -(scroll.maxScrollY + 60));
+  await dragMine(page, { x: 6, y: 540 }, -(scroll.maxScrollY + 60));
 
   await expect
     .poll(async () => (await readPurchaseControl(page, FLOOR_4_KEY)).isPressable, {

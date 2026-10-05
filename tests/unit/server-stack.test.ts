@@ -137,6 +137,22 @@ describe('local Supabase stack configuration', () => {
     );
   });
 
+  it('uses the LAN Vite origin as the Auth fallback and allows default/fallback browser OAuth callbacks', () => {
+    expect(config).toMatch(/site_url = "http:\/\/192\.168\.1\.203:5173"/);
+    expect(config).toContain('"http://192.168.1.203:5173"');
+    expect(config).toContain('"http://192.168.*.*:5173"');
+    expect(config).toContain('"http://192.168.1.203:5174"');
+    expect(config).toContain('"http://192.168.*.*:5174"');
+    expect(config).toContain('"http://localhost:5174"');
+    expect(config).toContain('"http://127.0.0.1:5174"');
+  });
+
+  it('keeps the Edge Function CORS policy aligned with the LAN OAuth origin', () => {
+    const http = readProjectFile('supabase/functions/_shared/http.ts');
+    expect(http).toContain('LAN_DEV_ORIGIN_PATTERN');
+    expect(http).toContain('192\\.168\\.\\d{1,3}');
+  });
+
   it('disables public email signup, closing the Telegram placeholder-email pre-account-takeover', () => {
     // Critical finding, server-milestone Step 12: `telegram-sign-in` maps a
     // Telegram user to the deterministic `telegram-<id>@telegram.invalid`
@@ -288,12 +304,17 @@ describe('every Edge Function', () => {
   // assertion instead, exactly as this test's own prior comment
   // anticipated — a future function needing it must add its own exception
   // here too, not find this check silently no longer covering it.
+  // `cat-collection` is the sixth: ownership and assignment tables revoke all
+  // client grants, so its authenticated projection and RPC calls need the
+  // service role behind the Edge Function boundary.
   const FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY = [
     'telegram-sign-in',
     'save-sync',
     'recovery-code',
     'leaderboard-read',
     'account-delete',
+    'cat-collection',
+    'boost',
   ];
 
   it.each(functionNames.filter((name) => !FUNCTIONS_ALLOWED_THE_SERVICE_ROLE_KEY.includes(name)))(
@@ -705,10 +726,10 @@ describe('the guest-session bootstrap in src/main.ts', () => {
   // host in existence.
   const bootstrap = extractMainBlock(mainSource, '} else {', "\n/**\n * Server-milestone Step 10");
 
-  it('is never awaited before the game boots', () => {
-    // `void`, not `await`: identity resolution must not delay the first frame.
-    expect(bootstrap).toContain('void supabaseClientPromise');
+  it('records the auth chain without awaiting inside the top-level bootstrap', () => {
+    expect(bootstrap).toContain('initialAuthSettled = supabaseClientPromise');
     expect(bootstrap).not.toContain('await supabaseClientPromise');
+    expect(mainSource).toContain('await initialAuthSettled;');
   });
 
   it('catches a rejected client promise instead of leaving it unhandled', () => {
@@ -738,9 +759,10 @@ describe('the Telegram sign-in bootstrap in src/main.ts (Step 12)', () => {
   const mainSource = readProjectFile('src/main.ts');
   const bootstrap = extractMainBlock(mainSource, 'if (telegramInitData !== null) {', '} else {');
 
-  it('is never awaited before the game boots', () => {
-    expect(bootstrap).toContain('void supabaseClientPromise');
+  it('records the auth chain without awaiting inside the top-level bootstrap', () => {
+    expect(bootstrap).toContain('initialAuthSettled = supabaseClientPromise');
     expect(bootstrap).not.toContain('await supabaseClientPromise');
+    expect(mainSource).toContain('await initialAuthSettled;');
   });
 
   it('is a third, independent consumer of supabaseClientPromise, and catches its own rejection', () => {
@@ -816,6 +838,33 @@ describe('the Step 13 Google identity-collision hook in src/main.ts', () => {
   });
 });
 
+describe('account auth feedback in src/main.ts and AccountSettingsModal', () => {
+  const mainSource = readProjectFile('src/main.ts');
+  const modalSource = readProjectFile('src/ui/AccountSettingsModal.ts');
+
+  it('does not leave the account modal on a stale loading state', () => {
+    expect(mainSource).toContain('accountSettingsModal?.refresh();');
+    expect(modalSource).toContain('public refresh(): void');
+  });
+
+  it('preserves OAuth return errors as visible account feedback', () => {
+    expect(mainSource).toContain('readGoogleIdentityReturnError(window.location.href)');
+    expect(mainSource).toContain('This Google account is already linked to another account.');
+    expect(mainSource).toContain("await beginGoogleAccountSwitch(client.auth, window.location.origin)");
+    expect(mainSource).toContain("if (switchResult.status === 'redirecting')");
+    expect(mainSource).toContain("const messageTone = handoffError === undefined && collision ? 'info' : 'error'");
+    expect(modalSource).toContain("identity.status === 'error'");
+    expect(modalSource).toContain('identity.message');
+    expect(modalSource).toContain('account-settings-notice');
+  });
+
+  it('offers a retry after account inspection fails', () => {
+    expect(modalSource).toContain("this.#button('Try again'");
+    expect(modalSource).toContain('onRetry');
+    expect(mainSource).toContain("return { status: 'refreshed' }");
+  });
+});
+
 describe('the Step 14 recovery-code hooks in src/main.ts', () => {
   const mainSource = readProjectFile('src/main.ts');
   const hookBootstrap = extractMainBlock(
@@ -856,7 +905,8 @@ describe('the Step 17 cloud-save reconcile trigger in src/main.ts', () => {
     const body = trigger.slice(0, trigger.indexOf('\n}\n') + 3);
 
     expect(body).toContain('.catch(');
-    expect(body).toContain('void runCloudSaveReconcile()');
+    expect(body).toContain('runCloudSaveReconcile()');
+    expect(body).toContain('refreshServerBoostStatus()');
   });
 
   it('unbinds the save lifecycle before reloading, so pagehide cannot journal the stale pre-adoption document (2026-09-13 review)', () => {

@@ -3,9 +3,14 @@ import { expect, test, type Page } from '@playwright/test';
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { GameNumber, calculateLevelEffect, createInitialGameState } from '../../src/core';
 import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
+import {
+  LIFECYCLE_SAVE_JOURNAL_KEY,
+  PORTFOLIO_COMMAND_JOURNAL_PREFIX,
+} from '../../src/platform/web';
 import { formatAmount } from '../../src/game/view-model/formatAmount';
 import { createServiceRoleClient } from '../server-integration/serviceRoleFixture';
 import { tolerateNavigation } from './navigationFixture';
+import { finishPortfolioBoot } from './portfolioBootFixture';
 
 /**
  * Server-milestone Step 22: the credited offline reward is the server's.
@@ -60,21 +65,68 @@ async function readStoredGold(page: Page): Promise<string | null> {
     }
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV2 }>((resolve, reject) => {
+    const record = await new Promise<{ document?: SaveDocumentV2 | {
+      schemaVersion: 4;
+      walletGold: string;
+    } }>((resolve, reject) => {
       getRequest.onerror = () => reject(getRequest.error);
       getRequest.onsuccess = () => resolve(getRequest.result);
     });
     database.close();
-    return record?.document?.state.gold ?? null;
+    const document = record?.document;
+    if (document === undefined) return null;
+    return document.schemaVersion === 4 ? document.walletGold : document.state.gold;
+  });
+}
+
+async function clearLocalSaveOnceOnNextLoad(page: Page): Promise<void> {
+  let pending = true;
+  await page.route('**/src/main.ts*', async (route) => {
+    if (!pending) {
+      await route.continue();
+      return;
+    }
+    pending = false;
+    await route.fulfill({
+      contentType: 'application/javascript',
+      body: `
+        localStorage.removeItem(${JSON.stringify(LIFECYCLE_SAVE_JOURNAL_KEY)});
+        for (const key of Object.keys(localStorage)) {
+          if (key.startsWith(${JSON.stringify(PORTFOLIO_COMMAND_JOURNAL_PREFIX)})) {
+            localStorage.removeItem(key);
+          }
+        }
+        await new Promise((resolve, reject) => {
+          const request = indexedDB.open('cat-mine-idle');
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            const database = request.result;
+            const transaction = database.transaction('saves', 'readwrite');
+            transaction.objectStore('saves').delete('active');
+            transaction.onerror = () => reject(transaction.error);
+            transaction.oncomplete = () => { database.close(); resolve(); };
+          };
+        });
+        await import('/src/main.ts?offline-grant-fresh-device');
+      `,
+    });
   });
 }
 
 test('credits the server offlineGrant, not the client clock projection', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
 
   const guest = await waitForGuestSession(page);
   expect(guest.user?.id).toBeTruthy();
+
+  await page.route('**/offline-grant-away.html', (route) => route.fulfill({
+    body: '<!doctype html><title>Away</title>',
+    contentType: 'text/html',
+  }));
+  await page.goto('/offline-grant-away.html');
+  await page.waitForTimeout(500);
+  await clearLocalSaveOnceOnNextLoad(page);
 
   // This account is brand new and holds no local save, so the boot adoption
   // uploads nothing and the 30 s heartbeat is far off — the seed below cannot
@@ -138,23 +190,22 @@ test('credits the server offlineGrant, not the client clock projection', async (
   });
   expect(error).toBeNull();
 
-  await page.reload();
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await page.goto('/');
 
   const expectedReward = formatAmount(
     GameNumber.deserialize(RATE_PER_SECOND).multiply(7_200).multiply(0.5),
   );
 
   const modal = page.getByTestId('offline-reward-modal');
-  await expect
-    .poll(async () => page.locator('#app').getAttribute('data-cloud-save-reconcile'), { timeout: 20_000 })
-    .not.toBeNull();
   await expect(modal).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('offline-reward-time')).toHaveText('2h credited');
   await expect(page.getByTestId('offline-reward-amount')).toHaveText(`${expectedReward} gold`);
 
   await page.getByTestId('offline-reward-claim').click();
   await expect(modal).toHaveCount(0);
+  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene', {
+    timeout: 15_000,
+  });
 
   // The credited gold is the server's grant on top of the fresh starting
   // balance. `GameNumber` keeps the exact value as a float, so allow the

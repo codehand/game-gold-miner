@@ -4,6 +4,7 @@ import {
   type ActiveSaveRepository,
   type SaveDocumentV2,
 } from '../../persistence';
+import type { PortfolioSaveDocumentV4 } from '../../persistence/portfolioSaveSchema';
 
 export const LIFECYCLE_SAVE_JOURNAL_KEY =
   'cat-mine-idle:lifecycle-save-v1';
@@ -22,19 +23,23 @@ export interface KeyValueStorage {
  * so the event also records the same versioned document synchronously. The
  * journal is validated before use and removed after IndexedDB has caught up.
  */
-export class WebLifecycleSaveJournal {
+type JournalDocument = SaveDocumentV2 | PortfolioSaveDocumentV4;
+
+export class WebLifecycleSaveJournal<TDocument extends JournalDocument = SaveDocumentV2> {
   readonly #storage: KeyValueStorage | null;
-  readonly #config: BaseGameBalanceConfig;
+  readonly #validate: (candidate: unknown) => TDocument;
 
   public constructor(
     storage: KeyValueStorage | null,
     config: BaseGameBalanceConfig,
+    validate?: (candidate: unknown) => TDocument,
   ) {
     this.#storage = storage;
-    this.#config = config;
+    this.#validate = validate ?? ((candidate) =>
+      validateSaveDocument(candidate, config) as TDocument);
   }
 
-  public read(): SaveDocumentV2 | null {
+  public read(): TDocument | null {
     if (this.#storage === null) {
       return null;
     }
@@ -46,14 +51,14 @@ export class WebLifecycleSaveJournal {
         return null;
       }
 
-      return validateSaveDocument(JSON.parse(serialized), this.#config);
+      return this.#validate(JSON.parse(serialized));
     } catch {
       this.#discard();
       return null;
     }
   }
 
-  public write(document: SaveDocumentV2): void {
+  public write(document: TDocument): void {
     if (this.#storage === null) {
       return;
     }
@@ -114,20 +119,24 @@ export class WebLifecycleSaveJournal {
  * Recovers a newer valid lifecycle journal before normal load validation and
  * clears it only after the same-or-newer document reaches IndexedDB.
  */
-export class LifecycleSafeActiveSaveRepository
-implements ActiveSaveRepository {
-  readonly #repository: ActiveSaveRepository;
-  readonly #journal: WebLifecycleSaveJournal;
-  readonly #config: BaseGameBalanceConfig;
+export class LifecycleSafeActiveSaveRepository<
+  TDocument extends JournalDocument = SaveDocumentV2,
+>
+implements ActiveSaveRepository<TDocument> {
+  readonly #repository: ActiveSaveRepository<TDocument>;
+  readonly #journal: WebLifecycleSaveJournal<TDocument>;
+  readonly #validate: (candidate: unknown) => TDocument;
 
   public constructor(
-    repository: ActiveSaveRepository,
-    journal: WebLifecycleSaveJournal,
+    repository: ActiveSaveRepository<TDocument>,
+    journal: WebLifecycleSaveJournal<TDocument>,
     config: BaseGameBalanceConfig,
+    validate?: (candidate: unknown) => TDocument,
   ) {
     this.#repository = repository;
     this.#journal = journal;
-    this.#config = config;
+    this.#validate = validate ?? ((candidate) =>
+      validateSaveDocument(candidate, config) as TDocument);
   }
 
   public async loadActiveSave(): Promise<unknown | null> {
@@ -143,10 +152,7 @@ implements ActiveSaveRepository {
     }
 
     try {
-      const storedDocument = validateSaveDocument(
-        storedCandidate,
-        this.#config,
-      );
+      const storedDocument = this.#validate(storedCandidate);
 
       return storedDocument.savedAtTimestampMs >
         journalDocument.savedAtTimestampMs
@@ -157,7 +163,7 @@ implements ActiveSaveRepository {
     }
   }
 
-  public async storeActiveSave(document: SaveDocumentV2): Promise<void> {
+  public async storeActiveSave(document: TDocument): Promise<void> {
     await this.#repository.storeActiveSave(document);
     this.#journal.clearThrough(document.savedAtTimestampMs);
   }

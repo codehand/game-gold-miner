@@ -10,6 +10,9 @@ for (const touch of [false, true]) {
     let presses = 0;
     let closes = 0;
     let leaderboardCloses = 0;
+    let boostCloses = 0;
+    let mapCloses = 0;
+    let collectionCloses = 0;
     // Include a resize to catch CSS-to-canvas coordinate regressions.
     for (const viewport of [{ width: 553, height: 934 }, { width: 320, height: 568 }]) {
       await page.setViewportSize(viewport);
@@ -31,7 +34,15 @@ for (const touch of [false, true]) {
           else await page.mouse.click(x, y);
           await expect(canvas).toHaveAttribute('data-bottom-navigation-last-pressed', key);
           await expect(canvas).toHaveAttribute('data-bottom-navigation-press-count', String(++presses));
-          if (key === 'shop') {
+          if (key === 'rewards') {
+            await expect(page.getByRole('dialog', { name: 'Leaderboard' })).toBeVisible();
+            await expect(page.getByTestId('leaderboard-offline')).toBeVisible();
+            await page.getByRole('button', { name: 'Close leaderboard' }).click();
+            await expect(canvas).toHaveAttribute(
+              'data-leaderboard-close-count',
+              String(++leaderboardCloses),
+            );
+          } else if (key === 'shop') {
             await expect(page.getByRole('dialog', { name: 'Marketplace' })).toBeVisible();
             await page.getByRole('button', { name: 'Close marketplace' }).click();
             // `dialog.close()` queues its `close` event as a task, and
@@ -46,13 +57,21 @@ for (const touch of [false, true]) {
               'data-marketplace-close-count',
               String(++closes),
             );
-          } else if (key === 'rewards') {
-            await expect(page.getByRole('dialog', { name: 'Leaderboard' })).toBeVisible();
-            await page.getByRole('button', { name: 'Close leaderboard' }).click();
+          } else if (key === 'boost') {
+            await expect(page.getByRole('dialog', { name: 'Mine Boost' })).toBeVisible();
+            await page.getByRole('button', { name: 'Close Boost' }).click();
+            await expect(canvas).toHaveAttribute('data-boost-close-count', String(++boostCloses));
+          } else if (key === 'managers') {
+            await expect(page.getByRole('dialog', { name: 'Cat Collection' })).toBeVisible();
+            await page.getByRole('button', { name: 'Close collection' }).click();
             await expect(canvas).toHaveAttribute(
-              'data-leaderboard-close-count',
-              String(++leaderboardCloses),
+              'data-collection-close-count',
+              String(++collectionCloses),
             );
+          } else if (key === 'map') {
+            await expect(page.getByRole('dialog', { name: 'Mine Map' })).toBeVisible();
+            await page.getByRole('button', { name: 'Close Map' }).click();
+            await expect(canvas).toHaveAttribute('data-map-close-count', String(++mapCloses));
           }
         }
       }

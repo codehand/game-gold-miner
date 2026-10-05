@@ -67,6 +67,8 @@ export {
 } from './purchaseControl';
 export {
   advanceAnimationTimeMs,
+  advanceSurfaceHaulerTrip,
+  type SurfaceHaulerTrip,
   assertAnimationSpeedMultiplier,
   calculateConveyorOffsetPx,
   calculateCycleMarkerOffsetPx,
@@ -76,6 +78,7 @@ export {
   calculateMineFloorMinerCount,
   interpolateNormalizedProgressForward,
   calculateMinerPatrolPose,
+  calculateMinerWorkPose,
   calculateMinerSwingOffsetPx,
   calculateSurfaceHaulerAssistantOffset,
   calculateSurfaceHaulerAssistantPose,
@@ -100,6 +103,7 @@ export {
   SURFACE_HAULER_MAX_WAREHOUSE_LEVEL,
   type MineFloorMinerAssistantPose,
   type MinerPatrolPose,
+  type MinerWorkPose,
   type SurfaceHaulerAssistantOffset,
   type SurfaceHaulerAssistantPose,
   type SurfaceHaulerPhase,

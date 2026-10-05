@@ -1,0 +1,45 @@
+{
+  "createdOn": "2026-09-27",
+  "source": "OpenAI built-in image_gen",
+  "license": "Generated for this project; no third-party source asset",
+  "normalization": "python3 art-source/navigation-icons-v2/process.py",
+  "canvasSizePx": 96,
+  "runtimeDisplaySizePx": 42,
+  "assets": [
+    {
+      "id": "rewards",
+      "raw": "raw/rewards.png",
+      "runtime": "public/assets/ui/navigation/icons/rewards.png",
+      "subject": "Closed blue steel chest with visible gold nuggets",
+      "prompt": "Standalone transparent treasure chest icon, chunky painted blue steel, warm gold nuggets, charcoal outline, three-quarter view, readable at 42px; no purple, particles, text, or frame"
+    },
+    {
+      "id": "shop",
+      "raw": "raw/shop.png",
+      "runtime": "public/assets/ui/navigation/icons/shop.png",
+      "subject": "Blue-roofed timber trading stall with one gold nugget",
+      "prompt": "Standalone transparent mine trading stall icon, blue roof and timber posts, gold nugget on counter, charcoal outline, three-quarter view, readable at 42px; no purple, particles, text, or frame"
+    },
+    {
+      "id": "boost",
+      "raw": "raw/boost.png",
+      "runtime": "public/assets/ui/navigation/icons/boost.png",
+      "subject": "Faceted honey-gold lightning bolt",
+      "prompt": "Standalone transparent chunky golden lightning bolt icon, broad painted facets, charcoal outline, readable at 42px; no ring, purple, particles, text, or frame"
+    },
+    {
+      "id": "managers",
+      "raw": "raw/managers.png",
+      "runtime": "public/assets/ui/navigation/icons/managers.png",
+      "subject": "Orange miner cat head with blue helmet and gold lamp",
+      "prompt": "Standalone transparent friendly orange-tabby miner cat head, blue helmet and gold lamp, broad painted shading, charcoal outline, readable at 42px; no body, purple, particles, text, or frame"
+    },
+    {
+      "id": "map",
+      "raw": "raw/map.png",
+      "runtime": "public/assets/ui/navigation/icons/map.png",
+      "subject": "Tan mine parchment with route, gold marker, blue end caps",
+      "prompt": "Standalone transparent mine map parchment icon, dark tunnel route, gold location marker, blue metal end caps, charcoal outline, readable at 42px; no purple, particles, text, or frame"
+    }
+  ]
+}

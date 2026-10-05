@@ -12,7 +12,7 @@
 
 > **Phạm vi tham chiếu:** Video chỉ dài khoảng 8,56 giây nên không thể xác nhận 100% mọi luật, công thức và màn hình. Tài liệu này tách phần quan sát trực tiếp khỏi phần suy luận cần kiểm chứng. Khi phát triển sản phẩm thật, nên dùng tên, hình ảnh, âm thanh và UI nguyên bản để tránh sao chép tài sản sở hữu trí tuệ.
 
-> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ có tối đa 15 tầng và hiển thị theo cụm 5 tầng: 1–5 lúc bắt đầu, 6–10 sau khi mở tầng 5, 11–15 sau khi mở tầng 10; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chỉ đi sâu hơn sau khi vét hết tầng hiện tại và còn sức chứa, nếu không sẽ quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Sau base-game milestone, một bottom-navigation shell gồm năm icon Rewards, Shop, Boost, Managers và Map đã được thêm. Server-milestone Step 29 nối Rewards vào leaderboard đọc-only; Shop, Boost, Managers và Map vẫn chỉ phản hồi nhấn. Manager, boost gameplay và gift drop vẫn được triển khai ở milestone riêng.
+> **Quyết định cho base game:** UI dùng tiếng Anh; mỏ có tối đa 15 tầng và hiển thị theo cụm 5 tầng: 1–5 lúc bắt đầu, 6–10 sau khi mở tầng 5, 11–15 sau khi mở tầng 10; mỏ tự động chạy không cần Manager; mỗi tầng khai thác vào hàng chờ riêng, một elevator dùng chung ghé tuần tự từng tầng đang mở, chỉ đi sâu hơn sau khi vét hết tầng hiện tại và còn sức chứa, nếu không sẽ quay về mặt đất, và một warehouse dùng chung chuyển vàng thành số dư. Cabin chạy chậm dần theo tải. Mine shaft, elevator và warehouse được nâng cấp độc lập. Sau base-game milestone, một bottom-navigation panel gồm năm icon tách biệt Rewards, Shop, Boost, Cats và Map đã được thêm. Server-milestone Step 29 nối Rewards vào leaderboard đọc-only; Shop mở Marketplace, Cats mở Collection; Boost hiện mở Mine Overdrive x4 và Map vẫn chỉ phản hồi nhấn. Gift drop vẫn được triển khai ở milestone riêng.
 
 ## 2. Trải nghiệm cốt lõi
 
@@ -128,7 +128,7 @@ offlineGold = min(offlineSeconds, offlineCap)
 
 ### 5.6 Boost và quà rơi
 
-- **Boost x4:** nhân sản lượng trong một khoảng thời gian ngắn.
+- **Mine Overdrive x4:** mỗi tài khoản có một lượt miễn phí sau mỗi 8 giờ. Một lượt kéo dài đúng 5 phút thời gian thực, không cộng dồn, tăng tốc đồng thời khai thác, Elevator và Warehouse bằng mô phỏng x4 (không nhân trực tiếp ví vàng). Thời gian vẫn trôi khi đóng game; phần thưởng offline chỉ được x4 ở phần giao với cửa sổ Boost. Server giữ timestamp kích hoạt và kiểm tra cooldown khi có Supabase; bản không backend lưu trạng thái cục bộ.
 - **Auto/Infinity:** biểu thị tự động hóa đang hoạt động hoặc một boost không giới hạn thời gian.
 - **Quà rơi:** hộp quà xuất hiện ngẫu nhiên ở mặt đất; chạm để nhận vàng tức thời hoặc boost.
 - Quà phải nổi bật nhưng không che luồng vận chuyển.
@@ -164,26 +164,42 @@ MVP chỉ dùng tiền ảo nội bộ, không blockchain, NFT, quy đổi tiề
   mọi mèo công nhân luôn lặp tuyến đến máng, đẩy xe sang kho rồi đưa xe quay lại,
   kể cả khi `warehouse.inputQueue` bằng 0. Vàng chỉ đổ và xe chỉ chuyển sang trạng
   thái đầy khi queue đang dương; queue bằng 0 thì toàn bộ chuyến đi dùng xe rỗng.
-  Đây là animation presentation-only; simulation vẫn chuyển vật liệu trực tiếp
-  theo core.
+  Core cũng áp dụng productivity của đội surface tại ranh giới
+  `warehouse.inputQueue`, nên animation và throughput dùng cùng một quy tắc.
   Vàng còn nằm trong cabin elevator chưa thuộc queue của tháp và không được làm
   hiện dòng vàng, xe đầy, hoặc mèo đang chở hàng. Khi queue về 0, toàn bộ đội
-  surface lập tức dùng xe rỗng và máng ngừng đổ nhưng vẫn tiếp tục tuần hoàn.
-- Đội vận chuyển phản ánh level warehouse mà không đổi throughput: luôn có một
-  mèo cơ bản, sau đó mỗi 10 level warehouse thêm một mèo hỗ trợ. Vì vậy level
-  10/20/.../100 hiển thị tổng cộng 2/3/.../11 mèo; level trên 100 vẫn giữ đội
-  tối đa 11 mèo. Mỗi mèo có pha di chuyển và vị trí ngang riêng trên tuyến
-  surface nhưng toàn đội cùng một đường baseline; mỗi mèo sở hữu một xe đẩy
-  riêng ở cùng pose vận chuyển thay vì sao chép mèo chính hoặc dùng chung xe.
+  surface lập tức dùng xe rỗng và mọi hiệu ứng rót vàng đều ẩn nhưng vẫn tiếp
+  tục tuần hoàn. Khi từng xe tới máng trong lúc queue dương, xe đó nhận một
+  hiệu ứng rót vàng riêng giống hệt các xe còn lại; nguồn rơi luôn nằm ở một
+  tọa độ cố định ngay dưới miệng máng.
+- Mỗi tầng mỏ có raw workforce theo `rawCount = 1 + floor(mineShaftLevel / 50)`.
+  Tối đa năm miner được hiển thị; tất cả đi trên cùng một đường ngang giữa mèo
+  trắng và đống vàng. Khi từng miner chạm cạnh phải của mèo trắng, tầng cộng
+  ngay một phần bằng nhau của yield chu kỳ vào `materialQueue`. Từ raw worker
+  thứ sáu trở đi, `productivityMultiplier = rawCount / visibleCount` tăng sản
+  lượng của đội năm miner đang hiển thị, nên level cao hơn vẫn tăng hiệu suất mà
+  không thêm sprite. Gold tiêu được chỉ tăng sau elevator và warehouse chuyển
+  vật liệu như trước.
+- Đội vận chuyển phản ánh level warehouse bằng một quy tắc raw count nhưng chỉ
+  hiển thị tối đa năm mèo. Quy tắc là
+  `rawCount = 1 + floor(min(warehouseLevel, 100) / 10)`,
+  `visibleCount = min(rawCount, 5)`, và
+  `productivityMultiplier = rawCount / visibleCount`. Vì vậy level 40 có 5
+  mèo ở `1x`, level 50 có 5 mèo ở `1.2x`, còn level 100 trở lên có 5 mèo ở
+  `2.2x`; tổng capacity của workforce cũ được giữ nguyên. Multiplier được áp
+  dụng tại handoff `warehouse.inputQueue` và không tạo thêm save-state queue.
+  Mỗi mèo có pha di chuyển và vị trí ngang riêng trên tuyến surface nhưng toàn
+  đội cùng một đường baseline; mỗi mèo sở hữu một xe đẩy riêng ở cùng pose vận
+  chuyển thay vì sao chép mèo chính hoặc dùng chung xe.
 - Trục elevator phải giữ ray và thanh giằng rõ nét xuyên suốt 15 tầng: lặp artwork
   theo chiều dọc ở tỉ lệ native, không kéo giãn một bitmap theo toàn bộ độ sâu mỏ.
 - Scroll mine chỉ đổi camera quan sát, không đổi tọa độ hành trình elevator. Cabin
   đi đủ khoảng cách world từ tầng đang phục vụ qua các tầng phía trên tới tháp,
   kể cả khi những tầng trung gian đang nằm ngoài màn hình.
-- Đội miner của mọi tầng cũng phản ánh level mà không đổi sản lượng: tầng đã mở
-  luôn có một miner, rồi level 50/100/150/200 lần lượt thêm một miner, tạo tổng
-  số 2/3/4/5. Trên level 200 vẫn giữ tối đa 5 miner. Các miner phụ dùng cùng
-  sprite nhưng có pha tuần tra, frame và làn dọc nông riêng để giảm che nhau;
+- Đội miner của mọi tầng phản ánh cùng quy tắc raw/visible ở trên: level
+  50/100/150/200 lần lượt đạt 2/3/4/5 miner hiển thị; trên level 200 vẫn giữ
+  tối đa 5 miner và chuyển phần vượt cap thành productivity. Các miner phụ dùng
+  cùng sprite nhưng có pha tuần tra, frame riêng và chia sẻ một baseline;
   extraction progress authoritative vẫn điều khiển tuyến di chuyển chung.
 
 Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự động: mở cả bốn tầng (tầng 4 hiện ở giây 508 sau khi mở rộng 15 tầng và sửa tuyến elevator), chạm multiplier nhưng không tăng mất kiểm soát tới cấp 100 trong mười phút, và không kẹt tiến trình. Đường cân bằng tầng 5–15 được mở rộng theo cấp số và vẫn là tạm thời cho tới khi được kiểm chứng bằng playtest thực tế.
@@ -203,12 +219,10 @@ Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự đ
 - Chạm Manager: mở bảng Manager của tầng.
 - Vuốt dọc: xem các tầng sâu hơn.
 - Chạm quà: nhận phần thưởng.
-- Chạm thanh điều hướng dưới: Rewards mở leaderboard lifetime-gold của
-  server-milestone Step 29, còn Shop, Boost, Managers và Map hiện chỉ nhận click
-  và phản hồi nhấn. Thanh cao 58
-  logical px; bốn nút thường 48×44, nút Boost nhô lên 62×50, và mỗi mục dùng
-  một minh họa riêng theo cùng palette vàng, trắng, navy và teal. Toàn bộ phần
-  hiển thị của mỗi nút được thu còn 60% trong khi vùng chạm không đổi.
+- Chạm thanh điều hướng dưới: Rewards mở leaderboard lifetime-gold, Shop mở
+  Marketplace, Boost mở Mine Overdrive, Cats mở Collection, Map vẫn chỉ phản
+  hồi nhấn. Thanh cao 80 logical px; năm icon tách riêng, mỗi ô có vùng chạm
+  64×64 theo cùng palette navy/slate-steel/vàng của HUD.
 
 ### Bố cục màn hình mỏ
 
@@ -277,6 +291,18 @@ Các giá trị bốn tầng đầu vẫn đạt mục tiêu mô phỏng tự đ
 - Nhạc nền vui nhẹ; SFX riêng cho cuốc, xe goòng, đồng xu, nâng cấp và quà.
 
 ### 8.1 Hệ thống asset role mèo và rarity
+
+Mở rộng Hauler (2026-09-29): mèo chở hàng là role riêng, không phải Warehouse
+manager. Default dùng xe gỗ; Tobi SR giá 18.000 vàng dùng xe điện có bánh;
+Rivet SSR giá 42.000 vàng dùng xe điện từ không chạm đất. Mỗi lần mua nhận một
+cá thể level 1, chỉ gán một slot `hauler:1..5`. Bấm mèo → chọn Cart → Change
+cat; Use default Hauler trả mèo đã mua về Collection. Mua không tự equip.
+Số xe theo Warehouse level, tối đa 5; phần count dư tăng năng suất như cũ.
+Bonus Hauler áp dụng vào phần công suất xe của mình; toàn đội dùng trung bình
+các multiplier của xe đang hoạt động, rồi nhân bonus manager và overflow một
+lần. Không có hệ thống nâng level riêng cho nhân vật trong thay đổi này.
+Tobi/Rivet dùng 4 frame walk thật (2×2, cell128, 200ms), ngoại lệ có ghi trong
+manifest; xe rỗng/đầy và portrait là các PNG riêng, không gộp chung nhân vật.
 
 Mỗi role mèo có năm rarity tier theo thứ tự cố định. Đây là phân loại nhân vật,
 không phải level số của mine shaft, elevator hoặc warehouse:

@@ -8,6 +8,30 @@ Not part of the contract.
 
 ## Closed
 
+- **A configured player entering another mine during a cloud outage could lose
+  or duplicate its offline reward when reconnecting.** *Closed 2026-10-05:*
+  mine entry now writes a durable version-2 command envelope with the source
+  document, upload phase and accepted receipt. The server validates the exact
+  `effectiveAtMs` boundary, settles the pending interval once, and the client
+  merges the accepted result into any newer local portfolio. Pending UI blocks
+  a second switch until settlement, while idempotency and revision checks make
+  retry and reload safe. Core, Deno, live integration and server E2E coverage
+  exercise the path.
+
+- **An owned cat could reach the unique-assignment constraint when reused on a
+  second floor, producing HTTP 500.** *Closed 2026-09-28:* the trading-era RPC's
+  renter comparison produced SQL `NULL` for owned cats and skipped its
+  availability guard. A forward-only migration normalizes that comparison to
+  `false` and checks `assigned_slot_key`, returning 409 `cat_not_assignable`
+  before any assignment write. Live integration coverage proves the response.
+
+- **Approved Marketplace sheets could break offline boot or leak renderer state
+  into gameplay.** *Closed 2026-09-19:* Phase 7 loads only stable local runtime
+  copies, resolves a bundled placeholder when a copy is unavailable, and keeps
+  asset IDs, frames, textures, and animation timing outside save data and
+  simulation formulas. Runtime identity, fallback, dimensions, and role-slot
+  behavior are covered by unit and browser tests.
+
 - **The cloud fork had no player-facing chooser.** *Closed 2026-09-19:* the
   HUD settings control opens `AccountSettingsModal`, which presents both
   candidates and applies either the local branch through a server-revision
@@ -41,3 +65,20 @@ Not part of the contract.
   session playable with the local save intact and one `save_audit` row — but they
   await user validation. The risk stays in `progress.md` until those land and are
   validated.
+
+- **Marketplace Buy was only a visual preview and could diverge from wallet or
+  ownership state.** *Closed 2026-09-20:* seeded Buy now uses the authenticated
+  purchase transaction with server price and wallet authority, idempotent
+  replay, a validated roster projection, and wallet/save-revision metadata.
+  The live browser gate bought two Miner cats, changed the assigned Miner, and
+  reloaded the game with the replacement still bound. Rent, Sell, and My
+  listings remain intentionally deferred rather than being falsely presented
+  as live.
+
+- **Marketplace Rent/Sell/My listings could remain a misleading local preview
+  after Buy became live.** *Closed 2026-09-20:* listing creation,
+  cancellation, sale, rental, expiry settlement, seller history, wallet
+  changes, renter projection, and retry idempotency now run through the
+  authenticated service-role transaction boundary. Browser and integration
+  gates exercise the live tabs and the active documents now describe the
+  complete trading surface.

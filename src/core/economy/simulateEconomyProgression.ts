@@ -34,6 +34,7 @@ export interface EconomyProgressionEvent {
 
 export interface EconomyProgressionReport {
   readonly durationMs: number;
+  readonly elapsedMs: number;
   readonly state: GameState;
   readonly events: readonly EconomyProgressionEvent[];
   readonly unlockedFloorCount: number;
@@ -54,22 +55,27 @@ export interface EconomyUpgradeChoice {
 export function simulateEconomyProgression(
   durationMs = DEFAULT_ECONOMY_SIMULATION_DURATION_MS,
   initialTimestampMs = 0,
+  config: BaseGameBalanceConfig = BASE_GAME_BALANCE,
+  initialState?: GameState,
+  stopWhen?: (state: GameState) => boolean,
 ): EconomyProgressionReport {
   validateDuration(durationMs);
 
-  let state = createInitialGameState(BASE_GAME_BALANCE, initialTimestampMs);
+  let state = initialState ?? createInitialGameState(config, initialTimestampMs);
   const events: EconomyProgressionEvent[] = [];
   let elapsedMs = 0;
 
   while (elapsedMs < durationMs) {
+    if (stopWhen?.(state)) break;
     const elapsedStepMs = Math.min(
       ECONOMY_DECISION_INTERVAL_MS,
       durationMs - elapsedMs,
     );
-    state = advanceSimulation(state, elapsedStepMs);
+    state = advanceSimulation(state, elapsedStepMs, config);
     elapsedMs += elapsedStepMs;
+    if (stopWhen?.(state)) break;
 
-    const unlock = purchaseNextEligibleFloor(state, BASE_GAME_BALANCE);
+    const unlock = purchaseNextEligibleFloor(state, config);
 
     if (unlock !== null) {
       state = unlock.state;
@@ -83,11 +89,11 @@ export function simulateEconomyProgression(
       continue;
     }
 
-    if (isSavingForNextFloor(state, BASE_GAME_BALANCE)) {
+    if (isSavingForNextFloor(state, config)) {
       continue;
     }
 
-    const upgrade = chooseBestAffordableUpgrade(state, BASE_GAME_BALANCE);
+    const upgrade = chooseBestAffordableUpgrade(state, config);
 
     if (upgrade !== null) {
       state = upgrade.state;
@@ -112,12 +118,13 @@ export function simulateEconomyProgression(
 
   return {
     durationMs,
+    elapsedMs,
     state,
     events,
     unlockedFloorCount: state.floors.filter(({ isUnlocked }) => isUnlocked)
       .length,
     highestStageLevel,
-    milestoneReached: BASE_GAME_BALANCE.elevator.upgrade.milestones.some(
+    milestoneReached: config.elevator.upgrade.milestones.some(
       ({ level }) => highestStageLevel >= level,
     ),
   };

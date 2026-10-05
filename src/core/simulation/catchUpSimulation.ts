@@ -1,4 +1,20 @@
 import type { GameState } from '../state/GameState';
+import {
+  BASE_GAME_BALANCE,
+  type BaseGameBalanceConfig,
+} from '../../config';
+import {
+  EMPTY_CAT_PRODUCTION_MODIFIERS,
+  type CatProductionModifiers,
+} from '../cats';
+import {
+  BOOST_DURATION_MS,
+  BOOST_MULTIPLIER,
+  EMPTY_BOOST_STATE,
+  isBoostActive,
+  validateBoostState,
+  type BoostState,
+} from '../boost/boost';
 import { advanceSimulation, MAX_FOREGROUND_DELTA_MS } from './advanceSimulation';
 
 /**
@@ -41,10 +57,24 @@ export const MAX_CATCH_UP_MS = 2 * 60 * 60 * 1_000;
  * sub-tick remainder in authoritative state, so a run of slices is
  * indistinguishable from the same time arriving continuously.
  */
+export function catchUpSimulation(state: GameState, elapsedMs: number): GameState;
 export function catchUpSimulation(
   state: GameState,
   elapsedMs: number,
+  config: BaseGameBalanceConfig,
+  modifiers?: CatProductionModifiers,
+  boost?: BoostState,
+): GameState;
+export function catchUpSimulation(
+  state: GameState,
+  elapsedMs: number,
+  ...options: [config?: BaseGameBalanceConfig, modifiers?: CatProductionModifiers, boost?: BoostState]
 ): GameState {
+  const config = typeof options[0] === 'object' && options[0] !== null
+    ? options[0]
+    : BASE_GAME_BALANCE;
+  const modifiers = options[1] ?? EMPTY_CAT_PRODUCTION_MODIFIERS;
+  const boost = validateBoostState(options[2] ?? EMPTY_BOOST_STATE);
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
     throw new Error('Elapsed time must be a finite, non-negative number.');
   }
@@ -52,15 +82,28 @@ export function catchUpSimulation(
   const creditedMs = Math.min(elapsedMs, MAX_CATCH_UP_MS);
   let nextState = state;
 
-  for (
-    let consumedMs = 0;
-    consumedMs < creditedMs;
-    consumedMs += MAX_FOREGROUND_DELTA_MS
-  ) {
+  for (let consumedMs = 0; consumedMs < creditedMs;) {
+    const currentMs = nextState.lastUpdateTimestampMs;
+    const activationMs = boost.lastActivatedAtMs;
+    const expiryMs = activationMs === null ? null : activationMs + BOOST_DURATION_MS;
+    const nextBoundary = activationMs !== null && currentMs < activationMs
+      ? activationMs
+      : expiryMs !== null && currentMs < expiryMs
+        ? expiryMs
+        : Number.POSITIVE_INFINITY;
+    const sliceMs = Math.min(
+      MAX_FOREGROUND_DELTA_MS,
+      creditedMs - consumedMs,
+      nextBoundary - currentMs,
+    );
     nextState = advanceSimulation(
       nextState,
-      Math.min(MAX_FOREGROUND_DELTA_MS, creditedMs - consumedMs),
+      sliceMs,
+      config,
+      modifiers,
+      isBoostActive(boost, currentMs) ? BOOST_MULTIPLIER : 1,
     );
+    consumedMs += sliceMs;
   }
 
   const uncreditedMs = elapsedMs - creditedMs;

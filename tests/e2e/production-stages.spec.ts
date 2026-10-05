@@ -19,20 +19,25 @@ import {
   ELEVATOR_SHAFT_TEXTURE_WIDTH_PX,
   PLACEHOLDER_TEXTURES,
 } from '../../src/game/assets/placeholderAssets';
+import { MARKETPLACE_RUNTIME_ROLE_ASSETS } from '../../src/game/assets/marketplaceRuntimeAssets';
 import {
   calculateFloorSlotRegion,
   calculateMineFloorPanelLayout,
   calculateMineLayout,
   HUD_BACKGROUND,
   MATERIAL_BACKLOG_FILL,
-  MINE_SHAFT_CABIN_SIZE,
-  MINE_SHAFT_CARGO_CAT_SIZE,
+  CAT_RUNTIME_DISPLAY_SIZE,
+  MINE_SHAFT_CABIN_HEIGHT,
+  MINE_SHAFT_CABIN_CAT_Y_OFFSET,
+  MINE_SHAFT_CABIN_WIDTH,
   PANEL_BACKGROUND,
   SURFACE_ELEVATOR_STOP_X,
   SURFACE_ELEVATOR_STOP_Y,
   SURFACE_ELEVATOR_TOWER_CENTER_X,
   SURFACE_ELEVATOR_TOWER_HEIGHT,
   SURFACE_ELEVATOR_TOWER_WIDTH,
+  SURFACE_GOLD_POUR_X,
+  SURFACE_GOLD_POUR_Y,
   SURFACE_HAULER_END_X,
   SURFACE_HAULER_CART_SIZE,
   SURFACE_HAULER_START_X,
@@ -284,18 +289,17 @@ test('shows an idle transport and warehouse while extraction is the slowest stag
     progressFillWidth: 0,
   });
 
-  // The walking frames stay cosmetic, but the miner's position is now the
-  // authoritative extraction indicator and therefore freezes with the core.
-  await expect
-    .poll(async () => (await readRenderedFloors(page))[0].minerAssetFrame, {
-      message: 'the generated digging sheet must advance while the core is paused',
-    })
-    .not.toBe(floorOne.minerAssetFrame);
+  // The mining strike frame and position follow extraction progress, so both
+  // remain fixed while the core is paused at 60%.
+  await page.clock.runFor(1_000);
 
   const [stillPaused] = await readRenderedFloors(page);
 
   expect(stillPaused.minerPatrolX, 'a paused core must freeze miner travel').toBe(
     floorOne.minerPatrolX,
+  );
+  expect(stillPaused.minerAssetFrame, 'a paused core must freeze the strike').toBe(
+    floorOne.minerAssetFrame,
   );
   expect(stillPaused.progressLabel, 'a paused core must not extract').toBe('60%');
   expect(stillPaused.progressFillWidth, 'a paused core must not extract').toBe(
@@ -368,10 +372,11 @@ test('reports a full floor queue while transport is the slowest stage', async ({
 test('loads a surface cart beneath the chute and pushes it toward the warehouse', async ({
   page,
 }) => {
-  await bootPausedFixture(page, createTransportLimitedState());
+  await bootPausedFixture(page, createWarehouseLevelState(100));
 
   type SurfaceHaulerReadBack = {
     surfaceHauler: {
+      phase: string;
       cartX: number;
       cartWidth: number;
       cartHeight: number;
@@ -392,6 +397,12 @@ test('loads a surface cart beneath the chute and pushes it toward the warehouse'
         cartHeight: number;
       }[];
       goldPourVisible: boolean;
+      goldPours: readonly {
+        visible: boolean;
+        x: number;
+        y: number;
+        frame: number;
+      }[];
     };
   };
 
@@ -418,22 +429,45 @@ test('loads a surface cart beneath the chute and pushes it toward the warehouse'
   expect(loading.surfaceHauler.catX).toBeLessThan(loading.surfaceHauler.cartX);
   expect(loading.surfaceHauler.catFlipX).toBe(false);
 
+  const observedGoldPourIndexes = new Set<number>();
   await expect.poll(async () => {
     const animation = await readJsonAttribute<SurfaceHaulerReadBack>(
       page,
       'data-animation',
     );
 
-    return animation.surfaceHauler.cartX;
+    animation.surfaceHauler.goldPours.forEach((goldPour, index) => {
+      if (goldPour.visible) {
+        observedGoldPourIndexes.add(index);
+        expect(goldPour.frame).toBeGreaterThanOrEqual(0);
+        expect(goldPour.frame).toBeLessThan(4);
+        expect(goldPour.x).toBe(SURFACE_GOLD_POUR_X);
+        expect(goldPour.y).toBe(SURFACE_GOLD_POUR_Y);
+      }
+    });
+
+    return observedGoldPourIndexes.size;
+  }, {
+    message: 'every visible cart receives the shared gold-pour effect at the chute',
+    timeout: 8_000,
+  }).toBe(5);
+
+  let delivering = loading;
+  await expect.poll(async () => {
+    delivering = await readJsonAttribute<SurfaceHaulerReadBack>(
+      page,
+      'data-animation',
+    );
+
+    // A position alone also matches the empty return leg. Capture the actual
+    // outbound snapshot instead of racing a second read against the handoff.
+    return delivering.surfaceHauler.phase === 'delivering' &&
+      delivering.surfaceHauler.cartX > SURFACE_HAULER_START_X + 20 &&
+      delivering.surfaceHauler.cartX < SURFACE_HAULER_END_X - 10;
   }, {
     message: 'the filled cart eases from the chute toward the warehouse',
     timeout: 6_500,
-  }).toBeGreaterThan(SURFACE_HAULER_START_X + 20);
-
-  const delivering = await readJsonAttribute<SurfaceHaulerReadBack>(
-    page,
-    'data-animation',
-  );
+  }).toBe(true);
 
   expect(delivering.surfaceHauler.cartX).toBeLessThanOrEqual(
     SURFACE_HAULER_END_X,
@@ -590,6 +624,29 @@ test('adds one visible transport cat at each ten warehouse levels', async ({
   ]).size, 'phase-shifted cats may face different route directions').toBe(2);
 });
 
+test('caps the visible transport crew and converts overflow into productivity', async ({
+  page,
+}) => {
+  await bootPausedFixture(page, createWarehouseLevelState(100));
+
+  const animation = await readJsonAttribute<{
+    surfaceHauler: {
+      rawCatCount: number;
+      activeCatCount: number;
+      activeCartCount: number;
+      productivityMultiplier: number;
+      assistants: readonly { visible: boolean }[];
+    };
+  }>(page, 'data-animation');
+
+  expect(animation.surfaceHauler.rawCatCount).toBe(11);
+  expect(animation.surfaceHauler.activeCatCount).toBe(5);
+  expect(animation.surfaceHauler.activeCartCount).toBe(5);
+  expect(animation.surfaceHauler.productivityMultiplier).toBe(2.2);
+  expect(animation.surfaceHauler.assistants.filter((assistant) => assistant.visible))
+    .toHaveLength(4);
+});
+
 test('stops the enlarged elevator beside the floor gold container', async ({
   page,
 }) => {
@@ -623,16 +680,19 @@ test('stops the enlarged elevator beside the floor gold container', async ({
     expectedStopY,
   );
   expect(animation.elevatorCabin.width, 'larger cabin width').toBe(
-    MINE_SHAFT_CABIN_SIZE,
+    MINE_SHAFT_CABIN_WIDTH,
   );
   expect(animation.elevatorCabin.height, 'larger cabin height').toBe(
-    MINE_SHAFT_CABIN_SIZE,
+    MINE_SHAFT_CABIN_HEIGHT,
   );
   expect(animation.elevatorCargoCat.centerY, 'cargo cat follows cabin').toBe(
-    expectedStopY + 3,
+    expectedStopY + MINE_SHAFT_CABIN_CAT_Y_OFFSET,
   );
   expect(animation.elevatorCargoCat.width, 'larger cargo cat width').toBe(
-    MINE_SHAFT_CARGO_CAT_SIZE,
+    CAT_RUNTIME_DISPLAY_SIZE,
+  );
+  expect(animation.elevatorCargoCat.height, 'cargo cat uses the shared height').toBe(
+    CAT_RUNTIME_DISPLAY_SIZE,
   );
 });
 
@@ -712,10 +772,11 @@ test('returns through the surface boundary and stops inside the elevator tower',
   expect(animation.surfaceElevatorCabin, 'cabin rests inside headhouse bay').toMatchObject({
     centerX: SURFACE_ELEVATOR_STOP_X,
     centerY: SURFACE_ELEVATOR_STOP_Y,
-    width: MINE_SHAFT_CABIN_SIZE,
-    height: MINE_SHAFT_CABIN_SIZE,
+    width: MINE_SHAFT_CABIN_WIDTH,
+    height: MINE_SHAFT_CABIN_HEIGHT,
   });
   expect(animation.warehouseBuilding, 'generated warehouse replaces the legacy card').toEqual({
+    texture: PLACEHOLDER_TEXTURES.warehouseBuilding,
     centerX: SURFACE_WAREHOUSE_CENTER_X,
     centerY: SURFACE_WAREHOUSE_CENTER_Y,
     width: SURFACE_WAREHOUSE_WIDTH,
@@ -728,7 +789,9 @@ test('returns through the surface boundary and stops inside the elevator tower',
     height: SURFACE_WAREHOUSE_MANAGER_SIZE,
   });
   expect(animation.warehouseManager.frame).toBeGreaterThanOrEqual(0);
-  expect(animation.warehouseManager.frame).toBeLessThan(4);
+  expect(animation.warehouseManager.frame).toBeLessThan(
+    MARKETPLACE_RUNTIME_ROLE_ASSETS.warehouse.frameCount,
+  );
   expect(animation.warehouseManager.flipX, 'warehouse cat looks toward the elevator').toBe(true);
 });
 
@@ -954,7 +1017,7 @@ async function runAnimationSpeedTrial(
   animationSpeedMultiplier: number,
 ): Promise<AnimationSpeedTrial> {
   await page.clock.install({ time: FIXED_TIME });
-  await page.clock.pauseAt(FIXED_TIME);
+  await page.clock.setFixedTime(FIXED_TIME);
   await routeMainModule(
     page,
     `
@@ -965,10 +1028,11 @@ async function runAnimationSpeedTrial(
       const speedMultiplier = Number(
         new URLSearchParams(location.search).get('animationSpeed'),
       );
+      let coreNowMs = ${FIXTURE_TIMESTAMP_MS};
       const driver = new MineSimulationDriver({
         state: createInitialGameState(BASE_GAME_BALANCE, ${FIXTURE_TIMESTAMP_MS}),
         balance: BASE_GAME_BALANCE,
-        now: () => Date.now(),
+        now: () => coreNowMs,
       });
 
       createGame(document.querySelector('#game-viewport'), driver, {
@@ -977,6 +1041,7 @@ async function runAnimationSpeedTrial(
 
       window.catMineIdleTrial = {
         settle: () => {
+          coreNowMs += 8_000;
           driver.advance();
 
           return {

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "boru",
+  "processing": {
+    "cell_size": 128,
+    "fit_scale": 0.72,
+    "trim_border": 4,
+    "edge_clean_depth": 3,
+    "align": "feet",
+    "shared_scale": false,
+    "scale_strategy": "preserve",
+    "component_mode": "largest",
+    "component_padding": 0,
+    "min_component_area": 1,
+    "edge_touch_margin": 0
+  },
+  "output_origin": [
+    64.0,
+    111
+  ],
+  "reference": {
+    "target": "npc",
+    "mode": "walk",
+    "rows": 2,
+    "cols": 4,
+    "body_scale_mean": 0.46155169108080274,
+    "body_scale_cv": 0.005055224735830975,
+    "anchor_y_mean": 0.8359195402298851
+  },
+  "qc": {
+    "max_body_scale_drift": 0.1
+  }
+}

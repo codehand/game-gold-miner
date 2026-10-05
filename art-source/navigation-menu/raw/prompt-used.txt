@@ -1,0 +1,17 @@
+Create one production-ready wide horizontal bottom-navigation menu strip based on
+the approved reference. Use a continuous midnight-navy rounded bar with warm
+metallic-gold bevel and five evenly spaced rounded-square cells. The five cells
+read left to right as: ornate gold treasure chest, violet-and-ivory fantasy
+market stall with cat paw, active golden celestial lightning bolt with orbital
+rings, silver-white chibi cat head, and rolled ivory celestial treasure map
+with a blue-centered gold location pin. Match a premium cute 2D mobile game
+UI style with deep indigo, violet, cyan, ivory, and gold, consistent upper-left
+lighting, crisp silhouettes, restrained glow, and no typography. The central
+Boost cell is raised and active with a warm gold border and small crescent gold
+ornaments above and below. Keep all five cells inside the menu strip, no
+additional navigation bar, no labels, no numbers, no duplicated objects.
+
+The raw generation background is solid pure magenta #FF00FF only outside the
+opaque navy/gold menu so it can be chroma-keyed into a transparent runtime
+asset. Target a practical wide 6:1 menu aspect ratio suitable for the game's
+360x58 logical bottom-navigation region.

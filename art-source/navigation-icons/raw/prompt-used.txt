@@ -1,0 +1,19 @@
+Create a high-quality 2D game UI sprite sheet for a cute celestial cat mining game.
+
+This is a single raw sprite sheet for deterministic post-processing. Use one wide horizontal image containing exactly 5 equal square cells in one row, read left to right. Each cell contains exactly one centered icon. All cells must be identical square dimensions, with identical icon scale, visual weight, baseline, optical center, and generous consistent padding. Clearly separate the five cells with uniform solid chroma-key background. Absolutely no text, labels, numbers, letters, UI bar, outer frame, connecting panel, or extra objects.
+
+IMPORTANT RAW OUTPUT REQUIREMENT: use a perfectly uniform solid pure magenta #FF00FF background in every cell for chroma-key cleanup. Keep every icon and every effect fully inside its own cell. Do not let any effect cross a cell boundary. The magenta background must remain visible around every icon.
+
+ART DIRECTION: premium cute 2D mobile game UI, celestial fantasy + cat kingdom + gold mining theme; polished hand-painted vector-like game icon style; rounded chunky readable silhouettes; subtle bevels; soft upper-left highlights; deep royal indigo, midnight navy, celestial violet, pale cyan, ivory, warm metallic gold; restrained moon/star motifs; clean crisp edges; strong silhouettes at 64–128 px; cohesive professional icon family; not photorealistic and not generic app icons.
+
+Cell 1 is an ornate compact royal treasure chest filled with gold for leaderboard/rewards, with sparse gold coins, three tiny golden stars, a warm radial glow, and a crown-shaped sparkle.
+
+Cell 2 is a miniature fantasy marketplace stall with violet/ivory striped awning, gold frame, cat-paw emblem, two orbiting gold coins, price-tag sparkle without readable text, and violet-blue glow underneath.
+
+Cell 3 is a bold golden lightning bolt for boost/energy, with two thin glowing orbital rings, electric sparks, golden aura, and tiny four-point stars; energetic, magical, and no button frame.
+
+Cell 4 is a front-facing silver-white chibi cat head with pale lavender cast, blue-gray forehead stripes, triangular ears, large icy pale-cyan eyes, tiny lavender-gray nose, pale-cyan halo, stars, paw-print particles, and faint violet ear shimmer; no body.
+
+Cell 5 is a rolled ivory celestial mining map with violet-blue terrain, dotted golden route, gold location pin with blue center, cyan-gold pulse ring, glowing route point, compass-star sparkle, and subtle magical trail.
+
+Keep exactly five icons, one per equal square cell, same view/perspective/lighting/bounding box/baseline/optical center, similar empty space, no duplicated icons, no typography, no full navigation bar, no outer border, no excessive bloom, and no effect crossing cell boundaries.

@@ -1,5 +1,233 @@
 # Archive — Completed work log
 
+## 2026-09-28 — Default Mica and unique purchased Miner assignment
+
+Unassigned mine floors now render Mica's existing walk and strike animation
+without adding an owned Collection instance or a production bonus. The floor
+assignment panel identifies that baseline and offers only idle owned Miner
+instances as replacements. Marketplace Buy offers another purchase of the
+same blueprint after success. A forward-only Supabase migration fixes the
+nullable renter check in `replace_cat_assignment`, so an Assigned instance
+cannot be reused on another floor and receives a 409 business rejection.
+Existing owner/slot and unique-cat constraints remain in place. The 769-test
+unit suite, focused browser tests, live server integration and purchase E2E,
+lint, and build passed.
+
+## 2026-09-27 — Independent bottom-menu asset redesign
+
+Replaced the mismatched purple/gold full-menu strip with five separately
+generated transparent chest, stall, bolt, miner-cat and map icons. Retained the
+raw generations, art brief, prompt manifest, normalizer and contact sheet under
+`art-source/navigation-icons-v2/`; shipped five normalized 96×96 RGBA files
+under `public/assets/ui/navigation/icons/`. The scene loads each texture
+individually. `BottomNavigationView` draws a HUD-navy panel, gold divider,
+slate-steel tiles, labels and pressed states while retaining five independent
+64×64 hit targets. Removed the two unused legacy runtime menu images; their
+historical source remains recoverable in `art-source/` and Git. The asset test,
+764-unit suite, seven focused browser tests, lint, build and native-size visual
+review pass. No gameplay, save, network or database schema changed.
+
+## 2026-09-26 — Mine miner delivery cadence
+
+Addressed browser feedback that mine miners were walking on staggered vertical
+lanes and that a floor's visible amount increased only after a whole multi-miner
+cycle. The core now owns a shared level-derived worker count and credits one
+equal `cycleYield / workerCount` chunk to the floor queue whenever a miner
+reaches the unloading cat. The full cycle yield remains unchanged. Mine-floor
+assistants use the same phase milestones and all miners share one horizontal
+baseline. Added extraction, animation, and browser read-back regressions; no
+save schema or elevator/warehouse contract changed.
+
+## 2026-09-21 — Reference-driven bottom menu artwork
+
+After visual review supplied a complete target composition, regenerated the
+bottom navigation as one transparent full-menu strip: a continuous navy/gold
+shell, five rounded tiles, and a raised active Boost tile in the centre. The
+runtime now loads the processed artwork as one image while code retains the
+five independent hit regions and a transient press tint. The earlier icon-only
+sheet remains retained as superseded art provenance.
+
+The follow-up browser review found that the raw transparent canvas made the
+menu overflow its 58-pixel region and reduced the visible icon scale. The
+runtime asset was alpha-cropped from 2,172×724 to 2,167×455, and the next
+feedback pass showed that fitting it to 356×54 distorted the source vertically.
+The navigation region is now 360×80 and the artwork is fitted uniformly at
+roughly 356×75 with a 2-pixel safe margin. A `NAVIGATION_BACKGROUND` underlay
+now fills the transparent margins so the mine background cannot show through as
+a black seam between the mine and menu. In-app browser inspection confirms the
+complete shell and centre ornament remain visible with balanced icon
+proportions.
+
+The browser comparison then found the menu softer than the source generation
+because the large source was being filtered directly into the small logical
+display box. The runtime asset is now a high-quality 712×150 resample of the
+alpha-cropped source and draws at an exact 0.5 scale, improving edge/detail
+retention without changing logical coordinates, hit regions, or save/gameplay
+behavior.
+
+## 2026-09-21 — Bottom-navigation sprite sheet integration
+
+Regenerated the five bottom-menu icons from the approved celestial cat-mining
+prompt as one transparent 5×1 sheet. The processor produced five 256×256
+frames, individual crops, and deterministic QC metadata; the runtime now loads
+the sheet and maps frames 0–4 to Rewards, Marketplace, Boost, Collection, and
+Map. The existing hit regions, press animation, callbacks, and future Boost/Map
+behavior remain unchanged. The asset contract test, lint, and production build
+pass.
+
+## 2026-09-21 — Listed Marketplace CTA feedback
+
+Reviewed the follow-up browser comment showing a `Listed` catalog item with the
+generic `Confirm purchase` / `Cancel` pair. The confirmation row now uses
+listing-specific `Buy listed cat` and `Back to cats` actions while preserving
+the explicit confirmation step and the same server-authoritative purchase
+callback. The focused Marketplace trading browser slice passes 6/6, with lint,
+build, and diff-whitespace checks clean. No save, network, database, or
+gameplay contract changed.
+
+## 2026-09-21 — Marketplace and Collection feedback polish
+
+Reviewed two browser comments from the live in-app browser. The Marketplace
+Buy confirmation now lays out the explanatory/wallet copy full-width and keeps
+`Confirm purchase` plus `Cancel` in one responsive row. Collection now uses
+state-aware summary copy and an explicit retryable unavailable message, so a
+failed hydration cannot be mistaken for a genuine empty collection. Added
+browser regressions for CTA geometry and unavailable-versus-empty semantics.
+`npm run lint`, `npm run build`, and the focused four-test Playwright slice pass.
+
+## 2026-09-20 — Cat collection Phase 9 and full feature acceptance
+
+Closed the conflict/offline/recovery/release audit for the cat collection and
+role-assignment feature. Full client unit, lint, build, secret, browser, and
+production smoke gates passed; server verification passed migrations, core
+portability, 195 Deno unit tests, 21 integration files / 132 tests, and 11
+server browser tests. Manual browser review confirmed the ready empty Collection
+state, role-specific assignment empty state, and no cross-account or renderer
+state leakage in the tested path. The review found and fixed a sync diagnostic
+Dismiss click-through into the HUD Settings control by capturing mouse/pointer
+input before Phaser's window-level handlers; a production regression assertion
+now protects the fix.
+
+## 2026-09-19 — Cat collection Phase 5
+
+Implemented the responsive owned-cat Collection list/detail surface. The stable
+Managers navigation entry now opens a read-only Collection modal without
+changing the existing five-button shell or the preview-only Marketplace. The
+screen consumes the V3 validated roster, renders portraits, role/rarity/level,
+lifecycle and assignment state, supports search/filter/sort, shows attributes
+and role effects in detail, and fails back to the safe portrait. Browser tests
+pass at 390×844 and 320×568 with seeded owned instances; manual browser review
+confirmed focus, empty state, and modal layout. The complete Chromium suite
+passes 58/58 and the unit suite passes 734 tests. Replacement actions remain
+in Phase 6.
+
+## 2026-09-20 — Cat collection Phase 6
+
+Implemented the assigned-cat panel and authoritative replacement flow. Mine
+role sprites open slot-specific current-cat detail; the replacement picker
+filters to the exact role and Idle candidates, compares role score and the
+affected production metric, and blocks duplicate confirmation while waiting
+for the server. The client sends only the cat instance, slot, and expected
+assignment revision, then replaces local roster state only from a valid
+authoritative projection. Offline rejection and server-backed success flows
+pass at 390×844 and 320×568; the endpoint was corrected to avoid appending the
+assignment route twice.
+
+## 2026-09-20 — Cat collection Phases 7–8
+
+Implemented runtime role-slot binding and deterministic production effects.
+Each supported slot resolves through the authoritative cat instance and stable
+`assetId`; approved local sheets render directly, missing sheets retain the
+owned identity while using a playable role placeholder, and canvas diagnostics
+publish fallback/scale/slot data. The pure core derives miner, elevator, and
+warehouse modifiers from the same role-effect formula used by the comparison
+UI, applies them at fixed simulation boundaries, and carries them through rate
+snapshots, offline persistence, and the server progress bound. Full unit,
+server unit/integration, focused runtime/assignment browser, lint, and build
+gates passed.
+
+## 2026-09-19 — Cat collection Phases 0–4
+
+Implemented the first four phases of the cat collection and role-assignment
+plan. The engine-independent cat domain now owns role scores, effects, slot
+eligibility, lifecycle validation, comparison, and atomic replacement. Save
+schema V3 carries only data-only cat projections and migrates V1/V2 saves to an
+empty collection. The Supabase migration and `cat-collection` Edge Function
+make purchase and assignment server-authoritative with idempotency, expected
+revisions, wallet deduction, and direct-write refusal across the eleven-table
+RLS matrix. The client preserves cat data through active-save settlement and
+hydrates a validated server projection after the first playable frame. Focused
+and full unit/server integration gates passed; collection UI and runtime
+effects remain in the next phases.
+
+## 2026-09-19 — Marketplace asset Phase 7 runtime integration
+
+After explicit approval, integrated the approved runtime sheets for Mofy
+(`elevator-cargo-cat:SSR:mofy:idle`), Baron
+(`warehouse-manager:SR:baron:idle`), and Forge (`miner:SSR:forge:idle`) into
+the elevator, warehouse, and mine-floor presentation slots. Runtime copies are
+stable local 512×256 sheets with 8 frames at 110 ms; missing copies fall back
+to the bundled 4-frame placeholders. The unloader remains future-only and
+presentation-only runtime identity never enters saves, simulation formulas, or
+ownership state. The runtime contract/fallback tests, release audit, 720 unit
+tests, lint, build, focused mobile browser test, and full 56-test Playwright
+suite passed. Native 390×844 review confirmed stable anchors and scale.
+
+## 2026-09-19 — Marketplace asset Phase 8 release audit
+
+Audited the catalog/UI release scope: all nine public portraits resolve through
+unique registry IDs, manifest entries, source files, and provenance records;
+the 16-symbol icon family is complete; the three approved runtime IDs resolve to
+their local sheets; and the remaining six variants stay catalog-only. Added a
+release-audit test covering those links, selected runtime paths, and the
+asset-only boundary. Full Playwright E2E passes 56/56, including runtime role
+identity and dimensions.
+
+## 2026-09-19 — Marketplace asset Phase 6 state presentation
+
+Added the UI-only lifecycle state contract for Idle, Assigned, Listed, Rented,
+Expired, and Locked. Each state maps to an approved icon, copy, and explicit
+assign/list/rent permissions; conflicting actions are suppressed and Expired
+returns to the idle action surface. Marketplace Listed cards/details consume
+the contract without writing ownership, save, or transaction state. State
+tests, 715 unit tests, lint, build, and six browser tests passed. Runtime
+integration remains an optional separately approved phase.
+
+## 2026-09-19 — Marketplace asset Phase 5 registry and UI application
+
+Migrated the Marketplace preview from name-based image paths to the local
+allowlisted asset registry. All nine canonical portraits now render with role,
+rarity, four-attribute, role-fit, skill, and Listed-state presentation using
+the Phase 2 icon family. Added a safe placeholder fallback for missing or
+failed portraits. Preview fixtures remain non-authoritative, and premium
+animation sheets stay source-only so the modal does not decode them at open.
+Marketplace, catalog, icon, detail, responsive, and failed-image fallback
+browser tests pass; no ownership or transaction behavior changed.
+
+## 2026-09-19 — Marketplace asset Phase 4 premium animation families
+
+Finalized exact 4×2/8-frame premium families at 128×128 per frame and 110 ms
+for all approved v1 premium rows: Elevator Mofy/Win/Elon, Warehouse
+Baron/Cipher/Gauge/Nautilus, and Miner Forge. Mofy's authored family was
+preserved; the other seven were deterministic ping-pong reconstructions from
+their QC-passed 4-frame candidates. Strict processor metadata and the 512×256
+RGBA asset report show zero empty, edge-touch, or clamped frames. Mica remains
+the N 2×2/4 baseline and Unloader remains future-only. No runtime or
+transaction behavior changed.
+
+## 2026-09-19 — Marketplace asset Phase 3 listing catalog
+
+Expanded the preview-only Marketplace catalog to nine stable allowlisted
+portraits: Elevator Mofy/Elon/Win, Warehouse Baron/Cipher/Gauge/Nautilus, and
+the new dedicated Miner characters Mica (N) and Forge (SSR). Mica and Forge
+were generated as original 2×2/4-frame sheets, processed to 128×128 RGBA
+frames, and passed strict raster QC with zero empty, edge-touch, or clamped
+frames. Added registry IDs, public portraits, manifest metadata, context
+previews, prompts, and provenance. The nine-portrait asset report, focused
+tests, 710-test unit suite, lint, build, and five browser smoke tests passed.
+Premium 4×2/8-frame animation families remain Phase 4 work; no runtime or
+transaction behavior changed.
+
 ## 2026-09-19 — Server milestone Steps 33–37 implementation close
 
 Closed the operations phase after the account deletion, backup/restore,
@@ -3140,3 +3368,193 @@ Final validation for the miner/elevator feedback passes: lint, strict build, 335
 - Step 32 visual review passed at an exact 360×640 viewport and a reduced 320×568 phone viewport with all required objects distinguishable and no browser warnings or errors. Strict sprite QC reports 128×128 RGBA output with usable alpha; two visually complete source-cell contacts were explicitly accepted while output-edge contact and paste clamping remain absent.
 - Step 32 automated evidence: 278 unit tests and 27 Chromium E2E tests pass, including provenance/dimension checks for every runtime asset and real framebuffer probes updated to prove generated gold and backlog silhouettes render under both the WebGL and the Canvas renderer. Lint, strict production build, and asset alpha/size reporting pass.
 - A code review of the Step 32 change corrected six defects before the gate: the backlog cue was a WebGL-only fill tint and vanished on a Canvas fallback, so it is now a boot-generated recoloured texture; `describeRenderedState` had started echoing cached snapshot fields, so pile size and backlog state are measured back off the drawn sprite again; the stacked purchase control overlapped its icon with its action label; `PurchaseControlView.#render` called the unguarded `setTexture` every frame; a second finger stole a live scroll gesture and froze the mine mid-drag; and foreground progress was persisted only by a purchase or a lifecycle flush, so a 30-second save heartbeat now covers a webview killed without `pagehide`.
+
+The Marketplace purchase handoff is complete on 2026-09-20. The seeded catalog's
+Buy action now confirms and calls the authenticated server purchase endpoint;
+the server returns the caller-scoped roster, post-purchase wallet gold, and
+save revision; the client reconciles those values before its next cloud CAS;
+and the success path exposes Collection. Rent, Sell, and My listings remain
+explicitly preview-only. The live browser journey bought Forge and Mica,
+assigned Forge to the Miner slot, changed the slot to Mica, and proved the
+runtime binding persisted after reload. No renderer asset or animation state
+was added to authoritative save data.
+
+The Marketplace trading implementation is complete on 2026-09-20. Active
+server-authoritative listings now support fixed-price Buy, hourly Rent, owner
+Sell, and My listings history. Listing creation, cancellation, purchase, rent
+settlement, expiry reconciliation, wallet deductions, ownership/renter
+projection, exact-role assignment, and idempotent mutation replay are covered
+by the Supabase RPC layer and the authenticated `cat-collection` endpoint.
+The client adapter, live Marketplace tabs, listing detail/confirmation flows,
+and post-mutation save reconciliation are wired through the game shell. The
+live integration and browser gates prove sale transfer, rental use and expiry,
+responsive listing controls, and no remaining active preview-only trading
+boundary.
+
+The LAN OAuth/account feedback fix is complete on 2026-09-25. The browser
+return path now parses Supabase query/hash errors before removing them, turns
+`identity_already_exists` into an automatic handoff to the normal Google login
+path, with informational guidance only when that handoff cannot start, and
+exposes a
+retry state for generic account inspection failures. `AccountSettingsModal`
+repaints after asynchronous identity resolution so it cannot remain on
+`Loading`; `supabase/config.toml` uses the active `192.168.1.203:5173` as the
+local Auth fallback and allow-lists it plus `192.168.*.*:5173` for Vite LAN
+review while `window.location.origin` remains the exact OAuth return target;
+the browser maps the local loopback Supabase API URL to the same LAN host when
+opened from another device; the shared Edge Function CORS policy accepts only
+the same private-LAN origin on port 5173. Focused auth/server-stack tests,
+shared HTTP tests, lint, and build pass. No save, economy, renderer, or
+database schema changed.
+
+The 2026-09-27 surface-hauler productivity feedback is complete. The raw
+progression remains `1 + floor(min(warehouseLevel, 100) / 10)`, the renderer
+caps the visible crew at five, and overflow becomes the shared core multiplier
+`rawCount / visibleCount`. `advanceSimulation` applies that multiplier at the
+existing `warehouse.inputQueue` handoff, while `calculateMineProductionRates`
+exposes the same value to HUD, offline income, and anti-cheat bounds. No extra
+queue or save-schema field was introduced. Full unit coverage is 761/761,
+production-stage browser coverage is 13/13, lint and build pass, and
+`git diff --check` is clean.
+
+The 2026-09-27 per-cart gold-pour feedback is complete. The previous single
+lead-only pour sprite is replaced by a pool of one matching effect per visible
+cart; each effect follows its cart's loading pose, frame, and position beneath
+the chute, while an empty `warehouse.inputQueue` hides all effects. Unit
+coverage is 762/762 and production-stage browser coverage is 13/13; lint,
+build, and whitespace checks pass. The change remains presentation-only and
+does not alter save or economy state.
+
+The follow-up fixed-chute-origin feedback is complete. Per-cart pour events
+remain independent, but every effect is now pinned to the single chute-mouth
+coordinate rather than following each moving cart horizontally. The browser
+regression pins both effect coordinates while observing all five route events;
+authoritative state, economy, and save schema remain unchanged.
+
+The 2026-09-27 mine-floor workforce feedback is complete. Mine levels continue
+the raw one-worker-per-50-level progression, while the renderer and delivery
+cadence cap at five visible miners. Raw overflow now becomes the shared
+`rawCount / visibleCount` productivity multiplier, so level 250 produces at
+`1.2x` with five cats rather than adding a sixth sprite. Foreground extraction,
+production-rate estimates, and progress-bound in-flight allowances all consume
+the same helper; no save schema or additional queue was added.
+
+The 2026-09-28 Forge mining-action feedback is complete. Forge now follows a
+progress-bound unloader→gold pile→unloader lap with a stationary four-pose
+pickaxe strike and a separate four-frame gold-impact effect at the pile. All
+visible Forge miners share this behavior with phase offsets matched to the
+core's delivery milestones. New action/FX sources and provenance are retained
+under `art-source/`; no production or save fields changed. Strict raster QC,
+766 unit tests, lint, build, and eight focused browser tests pass.
+
+The 2026-09-28 same-role Mica animation feedback is complete. An assigned
+Mica now resolves his approved idle/travel sheet and newly generated
+four-frame pickaxe action rather than the generic miner fallback. Forge and
+Mica retain separate character art while sharing the impact effect and core
+delivery cadence. The catalog registry and manifest mark Mica runtime
+integrated; no economy or save schema changed. Strict asset QC, 768 unit
+tests, lint, build, and twelve focused browser tests pass.
+
+The 2026-09-28 Mica scale follow-up is complete. His runtime-only idle sheet
+was reprocessed from approved raw art to match the upright strike scale and
+foot line, without changing the catalog portrait or adjusting Phaser sprite
+size per action. A pixel-geometry browser regression, assigned-Mica attack
+and travel screenshots, six focused browser tests, 768 unit tests, lint and
+build pass. Core and save state are unchanged.
+
+The 2026-09-28 Mica direction follow-up is complete. A dedicated four-frame
+right-facing walk sheet replaces the former front-facing travel sheet, so
+the existing renderer flip visibly faces left on return. Mining still uses
+Mica's own right-facing strike sheet. Strict raster QC, outbound/mining/return
+browser screenshots, seven focused browser tests, 47 focused unit tests, lint
+and build pass; the full 768-test unit suite also passes. Catalog identity,
+economy and save state remain unchanged.
+# 2026-09-28 — Free Elevator Pip / purchased Mofy
+
+Created original four-frame Pip operator art with strict raster QC and a separate
+portrait; integrated Pip as the unassigned `elevator:main` presentation in both
+surface and moving cabin. Kept Mofy's existing Marketplace blueprint and sheet
+for owned-instance assignment only. Updated assignment copy, manifest,
+provenance, runtime tests, and product/architecture contracts. No owned Pip,
+gameplay bonus, save field, or database migration was added.
+
+# 2026-09-29 — Mine Overdrive
+
+Implemented the free x4 Boost across mining, Elevator, and Warehouse for five
+real-time minutes, with one activation per eight hours. The active interval is
+split exactly in foreground catch-up and offline grants, with no direct wallet
+multiplication. Added accessible modal/HUD countdown and a local-only cache.
+Configured play uses an authenticated Boost Edge Function, atomic server-clock
+RPC, one-row-per-user table, save-download Boost projection, and a matching
+server-side progress allowance. The V3 save document and IndexedDB schema did
+not change. Scoped client/server tests and live activation/reload/RLS gates
+passed; repository-wide legacy E2E/production failures remain open separately.
+
+## 2026-09-30 — Individual Haulers, Tobi SR and Rivet SSR
+
+Completed the approved surface transport expansion: free wooden handcart,
+Tobi with an electric wheeled cart, Rivet with wheel-free maglev. Generated
+separate walk sheets, cart-empty/cart-filled PNGs and portraits, retained raw
+sources and strict QC metadata, and integrated Marketplace and Collection.
+Four exact roles and eleven purchasable blueprints are now recognized across
+client validation, server projection and DB constraints. Stable Hauler slots
+use revision-checked assignment, reject instance reuse, and support explicit
+return-to-default without deleting ownership. The panel's active Cart buttons
+avoid selecting a particular overlapping moving cat. Production averages only
+active carts' bonuses and composes with existing overflow/manager effects once.
+Forward-only local migration preserves current saves and the V3/IndexedDB-v1
+format. Full unit/Deno and scoped client/server gates passed; dev server was
+restarted at localhost:5173. No commit or production deploy performed.
+
+### Surface cart cargo lifecycle feedback (2026-09-30)
+
+Replaced live tower-queue-driven full/empty rendering with independent
+transient trip memory. A pickup under the chute persists through travel until
+the warehouse handoff; empty trips do not fill from later tower refills.
+History resets for inactive/rephased/new trips and scene restart, while normal
+cosmetic-clock wrap preserves an ongoing assistant trip. Cart spacing fades
+to zero at both endpoints. No production, currency, persistence or schema
+change; default/Tobi/Rivet screenshots verified before and after handoff.
+
+### Boru excavator Miner (2026-09-30)
+
+User approved the calico/navy-brass concept, then authorized implementation.
+Generated four separate eight-frame action sheets, normalized one scale and
+track anchor, registered portrait/runtime IDs and implemented core-progress
+driven empty travel -> scoop/lift -> loaded return -> deposit. Boru costs
+42,000 gold with stats 96/68/95/90 under the existing Miner bonus formula.
+Existing per-instance/per-floor assignment applies; free Mica and workforce
+rules are unchanged. Catalog-only local migration applied without reset.
+No production deployment, user-account purchase, save reset or commit.
+
+### Boru portrait and scoop feedback (2026-09-30)
+
+Enlarged a separate catalog portrait from the first aligned empty-travel frame
+to 116x92 visible pixels in its 128px canvas. Marketplace and Miner assignment
+both use it; four runtime animation sheets and in-floor machine dimensions
+remain unchanged. The scoop endpoint moved 16 logical pixels into the gold
+pile so the foreground pile occludes the lowered bucket. No economy, save or
+schema changes; not committed or deployed.
+
+### Mine-floor gold pile grounding (2026-09-30)
+
+Lowered the shared gold-pile layout anchor 7 logical pixels. This compensates
+for transparent padding at the bottom of the existing art, placing visible ore
+on the floor line across all unlocked mine floors. Mining effects follow the
+same anchor; miner and excavator routes, production and saves are unchanged.
+
+## 2026-10-05 — Multi-mine Map and resource-specific mine families
+
+Completed the six-site portfolio for Gold, Amethyst, Ruby, Sapphire, Emerald
+and Diamond. The player owns one shared wallet, chooses one foreground mine,
+buys later sites through a fixed progression and receives each inactive mine's
+bounded reward only when entering it. Every site has fifteen floors organized
+into upper, middle and deep art bands, with matching walls, ore, structures,
+shaft, surface landmarks, piles, cargo and effects. Map, Collection,
+Marketplace, Boost and cat assignment all follow the selected mine.
+
+V1–V3 saves migrate to V4. Configured accounts keep offline mine entry
+playable through a durable command journal and settle the original server-time
+boundary once after reconnect, including merge with newer local progress.
+Aggregate client, production and live Supabase verification passed, and the
+asset manifest plus native mobile captures record the visual review.

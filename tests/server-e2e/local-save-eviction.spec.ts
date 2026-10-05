@@ -2,10 +2,18 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
-import { LIFECYCLE_SAVE_JOURNAL_KEY } from '../../src/platform/web';
+import {
+  PORTFOLIO_SAVE_SCHEMA_VERSION,
+  createSaveDocument,
+  type SaveDocumentV2,
+} from '../../src/persistence';
+import {
+  LIFECYCLE_SAVE_JOURNAL_KEY,
+  PORTFOLIO_COMMAND_JOURNAL_PREFIX,
+} from '../../src/platform/web';
 import { readCloudSave } from './cloudSaveFixture';
 import { tolerateNavigation } from './navigationFixture';
+import { finishPortfolioBoot } from './portfolioBootFixture';
 
 /**
  * Server-milestone Step 21: survive local storage eviction.
@@ -104,6 +112,11 @@ async function clearLocalSaveOnceOnNextLoad(page: Page): Promise<void> {
     await route.fulfill({
       body: `
         localStorage.removeItem(${JSON.stringify(LIFECYCLE_SAVE_JOURNAL_KEY)});
+        for (const key of Object.keys(localStorage)) {
+          if (key.startsWith(${JSON.stringify(PORTFOLIO_COMMAND_JOURNAL_PREFIX)})) {
+            localStorage.removeItem(key);
+          }
+        }
         await new Promise((resolve) => {
           const request = indexedDB.deleteDatabase('cat-mine-idle');
           request.onsuccess = () => resolve();
@@ -135,6 +148,11 @@ async function seedCorruptSaveOnceOnNextLoad(page: Page): Promise<void> {
     await route.fulfill({
       body: `
         localStorage.removeItem(${JSON.stringify(LIFECYCLE_SAVE_JOURNAL_KEY)});
+        for (const key of Object.keys(localStorage)) {
+          if (key.startsWith(${JSON.stringify(PORTFOLIO_COMMAND_JOURNAL_PREFIX)})) {
+            localStorage.removeItem(key);
+          }
+        }
         await new Promise((resolve) => {
           const request = indexedDB.deleteDatabase('cat-mine-idle');
           request.onsuccess = () => resolve();
@@ -205,13 +223,20 @@ async function readStoredLevel(page: Page): Promise<number | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV2 }>((resolve, reject) => {
+    const record = await new Promise<{ document?: SaveDocumentV2 | {
+      schemaVersion: 4;
+      mines: { gold?: { state: { elevator: { level: number } } } };
+    } }>((resolve, reject) => {
       getRequest.onerror = () => reject(getRequest.error);
       getRequest.onsuccess = () => resolve(getRequest.result);
     });
     database.close();
 
-    return record?.document?.state.elevator.level ?? null;
+    const document = record?.document;
+    if (document === undefined) return null;
+    return document.schemaVersion === 4
+      ? document.mines.gold?.state.elevator.level ?? null
+      : document.state.elevator.level;
   });
 }
 
@@ -219,7 +244,7 @@ test('restores a signed-in player from the cloud after the local save is evicted
   await seedVersionOneIndexedDb(page, preMilestoneVersionOneDocument());
   await page.goto('/');
 
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await waitForGuestSessionStatus(page);
 
   const accessToken = await readAccessTokenFromStorage(page);
@@ -228,10 +253,12 @@ test('restores a signed-in player from the cloud after the local save is evicted
       message: 'the seeded save is adopted as the account cloud save',
       timeout: 20_000,
     })
-    .toBe(2);
+    .toBe(PORTFOLIO_SAVE_SCHEMA_VERSION);
 
   const adopted = await readCloudSave(SAVE_URL, accessToken);
-  const restoredLevel = adopted!.document.state.elevator.level;
+  const restoredLevel = adopted!.document.schemaVersion === PORTFOLIO_SAVE_SCHEMA_VERSION
+    ? adopted!.document.mines.gold!.state.elevator.level
+    : adopted!.document.state.elevator.level;
   expect(restoredLevel).toBeGreaterThan(1);
 
   // Evict only the local save, keep the session, and reload.
@@ -257,15 +284,20 @@ test('tells an unlinked guest with no cloud copy that the local save is gone', a
       await route.fulfill({ status: 204, body: '' });
       return;
     }
+    const body = JSON.parse(route.request().postData() ?? '{}') as { document?: unknown };
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ revision: 1, receivedAt: new Date().toISOString() }),
+      body: JSON.stringify({
+        revision: 1,
+        receivedAt: new Date().toISOString(),
+        document: body.document,
+      }),
     });
   });
 
   await page.goto('/');
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await waitForGuestSessionStatus(page);
 
   // Evict the local save, keep the session, and reload. The first boot minted
@@ -276,8 +308,12 @@ test('tells an unlinked guest with no cloud copy that the local save is gone', a
   const diagnostic = await waitForGuestSessionStatus(page);
   expect(diagnostic.isNewSession).toBe(false);
 
+  await expect(page.locator('#app')).toHaveAttribute(
+    'data-portfolio-boot',
+    /"kind":"deferred","reason":"local-save-missing"/,
+  );
   await expect(page.getByTestId('save-diagnostic')).toHaveAttribute('data-code', 'local-save-missing');
-  await expect(page.getByTestId('save-diagnostic-message')).toContainText('no cloud save');
+  await expect(page.getByTestId('save-diagnostic-message')).toContainText('no local or cloud save');
 });
 
 test('keeps the accurate corrupt-save warning instead of a false "not found"', async ({ page }) => {
@@ -286,15 +322,20 @@ test('keeps the accurate corrupt-save warning instead of a false "not found"', a
       await route.fulfill({ status: 204, body: '' });
       return;
     }
+    const body = JSON.parse(route.request().postData() ?? '{}') as { document?: unknown };
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ revision: 1, receivedAt: new Date().toISOString() }),
+      body: JSON.stringify({
+        revision: 1,
+        receivedAt: new Date().toISOString(),
+        document: body.document,
+      }),
     });
   });
 
   await page.goto('/');
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await waitForGuestSessionStatus(page);
 
   // Replace the local save with an unreadable one, keep the session, reload.
@@ -306,10 +347,9 @@ test('keeps the accurate corrupt-save warning instead of a false "not found"', a
 
   // Wait until both the local load and the reconcile have finished deciding,
   // then assert the accurate warning survived and the false notice never fired.
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
   await expect
-    .poll(async () => page.locator('#app').getAttribute('data-cloud-save-reconcile'))
-    .not.toBeNull();
+    .poll(async () => page.locator('#app').getAttribute('data-portfolio-boot'))
+    .toContain('"kind":"deferred"');
 
   await expect(page.getByTestId('save-diagnostic')).toHaveAttribute('data-code', 'corrupt-save');
   await expect(page.locator('#app')).not.toHaveAttribute('data-local-save-notice', /.+/);

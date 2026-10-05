@@ -4,6 +4,13 @@ import {
   PLACEHOLDER_ANIMATION_TEXTURES,
   PLACEHOLDER_TEXTURES,
 } from '../assets/placeholderAssets';
+import type { MarketplaceRuntimeAnimationAsset } from '../assets/marketplaceRuntimeAssets';
+import {
+  MINER_MINING_IMPACT_ASSET,
+  BORU_ACTION_ASSETS,
+  resolveMinerMiningAttackAsset,
+} from '../assets/marketplaceRuntimeAssets';
+import { calculateExcavatorPose } from '../view-model/excavatorAnimation';
 import {
   toFillColor,
   calculateMineFloorPanelLayout,
@@ -27,10 +34,11 @@ import {
   calculateMineFloorMinerAssistantPose,
   calculateMineFloorMinerCount,
   interpolateNormalizedProgressForward,
-  calculateMinerPatrolPose,
+  calculateMinerWorkPose,
   calculateGeneratedAssetFrame,
   MINE_FLOOR_MINER_ASSISTANT_COUNT,
   MINER_PATROL_PERIOD_MS,
+  type MinerWorkPose,
   type MineFloorViewModel,
   type PurchaseFeedbackViewModel,
 } from '../view-model';
@@ -44,12 +52,24 @@ import { setTextColor } from './setTextColor';
 export interface RenderedMineFloorMinerState {
   readonly x: number;
   readonly y: number;
+  readonly width: number;
+  readonly height: number;
   readonly facesLeft: boolean;
   readonly assetFrame: number;
+  readonly assetId: string | null;
+  readonly textureKey: string;
 }
 
 /** What the view actually put on screen, read back from its own objects. */
 export interface RenderedFloorState {
+  readonly backgroundTextureKey: string;
+  readonly orePileTextureKey: string;
+  readonly cartTextureKey: string;
+  readonly miningImpactTextureKey: string;
+  readonly excavatorCargoTextureKey: string;
+  readonly excavatorCargoVisible: boolean;
+  readonly excavatorPourTextureKey: string;
+  readonly excavatorPourVisible: boolean;
   readonly isVisible: boolean;
   readonly floorLabel: string;
   readonly badgeLabel: string;
@@ -61,12 +81,12 @@ export interface RenderedFloorState {
   readonly materialQueueLabel: string;
   /** Queue fullness from the snapshot; the decorative pile no longer encodes it. */
   readonly materialPileSteps: number;
-  /** Fixed environmental gold pile shown on every unlocked floor. */
+  /** Fixed environmental resource pile shown on every unlocked floor. */
   readonly showsGoldPile: boolean;
   readonly goldPileDisplaySize: number;
   /** `Backed up` while a whole elevator trip of material is waiting. */
   readonly backlogLabel: string | null;
-  /** True when one elevator load is waiting; the approved pile stays gold. */
+  /** True when one elevator load is waiting; pile art remains site-specific. */
   readonly isPileBackedUp: boolean;
   readonly showsFloorTitle: boolean;
   readonly showsFloorNumber: boolean;
@@ -82,12 +102,16 @@ export interface RenderedFloorState {
   readonly minerSwingOffsetPx: number;
   /** Current frame from the generated Step 32A digging sheet. */
   readonly minerAssetFrame: number;
+  /** Stable Marketplace identity when a role asset is runtime-integrated. */
+  readonly minerAssetId: string | null;
+  readonly minerTextureKey: string;
   readonly minerFacesLeft: boolean;
   readonly minerPatrolX: number;
   /** Visible base miner plus every level-derived assistant on this floor. */
   readonly activeMinerCount: number;
-  /** Measured poses prove the visible miners are independently positioned. */
+  /** Measured poses expose every visible miner on the shared patrol line. */
   readonly minerCrew: readonly RenderedMineFloorMinerState[];
+  readonly miningImpactVisible: boolean;
   /** Locked floors have no shaft to upgrade, so they show no control. */
   readonly showsUpgradeControl: boolean;
   /** The control's own read-back: price, enabled state, and press feedback. */
@@ -121,6 +145,16 @@ export interface MineFloorViewOptions {
   readonly onUpgrade: () => void;
   /** Called when the unlock control on a locked floor is pressed. */
   readonly onUnlock: () => void;
+  /** Opens the authoritative assigned-cat panel for this miner slot. */
+  readonly onCatClick?: () => void;
+  /** Runtime-resolved Marketplace role animation, including its fallback. */
+  readonly minerAnimation: MarketplaceRuntimeAnimationAsset;
+  /** Site/depth-specific environmental art; Gold Mine remains the default. */
+  readonly floorBackgroundTextureKey?: string;
+  readonly orePileTextureKey?: string;
+  readonly cartFilledTextureKey?: string;
+  readonly impactTextureKey?: string;
+  readonly pourTextureKey?: string;
   /** Floors below floor one crop the ceiling seam to half its art thickness. */
   readonly hasThinSoilLayer?: boolean;
 }
@@ -150,6 +184,9 @@ export class MineFloorView {
   readonly #statusBackground: Phaser.GameObjects.Rectangle;
   readonly #miner: Phaser.GameObjects.Sprite;
   readonly #minerAssistants: readonly Phaser.GameObjects.Sprite[];
+  readonly #miningImpacts: readonly Phaser.GameObjects.Sprite[];
+  readonly #excavatorCargo: readonly Phaser.GameObjects.Image[];
+  readonly #excavatorPours: readonly Phaser.GameObjects.Sprite[];
   readonly #unloader: Phaser.GameObjects.Sprite;
   readonly #goldContainer: Phaser.GameObjects.Image;
   readonly #goldContainerSize: { readonly width: number; readonly height: number };
@@ -169,11 +206,20 @@ export class MineFloorView {
   readonly #minerStartX: number;
   readonly #minerEndX: number;
   readonly #minerRestY: number;
+  #minerAssetId: string | null;
+  #minerTextureKey: string;
+  #minerDisplaySize: number;
+  #minerFrameCount: number;
+  #minerFrameDurationMs: number;
+  #miningAttackTextureKey: string | null = null;
   #extractionProgress = 0;
   #extractionProgressFrom = 0;
   #extractionTransitionStartMs = 0;
   #activeMinerCount = 0;
   #materialPileSteps = 0;
+  #cartFilledTextureKey: string;
+  #orePileTextureKey: string;
+  #pourTextureKey: string;
   #isPileBackedUp = false;
   readonly #hasThinSoilLayer: boolean;
 
@@ -188,6 +234,18 @@ export class MineFloorView {
     this.#minerStartX = panel.minerPatrol.x + 8;
     this.#minerEndX = panel.minerPatrol.x + panel.minerPatrol.width - 8;
     this.#minerRestY = panel.minerPatrol.y + panel.minerPatrol.height / 2;
+    this.#minerAssetId = options.minerAnimation.assetId;
+    this.#minerTextureKey = options.minerAnimation.textureKey;
+    this.#minerDisplaySize = options.minerAnimation.displaySize;
+    this.#minerFrameCount = options.minerAnimation.frameCount;
+    this.#minerFrameDurationMs = options.minerAnimation.frameDurationMs;
+    this.#cartFilledTextureKey = options.cartFilledTextureKey ?? PLACEHOLDER_TEXTURES.goldContainerFilled;
+    this.#orePileTextureKey = options.orePileTextureKey ?? PLACEHOLDER_TEXTURES.goldPile;
+    this.#pourTextureKey = options.pourTextureKey ?? PLACEHOLDER_ANIMATION_TEXTURES.surfaceGoldPour;
+    this.#miningAttackTextureKey = this.#resolveMiningAttackTextureKey(
+      scene,
+      options.minerAnimation,
+    );
     this.#goldContainerSize = {
       width: panel.goldContainer.width,
       height: panel.goldContainer.height,
@@ -197,7 +255,9 @@ export class MineFloorView {
     this.#background = scene.add
       .rectangle(0, 0, region.width, region.height, COLOR_PANEL)
       .setOrigin(0, 0);
-    const backgroundTexture = scene.textures.get(PLACEHOLDER_TEXTURES.floorBackground);
+    const floorBackgroundTextureKey =
+      options.floorBackgroundTextureKey ?? PLACEHOLDER_TEXTURES.floorBackground;
+    const backgroundTexture = scene.textures.get(floorBackgroundTextureKey);
     const thinSoilFrame = 'thin-soil';
 
     if (options.hasThinSoilLayer && !backgroundTexture.has(thinSoilFrame)) {
@@ -208,7 +268,7 @@ export class MineFloorView {
       .image(
         0,
         0,
-        PLACEHOLDER_TEXTURES.floorBackground,
+        floorBackgroundTextureKey,
         options.hasThinSoilLayer ? thinSoilFrame : undefined,
       )
       .setOrigin(0, 0)
@@ -272,27 +332,31 @@ export class MineFloorView {
       .sprite(
         this.#minerStartX,
         this.#minerRestY,
-        PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+        this.#minerTextureKey,
         0,
       )
       .setDisplaySize(
-        MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
-        MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
-      );
+        this.#minerDisplaySize,
+        this.#minerDisplaySize,
+      )
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => options.onCatClick?.());
     this.#minerAssistants = Array.from(
       { length: MINE_FLOOR_MINER_ASSISTANT_COUNT },
       () => scene.add
         .sprite(
           this.#minerStartX,
           this.#minerRestY,
-          PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+          this.#minerTextureKey,
           0,
         )
         .setDisplaySize(
-          MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
-          MINE_FLOOR_CHARACTER_DISPLAY_SIZE,
+          this.#minerDisplaySize,
+          this.#minerDisplaySize,
         )
-        .setVisible(false),
+        .setVisible(false)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerup', () => options.onCatClick?.()),
     );
     this.#unloader = scene.add
       .sprite(
@@ -316,8 +380,38 @@ export class MineFloorView {
       .image(panel.unloaderCat.x + panel.unloaderCat.width / 2, this.#minerRestY, PLACEHOLDER_TEXTURES.locked)
       .setDisplaySize(LOCK_ICON_SIZE, LOCK_ICON_SIZE);
     this.#goldPile = scene.add
-      .image(panel.goldPile.x + panel.goldPile.width / 2, panel.goldPile.y + panel.goldPile.height / 2, PLACEHOLDER_TEXTURES.goldPile)
+      .image(
+        panel.goldPile.x + panel.goldPile.width / 2,
+        panel.goldPile.y + panel.goldPile.height / 2,
+        options.orePileTextureKey ?? PLACEHOLDER_TEXTURES.goldPile,
+      )
       .setDisplaySize(GOLD_PILE_DISPLAY_SIZE, GOLD_PILE_DISPLAY_SIZE);
+    this.#miningImpacts = Array.from(
+      { length: MINE_FLOOR_MINER_ASSISTANT_COUNT + 1 },
+      () => scene.add
+        .sprite(
+          panel.goldPile.x + panel.goldPile.width / 2,
+          panel.goldPile.y + panel.goldPile.height / 2,
+          scene.textures.exists(options.impactTextureKey ?? MINER_MINING_IMPACT_ASSET.textureKey)
+            ? options.impactTextureKey ?? MINER_MINING_IMPACT_ASSET.textureKey
+            : PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+          0,
+        )
+        .setDisplaySize(42, 42)
+        .setVisible(false),
+    );
+    this.#excavatorCargo = Array.from(
+      { length: MINE_FLOOR_MINER_ASSISTANT_COUNT + 1 },
+      () => scene.add.image(0, 0, this.#orePileTextureKey)
+        .setDisplaySize(22, 22)
+        .setVisible(false),
+    );
+    this.#excavatorPours = Array.from(
+      { length: MINE_FLOOR_MINER_ASSISTANT_COUNT + 1 },
+      () => scene.add.sprite(0, 0, this.#pourTextureKey, 0)
+        .setDisplaySize(30, 30)
+        .setVisible(false),
+    );
     const queueLineY = panel.goldContainer.y - 8;
     this.#materialQueue = scene.add
       .text(panel.goldContainer.x + 18, queueLineY, '', {
@@ -412,8 +506,11 @@ export class MineFloorView {
       this.#unloader,
       ...this.#minerAssistants,
       this.#miner,
+      ...this.#excavatorCargo,
+      ...this.#excavatorPours,
       this.#lockIcon,
       this.#goldPile,
+      ...this.#miningImpacts,
       this.#goldCoin,
       this.#materialQueue,
       this.#backlog,
@@ -434,8 +531,62 @@ export class MineFloorView {
     this.#progressLabel.setVisible(false);
   }
 
+  /** Swaps environmental art without replacing cats, controls or anchors. */
+  public setSiteArt(
+    backgroundTextureKey: string,
+    orePileTextureKey: string,
+    cartFilledTextureKey: string,
+    impactTextureKey: string,
+    pourTextureKey: string,
+  ): void {
+    this.#cartFilledTextureKey = cartFilledTextureKey;
+    this.#orePileTextureKey = orePileTextureKey;
+    this.#pourTextureKey = pourTextureKey;
+    const texture = this.#backgroundArt.scene.textures.get(backgroundTextureKey);
+    const thinSoilFrame = 'thin-soil';
+    if (this.#hasThinSoilLayer && !texture.has(thinSoilFrame)) {
+      texture.add(thinSoilFrame, 0, 0, 30, 576, 234);
+    }
+    const width = this.#backgroundArt.displayWidth;
+    const height = this.#backgroundArt.displayHeight;
+    this.#backgroundArt
+      .setTexture(backgroundTextureKey, this.#hasThinSoilLayer ? thinSoilFrame : undefined)
+      .setDisplaySize(width, height);
+    this.#goldPile
+      .setTexture(orePileTextureKey)
+      .setDisplaySize(GOLD_PILE_DISPLAY_SIZE, GOLD_PILE_DISPLAY_SIZE);
+    for (const impact of this.#miningImpacts) {
+      impact.setTexture(impactTextureKey, 0).setDisplaySize(42, 42);
+    }
+    for (const cargo of this.#excavatorCargo) {
+      cargo.setTexture(orePileTextureKey).setDisplaySize(22, 22);
+    }
+    for (const pour of this.#excavatorPours) {
+      pour.setTexture(pourTextureKey, 0).setDisplaySize(30, 30);
+    }
+  }
+
   public get root(): Phaser.GameObjects.Container {
     return this.#root;
+  }
+
+  /** Rebinds the role-slot art without recreating the floor or its controls. */
+  public applyMinerAnimation(animation: MarketplaceRuntimeAnimationAsset): void {
+    this.#minerAssetId = animation.assetId;
+    this.#minerTextureKey = animation.textureKey;
+    this.#minerDisplaySize = animation.displaySize;
+    this.#minerFrameCount = animation.frameCount;
+    this.#minerFrameDurationMs = animation.frameDurationMs;
+    this.#miningAttackTextureKey = this.#resolveMiningAttackTextureKey(
+      this.#root.scene,
+      animation,
+    );
+
+    for (const miner of [this.#miner, ...this.#minerAssistants]) {
+      miner
+        .setTexture(animation.textureKey, 0)
+        .setDisplaySize(animation.displaySize, animation.displaySize);
+    }
   }
 
   /** Rebinds every displayed value to a newer read-only snapshot. */
@@ -479,14 +630,14 @@ export class MineFloorView {
     this.#backgroundArt.setAlpha(floor.isUnlocked ? 1 : 0.25);
     this.#lockIcon.setVisible(locked);
 
-    // The approved asset stays gold even when transport is backed up; the
-    // nearby status label communicates the bottleneck without recolouring art.
+    // The site-specific pile remains visually stable when transport backs up;
+    // the nearby status label communicates the bottleneck without recolouring art.
     this.#isPileBackedUp = floor.isMaterialBackedUp;
 
     this.#materialPileSteps = floor.materialPileSteps;
 
     const containerTexture = floor.materialPileSteps > 0
-      ? PLACEHOLDER_TEXTURES.goldContainerFilled
+      ? this.#cartFilledTextureKey
       : PLACEHOLDER_TEXTURES.goldContainer;
 
     if (this.#goldContainer.texture.key !== containerTexture) {
@@ -550,10 +701,7 @@ export class MineFloorView {
     this.#unlockControl.applyFeedback(feedback);
   }
 
-  /**
-   * Gives the generated miner a restrained cosmetic bob. Extraction still
-   * completes exactly when the core says so.
-   */
+  /** Moves every visible miner along the shared horizontal patrol line. */
   public applyAnimation(animationTimeMs: number, renderTimeMs: number): void {
     const visualExtractionProgress = interpolateNormalizedProgressForward(
       this.#extractionProgressFrom,
@@ -561,19 +709,61 @@ export class MineFloorView {
       Math.max(0, renderTimeMs - this.#extractionTransitionStartMs),
       SIMULATION_STEP_MS,
     );
-    const pose = calculateMinerPatrolPose(
+    const isExcavator = this.#minerAssetId === 'miner:SSR:boru:idle' &&
+      Object.values(BORU_ACTION_ASSETS).every((asset) => this.#root.scene.textures.exists(asset.textureKey));
+    if (isExcavator) {
+      [this.#miner, ...this.#minerAssistants].forEach((miner, index) => {
+        this.#miningImpacts[index].setVisible(false);
+        const cargo = this.#excavatorCargo[index];
+        const pour = this.#excavatorPours[index];
+        cargo.setVisible(false);
+        pour.setVisible(false);
+        if (index >= this.#activeMinerCount) return;
+        const progress = (visualExtractionProgress + index / this.#activeMinerCount) % 1;
+        // At the ore stop the lowered bucket enters the foreground pile's
+        // visible silhouette; the pile is already drawn after the crew.
+        const pose = calculateExcavatorPose(progress, this.#minerStartX + 6, this.#minerEndX + 4);
+        const usesResourceOverlay = this.#orePileTextureKey !== PLACEHOLDER_TEXTURES.goldPile;
+        const actionAsset = usesResourceOverlay && pose.action === 'travel-loaded'
+          ? BORU_ACTION_ASSETS['travel-empty']
+          : BORU_ACTION_ASSETS[pose.action];
+        const frame = usesResourceOverlay && pose.action === 'deposit' ? 6 : pose.frame;
+        const minerY = this.#minerRestY + MINE_FLOOR_CHARACTER_DISPLAY_SIZE * (117 / 128 - 0.5);
+        miner.setTexture(actionAsset.textureKey, frame)
+          .setOrigin(0.5, 112 / 128)
+          .setDisplaySize(this.#minerDisplaySize, this.#minerDisplaySize)
+          .setPosition(pose.x, minerY)
+          .setFlipX(pose.facesLeft);
+        if (usesResourceOverlay && pose.action === 'travel-loaded') {
+          cargo
+            .setPosition(pose.x + (pose.facesLeft ? -34 : 34), minerY + 7)
+            .setVisible(true);
+        }
+        if (usesResourceOverlay && pose.action === 'deposit' && pose.frame < 6) {
+          pour
+            .setFrame(Math.min(3, Math.floor(pose.frame / 2)))
+            .setPosition(pose.x - 37, minerY + 22)
+            .setFlipX(true)
+            .setVisible(true);
+        }
+      });
+      this.#unloader.setFrame(calculateGeneratedAssetFrame(animationTimeMs, 4, 220));
+      return;
+    }
+    // Switching back to a walking miner must also restore its sprite origin.
+    [this.#miner, ...this.#minerAssistants].forEach((miner) => miner.setOrigin(0.5));
+    for (const cargo of this.#excavatorCargo) cargo.setVisible(false);
+    for (const pour of this.#excavatorPours) pour.setVisible(false);
+    const pose = calculateMinerWorkPose(
       visualExtractionProgress * MINER_PATROL_PERIOD_MS,
       this.#minerStartX,
       this.#minerEndX,
     );
 
-    this.#miner
-      .setFrame(calculateGeneratedAssetFrame(animationTimeMs))
-      .setY(this.#minerRestY)
-      .setX(pose.x)
-      .setFlipX(pose.facesLeft);
+    this.#applyMinerPose(this.#miner, this.#miningImpacts[0], pose, animationTimeMs);
     this.#minerAssistants.forEach((assistant, index) => {
       if (index >= this.#activeMinerCount - 1) {
+        this.#miningImpacts[index + 1].setVisible(false);
         return;
       }
 
@@ -585,17 +775,56 @@ export class MineFloorView {
         this.#minerEndX,
       );
 
-      assistant
-        .setFrame(calculateGeneratedAssetFrame(
-          animationTimeMs + assistantPose.animationTimeOffsetMs,
-        ))
-        .setPosition(
-          assistantPose.x,
-          this.#minerRestY + assistantPose.yOffset,
-        )
-        .setFlipX(assistantPose.facesLeft);
+      this.#applyMinerPose(
+        assistant,
+        this.#miningImpacts[index + 1],
+        assistantPose,
+        animationTimeMs + assistantPose.animationTimeOffsetMs,
+      );
     });
     this.#unloader.setFrame(calculateGeneratedAssetFrame(animationTimeMs, 4, 220));
+  }
+
+  #resolveMiningAttackTextureKey(
+    scene: Phaser.Scene,
+    animation: MarketplaceRuntimeAnimationAsset,
+  ): string | null {
+    const attack = resolveMinerMiningAttackAsset(animation.assetId);
+    return attack !== null &&
+      scene.textures.exists(attack.textureKey) &&
+      scene.textures.exists(MINER_MINING_IMPACT_ASSET.textureKey)
+      ? attack.textureKey
+      : null;
+  }
+
+  #applyMinerPose(
+    miner: Phaser.GameObjects.Sprite,
+    impact: Phaser.GameObjects.Sprite,
+    pose: MinerWorkPose,
+    animationTimeMs: number,
+  ): void {
+    const attackTextureKey = this.#miningAttackTextureKey;
+    const isStriking = attackTextureKey !== null && pose.phase === 'mining';
+    const textureKey = isStriking
+      ? attackTextureKey
+      : this.#minerTextureKey;
+    if (miner.texture.key !== textureKey) {
+      miner.setTexture(textureKey, 0);
+    }
+    miner
+      .setFrame(isStriking
+        ? pose.strikeFrame
+        : calculateGeneratedAssetFrame(
+            animationTimeMs,
+            this.#minerFrameCount,
+            this.#minerFrameDurationMs,
+          ))
+      .setPosition(pose.x, this.#minerRestY)
+      .setFlipX(pose.facesLeft);
+    impact
+      .setFrame(pose.impactFrame)
+      .setVisible(this.#root.visible && miner.visible &&
+        this.#miningAttackTextureKey !== null && pose.impactVisible);
   }
 
   /** The upgrade control's read-back alone, for the scene's control diagnostic. */
@@ -616,11 +845,18 @@ export class MineFloorView {
       .map((miner) => ({
         x: miner.x,
         y: miner.y,
+        width: miner.displayWidth,
+        height: miner.displayHeight,
         facesLeft: miner.flipX,
         assetFrame: Number(miner.frame.name),
+        assetId: this.#minerAssetId,
+        textureKey: miner.texture.key,
       }));
 
     return {
+      backgroundTextureKey: this.#backgroundArt.texture.key,
+      orePileTextureKey: this.#goldPile.texture.key,
+      cartTextureKey: this.#goldContainer.texture.key,
       isVisible: this.#root.visible,
       floorLabel: this.#title.text,
       badgeLabel: this.#badgeLabel.text,
@@ -642,15 +878,23 @@ export class MineFloorView {
       showsGoldCoin: this.#goldCoin.visible,
       isGoldContainerFilled:
         this.#goldContainer.visible &&
-        this.#goldContainer.texture.key === PLACEHOLDER_TEXTURES.goldContainerFilled,
+        this.#materialPileSteps > 0,
       hasThinSoilLayer: this.#hasThinSoilLayer,
       showsMiner: this.#miner.visible,
       minerSwingOffsetPx: this.#miner.y - this.#minerRestY,
       minerAssetFrame: Number(this.#miner.frame.name),
+      minerAssetId: this.#minerAssetId,
+      minerTextureKey: this.#miner.texture.key,
       minerFacesLeft: this.#miner.flipX,
       minerPatrolX: this.#miner.x,
       activeMinerCount: minerCrew.length,
       minerCrew,
+      miningImpactVisible: this.#miningImpacts.some((impact) => impact.visible),
+      miningImpactTextureKey: this.#miningImpacts[0].texture.key,
+      excavatorCargoTextureKey: this.#excavatorCargo[0].texture.key,
+      excavatorCargoVisible: this.#excavatorCargo.some((cargo) => cargo.visible),
+      excavatorPourTextureKey: this.#excavatorPours[0].texture.key,
+      excavatorPourVisible: this.#excavatorPours.some((pour) => pour.visible),
       showsUpgradeControl: upgradeControl.isVisible,
       upgradeControl,
       showsUnlockControl: unlockControl.isVisible,

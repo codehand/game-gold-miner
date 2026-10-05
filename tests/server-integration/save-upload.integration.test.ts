@@ -2,8 +2,12 @@ import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
-import { createInitialGameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
+import { createInitialGameState, createInitialPortfolio } from '../../src/core';
+import {
+  createPortfolioSaveDocument,
+  createSaveDocument,
+  type SaveDocumentV2,
+} from '../../src/persistence';
 import { LOCAL_ANON_KEY } from './authFixture';
 
 /**
@@ -89,6 +93,31 @@ describe('PUT /v1/save (server-milestone Step 16)', () => {
     const second = await putSave(guest.accessToken, { baseRevision: 1, document: validDocument() });
     expect(second.status).toBe(200);
     expect((await second.json()).revision).toBe(2);
+  });
+
+  it('stores V4 and refuses a routine upload that mints shared-wallet gold', async () => {
+    const guest = await createGuestIdentity();
+    const document = createPortfolioSaveDocument(createInitialPortfolio(NOW_MS), NOW_MS);
+    const first = await putSave(guest.accessToken, { baseRevision: null, document });
+    expect(first.status).toBe(200);
+    const adopted = await first.json();
+    expect(adopted.revision).toBe(1);
+    expect(adopted.document.schemaVersion).toBe(4);
+    expect(adopted.document.mines.gold.state.lastUpdateTimestampMs)
+      .toBe(Date.parse(adopted.receivedAt));
+
+    const second = await putSave(guest.accessToken, {
+      baseRevision: 1, document: adopted.document,
+    });
+    expect(second.status).toBe(200);
+    expect((await second.json()).revision).toBe(2);
+
+    const forged = await putSave(guest.accessToken, {
+      baseRevision: 2,
+      document: { ...adopted.document, walletGold: '1e20' },
+    });
+    expect(forged.status).toBe(422);
+    expect((await forged.json()).error.detail.counter).toBe('walletGold');
   });
 
   it('rejects a stale baseRevision with 409 and the server\'s current document, writing nothing', async () => {

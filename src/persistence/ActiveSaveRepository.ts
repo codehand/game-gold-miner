@@ -1,6 +1,6 @@
 import type { SaveDocumentV2 } from './saveSchema';
 
-export interface ActiveSaveRepository {
+export interface ActiveSaveRepository<TDocument = SaveDocumentV2> {
   loadActiveSave(): Promise<unknown | null>;
-  storeActiveSave(document: SaveDocumentV2): Promise<void>;
+  storeActiveSave(document: TDocument): Promise<void>;
 }

@@ -1,5 +1,66 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '::1']);
+const VITE_DEV_PORTS = new Set(['5173', '5174']);
+
+function isLanDevHostname(hostname: string): boolean {
+  const octets = hostname.split('.');
+  return octets.length === 4
+    && octets[0] === '192'
+    && octets[1] === '168'
+    && octets.slice(2).every((octet) => {
+      const value = Number(octet);
+      return Number.isInteger(value) && value >= 0 && value <= 255;
+    });
+}
+
+/**
+ * Keeps local Supabase reachable when the Vite page is opened from another
+ * device on the developer's 192.168.x.x LAN. The checked-in local env uses
+ * loopback for same-machine development; on a LAN page only the host changes,
+ * while the API port and every deployed URL remain untouched.
+ */
+export function resolveSupabaseApiUrl(
+  configuredUrl: string,
+  pageHref: string | null,
+): string {
+  const normalized = configuredUrl.trim().replace(/\/$/, '');
+  if (pageHref === null) {
+    return normalized;
+  }
+
+  try {
+    const apiUrl = new URL(normalized);
+    const pageUrl = new URL(pageHref);
+    if (
+      apiUrl.protocol === 'http:'
+      && pageUrl.protocol === 'http:'
+      && LOOPBACK_HOSTNAMES.has(apiUrl.hostname)
+      && VITE_DEV_PORTS.has(pageUrl.port)
+      && isLanDevHostname(pageUrl.hostname)
+    ) {
+      apiUrl.hostname = pageUrl.hostname;
+      return apiUrl.toString().replace(/\/$/, '');
+    }
+  } catch {
+    // Preserve the configured value; createClient will report malformed URLs.
+  }
+
+  return normalized;
+}
+
+export function getSupabaseApiUrl(): string | null {
+  const configuredUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+  if (!configuredUrl) {
+    return null;
+  }
+
+  return resolveSupabaseApiUrl(
+    configuredUrl,
+    typeof window === 'undefined' ? null : window.location.href,
+  );
+}
+
 /**
  * Builds the browser's Supabase client, or resolves `null` without attempting
  * any network call — and, when unconfigured, without even downloading the
@@ -25,7 +86,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * the single entry chunk before this fix.
  */
 export async function createSupabaseClient(): Promise<SupabaseClient | null> {
-  const url = import.meta.env.VITE_SUPABASE_URL?.trim();
+  const url = getSupabaseApiUrl();
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 
   if (!url || !anonKey) {

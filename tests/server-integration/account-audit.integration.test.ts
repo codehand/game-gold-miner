@@ -30,16 +30,37 @@ const RECOVERY_URL = `${API_URL}/functions/v1/recovery-code`;
 const ACCOUNT_DELETE_URL = `${API_URL}/functions/v1/account-delete/v1/account/delete`;
 const PUBLIC_APPLICATION_TABLES = [
   'account_audit',
+  'cat_assignments',
+  'cat_blueprints',
+  'cat_collection_accounts',
+  'cat_instances',
+  'cat_marketplace_listings',
+  'cat_marketplace_requests',
+  'cat_purchase_requests',
+  'cat_rentals',
   'entitlements',
   'leaderboard_entries',
+  'mine_boosts',
+  'portfolio_command_receipts',
   'profiles',
   'recovery_codes',
   'save_audit',
   'saves',
 ] as const;
+// `cat_blueprints` is the shared catalogue, not account data, so it has no
+// owner column to check after a deletion.
 const ACCOUNT_SCOPED_COLUMNS: Readonly<Record<string, string>> = {
+  cat_assignments: 'owner_user_id',
+  cat_collection_accounts: 'user_id',
+  cat_instances: 'owner_user_id',
+  cat_marketplace_listings: 'seller_user_id',
+  cat_marketplace_requests: 'requester_user_id',
+  cat_purchase_requests: 'owner_user_id',
+  cat_rentals: 'owner_user_id',
   entitlements: 'user_id',
   leaderboard_entries: 'user_id',
+  mine_boosts: 'user_id',
+  portfolio_command_receipts: 'user_id',
   profiles: 'id',
   recovery_codes: 'user_id',
   save_audit: 'user_id',
@@ -377,6 +398,88 @@ describe('account_audit (server-milestone Step 32)', () => {
       source: 'deletion-test',
     });
     expect(entitlementError).toBeNull();
+
+    // One row in every cat, Marketplace, Boost and portfolio table, seeded in
+    // foreign-key order, so the deletion below proves each auth.users cascade
+    // instead of checking tables that were empty to begin with. The rental's
+    // renter is the seeded fixture guest because a rental needs two accounts.
+    const catInstanceId = randomUUID();
+    const listingId = randomUUID();
+    const slotKey = 'miner:step33-deletion';
+    const accountOwnedSeeds: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+      ['cat_collection_accounts', { user_id: userId }],
+      ['cat_instances', {
+        cat_instance_id: catInstanceId,
+        owner_user_id: userId,
+        asset_id: 'miner:N:mica:idle',
+        display_name: 'Deletion Probe Cat',
+        role_id: 'miner',
+        rarity_tier: 'N',
+        level: 1,
+        power: 50,
+        speed: 50,
+        capacity: 50,
+        efficiency: 50,
+        calculation_version: 1,
+        availability_state: 'Assigned',
+        assigned_slot_key: slotKey,
+      }],
+      ['cat_assignments', {
+        owner_user_id: userId,
+        slot_key: slotKey,
+        cat_instance_id: catInstanceId,
+        assignment_revision: 1,
+      }],
+      ['cat_purchase_requests', {
+        owner_user_id: userId,
+        idempotency_key: `step33-${randomUUID()}`,
+        cat_instance_id: catInstanceId,
+        price_exact: '1',
+      }],
+      ['cat_marketplace_listings', {
+        listing_id: listingId,
+        seller_user_id: userId,
+        cat_instance_id: catInstanceId,
+        listing_type: 'sale',
+        price_exact: '1',
+        status: 'Active',
+      }],
+      ['cat_rentals', {
+        listing_id: listingId,
+        cat_instance_id: catInstanceId,
+        owner_user_id: userId,
+        renter_user_id: FIXTURE_USER_ID,
+        hourly_price_exact: '1',
+        duration_hours: 1,
+        total_price_exact: '1',
+        started_at: new Date(Date.now() - 60_000).toISOString(),
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'Active',
+      }],
+      ['cat_marketplace_requests', {
+        requester_user_id: userId,
+        idempotency_key: `step33-market-${randomUUID()}`,
+        operation: 'buy_listing',
+        result_id: listingId,
+      }],
+      ['mine_boosts', {
+        user_id: userId,
+        mine_id: 'gold',
+        last_activated_at: new Date(Date.now() - 60_000).toISOString(),
+      }],
+      ['portfolio_command_receipts', {
+        user_id: userId,
+        idempotency_key: randomUUID(),
+        fingerprint: recoveryHash,
+        base_revision: 1,
+        resulting_revision: 2,
+        response_json: { status: 'applied', revision: 2 },
+      }],
+    ];
+    for (const [tableName, row] of accountOwnedSeeds) {
+      const { error: seedError } = await admin.from(tableName).insert(row);
+      expect(seedError, `${tableName} seed failed`).toBeNull();
+    }
 
     const { data: auditData, error: auditError } = await admin
       .from('account_audit')

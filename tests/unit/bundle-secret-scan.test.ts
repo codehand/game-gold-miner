@@ -10,10 +10,9 @@ import { scanBuildOutputForSecrets } from '../../scripts/scan-bundle-secrets.mjs
  * Regression coverage for `npm run scan:secrets`, the build-output half of
  * server-milestone Step 4's validation.
  *
- * Every fixture lives in a temporary directory outside the repository, so the
- * scanner's `supabase status` probe finds no CLI and reports the stack as not
- * running — which is the state a CI runner is in, and the state these
- * assertions are written against.
+ * Every fixture lives in a temporary directory outside the repository and has
+ * no `supabase/config.toml`, so the scanner skips the live-stack probe — the
+ * same state as a consumer without a local Supabase project.
  */
 
 const SERVICE_ROLE_JWT =

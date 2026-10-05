@@ -23,14 +23,12 @@ export const PANEL_BACKGROUND = '#2c4260';
 export const LOCKED_PANEL_BACKGROUND = '#182334';
 export const DIVIDER = '#f4bd3e';
 
-/** Bottom navigation chrome and icon palette. */
-export const NAVIGATION_BACKGROUND = '#102b46';
-export const NAVIGATION_BUTTON = '#2d6c97';
-export const NAVIGATION_BUTTON_BORDER = '#74c3df';
-export const NAVIGATION_BUTTON_PRESSED = '#168f8b';
-export const NAVIGATION_BOOST = '#f4bd3e';
-export const NAVIGATION_BOOST_BORDER = '#ffe39a';
-export const NAVIGATION_ICON = '#f9fafb';
+/** Slate-steel navigation chrome shares the HUD's navy and mine's warm gold. */
+export const NAVIGATION_BACKGROUND = '#132238';
+export const NAVIGATION_BUTTON = '#203a54';
+export const NAVIGATION_BUTTON_BORDER = '#607d99';
+export const NAVIGATION_BUTTON_PRESSED = '#345a76';
+export const NAVIGATION_ICON = '#e9e3d2';
 export const NAVIGATION_SHADOW = '#071521';
 
 export const BADGE_BACKGROUND = '#17233a';

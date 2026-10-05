@@ -7,6 +7,194 @@ the milestone closed on 2026-09-08.
 
 Not part of the contract. Append passed gates here as they close.
 
+## Default Mica and per-floor purchased Miner — 2026-09-28
+
+- **Presentation gate — Passed:** empty miner slots show Mica and base
+  production; purchased Forge retains his own assigned attack art.
+- **Purchase gate — Passed:** repeated Forge purchases yield distinct owned
+  instances with separate 36,000-gold charges; the Buy detail permits repeat.
+- **Assignment gate — Passed:** a second-floor assignment of one already
+  Assigned Forge returns 409 `cat_not_assignable` after the RPC migration.
+- **Regression gate — Passed:** 769 unit tests, focused client browser tests,
+  live server integration and purchase E2E, lint, build, and diff check.
+
+## Independent bottom-menu assets — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Asset separation | Pass | Five unique 96×96 RGBA PNG paths and Phaser texture keys; no full strip or icon sheet loaded. PNG header/alpha QC and the asset-registry unit test pass. |
+| Visual fit | Pass | Native 360×640 screenshot shows the five independent icons, short labels, restrained steel-blue tiles, and gold divider matching the HUD and mine palette. |
+| Interaction | Pass | Five 64×64 targets preserve order and callbacks; focused browser layout and mouse/touch hit tests pass 7/7. |
+| Regression | Pass | Client unit suite 764/764, lint, build and `git diff --check` pass; no save, economy, network or schema change. |
+
+## Mine miner delivery cadence — 2026-09-26
+
+- **Simulation gate — Passed:** a level-50 two-miner fixture adds one equal
+  chunk at the halfway delivery and reaches the original full cycle total at
+  the second delivery; the spendable-gold pipeline remains downstream.
+- **Presentation gate — Passed:** all visible mine miners report the same Y
+  baseline, while phase-shifted patrol offsets remain distinct and aligned with
+  the delivery milestones.
+- **Regression gate — Passed:** focused extraction and stage-animation tests
+  pass; the mine-floor browser read-back now asserts the shared horizontal line.
+
+## Reference-driven bottom menu artwork — 2026-09-21
+
+- **Visual asset gate — Passed:** the generated reference-shaped strip has a
+  continuous navy/gold shell, five ordered tiles, a raised active Boost tile,
+  no typography, and a transparent magenta-removed surround.
+- **Runtime gate — Passed:** `BootScene` loads one menu image and
+  `BottomNavigationView` preserves the existing five independent hit regions,
+  callbacks, and diagnostic key order.
+- **Verification gate — Passed:** the navigation asset contract test, lint,
+  build, and touch navigation slice pass. The mouse navigation slice still
+  exposes a Collection-close timing race at its 17th click; it is isolated
+  from the menu asset and is recorded as an open test risk rather than claimed
+  green.
+- **Acceptance boundary:** presentation-only; no save, economy, network, or
+  database contract changed.
+
+## Reference-driven bottom menu aspect-ratio fix — 2026-09-21
+
+- **Layout gate — Passed:** the alpha-cropped 2,167×455 runtime image fits
+  uniformly at roughly 356×75 inside the fixed 360×80 navigation region; the
+  five tiles and raised Boost ornament are fully visible in the in-app browser
+  with balanced proportions and no overflow or clipping. The navigation-color
+  underlay removes the exposed dark mine seam around the transparent artwork.
+- **Interaction gate — Passed:** the five independent hit regions remain
+  unchanged, and the focused touch navigation slice passes.
+- **Verification gate — Passed:** `tests/unit/navigation-assets.test.ts`,
+  `tests/unit/layout.test.ts`, `npm run lint`, `npm run build`,
+  `git diff --check`, and the focused touch Playwright slice pass. The known
+  mouse Collection-close timing race remains isolated from this asset/layout
+  fix.
+
+## Reference-driven bottom menu raster sharpness fix — 2026-09-21
+
+- **Rendering gate — Passed:** the 712×150 high-quality runtime resample draws
+  at an exact 0.5 scale; in-app browser inspection shows sharper menu borders
+  and icon details without changing the logical layout or global renderer.
+- **Regression gate — Passed:** focused navigation asset/layout unit tests,
+  lint, build, touch navigation E2E, and `git diff --check` pass.
+
+## Bottom-navigation sprite sheet — 2026-09-21
+
+- **Asset gate — Passed:** one transparent 1,280×256 runtime sheet contains
+  exactly five non-empty 256×256 frames in the required menu order; processed
+  output subjects do not touch cell edges.
+- **Runtime gate — Passed:** `BootScene` loads the sheet before the menu is
+  created, and `BottomNavigationView` preserves the existing five keys,
+  hitboxes, press animation, and callbacks while rendering frames 0–4.
+- **Verification gate — Passed:** the navigation asset unit test, `npm run
+  lint`, and `npm run build` pass. The touch navigation E2E remains green; the
+  existing mouse slice retains its known Collection-close timing flake and is
+  not used as the asset gate.
+- **Acceptance boundary:** presentation-only; no save, economy, network, or
+  database contract changed.
+
+## Listed Marketplace CTA feedback — 2026-09-21
+
+- **Lifecycle-specific CTA gate — Passed:** a `Listed` catalog item no longer
+  renders `Confirm purchase` or `Cancel`; it renders `Buy listed cat` and
+  `Back to cats` in the same responsive row.
+- **Transaction gate — Passed:** the new primary CTA still invokes the existing
+  authoritative purchase callback and reaches the existing Collection success
+  state.
+- **Focused evidence — Passed:** Marketplace trading browser slice 6/6,
+  `npm run lint`, `npm run build`, and `git diff --check` pass.
+- **Acceptance boundary:** presentation and copy only; no save, network,
+  database, or gameplay contract changed.
+
+## Marketplace and Collection feedback polish — 2026-09-21
+
+- **CTA layout regression — Passed:** the Buy confirmation keeps the primary
+  and cancel actions on the same row after the confirmation state rerenders;
+  the browser assertion checks equal vertical position and ordering.
+- **Collection state regression — Passed:** an `error` status renders
+  unavailable/retry copy and no owned-count summary, while the existing ready
+  empty state remains covered by the Collection flow.
+- **Focused evidence — Passed:** the Marketplace purchase and Collection
+  browser specs pass 4/4, plus `npm run lint` and `npm run build`.
+- **Acceptance boundary:** presentation-only; no save, network, database, or
+  gameplay contract changed.
+
+## Cat collection Phase 9 — 2026-09-20
+
+- **Full feature acceptance — Passed:** client unit 64 files / 739 tests,
+  lint, production build, secret scan, diff check, full client browser 60/60,
+  and production smoke 10/10 passed. `npm run verify:server` passed migration
+  reset, core portability, Edge Function warm-up, 195 Deno unit tests, 21
+  integration files / 132 tests, and 11 server browser tests.
+- **Manual release audit — Passed:** the browser showed the ready empty
+  Collection (`0 owned cats · Collection #0`), the role-specific Miner slot
+  panel with no compatible candidates, and a playable mine after dismissing a
+  sync diagnostic. The Dismiss click-through into Account & Settings was fixed
+  by guarding Phaser's window-level pointer/mouse input and covered by a
+  production smoke assertion.
+- **Acceptance boundary:** Collection, detail, authoritative compatible
+  replacement, runtime role binding, production effects, persistence, and
+  recovery are implemented. Marketplace preview cards remain non-owned until a
+  future purchase handoff calls the ownership API.
+
+## Cat collection and role assignment gates — 2026-09-19
+
+- **Phase 0 contract lock — Passed:** the spec and ordered implementation plan
+  freeze the three v1 roles, data-only save boundary, server authority,
+  expected-revision assignment, and post-confirmation production semantics.
+- **Phase 1 pure domain — Passed:** role score/effect v1, lifecycle and slot
+  validation, atomic replacement, filtering, and comparison are covered by the
+  focused domain suite; 6/6 tests and build passed.
+- **Phase 2 V3 save/migration — Passed:** V1/V2 migration, cat projection
+  validation, renderer-data rejection, round-trip, full unit suite (728),
+  lint, build, and server-core bundle build passed.
+- **Phase 3 server authority — Passed:** local Supabase reset applied the new
+  migration; focused cat API integration passed; the eleven-table RLS matrix
+  passed; full server integration passed 21 files / 132 tests.
+- **Phase 4 client hydration — Passed:** typed collection adapter, auth refresh,
+  defensive projection validation, active-save roster restoration, and
+  non-blocking hydration passed focused tests; build and lint passed. UI
+  clear-on-account-switch and replacement interaction remain open in Phases
+  5–6.
+- **Phase 5 Collection UI — Passed:** the read-only Collection modal consumes
+  the V3 roster and covers empty/owned list states, portrait fallback, search,
+  role filtering, detail attributes/effect/assignment context, focus/close
+  behavior, and no-overflow responsive layout at 390×844 and 320×568. The new
+  browser spec passes 2/2; the full Chromium suite passes 58/58, the full unit
+  suite passes 64 files / 734 tests, and lint/build are green. Replacement
+  mutation remains intentionally deferred to Phase 6.
+- **Phase 6 assignment flow — Passed:** slot-specific current-cat panels,
+  exact-role candidate filtering, comparison, pending-state protection,
+  expected-revision minimal commands, rejection preservation, and authoritative
+  success projection are covered. Offline browser tests pass at 390×844 and
+  320×568; server-backed fixture tests pass at both viewports and assert the
+  exact three-field payload. The adapter path duplication found by the gate was
+  fixed before acceptance; runtime asset/economy changes remain Phases 7–8.
+
+## Cat collection Phases 7–8 — 2026-09-20
+
+- **Phase 7 runtime role-slot binding — Passed:** the resolver follows
+  `slot → instance → asset → runtime sheet`, preserves the existing semantic
+  presentation contract, keeps missing assets playable with diagnostics, and
+  proves assignment/reload identity in browser fixtures. Focused runtime E2E
+  passes 3/3 and server-backed assignment/reload passes 2/2.
+- **Phase 8 simulation production effects — Passed:** pure roster-derived
+  modifiers affect only the assigned miner/elevator/warehouse metric at fixed
+  simulation boundaries; save-rate, offline, and server progress-bound paths
+  use the same inputs. Full unit passes 64 files / 739 tests, server unit 195,
+  server integration 21 files / 132, and lint/build/focused browser gates pass.
+
+## Marketplace asset gates — 2026-09-19
+
+- **Phase 7 runtime integration — Passed:** Explicit approval was recorded;
+  Mofy, Baron, and Forge render in the elevator, warehouse, and miner slots;
+  fallback assets preserve offline boot; runtime state remains presentation-only;
+  720 unit tests, lint, build, focused runtime E2E, and full 56/56 Playwright
+  E2E passed.
+- **Phase 8 catalog/UI/runtime release audit — Passed:** Nine portrait IDs,
+  sixteen icons, manifest/source/provenance links, and the three selected
+  runtime sheets resolve uniquely; six unselected variants remain catalog-only;
+  release-audit tests and native mobile review passed.
+
 ## Server milestone Steps 33–37 — implementation close 2026-09-19
 
 Steps 33–36 have recorded green implementation gates: exhaustive account/data
@@ -209,3 +397,182 @@ and IndexedDB schema versions remain 1.
 ## Gate recorded under `Active Decisions`
 
 - The user validated Step 30 and authorized Step 31 on 2026-08-30.
+
+## Marketplace purchase handoff — 2026-09-20
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Server purchase authority | Pass | Live cat-collection integration covers exact seeded price, wallet deduction, ownership/Idle projection, revision metadata, replay safety, unknown asset, insufficient funds, and missing wallet. |
+| Client reconciliation | Pass | Focused client tests cover purchase metadata parsing, auth refresh, malformed responses, and `CloudSaveReplica.acceptExternalRevision`. |
+| Buy UI | Pass | Marketplace browser test covers detail → confirm → callback → success; full client E2E is 61/61. |
+| Collection and assignment | Pass | Live server browser E2E is 12/12 and covers two real purchases, Collection/assignment, same-role replacement, production binding, and reload persistence. |
+| Release regression | Pass | Lint, 740 unit tests, build, secret scan, 61 client E2E, 10 production smoke, 195 server-unit, 132 server-integration, 12 server-E2E, and `git diff --check` pass. |
+| Deferred boundary | Pass | Rent, Sell, and My listings stay preview-only and do not create ownership or transaction state. |
+
+## Marketplace trading — 2026-09-20
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Listing authority | Pass | Migration and RPCs enforce owner-only listing creation/cancellation, active-listing uniqueness, positive integer pricing, legal status transitions, and exact-role assignment eligibility. |
+| Sale flow | Pass | Live server integration creates a sale listing, transfers ownership, deducts the buyer wallet, returns save revision metadata, and proves idempotent replay does not double-charge. |
+| Rental flow | Pass | Live server integration rents for two hours, deducts the exact hourly total, exposes the cat to the renter, and settles expiry back to the owner after the expiry timestamp. |
+| API and adapter | Pass | Edge-function route tests and marketplace adapter unit tests cover listing query/mutation forwarding, auth refresh, malformed responses, and invalid duration handling. |
+| Marketplace UI | Pass | Responsive browser tests cover Buy, Rent duration/total, Sell publication, My listings, cancellation controls, live callbacks, and mobile layouts at 390×844 and 320×568. |
+| Security boundary | Pass | Supabase reset, server-unit tests, targeted integration tests, and adversarial RLS tests pass with marketplace tables service-role-only. |
+| Release regression | Pass | Production build, 743 client unit tests, 11 targeted server integration tests, six Marketplace browser tests, lint, and `git diff --check` pass. |
+
+## Surface hauler cap/productivity — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Core workforce rule | Pass | Unit coverage proves raw progression, five-cat visible cap, `rawCount / visibleCount` overflow multiplier, invalid-level rejection, and the `2.2x` level-100+ boundary. |
+| Authoritative throughput | Pass | Unit coverage proves the same multiplier reaches warehouse conversion and derived production rates at the existing `warehouse.inputQueue` handoff. |
+| Renderer contract | Pass | Production-stage browser coverage is 13/13 and proves raw count 11, five visible cats/carts, four assistants, and `2.2x` diagnostics at warehouse level 100. |
+| Regression gate | Pass | Full client unit suite 761/761, lint, production build, focused production-stage E2E 13/13, and `git diff --check` pass. No save schema or extra queue was added. |
+
+## Per-cart gold-pour feedback — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Event coverage | Pass | The lead and every visible assistant expose the same loading/pour event from their phase-shifted route pose; empty queue remains hidden. |
+| Visual binding | Pass | `BootScene` pools one matching gold-pour sprite per visible cart and positions it relative to that cart beneath the chute. |
+| Browser regression | Pass | Production-stage E2E observes all five per-cart effects over the staggered route cycle; the suite passes 13/13. |
+| Regression gate | Pass | Unit suite 762/762, lint, production build, and `git diff --check` pass; authoritative state and save schema are unchanged. |
+
+## Fixed chute pour origin — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Single origin | Pass | Every visible per-cart pour sprite is rendered at `SURFACE_GOLD_POUR_X/Y`; cart movement no longer changes the falling-gold origin. |
+| Event preservation | Pass | Each lead/assistant loading pose still controls its own effect visibility and frame. |
+| Regression gate | Pass | Production-stage E2E pins both coordinates and observes all five effects; unit suite, lint, build, and `git diff --check` pass. |
+
+## Mine-floor workforce cap/productivity — 2026-09-27
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Workforce rule | Pass | Core tests pin raw one-per-50 progression, visible cap five, `1x` at level 200, and `1.2x` at level 250. |
+| Authoritative throughput | Pass | Extraction and production-rate tests prove overflow productivity increases floor output while visible delivery events remain capped at five. |
+| Renderer contract | Pass | Mine-view E2E uses a level-250 floor and still reads back five visible miners with no browser errors. |
+| Regression gate | Pass | Focused core tests, full unit suite, lint, production build, mine-view E2E, and `git diff --check` pass; no save schema or extra queue was added. |
+
+## Forge mining action — 2026-09-28
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Route and delivery | Pass | Pure tests pin outbound, stationary strike, return and assistant phase offsets at core delivery milestones. |
+| Action and impact | Pass | Dedicated Forge and FX sheets pass strict sprite QC; browser tests observe the attack texture plus visible impact at the pile and idle texture plus hidden impact on return. |
+| Regression | Pass | 766 unit tests, lint, build, and eight focused browser tests pass; no economy or save schema change. |
+
+## Mica miner animation after assignment — 2026-09-28
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Identity binding | Pass | The Mica asset ID resolves to its own four-frame runtime sheet, not the Step 32A fallback; registry, manifest and source/runtime hash tests pass. |
+| Mining action | Pass | Mica's independent four-frame strike sheet passes strict raster QC; browser tests observe the Mica attack texture plus impact at the pile and Mica idle texture with impact hidden on return. |
+| Regression | Pass | 768 unit tests, lint, build, and twelve focused browser tests pass; core and save state are unchanged. |
+| Scale correction | Pass | Runtime-only idle frames are 73–75 px tall and share the upright strike foot line; the original catalog sheet stays intact. Pixel-geometry E2E, six focused browser tests, 768 unit tests, lint, build and native-scale attack/travel screenshot review pass. |
+| Directional walk correction | Pass | New right-facing 2×2 walk art passed strict raster QC. Browser diagnostics and screenshots show outbound `facesLeft=false`, right-facing mining, and returning `facesLeft=true` with the same walk sheet mirrored; seven focused browser tests, 768 full unit tests, lint and build pass. |
+## 2026-09-28 — Free Elevator Pip / purchased Mofy gate
+
+Passed: original Pip 2×2 sheet had four valid 128 px frames, no empty or
+edge-touching frames, no clamped pastes, and body-scale CV 0.0028 under strict
+raster QC. The full unit suite (770/770), focused Playwright runtime and
+assignment tests (11/11), lint, and production build passed.
+Browser readback confirms free Pip on an unassigned slot even with an idle
+owned Mofy, and Mofy's original texture in both positions after assignment.
+No gameplay, save, schema, or catalog-price change.
+
+## Mine Overdrive scoped gate — 2026-09-29
+
+| Gate | Result | Evidence |
+|---|---|---|
+| x4 timing and offline overlap | Pass | Pure tests cover active/end/cooldown boundaries, fixed-step acceleration, partial offline overlap, and server progress allowance. |
+| Server authority | Pass | Deno handler tests, atomic concurrent live activations (one winner), authenticated status/reload, save-download Boost state, and direct PostgREST RLS denial. Local migration applied without reset. |
+| Player UI | Pass | Eight focused client browser tests and configured-server activation/reload test; lint and build pass. |
+| Wider repository suites | Open | Full unit (775), Deno (204), and server integration (134) pass. Existing broader client E2E/production suites retain unrelated failures; do not treat them as a Boost pass. |
+
+## Hauler scoped gate — 2026-09-30
+
+- Art: both four-frame walk sheets and all four empty/full cart images passed
+  strict raster QC; runtime copies are linked to retained sources/provenance.
+- Core: 779 unit tests pass, including exact slot range, same-role filtering,
+  unique-instance assignment, reset, V3 round-trip, active-crew averaging,
+  unchanged default throughput, fallback assets and cart dimensions.
+- Authority: 205 Deno tests and 4 live cat-collection integration tests pass;
+  seeded prices debit once per purchase, repeated purchases create different
+  instances, duplicate use and stale revisions reject, reset preserves title.
+- Browser: 12 focused client tests pass; live mobile Hauler test buys Tobi and
+  Rivet, equips different carts, leaves an unassigned default, verifies no idle
+  candidate remains, reloads, resets and reuses an owned cat on another cart.
+  Screenshot and diagnostic readback confirm distinct vehicle textures and
+  Rivet's raised cart. Click probes wait for the open route to avoid the
+  overlapping Warehouse manager; the UI provides stable Cart buttons.
+- Lint, production build, server-core build, diff whitespace and byte-identical
+  Complete Database Schema blocks pass. The local migration was applied
+  without reset. Production deployment and unrelated broad E2E gates are not
+  claimed by this scoped release check.
+
+### Surface cart cargo lifecycle feedback gate (2026-09-30)
+
+- 790 unit tests pass, including per-slot cargo retention, late refills, empty
+  trips, lap skips, rephasing, clock rewind and normal wrap. Sandbox subprocess
+  timeout in the unrelated bundle scan was resolved by rerunning outside it.
+- Five focused client browser tests pass: actual empty/full textures for
+  default/Tobi/Rivet after the tower empties, empty departure despite refill,
+  warehouse-only handoff, chute loading and empty routes. The older delivery
+  check now samples the outbound phase, not the same X position on return.
+- Live Hauler purchase/assignment/reload/reset/thruster browser test passes;
+  lint, build and whitespace checks pass. Broader unrelated release gates were
+  not rerun or claimed here.
+
+### Boru excavator Miner gate (2026-09-30)
+
+- 805 unit tests / 70 files pass; includes route endpoints, action ordering,
+  direction, frame ranges, five-worker offsets and four runtime RGBA sheets.
+- Four client browser tests pass: Boru one/five-worker phase rendering and
+  Mica replacement, default role presentation, existing Mica geometry.
+- Live Supabase browser Buy 42,000 -> assign Miner -> reload passes with a
+  disposable test account; no real user's account or wallet was modified.
+- Four strict processor runs pass at the shared 0.72 profile; chassis
+  registration has no clipping. Four 512x256 RGBA/alpha reports pass. Mobile
+  screenshots of all phases reviewed at one and five workers; the five large
+  machines can overlap on the existing compact shared lane.
+- Lint, build and diff checks pass. No broad unrelated E2E/server suite or
+  production deployment is claimed. Local catalog migration applied only.
+
+### Boru portrait and scoop polish gate (2026-09-30)
+
+- 128x128 RGBA portrait passes asset QC with 116x92 content bounds; separate
+  Marketplace 390/320px cards and Miner assignment candidate screenshot reviewed.
+- Nine focused client E2E tests, including one/five-worker scoop and exact
+  208px scoop endpoint, pass. A fixture-only Marketplace overlay interception
+  was isolated, then its five-test suite passed on rerun.
+- Disposable live Buy -> assign -> reload browser test passes. 31 focused
+  unit tests, lint, build and diff checks pass. No broad release gate, user
+  purchase or production deployment was performed.
+
+### Mine-floor gold pile grounding gate (2026-09-30)
+
+- Layout unit test checks that the existing 128px asset's visible lower bound
+  meets the 122px floor line after scaling to 52px; four layout tests pass.
+- Boru one/five-worker browser flows pass; the scoop screenshot shows ore on
+  the floor and foreground occlusion retained. Lint, build and diff checks
+  pass. No broad release gate or production deploy is claimed.
+
+## Multi-mine Map release gate — 2026-10-05
+
+- Player model: one shared wallet, one active foreground mine, six ordered
+  sites, fixed purchase gates and exactly-once per-mine offline claims pass core,
+  save migration and browser coverage.
+- Cloud continuity: V1–V3 adoption, V4 validation, revision checks, durable
+  version-2 command replay, exact `effectiveAtMs` settlement and merge into
+  newer local progress pass Deno, integration and live browser coverage.
+- Art: all six sites are represented; the five new sites have distinct upper,
+  middle and deep floor families, ore, structures, cargo and effects. Native
+  360×640 captures cover floors 1, 5, 10 and 15 and required worker/cargo states.
+- `npm run verify` passes lint, 866 unit tests, 83 client E2E tests, build,
+  bundle-secret scan and 10 production smoke tests.
+- `npm run verify:server` passes server-core build, 218 Deno tests, all local
+  Supabase migrations and health checks, 146 integration tests and 15 server
+  E2E tests. Complete Database Schema copies are synchronized.

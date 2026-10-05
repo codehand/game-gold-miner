@@ -8,13 +8,15 @@ export function advanceWarehouse(
   state: GameState,
   config: SharedStageConfig,
   elapsedMs: number,
+  processingMultiplier = 1,
 ): GameState {
   if (!state.warehouse.inputQueue.greaterThan(0)) {
     return state;
   }
 
   const accumulatedProgress =
-    state.warehouse.conversionProgress + elapsedMs / config.cycleDurationMs;
+    state.warehouse.conversionProgress +
+    elapsedMs * processingMultiplier / config.cycleDurationMs;
   const completedCycles = Math.floor(accumulatedProgress + PROGRESS_EPSILON);
 
   if (completedCycles === 0) {

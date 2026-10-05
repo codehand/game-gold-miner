@@ -1,9 +1,56 @@
 export {
+  BoostModal,
+  type BoostCommandResult,
+  type BoostModalOptions,
+} from './BoostModal';
+export {
+  MineMapModal,
+  type MineMapActionResult,
+  type MineMapModalOptions,
+} from './MineMapModal';
+export {
   MineShaftUpgradeModal,
   type MineShaftUpgradeModalOptions,
   type RenderedMineShaftUpgradeModalState,
 } from './MineShaftUpgradeModal';
-export { MarketplaceModal } from './MarketplaceModal';
+export {
+  MarketplaceModal,
+  type MarketplaceModalOptions,
+  type MarketplacePurchaseResult,
+} from './MarketplaceModal';
+export {
+  CollectionModal,
+  type CollectionModalOptions,
+  type CollectionModalStatus,
+} from './CollectionModal';
+export {
+  CatAssignmentModal,
+  type CatAssignmentCommand,
+  type CatAssignmentCommandResult,
+  type CatAssignmentModalOptions,
+} from './CatAssignmentModal';
+export {
+  getMarketplaceAsset,
+  listMarketplaceAssets,
+  MARKETPLACE_ASSETS,
+  MARKETPLACE_ASSET_IDS,
+  type MarketplaceAssetRecord,
+  type MarketplaceAssetRarity,
+  type MarketplaceAssetRole,
+} from './marketplaceAssetRegistry';
+export {
+  getMarketplaceIcon,
+  MARKETPLACE_ICONS,
+  MARKETPLACE_ICON_IDS,
+  type MarketplaceIconCategory,
+  type MarketplaceIconRecord,
+} from './marketplaceIconRegistry';
+export {
+  getMarketplaceStatePresentation,
+  hasMarketplaceStateIcon,
+  type MarketplaceAvailabilityState,
+  type MarketplaceStatePresentation,
+} from './marketplaceStatePresentation';
 export {
   OFFLINE_REWARD_SAVE_FAILURE_MESSAGE,
   formatOfflineRewardAmount,

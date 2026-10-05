@@ -2,10 +2,10 @@
  * Server-milestone Step 26, attack 6: the row-level-security matrix, read from
  * the migrations rather than hand-listed.
  *
- * AC7 requires the matrix be **derived**, not enumerated: "the seven tables ×
+ * AC7 requires the matrix be **derived**, not enumerated: "the seventeen tables ×
  * four verbs × two client roles, with the table list read from the migrations
  * (the same read-from-disk rule `readExpectedMigrations` and TASK-002's
- * warm-up list follow), so adding an eighth table fails the suite until it is
+ * warm-up list follow), so adding an eighteenth table fails the suite until it is
  * covered."
  *
  * The failure mode that rule exists to prevent is a hand-kept list: someone
@@ -119,7 +119,7 @@ export function readPlatformTables(directory = MIGRATIONS_DIRECTORY): PlatformTa
   // column revoke and must not match, because it leaves the table privilege
   // intact and so does not refuse a `RETURNING` readback.
   const tableSelectRevokePattern =
-    /revoke\s+select\s+on\s+public\.([a-z_][a-z0-9_]*)\s+from\s+[^;]+;/gi;
+    /revoke\s+(?:select|all)\s+on\s+public\.([a-z_][a-z0-9_]*)\s+from\s+[^;]+;/gi;
 
   const revokedSelectTables = new Set<string>();
   for (const { sql } of readMigrationSql(directory)) {

@@ -1,0 +1,18 @@
+{
+  "input": "art-source/navigation-menu/processed/raw-sheet-clean.png",
+  "output": "art-source/navigation-menu/processed/bottom-navigation-menu-cropped.png",
+  "crop": {
+    "x": 3,
+    "y": 122,
+    "width": 2167,
+    "height": 455
+  },
+  "runtimePath": "/assets/ui/navigation/bottom-navigation-menu.png",
+  "runtimeTexture": {
+    "path": "art-source/navigation-menu/processed/bottom-navigation-menu-runtime-2x.png",
+    "width": 712,
+    "height": 150,
+    "resample": "High-quality 2x runtime resample from the alpha-cropped source"
+  },
+  "purpose": "Remove the transparent magenta-cleanup margins before fitting the menu into the fixed 360x80 navigation region; the runtime texture is resampled to 2x logical display size for sharper browser output."
+}
