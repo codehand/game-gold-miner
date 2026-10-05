@@ -181,13 +181,14 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
     .toBeGreaterThanOrEqual(0);
   expect(adoptedDocument.mines.gold!.state.floors).toHaveLength(BASE_GAME_BALANCE.floors.length);
 
-  // Force the lifecycle flush a hidden tab performs. It writes exactly one
-  // document locally and forces that same document to the cloud, bypassing
-  // §9's 60 s minimum interval. Capture that flushed document once and require
-  // the cloud to reach *it*: comparing against a constant, rather than a fresh
-  // local read, cannot race a later 30 s heartbeat write, which would
-  // otherwise leave a moving local document chasing a cadence-limited cloud
-  // copy until the poll times out.
+  // Force the lifecycle flush a hidden tab performs. A configured V4 client
+  // writes that snapshot locally, then its `suspend` command uploads it and
+  // has the server close the active mine (`activeMineId: null`, an open
+  // offline interval). The flushed snapshot is only a transient cloud
+  // revision; the suspended document is the settled one, and it stops
+  // moving because the heartbeat writes nothing while no mine is active.
+  // Capture that suspended local document once and require the cloud to
+  // reach *it*.
   const flushNotBeforeMs = await page.evaluate(() => Date.now());
   await forceHiddenFlush(page);
 
@@ -197,15 +198,16 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
       const local = await readStoredDocument(page);
 
       if (local === null || local.schemaVersion !== PORTFOLIO_SAVE_SCHEMA_VERSION ||
-          local.savedAtTimestampMs < flushNotBeforeMs) {
+          local.savedAtTimestampMs < flushNotBeforeMs ||
+          (local as PortfolioSaveDocumentV4).activeMineId !== null) {
         return false;
       }
 
       flushedLocal = local as PortfolioSaveDocumentV4;
       return true;
     }, {
-      message: 'the forced lifecycle flush reaches IndexedDB',
-      timeout: 10_000,
+      message: 'the forced lifecycle flush is suspended and reaches IndexedDB',
+      timeout: 15_000,
     })
     .toBe(true);
 
