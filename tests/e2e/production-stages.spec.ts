@@ -289,18 +289,17 @@ test('shows an idle transport and warehouse while extraction is the slowest stag
     progressFillWidth: 0,
   });
 
-  // The walking frames stay cosmetic, but the miner's position is now the
-  // authoritative extraction indicator and therefore freezes with the core.
-  await expect
-    .poll(async () => (await readRenderedFloors(page))[0].minerAssetFrame, {
-      message: 'the generated digging sheet must advance while the core is paused',
-    })
-    .not.toBe(floorOne.minerAssetFrame);
+  // The mining strike frame and position follow extraction progress, so both
+  // remain fixed while the core is paused at 60%.
+  await page.clock.runFor(1_000);
 
   const [stillPaused] = await readRenderedFloors(page);
 
   expect(stillPaused.minerPatrolX, 'a paused core must freeze miner travel').toBe(
     floorOne.minerPatrolX,
+  );
+  expect(stillPaused.minerAssetFrame, 'a paused core must freeze the strike').toBe(
+    floorOne.minerAssetFrame,
   );
   expect(stillPaused.progressLabel, 'a paused core must not extract').toBe('60%');
   expect(stillPaused.progressFillWidth, 'a paused core must not extract').toBe(
@@ -777,6 +776,7 @@ test('returns through the surface boundary and stops inside the elevator tower',
     height: MINE_SHAFT_CABIN_HEIGHT,
   });
   expect(animation.warehouseBuilding, 'generated warehouse replaces the legacy card').toEqual({
+    texture: PLACEHOLDER_TEXTURES.warehouseBuilding,
     centerX: SURFACE_WAREHOUSE_CENTER_X,
     centerY: SURFACE_WAREHOUSE_CENTER_Y,
     width: SURFACE_WAREHOUSE_WIDTH,
@@ -1017,7 +1017,7 @@ async function runAnimationSpeedTrial(
   animationSpeedMultiplier: number,
 ): Promise<AnimationSpeedTrial> {
   await page.clock.install({ time: FIXED_TIME });
-  await page.clock.pauseAt(FIXED_TIME);
+  await page.clock.setFixedTime(FIXED_TIME);
   await routeMainModule(
     page,
     `
@@ -1028,10 +1028,11 @@ async function runAnimationSpeedTrial(
       const speedMultiplier = Number(
         new URLSearchParams(location.search).get('animationSpeed'),
       );
+      let coreNowMs = ${FIXTURE_TIMESTAMP_MS};
       const driver = new MineSimulationDriver({
         state: createInitialGameState(BASE_GAME_BALANCE, ${FIXTURE_TIMESTAMP_MS}),
         balance: BASE_GAME_BALANCE,
-        now: () => Date.now(),
+        now: () => coreNowMs,
       });
 
       createGame(document.querySelector('#game-viewport'), driver, {
@@ -1040,6 +1041,7 @@ async function runAnimationSpeedTrial(
 
       window.catMineIdleTrial = {
         settle: () => {
+          coreNowMs += 8_000;
           driver.advance();
 
           return {

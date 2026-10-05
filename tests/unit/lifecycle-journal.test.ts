@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
-import { catchUpSimulation, createInitialGameState } from '../../src/core';
+import { catchUpSimulation, createInitialGameState, createInitialPortfolio } from '../../src/core';
 import {
+  createPortfolioSaveDocument,
   createSaveDocument,
+  validatePortfolioSaveDocument,
   type ActiveSaveRepository,
+  type PortfolioSaveDocumentV4,
   type SaveDocumentV2,
 } from '../../src/persistence';
 import {
@@ -117,6 +120,31 @@ describe('web lifecycle save journal', () => {
     );
 
     await expect(repository.loadActiveSave()).resolves.toEqual(newerDocument);
+  });
+
+  it('recovers a valid v4 portfolio journal through the same atomic record', async () => {
+    const storage = new MemoryKeyValueStorage();
+    const document = createPortfolioSaveDocument(
+      createInitialPortfolio(START_TIMESTAMP_MS),
+      START_TIMESTAMP_MS,
+    );
+    const journal = new WebLifecycleSaveJournal<PortfolioSaveDocumentV4>(
+      storage, BASE_GAME_BALANCE, validatePortfolioSaveDocument,
+    );
+    let stored: PortfolioSaveDocumentV4 | null = null;
+    const indexedRepository: ActiveSaveRepository<PortfolioSaveDocumentV4> = {
+      loadActiveSave: async () => stored,
+      storeActiveSave: async (next) => { stored = next; },
+    };
+    const repository = new LifecycleSafeActiveSaveRepository(
+      indexedRepository, journal, BASE_GAME_BALANCE, validatePortfolioSaveDocument,
+    );
+
+    journal.write(document);
+    await expect(repository.loadActiveSave()).resolves.toEqual(document);
+    await repository.storeActiveSave(document);
+    expect(stored).toEqual(document);
+    expect(journal.read()).toBeNull();
   });
 });
 

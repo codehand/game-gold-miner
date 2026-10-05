@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function openBoost(page: Page): Promise<void> {
+  const reward = page.getByTestId('offline-reward-modal');
+  await expect.poll(async () => await reward.isVisible() ||
+    await page.locator('#game-viewport canvas').count() === 1).toBe(true);
+  if (await reward.isVisible()) await page.getByTestId('offline-reward-claim').click();
   const canvas = page.locator('#game-viewport canvas');
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
   const box = await canvas.boundingBox();

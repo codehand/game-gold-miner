@@ -62,6 +62,311 @@ body {
   background: rgb(3 7 18 / 78%);
 }
 
+.mine-map-dialog {
+  width: min(100%, 440px);
+  max-width: 440px;
+  height: min(100%, 800px);
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid #55799a;
+  border-radius: 18px;
+  background: #101f33;
+  color: #f5f7fa;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 55%);
+  font-family: 'Fredoka', sans-serif;
+}
+
+.mine-map-dialog::backdrop {
+  background: rgb(3 7 18 / 82%);
+}
+
+.mine-map-dialog button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.mine-map-dialog :focus-visible {
+  outline: 3px solid #ffd15d;
+  outline-offset: 2px;
+}
+
+.mine-map-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 78px;
+  padding: 10px 14px;
+  border-bottom: 2px solid #dca82e;
+  background: #0b1729;
+}
+
+.mine-map-header h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.mine-map-header span:first-child {
+  display: block;
+  color: #a8bcd2;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.mine-map-wallet {
+  margin-left: auto;
+  color: #ffd15d;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.mine-map-close {
+  flex: 0 0 44px;
+  height: 44px;
+  border: 1px solid #66829e;
+  border-radius: 10px;
+  background: #233b55;
+  color: #fff;
+  font-size: 26px !important;
+}
+
+.mine-map-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100% - 78px);
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.mine-map-route {
+  display: grid;
+  gap: 9px;
+}
+
+.mine-map-site {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 2px solid #4d647d;
+  border-left: 5px solid var(--mine-accent);
+  border-radius: 13px;
+  background: #1a2e47;
+  color: #f5f7fa;
+  text-align: left;
+}
+
+.mine-map-site-selected {
+  border-color: #ffcf58;
+  background: #294761;
+}
+
+.mine-map-site-symbol {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--mine-accent);
+  border-radius: 12px 12px 16px 16px;
+  background: rgb(255 255 255 / 8%);
+  color: var(--mine-accent);
+  font-size: 23px;
+}
+
+.mine-map-site strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.mine-map-site-state {
+  color: #c4d5e4;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.mine-map-detail {
+  position: sticky;
+  bottom: 0;
+  padding: 15px;
+  border: 2px solid var(--mine-accent);
+  border-radius: 14px;
+  background: #0c1b2c;
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+}
+
+.mine-map-detail h2 {
+  margin: 0 0 4px;
+  color: var(--mine-accent);
+  font-size: 20px;
+}
+
+.mine-map-detail-landmark {
+  float: right;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 2px rgb(0 0 0 / 35%));
+}
+
+.mine-map-detail p {
+  margin: 5px 0;
+  color: #d4e0eb;
+  font-size: 13px;
+}
+
+.mine-map-detail .mine-map-reward {
+  color: #ffd15d;
+}
+
+.mine-map-action {
+  min-height: 46px;
+  width: 100%;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: #efb736;
+  color: #1b2534;
+  font-weight: 700 !important;
+}
+
+.mine-map-action:disabled {
+  cursor: not-allowed;
+  background: #5c6a77;
+  color: #c4ccd4;
+}
+
+.mine-map-detail .mine-map-message {
+  color: #f9d88a;
+}
+
+/* The six sites occupy fixed geographic points along one visible route. */
+.mine-map-route {
+  position: relative;
+  display: block;
+  flex: 0 0 455px;
+  min-height: 455px;
+  overflow: hidden;
+  border: 1px solid #456f81;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 75% 8%, rgb(236 244 255 / 35%) 0 5%, transparent 22%),
+    radial-gradient(ellipse at 9% 30%, #315069 0 12%, transparent 13%),
+    radial-gradient(ellipse at 92% 47%, #283e62 0 15%, transparent 16%),
+    radial-gradient(ellipse at 15% 74%, #294e50 0 17%, transparent 18%),
+    radial-gradient(ellipse at 84% 91%, #68808e 0 17%, transparent 18%),
+    linear-gradient(165deg, #56839a, #244b60 48%, #1b4650 75%, #55727c);
+  box-shadow: inset 0 0 0 5px rgb(10 31 44 / 19%);
+}
+
+.mine-map-route::before {
+  position: absolute;
+  inset: 0;
+  background: repeating-radial-gradient(ellipse at 30% 40%, transparent 0 17px,
+    rgb(237 248 255 / 9%) 18px 19px, transparent 20px 32px);
+  content: '';
+  pointer-events: none;
+}
+
+.mine-map-route-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: #f1cd83;
+  stroke-width: 4;
+  stroke-dasharray: 7 8;
+  filter: drop-shadow(0 2px 2px #173043);
+  pointer-events: none;
+}
+
+.mine-map-site {
+  position: absolute;
+  left: 3%;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  min-height: 66px;
+  width: 44%;
+  padding: 5px 6px;
+  border: 2px solid var(--mine-accent);
+  border-radius: 12px;
+  background: rgb(13 31 48 / 93%);
+  box-shadow: 0 4px 0 rgb(6 23 36 / 55%), 0 8px 16px rgb(1 10 21 / 35%);
+}
+
+.mine-map-site:nth-of-type(even) { left: auto; right: 3%; }
+.mine-map-site:nth-of-type(1) { top: 3%; }
+.mine-map-site:nth-of-type(2) { top: 19%; }
+.mine-map-site:nth-of-type(3) { top: 35%; }
+.mine-map-site:nth-of-type(4) { top: 51%; }
+.mine-map-site:nth-of-type(5) { top: 67%; }
+.mine-map-site:nth-of-type(6) { top: 83%; }
+
+.mine-map-site::after {
+  position: absolute;
+  left: calc(100% + 5px);
+  top: 28px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff3bc;
+  border-radius: 50%;
+  background: var(--mine-accent);
+  content: '';
+}
+
+.mine-map-site:nth-of-type(even)::after {
+  left: auto;
+  right: calc(100% + 5px);
+}
+
+.mine-map-site-selected {
+  outline: 3px solid #ffda78;
+  outline-offset: 2px;
+  background: #244562;
+}
+
+.mine-map-site-symbol {
+  grid-row: span 2;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.mine-map-site-symbol img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 1px rgb(0 0 0 / 40%));
+}
+
+.mine-map-site strong {
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.05;
+}
+
+.mine-map-site-state {
+  grid-column: 2;
+  font-size: 10px;
+}
+
+.mine-map-route {
+  background:
+    linear-gradient(rgb(7 25 42 / 12%), rgb(7 25 42 / 22%)),
+    url('/assets/sites/map-terrain-v1.webp') center / 100% 100% no-repeat;
+}
+
 .mine-upgrade-backdrop {
   position: fixed;
   z-index: 8;
@@ -241,6 +546,28 @@ body {
 .offline-reward-dialog h1 {
   margin: 8px 0 20px;
   font-size: 28px;
+}
+
+.offline-reward-mine {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 2px solid color-mix(in srgb, var(--mine-accent, #f7c54a) 72%, #fff);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--mine-accent, #f7c54a) 18%, #12233d);
+}
+
+.offline-reward-mine img {
+  flex: 0 0 auto;
+  filter: drop-shadow(0 3px 0 rgb(0 0 0 / 28%));
+}
+
+.offline-reward-mine p {
+  margin: 0;
+  color: #fff;
+  font-weight: 700;
 }
 
 .offline-reward-time {

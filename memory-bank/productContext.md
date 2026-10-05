@@ -25,6 +25,21 @@ Many management games obscure cause and effect or require constant tapping. This
 
 The player claims offline gold, inspects the mine, upgrades the slowest stage, opens deeper floors, assigns managers, activates a boost, and leaves while production continues. Short-term goals are the next upgrade and floor; the prototype's long-term goal is fully automating and optimizing all fifteen floors.
 
+The multi-mine Map expands this journey into six resource locations. One shared
+gold wallet pays for new sites, while only the selected mine earns live gold.
+Previously visited inactive mines display capped offline rewards that enter
+the wallet when the player returns and claims them. Each site's fifteen floors
+must visibly use its own resource shape, palette and cargo. Local and configured
+accounts use the same V4 Map/portfolio model. Five non-Gold visual families now
+cover surface, structures, shaft, three floor-depth bands, ore, cargo and
+effects, with native-scale browser review. Owned cats belong to the account but
+work in one mine-qualified slot at a time, so switching locations changes the
+visible workforce and its production bonus without duplicating either. If a
+configured player enters another mine while cloud service is unavailable, the
+new mine remains playable and the old offline interval is shown as pending.
+Reconnect validates that interval at the original entry boundary and credits
+the shared wallet once, while preserving foreground progress earned meanwhile.
+
 ### Cat collection and role assignment journey
 
 Surface Haulers are a separate role from the Warehouse manager. Each unlocked

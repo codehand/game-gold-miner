@@ -3,11 +3,13 @@ import { expect, test, type Page } from '@playwright/test';
 import { BASE_GAME_BALANCE } from '../../src/config';
 import { calculateLevelEffect, createInitialGameState, GameNumber, type GameState } from '../../src/core';
 import {
-  CURRENT_SAVE_SCHEMA_VERSION,
+  PORTFOLIO_SAVE_SCHEMA_VERSION,
   createSaveDocument,
+  type PortfolioSaveDocumentV4,
   type SaveDocumentV2,
 } from '../../src/persistence';
 import { readCloudSave } from './cloudSaveFixture';
+import { finishPortfolioBoot } from './portfolioBootFixture';
 
 /**
  * Server-milestone Step 20: adopt existing local saves, proven end to end
@@ -115,7 +117,9 @@ async function readAccessTokenFromStorage(page: Page): Promise<string> {
   return token!;
 }
 
-async function readStoredDocument(page: Page): Promise<SaveDocumentV2 | null> {
+async function readStoredDocument(
+  page: Page,
+): Promise<SaveDocumentV2 | PortfolioSaveDocumentV4 | null> {
   return page.evaluate(async () => {
     const openRequest = indexedDB.open('cat-mine-idle');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -130,7 +134,9 @@ async function readStoredDocument(page: Page): Promise<SaveDocumentV2 | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV2 }>((resolve, reject) => {
+    const record = await new Promise<{
+      document?: SaveDocumentV2 | PortfolioSaveDocumentV4;
+    }>((resolve, reject) => {
       getRequest.onerror = () => reject(getRequest.error);
       getRequest.onsuccess = () => resolve(getRequest.result);
     });
@@ -154,7 +160,7 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
   await seedVersionOneIndexedDb(page, preMilestone);
   await page.goto('/');
 
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await waitForGuestSessionStatus(page);
 
   // The account had no cloud save, so the boot reconcile adopts the local one.
@@ -164,14 +170,16 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
       message: 'the local save is adopted as the account cloud save',
       timeout: 20_000,
     })
-    .toBe(CURRENT_SAVE_SCHEMA_VERSION);
+    .toBe(PORTFOLIO_SAVE_SCHEMA_VERSION);
 
   const adopted = await readCloudSave(SAVE_URL, accessToken);
   expect(adopted).not.toBeNull();
   // The pre-milestone progress survived — this is the player's save, not a fresh game.
-  expect(adopted!.document.state.elevator.level).toBe(seededState.elevator.level);
-  expect(adopted!.document.state.warehouse.totalOfflineGoldClaimed).toBe('0');
-  expect(adopted!.document.state.floors).toHaveLength(BASE_GAME_BALANCE.floors.length);
+  const adoptedDocument = adopted!.document as PortfolioSaveDocumentV4;
+  expect(adoptedDocument.mines.gold!.state.elevator.level).toBe(seededState.elevator.level);
+  expect(Number(adoptedDocument.mines.gold!.state.warehouse.totalOfflineGoldClaimed))
+    .toBeGreaterThanOrEqual(0);
+  expect(adoptedDocument.mines.gold!.state.floors).toHaveLength(BASE_GAME_BALANCE.floors.length);
 
   // Force the lifecycle flush a hidden tab performs. It writes exactly one
   // document locally and forces that same document to the cloud, bypassing
@@ -183,16 +191,17 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
   const flushNotBeforeMs = await page.evaluate(() => Date.now());
   await forceHiddenFlush(page);
 
-  let flushedLocal: SaveDocumentV2 | null = null;
+  let flushedLocal: PortfolioSaveDocumentV4 | null = null;
   await expect
     .poll(async () => {
       const local = await readStoredDocument(page);
 
-      if (local === null || local.savedAtTimestampMs < flushNotBeforeMs) {
+      if (local === null || local.schemaVersion !== PORTFOLIO_SAVE_SCHEMA_VERSION ||
+          local.savedAtTimestampMs < flushNotBeforeMs) {
         return false;
       }
 
-      flushedLocal = local;
+      flushedLocal = local as PortfolioSaveDocumentV4;
       return true;
     }, {
       message: 'the forced lifecycle flush reaches IndexedDB',

@@ -20,17 +20,17 @@ export interface SavePersistenceCoordinatorOptions {
   readonly onDiagnostic?: (diagnostic: PersistenceDiagnostic) => void;
 }
 
-export class SavePersistenceCoordinator {
-  readonly #repository: ActiveSaveRepository;
+export class SavePersistenceCoordinator<TDocument = SaveDocumentV2> {
+  readonly #repository: ActiveSaveRepository<TDocument>;
   readonly #debounceMs: number;
   readonly #onDiagnostic: ((diagnostic: PersistenceDiagnostic) => void) | null;
-  #pendingDocument: SaveDocumentV2 | null = null;
+  #pendingDocument: TDocument | null = null;
   #scheduledSave: ReturnType<typeof setTimeout> | null = null;
   #flushPromise: Promise<boolean> | null = null;
   #lastDiagnostic: PersistenceDiagnostic | null = null;
 
   public constructor(
-    repository: ActiveSaveRepository,
+    repository: ActiveSaveRepository<TDocument>,
     options: SavePersistenceCoordinatorOptions = {},
   ) {
     this.#repository = repository;
@@ -46,7 +46,7 @@ export class SavePersistenceCoordinator {
     return this.#lastDiagnostic;
   }
 
-  public queueSave(document: SaveDocumentV2): void {
+  public queueSave(document: TDocument): void {
     this.#pendingDocument = document;
     this.#clearScheduledSave();
     this.#scheduledSave = setTimeout(() => {
@@ -112,7 +112,7 @@ export class SavePersistenceCoordinator {
     this.#pendingDocument = null;
   }
 
-  async #store(document: SaveDocumentV2): Promise<boolean> {
+  async #store(document: TDocument): Promise<boolean> {
     try {
       await this.#repository.storeActiveSave(document);
       return true;

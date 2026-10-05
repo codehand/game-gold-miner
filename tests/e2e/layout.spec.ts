@@ -241,6 +241,8 @@ test('renders five icon buttons and acknowledges every click', async ({ page }) 
   ) as Array<{ key: string; iconTextureKey: string; bounds: Rect }>;
   let closes = 0;
   let leaderboardCloses = 0;
+  let boostCloses = 0;
+  let collectionCloses = 0;
 
   expect(items.map(({ key }) => key)).toEqual([
     'rewards',
@@ -293,11 +295,11 @@ test('renders five icon buttons and acknowledges every click', async ({ page }) 
     } else if (item.key === 'boost') {
       await expect(page.getByRole('dialog', { name: 'Mine Boost' })).toBeVisible();
       await page.getByRole('button', { name: 'Close Boost' }).click();
-      await expect(page.getByRole('dialog', { name: 'Mine Boost' })).not.toBeVisible();
+      await expect(canvas).toHaveAttribute('data-boost-close-count', String(++boostCloses));
     } else if (item.key === 'managers') {
       await expect(page.getByRole('dialog', { name: 'Cat Collection' })).toBeVisible();
       await page.getByRole('button', { name: 'Close collection' }).click();
-      await expect(page.getByRole('dialog', { name: 'Cat Collection' })).not.toBeVisible();
+      await expect(canvas).toHaveAttribute('data-collection-close-count', String(++collectionCloses));
     }
   }
 });

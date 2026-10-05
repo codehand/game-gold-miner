@@ -3,7 +3,11 @@ export {
   readLocalBoostState,
   writeLocalBoostState,
 } from './boostStorage';
-export { requestBoostViaFetch, type BoostServerResponse } from './boostApi';
+export {
+  requestBoostViaFetch,
+  type BoostActivationCommand,
+  type BoostServerResponse,
+} from './boostApi';
 export {
   bindSaveLifecycle,
   type SaveLifecycleTargets,
@@ -50,6 +54,41 @@ export {
   WebLifecycleSaveJournal,
   type KeyValueStorage,
 } from './WebLifecycleSaveJournal';
+export {
+  loadPortfolioSession,
+  resumePortfolioSession,
+  type PortfolioSessionLoadResult,
+} from './portfolioSession';
+export {
+  PortfolioCloudGateway,
+  type PortfolioCloudAccepted,
+  type PortfolioCloudAuth,
+  type PortfolioCloudCommand,
+  type PortfolioCloudResult,
+  type PortfolioCloudSnapshot,
+} from './portfolioCloudGateway';
+export {
+  PortfolioCloudCommands,
+  type PortfolioCommandAction,
+  type PortfolioCommandOutcome,
+  type PendingPortfolioCommand,
+} from './portfolioCloudCommands';
+export {
+  PORTFOLIO_COMMAND_JOURNAL_PREFIX,
+  PortfolioCommandJournal,
+} from './portfolioCommandJournal';
+export {
+  reconcilePortfolioCloudAtBoot,
+  type PortfolioCloudBootOutcome,
+} from './portfolioCloudReconcile';
+export {
+  resumePortfolioCloudMine,
+  type PortfolioCloudResumeOutcome,
+} from './portfolioCloudResume';
+export {
+  bootstrapPortfolioCloudSession,
+  type PortfolioCloudSessionOutcome,
+} from './portfolioCloudSession';
 export {
   generateRecoveryCode,
   redeemRecoveryCode,

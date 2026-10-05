@@ -261,3 +261,18 @@ existing Miner role and one-owned-instance-per-floor rule, not a new vehicle
 inventory. Four eight-frame actions are tied to extraction progress, with
 whole-machine mirroring and one track origin. Initial 42,000-gold pricing and
 96/68/95/90 attributes are provisional balance, not a new production formula.
+
+## Multi-mine portfolio and art direction — 2026-10-05
+
+- Keep a single account wallet. Only the mine currently being viewed runs the
+  foreground simulation; other owned mines store bounded offline intervals.
+- Credit an inactive mine's reward to the shared wallet when the player enters
+  that mine. A disconnected configured entry remains pending until server-time
+  validation settles the original boundary exactly once.
+- Use six ordered resources: Gold, Amethyst, Ruby, Sapphire, Emerald and
+  Diamond. Higher-value resources require higher purchase prices and earlier
+  site ownership; the initial Gold mine remains free.
+- Give each resource a complete visual family. Its fifteen floors use upper,
+  middle and deep bands, and walls, ground, ore veins, piles, shafts,
+  structures, surface buildings, cargo, impacts and claim presentation inherit
+  the resource's form and palette.

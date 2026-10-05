@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { finishPortfolioBoot } from './portfolioBootFixture';
+
 async function openBoost(page: Page): Promise<void> {
   const canvas = page.locator('#game-viewport canvas');
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
@@ -19,6 +21,7 @@ test('server Boost survives reload and rejects a second free activation', async 
   await page.goto('/');
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
   await expect(page.locator('#app')).toHaveAttribute('data-cloud-save-reconcile', /no-cloud-save|same-progress|kept-local/, { timeout: 15_000 });
+  await finishPortfolioBoot(page);
 
   await openBoost(page);
   const dialog = page.getByRole('dialog', { name: 'Mine Boost' });
@@ -29,6 +32,7 @@ test('server Boost survives reload and rejects a second free activation', async 
 
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
+  await finishPortfolioBoot(page);
   await openBoost(page);
   await expect(dialog).toContainText('Active ·', { timeout: 10_000 });
   await expect(dialog.getByRole('button', { name: 'Boost active' })).toBeDisabled();

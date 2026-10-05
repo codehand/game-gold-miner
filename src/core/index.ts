@@ -20,6 +20,32 @@ export {
   type ProductionBottleneck,
 } from './economy/calculateProductionRates';
 export {
+  activeGameState,
+  advanceActiveMine,
+  createInitialPortfolio,
+  enterMine,
+  enterMineWithPendingClaim,
+  previewMineOfflineGrant,
+  purchaseMine,
+  replaceActiveGameState,
+  settlePendingMineClaim,
+  suspendActiveMine,
+  type MineEnterResult,
+  type MineOfflineInterval,
+  type MinePendingClaim,
+  type MineProgressState,
+  type MinePurchaseResult,
+  type OwnedMine,
+  type PortfolioState,
+} from './portfolio/portfolio';
+export {
+  migratePortfolioCatRoster,
+  parseMineCatSlot,
+  projectCatRosterToMine,
+  qualifyMineCatSlot,
+  type MineCatSlotKey,
+} from './portfolio/portfolioCatRoster';
+export {
   CAT_CALCULATION_VERSION,
   assignCatToSlot,
   calculateCatRoleEffect,
@@ -44,6 +70,7 @@ export {
   type CatRoleEffect,
   type CatRosterState,
   type CatSlotKey,
+  type BareCatSlotKey,
 } from './cats';
 export {
   createCatProductionModifiers,
@@ -73,6 +100,7 @@ export {
 export {
   LIFETIME_GOLD_BOARD_KEY,
   calculateLifetimeGoldEarned,
+  calculatePortfolioLifetimeGoldEarned,
   toLeaderboardMagnitude,
   type LeaderboardMagnitude,
 } from './leaderboard/leaderboardMetric';
@@ -82,6 +110,10 @@ export {
   type ProgressBoundInput,
   type ProgressBoundViolation,
 } from './anti-cheat/progressBound';
+export {
+  evaluatePortfolioRoutineBound,
+  type PortfolioRoutineBoundInput,
+} from './anti-cheat/portfolioProgressBound';
 export {
   calculateOfflineIncome,
   type OfflineIncomeCalculation,

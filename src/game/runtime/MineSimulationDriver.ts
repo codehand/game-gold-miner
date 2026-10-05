@@ -13,7 +13,7 @@
  * in `src/main.ts` and Node tests can advance time exactly.
  */
 
-import type { BaseGameBalanceConfig } from '../../config';
+import type { BaseGameBalanceConfig, MineSiteId } from '../../config';
 import {
   catchUpSimulation,
   purchaseElevatorUpgrade,
@@ -72,6 +72,8 @@ export interface MineCommandSink {
 
 /** Everything the scene needs: snapshots to pull, commands to send. */
 export interface MineRuntimePort extends MineSnapshotSource, MineCommandSink {
+  /** Absent on legacy single-mine drivers and small scene fixtures. */
+  readonly mineSiteId?: MineSiteId;
   /** Optional for lightweight scene fixtures; the production driver exposes the live projection. */
   readonly catRoster?: CatRosterState;
   readonly boostState?: BoostState;

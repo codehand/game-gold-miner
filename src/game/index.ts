@@ -29,6 +29,7 @@ export {
   type MineSimulationDriverOptions,
   type MineSnapshotSource,
 } from './runtime';
+export { PortfolioMineRuntime, type PortfolioMineRuntimeOptions } from './runtime';
 export {
   createMineViewModel,
   formatAmount,
@@ -49,6 +50,7 @@ export interface CreateGameOptions {
   readonly onSettings?: (onClosed: () => void) => void;
   readonly onLeaderboard?: (onClosed: () => void) => void;
   readonly onBoost?: (onClosed: () => void) => void;
+  readonly onMap?: (onClosed: () => void) => void;
   readonly onCollection?: (onClosed: () => void) => void;
   readonly onCatSlot?: (slotKey: CatSlotKey, onClosed: () => void) => void;
   readonly onMarketplacePurchase?: (assetId: string) => Promise<MarketplacePurchaseResult>;
@@ -92,6 +94,7 @@ export function createGame(
         onSettings: options.onSettings,
         onLeaderboard: options.onLeaderboard,
         onBoost: options.onBoost,
+        onMap: options.onMap,
         onCollection: options.onCollection,
         onCatSlot: options.onCatSlot,
         onMarketplacePurchase: options.onMarketplacePurchase,

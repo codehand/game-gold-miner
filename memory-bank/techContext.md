@@ -2,6 +2,25 @@
 
 ## Current State
 
+Multi-mine Map (2026-10-05) is implemented and release-verified. Configured and
+unconfigured clients use local save V4 for a six-site portfolio, one wallet,
+one active mine and per-mine offline claims. Configured boot reconciles V3/V4
+local/cloud state, serializes revision-checked commands, and adopts canonical
+Collection/Marketplace wallet and roster results. Save-sync uses server time,
+per-user advisory locks and idempotent receipts for migration, purchase,
+entry/claim, suspension and mine-bound Boost. A returning account with no save
+cannot upload a fresh replacement; cloud-unavailable boot keeps the preserved
+local portfolio playable.
+
+Phaser swaps the selected site's three floor depth bands, pile, surface,
+full/empty tower, warehouse, shaft, loaded default/Tobi/Rivet cargo, pour and
+impact art plus cabin overlays. Map terrain, six SVG landmarks, Boru resource
+overlays and claim identity art are integrated. Native 360×640 captures cover
+all five non-Gold sites at upper, middle and deep positions. Configured offline
+entry freezes a V4 `pendingClaim`, starts the target mine at the persisted
+boundary, and replays a durable upload/command receipt after reconnect or reload.
+The server grant settles once into the newer local runtime before sync resumes.
+
 Boru SSR Miner (2026-09-30) uses four generated eight-frame RGBA sheets,
 one preserve-scale profile and chassis-registration pass via
 `scripts/normalize-boru-assets.py`. Runtime sheets are 512x256 with 128px cells;
@@ -44,7 +63,8 @@ All 37 base-game implementation-plan steps are complete and user-validated;
 cat collection Phases 0–9 and the live seeded-catalog Marketplace
 Buy/Sell/Rent/My listings flows are complete under the living post-milestone
 plans.
-IndexedDB remains schema version 1, the data-only save document is V3, and the
+IndexedDB remains schema version 1; configured and unconfigured clients use V4
+while V3 remains a supported migration input. The
 Supabase relational cat tables are documented in the complete schema below. The
 physical mid-range Android pass and a human 30-second-comprehension playtest
 remain base-game caveats; neither blocks the cat implementation. Phases 7–9 use
@@ -629,6 +649,8 @@ variants and the future Unloader role remain preview/source assets.
 | `assignments` | Unique plain `{ slotKey, catInstanceId }` pairs. The slot role must equal the cat role, and each cat/slot can occur at most once. |
 | `assignmentRevision`, `collectionRevision` | Non-negative safe integers; server projection/retry metadata, not renderer state. |
 
+**Portfolio document V4:** `schemaVersion` is exactly `4`; `savedAtTimestampMs` is a non-negative safe integer. `walletGold` is the sole non-negative numeric string for spendable gold. `activeMineId` is a configured site id or `null`; `selectedMineId` is an owned site id and equals the active id when active; `boostMineId` is `null` or an owned site id. `mines` has keys only from Gold, Amethyst, Ruby, Sapphire, Emerald and Diamond, always includes Gold, and requires ownership of each site's prerequisite. Unknown fields are rejected. Each owned mine holds the exact V3 `state` fields except `gold`, non-negative `purchasedAtMs`, `visitCount`, `offlineSequence` and `lastClaimedSequence`; `offline` is `null` or `{ sequence, startedAtMs, savedRatePerSecond }`, and `pendingClaim` is `null` or that interval plus `endedAtMs`. Rates are non-negative numeric strings and all timestamps, visit counts and claim cursors must agree. An unvisited mine has neither interval. Normally the active mine has no `offline` interval and every previously visited inactive mine has one; an unavailable configured entry may leave one older `pendingClaim` on the active target while its foreground state advances from the later entry boundary, and blocks another switch until settlement. Cat records and two revision fields retain V3 field validation; V4 assignments use `mine:<ownedMineId>:<role slot>` and remain unique per cat and per qualified slot. V3 and early V4 short keys migrate to Gold; early V4 documents without `pendingClaim` migrate to `null`. The active scene projects only its mine's assignments to short keys. V1/V2/V3 load into a suspended Gold portfolio before a durable V4 write. The save-sync server accepts V4 routine uploads after a V4 row exists and rejects direct client changes to ownership, mine selection, inactive progress and offline claims. First V4 account upload reanchors timestamps to the server receipt. The portfolio command RPC owns migration, purchase and claim revisions. Configured clients use V4 and adopt canonical command receipts before the next routine sync.
+
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
 ## Complete Database Schema
@@ -962,7 +984,7 @@ create table public.entitlements (
 | `saves` | `user_id` | uuid | no | — | PK; FK → `auth.users(id)` on delete cascade; one row per user |
 | `saves` | `revision` | bigint | no | — | `> 0`; monotonic, `+1` per accepted upload; the D2 concurrency token |
 | `saves` | `schema_version` | integer | no | — | `> 0`; denormalized from the document for migration sweeps |
-| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; exact serialized `SaveDocumentV3` |
+| `saves` | `document_json` | text | no | — | ≤ 65536 bytes; validated serialized V3 or V4 save document |
 | `saves` | `received_at` | timestamptz | no | `now()` | server clock; the D3 anchor for every elapsed-time calculation |
 | `saves` | `previous_revision` | bigint | yes | — | `< revision`; null-together with the other two `previous_*` columns |
 | `saves` | `previous_document_json` | text | yes | — | ≤ 65536 bytes; one generation of rollback |
@@ -1140,17 +1162,18 @@ fixed with a token-gated `POST /v1/test-only-reset-rate-limit` route (see
 | Object store | Field | Type | Required / nullable | Key / constraint |
 |---|---|---|---|---|
 | `saves` | `id` | string | Required, non-null | Primary key via key path `id`; application writes only the literal `active`. |
-| `saves` | `document` | structured-clone-compatible `SaveDocumentV3` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
+| `saves` | `document` | structured-clone-compatible `SaveDocumentV3` or local `PortfolioSaveDocumentV4` object | Required, non-null | Must pass migration and validation before runtime deserialization. |
 
-The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, a legacy version-1 or version-2 save (including the former four-floor prefix, expanded to fifteen floors before validation, with floors 5–15 initialized as locked defaults) is migrated to version 3, with version 1 defaulting `warehouse.totalOfflineGoldClaimed` to `"0"` and both older shapes gaining an empty cat projection; the IndexedDB database version remains `1`.
+The store has no auto-increment key, secondary indexes, foreign keys, relationships, or additional records by design. `put({ id: 'active', document })` replaces the prior snapshot, enforcing one logical active save. Dexie database version 1 creates `saves` with schema string `id`; no IndexedDB structural migration exists. At the document layer, legacy version-1 or version-2 saves (including the former four-floor prefix, expanded to fifteen floors before validation) and version-3 saves migrate to a version-4 portfolio for both local and configured play. Version 1 defaults `warehouse.totalOfflineGoldClaimed` to `"0"`; older shapes gain an empty cat projection. IndexedDB database version remains `1`.
 
 **Synchronous lifecycle journal:** localStorage key `cat-mine-idle:lifecycle-save-v1`.
 
 | Key | Value | Lifetime / relationship |
 |---|---|---|
-| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV3` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+| `cat-mine-idle:lifecycle-save-v1` | JSON string encoding one validated `SaveDocumentV3` or local `PortfolioSaveDocumentV4` | Written synchronously only at hidden/pagehide boundaries; considered only when newer than the valid IndexedDB record; removed after the same-or-newer document commits to IndexedDB. |
+| `cat-mine-idle:portfolio-command:<user UUID>` | JSON version `2` transaction envelope containing one validated command, its canonical V4 source document or `null`, upload base revision or `null`, accepted server receipt or `null`, and diagnostic `writtenAtMs` | Scoped to the authenticated account. Written before upload; advanced after upload and command acceptance; removed only after the accepted document or merged pending claim is durably represented locally. A legacy bare command remains readable for replay. |
 
-The journal introduces no new save schema version and is not a second progression store. Malformed or unsupported journal values are discarded and never override a valid IndexedDB snapshot.
+The lifecycle journal introduces no new save schema version and is not a second progression store. The portfolio command journal is a transaction log: its source snapshot freezes the exact `effectiveAtMs` boundary and its receipt closes ambiguous network outcomes without double execution. Malformed, unsupported or wrong-account journal values never override a valid IndexedDB snapshot.
 
 ### Cat collection schema extension — 2026-09-19
 
@@ -1460,19 +1483,92 @@ IndexedDB v1 stay unchanged; V3 validators now accept the Hauler role/slots.
 ### Mine Overdrive schema extension — 2026-09-29
 
 `public.mine_boosts` stores one row per account. Columns: `user_id uuid NOT
-NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE`,
-`last_activated_at timestamptz NOT NULL`, and `updated_at timestamptz NOT NULL
-DEFAULT now()`. The primary key is its only index. RLS is enabled and all
-table privileges are revoked from `anon` and `authenticated`; no client policy
-exists. The Edge Function authenticates the bearer token, reads this row with
-the service role, and calls `public.activate_mine_boost(p_user_id uuid)`.
-That security-definer RPC uses `clock_timestamp()` and an atomic `INSERT ...
-ON CONFLICT ... DO UPDATE ... WHERE last_activated_at <= now - interval '8
-hours'`; it returns the new timestamp or NULL on cooldown. Execution is
-revoked from PUBLIC/anon/authenticated and granted only to `service_role`.
-The row's foreign key deletes it with its `auth.users` owner. No save-document,
-IndexedDB, or localStorage-journal schema field was added; an unconfigured
-local game uses a separate best-effort Boost localStorage cache.
+NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE`, `mine_id text
+NOT NULL`, `last_activated_at timestamptz NOT NULL`, and `updated_at timestamptz
+NOT NULL DEFAULT now()`. `mine_boosts_mine_known` restricts `mine_id` to
+`gold | amethyst | ruby | sapphire | emerald | diamond`. The primary key is its
+only index. RLS is enabled and all table privileges are revoked from `anon` and
+`authenticated`; no client policy exists. The row's foreign key deletes it with
+its `auth.users` owner. An unconfigured local game uses a separate best-effort
+Boost localStorage cache.
+
+`20261003100000_bind_boost_to_portfolio_mine.sql` backfills existing rows to
+Gold, makes `mine_id` required, drops `activate_mine_boost(uuid)`, and defines
+`activate_portfolio_mine_boost(uuid,text,bigint,uuid,text) returns jsonb`. The
+security-definer RPC takes the per-user advisory lock, replays a matching
+portfolio command receipt, locks the V4 save row, validates the active mine and
+base revision, enforces the account-wide eight-hour cooldown, writes the bound
+mine into both `mine_boosts.mine_id` and `document.boostMineId`, advances the
+save revision, and inserts the receipt in one transaction. Cooldown responses
+report the mine and activation time without changing the save. Execution is
+revoked from PUBLIC, `anon` and `authenticated` and granted only to
+`service_role`.
+
+### Portfolio command receipts and atomic save shift — 2026-10-02
+
+`20261002100000_portfolio_command_receipts.sql` adds the seventh public
+table, `portfolio_command_receipts`. It stores the response to each accepted
+account command so a retry after timeout returns the original result without
+charging or claiming again.
+
+| Column | Type | Null | Default | Constraint |
+|---|---|---|---|---|
+| `user_id` | uuid | no | — | PK part 1; FK → `auth.users(id)` on delete cascade |
+| `idempotency_key` | uuid | no | — | PK part 2 |
+| `fingerprint` | text | no | — | exactly 64 lowercase hex characters; SHA-256 of canonical command type, mine ID and base revision |
+| `base_revision` | bigint | no | — | > 0 |
+| `resulting_revision` | bigint | no | — | exactly `base_revision + 1` |
+| `response_json` | jsonb | no | — | exact accepted response, ≤ 131072 serialized bytes |
+| `created_at` | timestamptz | no | `now()` | receipt creation time |
+
+The composite primary key `(user_id, idempotency_key)` is the table's only
+index. RLS is enabled; `anon` and `authenticated` have no table privileges
+or policies. The service role alone reads receipts. Deleting the owner through
+`auth.users` cascades to receipts.
+
+`public.apply_portfolio_command(uuid, uuid, text, bigint, text, timestamptz,
+jsonb) returns jsonb` is a security-definer RPC with an empty search path.
+Execution is revoked from PUBLIC, `anon` and `authenticated` and granted
+only to `service_role`. It takes a per-user transaction advisory lock, looks
+up a prior receipt first, then locks the `saves` row. A matching fingerprint
+replays the stored response; a different fingerprint refuses the reused key.
+For a new command it checks the base revision, writes schema V4 and shifts the
+previous document/receipt fields, and inserts its response receipt in the same
+transaction. A concurrent routine upload or command can win the save revision;
+the loser receives a conflict and cannot commit a second debit or claim.
+The Edge Function validates the input and computes the new portfolio before
+calling this RPC; the database enforces atomic persistence and replay. The
+`saves.document_json` column now holds either validated V3 or V4 JSON, within
+its existing 65536-byte constraint. This migration changes no IndexedDB or
+localStorage journal columns.
+
+### Portfolio wallet and mine-scoped Collection projection — 2026-10-02
+
+`20261002110000_portfolio_wallet_marketplace.sql` changes no table columns,
+indexes, foreign keys or RLS policies. It replaces the
+`cat_assignments_slot_format` check to admit legacy Gold slots and exact
+`mine:(gold|amethyst|ruby|sapphire|emerald|diamond):<role slot>` keys.
+`<role slot>` is `elevator:main`, `warehouse:main`, `miner:<non-colon floor>`
+or `hauler:[1-5]`. A cat remains unique across all mines by the existing
+`cat_assignments.cat_instance_id` unique constraint.
+
+The migration defines `save_wallet_gold(jsonb)`,
+`save_with_wallet_gold(jsonb,numeric)`,
+`persist_wallet_document(uuid,jsonb)` and
+`sync_portfolio_cat_roster(uuid,boolean)`. These helper RPCs revoke execution
+from PUBLIC, `anon` and `authenticated`; the existing service-role
+Collection RPCs call them within their transactions. V3 wallet writes use
+`state.gold`; V4 wallet writes use `walletGold`. A wallet transaction advances
+the `saves.revision`, shifts `previous_revision`,
+`previous_document_json` and `previous_received_at`, preserves
+`schema_version`, and then refreshes the V4 `cats`, `assignments` and
+Collection revisions from relational rows. Listing, cancellation, assignment
+and rental expiry refresh that projection and advance the save revision when
+no wallet write already did so. V3 documents retain their existing roster
+handling. The replaced assignment RPC validates that a mine-qualified slot
+belongs to an owned site in the V4 save before changing the relational
+assignment. The save, relational rows and Collection response remain one
+database transaction. No IndexedDB or localStorage journal schema changes.
 
 ## Verified Commands
 

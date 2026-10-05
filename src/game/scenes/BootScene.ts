@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getMineSite, type MineSiteId } from '../../config';
 
 import {
   calculateSurfaceHaulerWorkforce,
@@ -18,6 +19,7 @@ import type {
 import { MineShaftUpgradeModal } from '../../ui/MineShaftUpgradeModal';
 
 import { createBacklogTextures } from '../assets/backlogTextures';
+import { MINE_SITE_ART, mineFloorArt } from '../assets/mineSiteArt';
 import { HaulerThrusterView } from '../entities/HaulerThrusterView';
 import { NAVIGATION_ICON_ASSETS } from '../assets/navigationAssets';
 import {
@@ -66,6 +68,8 @@ import {
   MINE_SHAFT_CABIN_WIDTH,
   CAT_RUNTIME_DISPLAY_SIZE,
   serializeRegion,
+  FONT_FAMILY,
+  FONT_STYLE_BOLD,
   SURFACE_ELEVATOR_STOP_X,
   SURFACE_ELEVATOR_STOP_Y,
   SURFACE_ELEVATOR_LEVEL_CONTROL,
@@ -167,6 +171,9 @@ const SURFACE_TITLE_HEIGHT = 28;
 const SURFACE_PANEL_INSET = 12;
 const SURFACE_PANEL_GAP = 10;
 const SURFACE_PANEL_BOTTOM_INSET = 10;
+const CABIN_MATERIAL_SIZE = 32;
+const CABIN_MATERIAL_X_OFFSET = -7;
+const CABIN_MATERIAL_Y_OFFSET = 19;
 
 const COLOR_SURFACE_BACKGROUND = toFillColor(SURFACE_BACKGROUND);
 const COLOR_MINE_BACKGROUND = toFillColor(MINE_BACKGROUND);
@@ -196,6 +203,7 @@ export interface BootSceneOptions {
   readonly onSettings?: (onClosed: () => void) => void;
   readonly onLeaderboard?: (onClosed: () => void) => void;
   readonly onBoost?: (onClosed: () => void) => void;
+  readonly onMap?: (onClosed: () => void) => void;
   readonly onCollection?: (onClosed: () => void) => void;
   readonly onCatSlot?: (slotKey: CatSlotKey, onClosed: () => void) => void;
   readonly onMarketplacePurchase?: (assetId: string) => Promise<MarketplacePurchaseResult>;
@@ -231,9 +239,12 @@ export interface BootSceneOptions {
  */
 export class BootScene extends Phaser.Scene {
   readonly #source: MineRuntimePort;
+  #siteId: MineSiteId;
+  #siteNameBadge: Phaser.GameObjects.Text | null = null;
   readonly #onSettings: ((onClosed: () => void) => void) | null;
   readonly #onLeaderboard: ((onClosed: () => void) => void) | null;
   readonly #onBoost: ((onClosed: () => void) => void) | null;
+  readonly #onMap: ((onClosed: () => void) => void) | null;
   readonly #onCollection: ((onClosed: () => void) => void) | null;
   readonly #onCatSlot: ((slotKey: CatSlotKey, onClosed: () => void) => void) | null;
   readonly #onMarketplacePurchase: ((assetId: string) => Promise<MarketplacePurchaseResult>) | null;
@@ -272,10 +283,12 @@ export class BootScene extends Phaser.Scene {
   #shaftBackground: Phaser.GameObjects.TileSprite | null = null;
   #shaftElevator: Phaser.GameObjects.Image | null = null;
   #shaftCargoCat: Phaser.GameObjects.Sprite | null = null;
+  #shaftCabinMaterial: Phaser.GameObjects.Image | null = null;
   #surfaceElevatorTower: Phaser.GameObjects.Image | null = null;
   #surfaceLandscape: Phaser.GameObjects.Image | null = null;
   #surfaceElevator: Phaser.GameObjects.Image | null = null;
   #surfaceCargoCat: Phaser.GameObjects.Sprite | null = null;
+  #surfaceCabinMaterial: Phaser.GameObjects.Image | null = null;
   #surfaceWarehouse: Phaser.GameObjects.Image | null = null;
   #warehouseManager: Phaser.GameObjects.Sprite | null = null;
   #surfaceHaulerCart: Phaser.GameObjects.Image | null = null;
@@ -294,6 +307,8 @@ export class BootScene extends Phaser.Scene {
   #scroll: MineScrollState | null = null;
   /** Number of floor rows currently revealed to the player: 5, 10, or 15. */
   #visibleFloorCount: number;
+  readonly #siteScrollY = new Map<MineSiteId, number>();
+  #siteArtLoadPromise: Promise<void> | null = null;
 
   public constructor(options: BootSceneOptions) {
     super({ key: BOOT_SCENE_KEY });
@@ -304,9 +319,11 @@ export class BootScene extends Phaser.Scene {
     );
 
     this.#source = options.source;
+    this.#siteId = options.source.mineSiteId ?? 'gold';
     this.#onSettings = options.onSettings ?? null;
     this.#onLeaderboard = options.onLeaderboard ?? null;
     this.#onBoost = options.onBoost ?? null;
+    this.#onMap = options.onMap ?? null;
     this.#onCollection = options.onCollection ?? null;
     this.#onCatSlot = options.onCatSlot ?? null;
     this.#onMarketplacePurchase = options.onMarketplacePurchase ?? null;
@@ -325,6 +342,33 @@ export class BootScene extends Phaser.Scene {
 
   /** Loads the original Step 32 placeholder family before any view is built. */
   public preload(): void {
+    if (this.#siteId !== 'gold') {
+      for (const asset of [
+        MINE_SITE_ART[this.#siteId].surface,
+        MINE_SITE_ART[this.#siteId].towerLoaded,
+        MINE_SITE_ART[this.#siteId].towerEmpty,
+        MINE_SITE_ART[this.#siteId].warehouse,
+        MINE_SITE_ART[this.#siteId].cartFilled,
+        MINE_SITE_ART[this.#siteId].shaft,
+        MINE_SITE_ART[this.#siteId].tobiCartFilled,
+        MINE_SITE_ART[this.#siteId].rivetCartFilled,
+        ...MINE_SITE_ART[this.#siteId].floors,
+        MINE_SITE_ART[this.#siteId].orePile,
+      ]) {
+        if (!this.textures.exists(asset.key)) this.load.image(asset.key, asset.path);
+      }
+      for (const asset of [
+        MINE_SITE_ART[this.#siteId].pour,
+        MINE_SITE_ART[this.#siteId].impact,
+      ]) {
+        if (!this.textures.exists(asset.key)) {
+          this.load.spritesheet(asset.key, asset.path, {
+            frameWidth: PLACEHOLDER_ANIMATION_FRAME_SIZE,
+            frameHeight: PLACEHOLDER_ANIMATION_FRAME_SIZE,
+          });
+        }
+      }
+    }
     for (const icon of NAVIGATION_ICON_ASSETS) {
       this.load.image(icon.textureKey, icon.path);
     }
@@ -489,6 +533,117 @@ export class BootScene extends Phaser.Scene {
     this.#animationSpeedMultiplier = multiplier;
   }
 
+  /** Loads one destination family while the Map still covers the mine scene. */
+  public prepareSiteArt(siteId: MineSiteId): Promise<void> {
+    const art = MINE_SITE_ART[siteId];
+    const assets = [art.surface, art.towerLoaded, art.towerEmpty, art.warehouse,
+      art.cartFilled, art.shaft, art.tobiCartFilled, art.rivetCartFilled,
+      ...art.floors, art.orePile];
+    if ([...assets, art.pour, art.impact].every((asset) => this.textures.exists(asset.key))) {
+      return Promise.resolve();
+    }
+    if (this.#siteArtLoadPromise !== null) return this.#siteArtLoadPromise;
+    this.#siteArtLoadPromise = new Promise<void>((resolve, reject) => {
+      this.load.once('complete', () => {
+        this.#siteArtLoadPromise = null;
+        if ([...assets, art.pour, art.impact].every((asset) => this.textures.exists(asset.key))) resolve();
+        else reject(new Error(`Could not load ${siteId} artwork.`));
+      });
+      for (const asset of assets) {
+        if (!this.textures.exists(asset.key)) this.load.image(asset.key, asset.path);
+      }
+      if (!this.textures.exists(art.pour.key)) {
+        this.load.spritesheet(art.pour.key, art.pour.path, {
+          frameWidth: PLACEHOLDER_ANIMATION_FRAME_SIZE,
+          frameHeight: PLACEHOLDER_ANIMATION_FRAME_SIZE,
+        });
+      }
+      if (!this.textures.exists(art.impact.key)) {
+        this.load.spritesheet(art.impact.key, art.impact.path, {
+          frameWidth: MINER_MINING_IMPACT_ASSET.frameSizePx,
+          frameHeight: MINER_MINING_IMPACT_ASSET.frameSizePx,
+        });
+      }
+      this.load.start();
+    });
+    return this.#siteArtLoadPromise;
+  }
+
+  /** Binds the family after the runtime has committed its mine selection. */
+  public activateSiteArt(siteId: MineSiteId): void {
+    const art = MINE_SITE_ART[siteId];
+    const assets = [art.surface, art.towerLoaded, art.towerEmpty, art.warehouse,
+      art.cartFilled, art.shaft, art.tobiCartFilled, art.rivetCartFilled,
+      ...art.floors, art.orePile];
+    if (![...assets, art.pour, art.impact].every((asset) => this.textures.exists(asset.key))) {
+      throw new Error(`Artwork for ${siteId} is not loaded.`);
+    }
+    if (this.#siteId === siteId) return;
+    this.#siteScrollY.set(this.#siteId, this.#scroll?.scrollY ?? 0);
+    const previousSiteId = this.#siteId;
+    this.#siteId = siteId;
+    // Site changes can change the active roster without changing the account's
+    // assignment revision. Rebind the defaults or site cats on this boundary.
+    this.#syncRuntimeCatAssignments(true);
+    for (const pour of this.#surfaceGoldPours) {
+      pour.setTexture(art.pour.key, 0)
+        .setDisplaySize(SURFACE_GOLD_POUR_WIDTH, SURFACE_GOLD_POUR_HEIGHT);
+    }
+    for (const material of [this.#shaftCabinMaterial, this.#surfaceCabinMaterial]) {
+      material?.setTexture(art.orePile.key)
+        .setDisplaySize(CABIN_MATERIAL_SIZE, CABIN_MATERIAL_SIZE);
+    }
+    this.#siteNameBadge?.setText(getMineSite(siteId).name);
+    this.#shaftBackground?.setTexture(art.shaft.key);
+    if (this.#surfaceLandscape !== null) {
+      const { displayWidth, displayHeight } = this.#surfaceLandscape;
+      this.#surfaceLandscape
+        .setTexture(MINE_SITE_ART[siteId].surface.key)
+        .setDisplaySize(displayWidth, displayHeight);
+    }
+    if (this.#surfaceWarehouse !== null) {
+      const { displayWidth, displayHeight } = this.#surfaceWarehouse;
+      this.#surfaceWarehouse
+        .setTexture(art.warehouse.key)
+        .setDisplaySize(displayWidth, displayHeight);
+    }
+    if (PUBLISHES_VIEW_DIAGNOSTICS) this.game.canvas.dataset.mineSiteId = siteId;
+    for (let index = 0; index < this.#floorViews.length; index += 1) {
+      this.#floorViews[index].setSiteArt(
+        mineFloorArt(siteId, index + 1).key,
+        MINE_SITE_ART[siteId].orePile.key,
+        MINE_SITE_ART[siteId].cartFilled.key,
+        MINE_SITE_ART[siteId].impact.key,
+        MINE_SITE_ART[siteId].pour.key,
+      );
+    }
+    const snapshot = this.#source.snapshot;
+    this.#visibleFloorCount = countVisibleFloors(snapshot);
+    if (this.#mineRegion !== null) {
+      const scroll = createMineScrollState({
+        region: this.#mineRegion,
+        contentHeight: calculateMineContentHeight(this.#visibleFloorCount),
+      });
+      this.#scroll = {
+        ...scroll,
+        scrollY: Math.min(this.#siteScrollY.get(siteId) ?? 0, scroll.maxScrollY),
+      };
+      this.#mineCamera?.setScroll(0, this.#scroll.scrollY);
+    }
+    this.#bindSnapshot(snapshot, true);
+    if (previousSiteId !== 'gold') {
+      const previousArt = MINE_SITE_ART[previousSiteId];
+      for (const asset of [previousArt.surface, previousArt.towerLoaded,
+        previousArt.towerEmpty, previousArt.warehouse, previousArt.cartFilled,
+        previousArt.shaft,
+        previousArt.tobiCartFilled, previousArt.rivetCartFilled,
+        ...previousArt.floors,
+        previousArt.orePile, previousArt.pour, previousArt.impact]) {
+        if (this.textures.exists(asset.key)) this.textures.remove(asset.key);
+      }
+    }
+  }
+
   /**
    * Rebinds every floor and shared-stage view to a newer core snapshot.
    *
@@ -541,8 +696,8 @@ export class BootScene extends Phaser.Scene {
     this.#surfaceElevatorTower
       ?.setTexture(
         viewModel.warehouse.queueSteps > 0
-          ? PLACEHOLDER_TEXTURES.elevatorTower
-          : PLACEHOLDER_TEXTURES.elevatorTowerEmpty,
+          ? MINE_SITE_ART[this.#siteId].towerLoaded.key
+          : MINE_SITE_ART[this.#siteId].towerEmpty.key,
       )
       .setDisplaySize(
         SURFACE_ELEVATOR_TOWER_WIDTH,
@@ -818,6 +973,15 @@ export class BootScene extends Phaser.Scene {
     );
   }
 
+  #siteFilledCartTexture(index: number): string {
+    const texture = this.#haulerCartAssets[index].filledTexture;
+    const art = MINE_SITE_ART[this.#siteId];
+    if (texture === PLACEHOLDER_TEXTURES.goldContainerFilled) return art.cartFilled.key;
+    if (texture === HAULER_CART_ASSETS[0].filledTexture) return art.tobiCartFilled.key;
+    if (texture === HAULER_CART_ASSETS[1].filledTexture) return art.rivetCartFilled.key;
+    return texture;
+  }
+
   #applyAnimation(): void {
     for (const view of this.#floorViews) {
       if (!view.root.visible) {
@@ -867,7 +1031,7 @@ export class BootScene extends Phaser.Scene {
       haulerCart
         .setTexture(
           pose.cartIsFilled
-            ? this.#haulerCartAssets[0].filledTexture
+            ? this.#siteFilledCartTexture(0)
             : this.#haulerCartAssets[0].emptyTexture,
         )
         .setFlipX(pose.facesLeft)
@@ -939,7 +1103,7 @@ export class BootScene extends Phaser.Scene {
           ?.setVisible(true)
           .setTexture(
             assistantPose.cartIsFilled
-              ? this.#haulerCartAssets[index + 1].filledTexture
+              ? this.#siteFilledCartTexture(index + 1)
               : this.#haulerCartAssets[index + 1].emptyTexture,
           )
           .setFlipX(assistantPose.facesLeft)
@@ -973,15 +1137,19 @@ export class BootScene extends Phaser.Scene {
     const shaft = this.#shaftRegion;
     const elevator = this.#shaftElevator;
     const cargoCat = this.#shaftCargoCat;
+    const cabinMaterial = this.#shaftCabinMaterial;
     const surfaceElevator = this.#surfaceElevator;
     const surfaceCargoCat = this.#surfaceCargoCat;
+    const surfaceCabinMaterial = this.#surfaceCabinMaterial;
 
     if (
       shaft !== null &&
       elevator !== null &&
       cargoCat !== null &&
+      cabinMaterial !== null &&
       surfaceElevator !== null &&
-      surfaceCargoCat !== null
+      surfaceCargoCat !== null &&
+      surfaceCabinMaterial !== null
     ) {
       const shaftCenterX = shaft.x + shaft.width / 2;
       // The route terminates at one physical world point above floor one.
@@ -1053,6 +1221,9 @@ export class BootScene extends Phaser.Scene {
         .setFrame(cargoFrame)
         .setPosition(elevatorX, elevatorY + MINE_SHAFT_CABIN_CAT_Y_OFFSET)
         .setVisible(cargoVisible);
+      cabinMaterial
+        .setPosition(elevatorX + CABIN_MATERIAL_X_OFFSET, elevatorY + CABIN_MATERIAL_Y_OFFSET)
+        .setVisible(stage.queueSteps > 0);
       // These twins are clipped to the surface strip. Together with the mine
       // camera's clip they form one continuous cabin across the boundary.
       surfaceElevator
@@ -1064,6 +1235,10 @@ export class BootScene extends Phaser.Scene {
         .setPosition(elevatorX, surfaceLocalY + MINE_SHAFT_CABIN_CAT_Y_OFFSET)
         .setAlpha(surfaceAlpha)
         .setVisible(cargoVisible && towerEntryProgress > 0);
+      surfaceCabinMaterial
+        .setPosition(elevatorX + CABIN_MATERIAL_X_OFFSET, surfaceLocalY + CABIN_MATERIAL_Y_OFFSET)
+        .setAlpha(surfaceAlpha)
+        .setVisible(stage.queueSteps > 0 && towerEntryProgress > 0);
     }
   }
 
@@ -1113,6 +1288,19 @@ export class BootScene extends Phaser.Scene {
           return;
         }
 
+        if (key === 'map' && this.#onMap !== null) {
+          this.input.enabled = false;
+          this.#onMap(() => {
+            this.input.enabled = true;
+            if (PUBLISHES_VIEW_DIAGNOSTICS) {
+              const canvas = this.game.canvas;
+              const closeCount = Number(canvas.dataset.mapCloseCount ?? '0');
+              canvas.dataset.mapCloseCount = String(closeCount + 1);
+            }
+          });
+          return;
+        }
+
         // Scene input is only surrendered once the modal that restores it is
         // known to exist: disabling it for a marketplace that never opens
         // would leave the mine unreachable with nothing left to re-enable it.
@@ -1126,6 +1314,11 @@ export class BootScene extends Phaser.Scene {
           this.input.enabled = false;
           this.#onCollection(() => {
             this.input.enabled = true;
+            if (PUBLISHES_VIEW_DIAGNOSTICS) {
+              const canvas = this.game.canvas;
+              const closeCount = Number(canvas.dataset.collectionCloseCount ?? '0');
+              canvas.dataset.collectionCloseCount = String(closeCount + 1);
+            }
           });
         }
       },
@@ -1190,7 +1383,7 @@ export class BootScene extends Phaser.Scene {
       .image(
         region.width / 2,
         region.height / 2,
-        PLACEHOLDER_TEXTURES.surfaceLandscape,
+        MINE_SITE_ART[this.#siteId].surface.key,
       )
       .setDisplaySize(region.width, region.height);
     layer.add(this.#surfaceLandscape);
@@ -1216,11 +1409,19 @@ export class BootScene extends Phaser.Scene {
       .setVisible(false)
       .setInteractive({ useHandCursor: true })
       .on('pointerup', () => this.#openCatSlot('elevator:main'));
+    this.#surfaceCabinMaterial = this.add
+      .image(
+        SURFACE_ELEVATOR_STOP_X + CABIN_MATERIAL_X_OFFSET,
+        SURFACE_ELEVATOR_STOP_Y + CABIN_MATERIAL_Y_OFFSET,
+        MINE_SITE_ART[this.#siteId].orePile.key,
+      )
+      .setDisplaySize(CABIN_MATERIAL_SIZE, CABIN_MATERIAL_SIZE)
+      .setVisible(false);
     this.#surfaceElevatorTower = this.add
       .image(
         SURFACE_ELEVATOR_TOWER_CENTER_X,
         SURFACE_ELEVATOR_TOWER_CENTER_Y,
-        PLACEHOLDER_TEXTURES.elevatorTower,
+        MINE_SITE_ART[this.#siteId].towerLoaded.key,
       )
       .setDisplaySize(
         SURFACE_ELEVATOR_TOWER_WIDTH,
@@ -1234,7 +1435,7 @@ export class BootScene extends Phaser.Scene {
       .image(
         SURFACE_WAREHOUSE_CENTER_X,
         SURFACE_WAREHOUSE_CENTER_Y,
-        PLACEHOLDER_TEXTURES.warehouseBuilding,
+        MINE_SITE_ART[this.#siteId].warehouse.key,
       )
       .setDisplaySize(SURFACE_WAREHOUSE_WIDTH, SURFACE_WAREHOUSE_HEIGHT)
       .setInteractive({ useHandCursor: true })
@@ -1245,6 +1446,7 @@ export class BootScene extends Phaser.Scene {
     layer.add([
       this.#surfaceElevator,
       this.#surfaceCargoCat,
+      this.#surfaceCabinMaterial,
       this.#surfaceElevatorTower,
       this.#surfaceWarehouse,
     ]);
@@ -1307,7 +1509,7 @@ export class BootScene extends Phaser.Scene {
         .sprite(
           SURFACE_GOLD_POUR_X,
           SURFACE_GOLD_POUR_Y,
-          PLACEHOLDER_ANIMATION_TEXTURES.surfaceGoldPour,
+          MINE_SITE_ART[this.#siteId].pour.key,
           0,
         )
         .setDisplaySize(SURFACE_GOLD_POUR_WIDTH, SURFACE_GOLD_POUR_HEIGHT)
@@ -1400,6 +1602,16 @@ export class BootScene extends Phaser.Scene {
     this.#warehouseView.root.setVisible(false);
 
     layer.add([this.#elevatorView.root, this.#warehouseView.root]);
+    this.#siteNameBadge = this.add.text(region.width / 2, 5,
+      getMineSite(this.#siteId).name, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '11px',
+        fontStyle: FONT_STYLE_BOLD,
+        color: '#fff7df',
+        backgroundColor: '#152942',
+        padding: { x: 7, y: 3 },
+      }).setOrigin(0.5, 0);
+    layer.add(this.#siteNameBadge);
 
     return layer;
   }
@@ -1419,7 +1631,7 @@ export class BootScene extends Phaser.Scene {
         shaft.y,
         shaft.width,
         shaft.height,
-        PLACEHOLDER_TEXTURES.elevatorShaft,
+        MINE_SITE_ART[this.#siteId].shaft.key,
       )
       .setOrigin(0, 0)
       // The original four-floor art is 192x528. The fifteen-floor shaft must
@@ -1451,6 +1663,14 @@ export class BootScene extends Phaser.Scene {
         this.#elevatorAnimation.displaySize,
       )
       .setVisible(false);
+    this.#shaftCabinMaterial = this.add
+      .image(
+        shaft.x + shaft.width / 2 + CABIN_MATERIAL_X_OFFSET,
+        shaft.y + MINE_SHAFT_CABIN_HEIGHT / 2 + CABIN_MATERIAL_Y_OFFSET,
+        MINE_SITE_ART[this.#siteId].orePile.key,
+      )
+      .setDisplaySize(CABIN_MATERIAL_SIZE, CABIN_MATERIAL_SIZE)
+      .setVisible(false);
 
     content.add([
       background,
@@ -1460,6 +1680,11 @@ export class BootScene extends Phaser.Scene {
     this.#floorViews = Array.from({ length: MINE_FLOOR_COUNT }, (_, index) => {
       return new MineFloorView(this, calculateFloorSlotRegion(index, width), {
         hasThinSoilLayer: index > 0,
+        floorBackgroundTextureKey: mineFloorArt(this.#siteId, index + 1).key,
+        orePileTextureKey: MINE_SITE_ART[this.#siteId].orePile.key,
+        cartFilledTextureKey: MINE_SITE_ART[this.#siteId].cartFilled.key,
+        impactTextureKey: MINE_SITE_ART[this.#siteId].impact.key,
+        pourTextureKey: MINE_SITE_ART[this.#siteId].pour.key,
         // Resolved from the current snapshot at press time, not captured here:
         // the control's price and target change as the mine does.
         onUpgrade: () => {
@@ -1479,6 +1704,7 @@ export class BootScene extends Phaser.Scene {
     content.add(this.#floorViews.map((view) => view.root));
     content.add(this.#shaftElevator);
     content.add(this.#shaftCargoCat);
+    content.add(this.#shaftCabinMaterial);
 
     return content;
   }
@@ -1674,6 +1900,7 @@ export class BootScene extends Phaser.Scene {
       this.game.renderer.type === Phaser.WEBGL ? 'webgl' : 'canvas';
 
     canvas.dataset.bootScene = BOOT_SCENE_KEY;
+    canvas.dataset.mineSiteId = this.#siteId;
     canvas.dataset.bootSceneStarts = String(starts);
     canvas.dataset.renderer = renderer;
     canvas.dataset.layoutViewport = `${layout.width},${layout.height}`;
@@ -1837,6 +2064,14 @@ export class BootScene extends Phaser.Scene {
             assetId: this.#elevatorAnimation.assetId,
             texture: this.#shaftCargoCat.texture.key,
           },
+      elevatorCargoMaterial: this.#shaftCabinMaterial === null
+        ? null
+        : {
+            texture: this.#shaftCabinMaterial.texture.key,
+            visible: this.#shaftCabinMaterial.visible,
+            x: this.#shaftCabinMaterial.x,
+            y: this.#shaftCabinMaterial.y,
+          },
       surfaceElevatorCat: this.#surfaceCargoCat === null
         ? null
         : {
@@ -1845,6 +2080,12 @@ export class BootScene extends Phaser.Scene {
             height: this.#surfaceCargoCat.displayHeight,
             assetId: this.#elevatorAnimation.assetId,
             texture: this.#surfaceCargoCat.texture.key,
+          },
+      surfaceElevatorCargoMaterial: this.#surfaceCabinMaterial === null
+        ? null
+        : {
+            texture: this.#surfaceCabinMaterial.texture.key,
+            visible: this.#surfaceCabinMaterial.visible,
           },
       elevatorTower: this.#surfaceElevatorTower === null
         ? null
@@ -1866,6 +2107,7 @@ export class BootScene extends Phaser.Scene {
       warehouseBuilding: this.#surfaceWarehouse === null
         ? null
         : {
+            texture: this.#surfaceWarehouse.texture.key,
             centerX: this.#surfaceWarehouse.x,
             centerY: this.#surfaceWarehouse.y,
             width: this.#surfaceWarehouse.displayWidth,
@@ -1934,6 +2176,7 @@ export class BootScene extends Phaser.Scene {
             })),
             goldPourVisible: this.#surfaceGoldPours[0].visible,
             goldPourFrame: Number(this.#surfaceGoldPours[0].frame.name),
+            goldPourTexture: this.#surfaceGoldPours[0].texture.key,
             goldPours: this.#surfaceGoldPours.map((goldPour) => ({
               visible: goldPour.visible,
               x: goldPour.x,

@@ -8,6 +8,16 @@ Not part of the contract.
 
 ## Closed
 
+- **A configured player entering another mine during a cloud outage could lose
+  or duplicate its offline reward when reconnecting.** *Closed 2026-10-05:*
+  mine entry now writes a durable version-2 command envelope with the source
+  document, upload phase and accepted receipt. The server validates the exact
+  `effectiveAtMs` boundary, settles the pending interval once, and the client
+  merges the accepted result into any newer local portfolio. Pending UI blocks
+  a second switch until settlement, while idempotency and revision checks make
+  retry and reload safe. Core, Deno, live integration and server E2E coverage
+  exercise the path.
+
 - **An owned cat could reach the unique-assignment constraint when reused on a
   second floor, producing HTTP 500.** *Closed 2026-09-28:* the trading-era RPC's
   renter comparison produced SQL `NULL` for owned cats and skipped its

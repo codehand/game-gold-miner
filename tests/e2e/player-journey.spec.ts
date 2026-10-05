@@ -8,16 +8,17 @@ import {
 
 import { BASE_GAME_BALANCE } from '../../src/config';
 import {
-  calculateOfflineIncome,
   catchUpSimulation,
-  claimOfflineReward,
   createInitialGameState,
-  createPendingOfflineReward,
+  createInitialPortfolio,
+  enterMine,
   purchaseElevatorUpgrade,
   purchaseFloorUnlock,
   purchaseMineShaftUpgrade,
   purchaseWarehouseUpgrade,
+  replaceActiveGameState,
   simulateEconomyProgression,
+  suspendActiveMine,
   type EconomyProgressionEvent,
   type GameState,
 } from '../../src/core';
@@ -28,9 +29,10 @@ import type {
 import type { PublishedPurchaseControl } from '../../src/game/scenes/BootScene';
 import { calculateMineLayout } from '../../src/game/layout';
 import {
-  createSaveDocument,
-  deserializeSaveDocument,
-  type SaveDocumentV2,
+  createPortfolioSaveDocument,
+  deserializePortfolioSaveDocument,
+  type PortfolioSaveDocumentV4,
+  type SerializedMineProgressState,
 } from '../../src/persistence';
 import {
   formatCreditedDuration,
@@ -64,21 +66,21 @@ test.setTimeout(120_000);
 interface JourneyStep {
   readonly event: EconomyProgressionEvent;
   readonly controlKey: string;
-  readonly expectedDocument: SaveDocumentV2;
+  readonly expectedDocument: PortfolioSaveDocumentV4;
 }
 
 interface JourneyPlan {
   readonly steps: readonly JourneyStep[];
-  readonly finalDocument: SaveDocumentV2;
+  readonly finalDocument: PortfolioSaveDocumentV4;
   readonly returnTimestampMs: number;
-  readonly expectedClaimDocument: SaveDocumentV2;
+  readonly expectedClaimDocument: PortfolioSaveDocumentV4;
   readonly expectedOfflineRewardLabel: string;
   readonly expectedOfflineTimeLabel: string;
 }
 
 interface JourneyResult {
-  readonly beforeOffline: SaveDocumentV2;
-  readonly afterClaim: SaveDocumentV2;
+  readonly beforeOffline: PortfolioSaveDocumentV4;
+  readonly afterClaim: PortfolioSaveDocumentV4;
   readonly browserErrors: readonly string[];
 }
 
@@ -125,12 +127,11 @@ function createJourneyPlan(): JourneyPlan {
     state = applyExpectedPurchase(state, event);
     exercised.add(event.type);
 
-    let expectedDocument: SaveDocumentV2;
+    let expectedDocument: PortfolioSaveDocumentV4;
 
     try {
-      expectedDocument = createSaveDocument(
-        state,
-        BASE_GAME_BALANCE,
+      expectedDocument = createPortfolioSaveDocument(
+        replaceActiveGameState(createInitialPortfolio(JOURNEY_START_MS), state),
         JOURNEY_START_MS + elapsedMs,
       );
     } catch (error) {
@@ -162,23 +163,13 @@ function createJourneyPlan(): JourneyPlan {
 
   const finalDocument = finalStep.expectedDocument;
   const returnTimestampMs = finalDocument.savedAtTimestampMs + OFFLINE_DURATION_MS;
-  const loaded = deserializeSaveDocument(finalDocument, BASE_GAME_BALANCE);
-  const offlineIncome = calculateOfflineIncome(
-    loaded.state,
-    loaded.savedAtTimestampMs,
-    returnTimestampMs,
-    loaded.effectiveProductionRatePerSecond,
-    BASE_GAME_BALANCE.offlineIncome,
+  const suspended = suspendActiveMine(
+    deserializePortfolioSaveDocument(finalDocument).portfolio,
+    finalDocument.savedAtTimestampMs,
   );
-  const pendingReward = createPendingOfflineReward(offlineIncome);
+  const claim = enterMine(suspended, 'gold', returnTimestampMs);
 
-  if (pendingReward === null) {
-    throw new Error('The completed journey must produce a positive offline reward.');
-  }
-
-  const claim = claimOfflineReward(offlineIncome.state, pendingReward);
-
-  if (claim.status !== 'claimed') {
+  if (claim.status !== 'entered' || !claim.grant.reward.greaterThan(0)) {
     throw new Error('The planned offline reward must be claimable.');
   }
 
@@ -186,15 +177,11 @@ function createJourneyPlan(): JourneyPlan {
     steps,
     finalDocument,
     returnTimestampMs,
-    expectedClaimDocument: createSaveDocument(
-      claim.state,
-      BASE_GAME_BALANCE,
-      returnTimestampMs,
-    ),
+    expectedClaimDocument: createPortfolioSaveDocument(claim.portfolio, returnTimestampMs),
     expectedOfflineRewardLabel:
-      `${formatOfflineRewardAmount(pendingReward.reward)} gold`,
+      `${formatOfflineRewardAmount(claim.grant.reward)} gold`,
     expectedOfflineTimeLabel:
-      `${formatCreditedDuration(pendingReward.creditedDurationMs)} credited`,
+      `${formatCreditedDuration(claim.grant.creditedDurationMs)} credited`,
   };
 }
 
@@ -251,10 +238,10 @@ async function runJourney(
     const beforeOffline = await requireStoredSave(page);
 
     expect(
-      beforeOffline.state.floors.filter(({ isUnlocked }) => isUnlocked),
+      beforeOffline.mines.gold!.state.floors.filter(({ isUnlocked }) => isUnlocked),
       'the journey opens at least two additional floors',
     ).toHaveLength(3);
-    expect(highestStageLevel(beforeOffline.state)).toBeGreaterThanOrEqual(
+    expect(highestStageLevel(beforeOffline.mines.gold!.state)).toBeGreaterThanOrEqual(
       firstMilestoneLevel(),
     );
 
@@ -271,7 +258,6 @@ async function runJourney(
     await page.goto('/step-33-away.html');
     await page.clock.setFixedTime(new Date(plan.returnTimestampMs));
     await page.goto('/');
-    await waitForBootedScene(page);
 
     const modal = page.getByTestId('offline-reward-modal');
 
@@ -283,22 +269,29 @@ async function runJourney(
 
     await page.getByTestId('offline-reward-claim').click();
     await expect(modal).toHaveCount(0);
+    await waitForBootedScene(page);
     await expect
       .poll(() => readStoredSave(page), {
         message: `${runId} claim reaches IndexedDB`,
         timeout: STORE_SETTLE_TIMEOUT_MS,
       })
       .toEqual(plan.expectedClaimDocument);
+    const afterClaim = await requireStoredSave(page);
 
     // Reloading at the same controlled instant proves the claimed interval was
-    // consumed and cannot create a second reward.
+    // consumed and cannot create a second reward. Reload begins a new zero-time
+    // visit, so its interval cursor can advance while money stays unchanged.
     await page.reload();
     await waitForBootedScene(page);
     await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
+    const afterReload = await requireStoredSave(page);
+    expect(afterReload.walletGold).toBe(afterClaim.walletGold);
+    expect(afterReload.mines.gold!.state.warehouse.totalOfflineGoldClaimed)
+      .toBe(afterClaim.mines.gold!.state.warehouse.totalOfflineGoldClaimed);
 
     return {
       beforeOffline,
-      afterClaim: await requireStoredSave(page),
+      afterClaim,
       browserErrors,
     };
   } finally {
@@ -357,13 +350,13 @@ function expectedRenderedResult(
 ): string | boolean {
   switch (step.event.type) {
     case 'mine-shaft-upgrade':
-      return `Lv ${step.expectedDocument.state.floors[floorIndex].mineShaftLevel}`;
+      return `Lv ${step.expectedDocument.mines.gold!.state.floors[floorIndex].mineShaftLevel}`;
     case 'floor-unlock':
       return false;
     case 'elevator-upgrade':
-      return `Lv ${step.expectedDocument.state.elevator.level}`;
+      return `Lv ${step.expectedDocument.mines.gold!.state.elevator.level}`;
     case 'warehouse-upgrade':
-      return `Lv ${step.expectedDocument.state.warehouse.level}`;
+      return `Lv ${step.expectedDocument.mines.gold!.state.warehouse.level}`;
   }
 }
 
@@ -418,7 +411,7 @@ function firstMilestoneLevel(): number {
 }
 
 function highestStageLevel(
-  state: SaveDocumentV2['state'] | GameState,
+  state: SerializedMineProgressState | GameState,
 ): number {
   return Math.max(
     ...state.floors
@@ -722,7 +715,7 @@ async function readJsonAttribute<T>(page: Page, attribute: string): Promise<T> {
   return JSON.parse(serialized) as T;
 }
 
-async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
+async function readStoredSave(page: Page): Promise<PortfolioSaveDocumentV4 | null> {
   return page.evaluate(async () => {
     const request = indexedDB.open('cat-mine-idle');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -737,7 +730,7 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV2 } | undefined>(
+    const record = await new Promise<{ document?: PortfolioSaveDocumentV4 } | undefined>(
       (resolve, reject) => {
         getRequest.onerror = () => reject(getRequest.error);
         getRequest.onsuccess = () => resolve(getRequest.result);
@@ -749,7 +742,7 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
   });
 }
 
-async function requireStoredSave(page: Page): Promise<SaveDocumentV2> {
+async function requireStoredSave(page: Page): Promise<PortfolioSaveDocumentV4> {
   const document = await readStoredSave(page);
 
   if (document === null) {

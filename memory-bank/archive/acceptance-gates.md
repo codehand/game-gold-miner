@@ -513,3 +513,20 @@ No gameplay, save, schema, or catalog-price change.
 - Boru one/five-worker browser flows pass; the scoop screenshot shows ore on
   the floor and foreground occlusion retained. Lint, build and diff checks
   pass. No broad release gate or production deploy is claimed.
+
+## Multi-mine Map release gate — 2026-10-05
+
+- Player model: one shared wallet, one active foreground mine, six ordered
+  sites, fixed purchase gates and exactly-once per-mine offline claims pass core,
+  save migration and browser coverage.
+- Cloud continuity: V1–V3 adoption, V4 validation, revision checks, durable
+  version-2 command replay, exact `effectiveAtMs` settlement and merge into
+  newer local progress pass Deno, integration and live browser coverage.
+- Art: all six sites are represented; the five new sites have distinct upper,
+  middle and deep floor families, ore, structures, cargo and effects. Native
+  360×640 captures cover floors 1, 5, 10 and 15 and required worker/cargo states.
+- `npm run verify` passes lint, 866 unit tests, 83 client E2E tests, build,
+  bundle-secret scan and 10 production smoke tests.
+- `npm run verify:server` passes server-core build, 218 Deno tests, all local
+  Supabase migrations and health checks, 146 integration tests and 15 server
+  E2E tests. Complete Database Schema copies are synchronized.

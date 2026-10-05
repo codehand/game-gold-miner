@@ -34,6 +34,8 @@ A `PreToolUse` hook blocks whole-file reads of Memory Bank files over
 | `marketplace-purchase-and-cat-assignment-implementation-plan-v1.md` | ~8k | Follow-up phases for live seeded-catalog Buy → wallet/server purchase → Collection → same-role mine replacement, with explicit inputs, outputs, and validation gates. Read when implementing or validating the Marketplace purchase handoff. |
 | `marketplace-trading-implementation-plan-v1.md` | ~6k | Phases for live Sell/Rent/My listings: listing authority, sale/rental settlement, expiry, API, responsive UI, reconciliation, and release gates. Read when implementing full Marketplace trading. |
 | `marketplace-asset-implementation-plan-draft.md` | ~6k | Approved Marketplace asset phases, role taxonomy, asset registry, portrait catalog, 8-frame animation work, and validation gates. Read when producing or integrating Marketplace assets. |
+| `multi-mine-map-design-draft.md` | ~3k | Approved multi-location Map direction, distinct art for every mine's floors, shared wallet, per-mine offline claims, progression, migration, and release gates. Read when reviewing or implementing the multi-mine feature. |
+| `multi-mine-map-implementation-plan-v1.md` | ~3k | Completed six-phase implementation sequence and release evidence for the multi-mine feature. |
 | `game-design-document.md` | 6k | Gameplay loop, systems, UI, economy, MVP scope. **Source of truth for scope.** |
 | `implementation-plan.md` | 6k | The 37 base-game steps and their gates. **Source of truth for scope.** |
 | `server-save-sync-protocol.md` | 7k | Touching save upload/download, revisions, conflicts, `409`. |
@@ -55,7 +57,8 @@ Data Flow · Authoritative State Model
 Warehouse Conversion · Production Rate · Upgrade Purchase · Milestone · Floor
 Unlock · Economy Progression Simulation
 
-**Persistence contracts:** Save Document Schema — Version 3 · Save Recovery ·
+**Persistence contracts:** Save Document Schema — Version 3 · Save Document
+Schema — Version 4 Portfolio · Save Recovery ·
 Offline Income · Lifecycle Persistence · Save Diagnostic Surface
 
 **Presentation contracts:** Portrait Layout · Mine Scroll and Input · Mine View ·
@@ -77,8 +80,10 @@ Recovery code (Step 14)
 Storage of the save document (`text`, not `jsonb`) · Tables · Column reference ·
 Indexes, and the ones deliberately absent · Row-level security · Relationships
 and deletion · Recovery-code hashing · What Step 3 does not design · Mine
-Overdrive schema extension (one server-owned activation row per account) ·
-Hauler role/slot extension and full collection table definitions
+Overdrive schema extension (one server-owned activation row per account, bound to one mine) ·
+Hauler role/slot extension · Portfolio command receipts/atomic RPC · V4 wallet
+and mine-scoped Collection projection · full
+collection table definitions
 
 `techContext.md` carries the same `## Complete Database Schema` subsections
 byte-identically, plus `## Implemented Toolchain`, `## Verified Commands`,

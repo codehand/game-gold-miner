@@ -4,6 +4,11 @@ export {
   type BoostModalOptions,
 } from './BoostModal';
 export {
+  MineMapModal,
+  type MineMapActionResult,
+  type MineMapModalOptions,
+} from './MineMapModal';
+export {
   MineShaftUpgradeModal,
   type MineShaftUpgradeModalOptions,
   type RenderedMineShaftUpgradeModalState,

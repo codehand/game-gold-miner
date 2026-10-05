@@ -135,18 +135,18 @@ async function sendMutation(
       : { kind: 'rejected', code };
   }
 
-  const purchaseMetadata = 'assetId' in body ? parsePurchaseMetadata(payload) : null;
+  const mutationMetadata = parseMutationMetadata(payload);
   const roster = parseCatRosterResponse(payload);
-  return roster === null || ('assetId' in body && purchaseMetadata === null)
+  return roster === null || mutationMetadata === null
     ? { kind: 'unavailable', reason: 'invalid-response' }
     : {
         kind: 'applied',
         roster,
-        ...(purchaseMetadata ?? {}),
+        ...mutationMetadata,
       };
 }
 
-function parsePurchaseMetadata(value: unknown):
+function parseMutationMetadata(value: unknown):
   | { readonly walletGold: string; readonly saveRevision: number }
   | null {
   if (!isRecord(value) || !isNonEmptyString(value.walletGold) || !isSafeNonNegativeInteger(value.saveRevision)) {

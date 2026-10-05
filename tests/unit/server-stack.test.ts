@@ -717,10 +717,10 @@ describe('the guest-session bootstrap in src/main.ts', () => {
   // host in existence.
   const bootstrap = extractMainBlock(mainSource, '} else {', "\n/**\n * Server-milestone Step 10");
 
-  it('is never awaited before the game boots', () => {
-    // `void`, not `await`: identity resolution must not delay the first frame.
-    expect(bootstrap).toContain('void supabaseClientPromise');
+  it('records the auth chain without awaiting inside the top-level bootstrap', () => {
+    expect(bootstrap).toContain('initialAuthSettled = supabaseClientPromise');
     expect(bootstrap).not.toContain('await supabaseClientPromise');
+    expect(mainSource).toContain('await initialAuthSettled;');
   });
 
   it('catches a rejected client promise instead of leaving it unhandled', () => {
@@ -750,9 +750,10 @@ describe('the Telegram sign-in bootstrap in src/main.ts (Step 12)', () => {
   const mainSource = readProjectFile('src/main.ts');
   const bootstrap = extractMainBlock(mainSource, 'if (telegramInitData !== null) {', '} else {');
 
-  it('is never awaited before the game boots', () => {
-    expect(bootstrap).toContain('void supabaseClientPromise');
+  it('records the auth chain without awaiting inside the top-level bootstrap', () => {
+    expect(bootstrap).toContain('initialAuthSettled = supabaseClientPromise');
     expect(bootstrap).not.toContain('await supabaseClientPromise');
+    expect(mainSource).toContain('await initialAuthSettled;');
   });
 
   it('is a third, independent consumer of supabaseClientPromise, and catches its own rejection', () => {

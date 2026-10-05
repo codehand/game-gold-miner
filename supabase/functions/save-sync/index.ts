@@ -49,13 +49,27 @@ import {
   CURRENT_SAVE_SCHEMA_VERSION,
   GameNumber,
   LIFETIME_GOLD_BOARD_KEY,
+  activeGameState,
   calculateLifetimeGoldEarned,
+  calculatePortfolioLifetimeGoldEarned,
   calculateOfflineGrant,
+  createCatProductionModifiers,
+  createPortfolioSaveDocument,
+  enterMine,
+  evaluatePortfolioRoutineBound,
   EMPTY_BOOST_STATE,
+  MINE_SITE_IDS,
   deserializeSaveDocument,
+  deserializePortfolioSaveDocument,
   evaluateProgressBound,
+  previewMineOfflineGrant,
+  projectCatRosterToMine,
+  purchaseMine,
+  replaceActiveGameState,
   SaveDocumentError,
+  suspendActiveMine,
   toLeaderboardMagnitude,
+  validatePortfolioSaveDocument,
   validateSaveDocument,
 } from '../_shared/generated/core-bundle.js';
 import type { BoostState } from '../../../src/core/boost/boost.ts';
@@ -82,6 +96,11 @@ const FUNCTION_ROUTE_PREFIX = '/save-sync';
 const PLATFORM_ROUTE_PREFIX = '/functions/v1';
 const HEALTH_ROUTE = '/v1/health';
 const SAVE_ROUTE = '/v1/save';
+const PORTFOLIO_COMMAND_ROUTE = '/v1/portfolio/command';
+const PORTFOLIO_SAVE_SCHEMA_VERSION = 4;
+// Commands are preceded by a routine upload. A much older receipt means the
+// tab stopped reporting foreground play, so the missing time is offline.
+const PORTFOLIO_FOREGROUND_RECEIPT_GRACE_MS = 30_000;
 /**
  * §3 of the protocol: capped before parsing, not to constrain a real save
  * (~3–4 KB) but to refuse an oversized body cheaply. Step 25 moved the number
@@ -401,6 +420,30 @@ export type ReadDisplayName = (userId: string, bearerToken: string) => Promise<s
 export type ReadSaveBody = (request: Request) => Promise<string>;
 export type ParseSaveBody = (rawBody: string) => unknown;
 
+export interface PortfolioCommandReceipt {
+  readonly fingerprint: string;
+  readonly response: Record<string, unknown>;
+}
+
+export type ReadPortfolioCommandReceipt = (
+  userId: string,
+  idempotencyKey: string,
+) => Promise<PortfolioCommandReceipt | null>;
+
+export interface PortfolioCommandWrite {
+  readonly userId: string;
+  readonly idempotencyKey: string;
+  readonly fingerprint: string;
+  readonly baseRevision: number;
+  readonly documentJson: string;
+  readonly receivedAt: string;
+  readonly result: Record<string, unknown>;
+}
+
+export type ApplyPortfolioCommand = (
+  command: PortfolioCommandWrite,
+) => Promise<Record<string, unknown>>;
+
 export interface SaveSyncDeps {
   readonly resolveCaller: ResolveCaller;
   readonly readCurrentSave: ReadCurrentSave;
@@ -416,6 +459,246 @@ export interface SaveSyncDeps {
   readonly rateLimit: SaveSyncRateLimiters;
   readonly readSaveBody: ReadSaveBody;
   readonly parseSaveBody: ParseSaveBody;
+  readonly readPortfolioCommandReceipt?: ReadPortfolioCommandReceipt;
+  readonly applyPortfolioCommand?: ApplyPortfolioCommand;
+}
+
+type PortfolioCommandType = 'migrate' | 'purchase' | 'enter' | 'suspend';
+type PortfolioMineId = (typeof MINE_SITE_IDS)[number];
+type PortfolioState = Parameters<typeof purchaseMine>[0];
+type MineEnterResult = ReturnType<typeof enterMine>;
+
+function parsePortfolioCommand(candidate: unknown): {
+  readonly type: PortfolioCommandType;
+  readonly mineId: PortfolioMineId | null;
+  readonly effectiveAtMs: number | null;
+  readonly baseRevision: number;
+  readonly idempotencyKey: string;
+} | null {
+  if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return null;
+  const row = candidate as Record<string, unknown>;
+  if (row.type !== 'migrate' && row.type !== 'purchase' &&
+      row.type !== 'enter' && row.type !== 'suspend') return null;
+  if (!Number.isSafeInteger(row.baseRevision) || (row.baseRevision as number) <= 0) return null;
+  if (typeof row.idempotencyKey !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.idempotencyKey)) return null;
+  const needsMine = row.type === 'purchase' || row.type === 'enter';
+  if (needsMine !== (typeof row.mineId === 'string' &&
+      MINE_SITE_IDS.includes(row.mineId as PortfolioMineId))) return null;
+  const hasEffectiveAt = row.type === 'enter' && Object.hasOwn(row, 'effectiveAtMs');
+  if (hasEffectiveAt && (!Number.isSafeInteger(row.effectiveAtMs) ||
+      (row.effectiveAtMs as number) < 0)) return null;
+  const keys = Object.keys(row).sort();
+  const expected = (needsMine
+    ? ['baseRevision', 'idempotencyKey', 'mineId', 'type']
+    : ['baseRevision', 'idempotencyKey', 'type']);
+  if (hasEffectiveAt) expected.push('effectiveAtMs');
+  expected.sort();
+  if (JSON.stringify(keys) !== JSON.stringify(expected)) return null;
+  return {
+    type: row.type,
+    mineId: needsMine ? row.mineId as PortfolioMineId : null,
+    effectiveAtMs: hasEffectiveAt ? row.effectiveAtMs as number : null,
+    baseRevision: row.baseRevision as number,
+    idempotencyKey: row.idempotencyKey.toLowerCase(),
+  };
+}
+
+async function portfolioCommandFingerprint(command: {
+  readonly type: PortfolioCommandType;
+  readonly mineId: PortfolioMineId | null;
+  readonly effectiveAtMs: number | null;
+  readonly baseRevision: number;
+}): Promise<string> {
+  const input = new TextEncoder().encode(JSON.stringify(command));
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function handlePortfolioCommand(
+  request: Request,
+  deps: SaveSyncDeps,
+  origin: string | null,
+): Promise<Response> {
+  const declared = declaredBodyBytes(request);
+  if (declared !== null && declared > MAX_SAVE_BODY_BYTES) {
+    await discardRequestBody(request);
+    return errorResponse(413, 'payload_too_large', 'Portfolio command body is too large.', { origin });
+  }
+  const addressDecision = await deps.rateLimit.uploadByAddress.check(
+    addressRateLimitKey(extractCallerAddress(request)),
+  );
+  if (!addressDecision.allowed) return rateLimitedResponse(origin, addressDecision.retryAfterSeconds);
+  const token = extractBearerToken(request.headers.get('authorization'));
+  if (token === null) return errorResponse(401, 'unauthenticated', 'Missing bearer token.', { origin });
+  const caller = await deps.resolveCaller(token);
+  if (caller === null) return errorResponse(401, 'unauthenticated', 'Invalid or expired token.', { origin });
+  const userDecision = await deps.rateLimit.uploadByUser.check(userRateLimitKey(caller.userId));
+  if (!userDecision.allowed) return rateLimitedResponse(origin, userDecision.retryAfterSeconds);
+
+  let command;
+  try {
+    const raw = await deps.readSaveBody(request);
+    if (new TextEncoder().encode(raw).length > MAX_SAVE_BODY_BYTES) {
+      return errorResponse(413, 'payload_too_large', 'Portfolio command body is too large.', { origin });
+    }
+    command = parsePortfolioCommand(deps.parseSaveBody(raw));
+  } catch {
+    command = null;
+  }
+  if (command === null) {
+    return errorResponse(400, 'malformed_request', 'Invalid portfolio command.', { origin });
+  }
+  if (!deps.readPortfolioCommandReceipt || !deps.applyPortfolioCommand) {
+    return errorResponse(500, 'server_error', 'Portfolio commands are not configured.', { origin });
+  }
+
+  const fingerprint = await portfolioCommandFingerprint(command);
+  try {
+    const receipt = await deps.readPortfolioCommandReceipt(caller.userId, command.idempotencyKey);
+    if (receipt !== null) {
+      return receipt.fingerprint === fingerprint
+        ? jsonResponse(200, receipt.response, origin)
+        : errorResponse(409, 'revision_conflict', 'Idempotency key was used for a different command.', { origin });
+    }
+
+    const current = await deps.readCurrentSave(caller.userId, token);
+    if (current === null || current.revision !== command.baseRevision) {
+      return revisionConflictResponse(current, origin);
+    }
+    const storedVersion = readStoredSchemaVersion(current.documentJson);
+    if ((command.type === 'migrate') !== (storedVersion !== PORTFOLIO_SAVE_SCHEMA_VERSION)) {
+      return errorResponse(422, 'save_rejected', 'Portfolio command does not match the save version.', { origin });
+    }
+    const receiptMs = Date.parse(current.receivedAt);
+    const serverNowMs = Math.max(Date.now(), receiptMs);
+    if (!Number.isSafeInteger(serverNowMs)) throw new Error('Stored receipt time is invalid.');
+    const loaded = deserializePortfolioSaveDocument(JSON.parse(current.documentJson));
+    let portfolio = loaded.portfolio as PortfolioState;
+    let result: Record<string, unknown>;
+
+    if (command.type === 'migrate') {
+      const gold = portfolio.mines.gold!;
+      const anchoredAtMs = Date.parse(current.receivedAt);
+      portfolio = {
+        ...portfolio,
+        mines: {
+          gold: {
+            ...gold,
+            state: { ...gold.state, lastUpdateTimestampMs: anchoredAtMs },
+            offline: gold.offline === null ? null : {
+              ...gold.offline,
+              startedAtMs: anchoredAtMs,
+            },
+          },
+        },
+      };
+      result = { type: 'migrate', mineId: 'gold' };
+    } else {
+      const effectiveEnterAtMs = command.type === 'enter'
+        ? command.effectiveAtMs : null;
+      const active = activeGameState(portfolio);
+      if (effectiveEnterAtMs !== null &&
+          (effectiveEnterAtMs !== loaded.savedAtTimestampMs ||
+            effectiveEnterAtMs > serverNowMs || active === null ||
+            active.lastUpdateTimestampMs !== effectiveEnterAtMs)) {
+        return errorResponse(422, 'save_rejected', 'Mine entry boundary is invalid.', {
+          detail: { reason: 'invalid_entry_boundary' }, origin,
+        });
+      }
+      if (effectiveEnterAtMs === null && active !== null &&
+          active.lastUpdateTimestampMs < Date.parse(current.receivedAt)) {
+        portfolio = replaceActiveGameState(portfolio, {
+          ...active,
+          lastUpdateTimestampMs: Date.parse(current.receivedAt),
+        });
+      }
+      const modifiers = createCatProductionModifiers(
+        projectCatRosterToMine(loaded.catRoster, portfolio.activeMineId ?? portfolio.selectedMineId),
+      );
+      const returningToSameMine = command.type === 'enter' &&
+        command.mineId === portfolio.activeMineId;
+      const staleForeground = effectiveEnterAtMs === null &&
+        portfolio.activeMineId !== null &&
+        (returningToSameMine ||
+          serverNowMs - receiptMs > PORTFOLIO_FOREGROUND_RECEIPT_GRACE_MS);
+      if (staleForeground) {
+        // Suspend at the last server receipt, not at the return request.
+        // Otherwise purchase/enter/suspend would simulate the entire absence
+        // at the full foreground rate before starting an offline interval.
+        portfolio = suspendActiveMine(portfolio, receiptMs, modifiers);
+      }
+      if (command.type === 'purchase') {
+        const purchase = purchaseMine(portfolio, command.mineId!, serverNowMs, modifiers);
+        if (purchase.status !== 'purchased') {
+          return errorResponse(422, 'save_rejected', 'Mine purchase was refused.', {
+            detail: { reason: purchase.status }, origin,
+          });
+        }
+        portfolio = purchase.portfolio;
+        result = { type: 'purchase', mineId: command.mineId };
+      } else if (command.type === 'enter') {
+        const boost = await (deps.readBoostState?.(caller.userId) ?? Promise.resolve(EMPTY_BOOST_STATE));
+        const entry = enterMine(
+          portfolio, command.mineId!, effectiveEnterAtMs ?? serverNowMs, modifiers, boost as never,
+        ) as MineEnterResult;
+        if (entry.status !== 'entered' || !entry.grant) {
+          return errorResponse(422, 'save_rejected', 'Mine entry was refused.', {
+            detail: { reason: entry.status }, origin,
+          });
+        }
+        portfolio = entry.portfolio;
+        result = {
+          type: 'enter', mineId: command.mineId,
+          effectiveAtMs: effectiveEnterAtMs ?? serverNowMs,
+          claimedSequence: entry.claimedSequence,
+          grant: {
+            elapsedDurationMs: entry.grant.elapsedDurationMs,
+            creditedDurationMs: entry.grant.creditedDurationMs,
+            reward: entry.grant.reward.serialize(),
+          },
+        };
+      } else {
+        if (portfolio.activeMineId === null && !staleForeground) {
+          return errorResponse(422, 'save_rejected', 'Mine is already suspended.', { origin });
+        }
+        if (portfolio.activeMineId !== null) {
+          portfolio = suspendActiveMine(portfolio, serverNowMs, modifiers);
+        }
+        result = { type: 'suspend', mineId: portfolio.selectedMineId };
+      }
+    }
+
+    const documentJson = JSON.stringify(createPortfolioSaveDocument(
+      portfolio, serverNowMs, loaded.catRoster,
+    ));
+    const response = await deps.applyPortfolioCommand({
+      userId: caller.userId,
+      idempotencyKey: command.idempotencyKey,
+      fingerprint,
+      baseRevision: command.baseRevision,
+      documentJson,
+      receivedAt: new Date(serverNowMs).toISOString(),
+      result,
+    });
+    if (response.status === 'revision_conflict' || response.status === 'missing_save') {
+      return revisionConflictResponse(await deps.readCurrentSave(caller.userId, token), origin);
+    }
+    if (response.status === 'key_reused') {
+      return errorResponse(409, 'revision_conflict', 'Idempotency key was used for a different command.', { origin });
+    }
+    if (response.status !== 'applied') throw new Error('Portfolio command RPC returned an unknown status.');
+    await publishLeaderboardEntry(deps, {
+      userId: caller.userId,
+      bearerToken: token,
+      revision: response.revision as number,
+      documentJson: JSON.stringify(response.document),
+    });
+    return jsonResponse(200, response, origin);
+  } catch (error) {
+    console.error('save-sync: portfolio command failed.', error);
+    return errorResponse(500, 'server_error', 'Portfolio command failed.', { origin });
+  }
 }
 
 /**
@@ -603,30 +886,33 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   // runs the shared `migrateSaveDocument` (version 1 → 2) the client bundle
   // already ships — refusing it would make this function stricter than the
   // shared chain it exists to reuse and would reject a Step 16/17-written row.
-  if (typeof schemaVersion !== 'number' || schemaVersion > CURRENT_SAVE_SCHEMA_VERSION) {
+  if (typeof schemaVersion !== 'number' || schemaVersion > PORTFOLIO_SAVE_SCHEMA_VERSION) {
     return await reject(
       errorResponse(422, 'schema_unsupported', `Unsupported schemaVersion ${String(schemaVersion)}.`, {
-        detail: { supported: [CURRENT_SAVE_SCHEMA_VERSION] },
+        detail: { supported: [CURRENT_SAVE_SCHEMA_VERSION, PORTFOLIO_SAVE_SCHEMA_VERSION] },
         origin,
       }),
       'schema_unsupported',
-      { supported: [CURRENT_SAVE_SCHEMA_VERSION] },
+      { supported: [CURRENT_SAVE_SCHEMA_VERSION, PORTFOLIO_SAVE_SCHEMA_VERSION] },
     );
   }
 
   let validatedDocumentJson: string;
   try {
-    const validated = validateSaveDocument(document, BASE_GAME_BALANCE);
+    const validated = schemaVersion === PORTFOLIO_SAVE_SCHEMA_VERSION
+      ? validatePortfolioSaveDocument(document)
+      : validateSaveDocument(document, BASE_GAME_BALANCE);
     validatedDocumentJson = JSON.stringify(validated);
   } catch (error) {
-    if (error instanceof SaveDocumentError) {
+    if (error instanceof SaveDocumentError || schemaVersion === PORTFOLIO_SAVE_SCHEMA_VERSION) {
+      const reason = error instanceof Error ? error.message : String(error);
       return await reject(
         errorResponse(422, 'save_invalid', 'Document failed validation.', {
-          detail: { reason: error.message },
+          detail: { reason },
           origin,
         }),
         'save_invalid',
-        { reason: error.message },
+        { reason },
       );
     }
     return await serverError(error);
@@ -652,6 +938,16 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     return await reject(response, 'revision_conflict', { serverRevision: storedRevision });
   }
 
+  const receivedAt = new Date().toISOString();
+  if (current === null && schemaVersion === PORTFOLIO_SAVE_SCHEMA_VERSION) {
+    // Account adoption trusts existing progress, like V3, but never trusts
+    // browser timestamps as the start of a new server-owned offline interval.
+    validatedDocumentJson = reanchorAdoptedPortfolio(
+      validatedDocumentJson,
+      Date.parse(receivedAt),
+    );
+  }
+
   // Server-milestone Step 23: bound what this document may claim over the
   // server-measured elapsed time since the last accepted document. A first
   // upload has no last accepted document to bound against and is deliberately
@@ -666,7 +962,15 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
   } catch (error) {
     return await serverError(error);
   }
-  const boundViolation = findProgressBoundViolation(current, validatedDocumentJson, boostState);
+  let boundViolation: ProgressBoundDetail | null;
+  try {
+    boundViolation = schemaVersion === PORTFOLIO_SAVE_SCHEMA_VERSION ||
+      current !== null && readStoredSchemaVersion(current.documentJson) === PORTFOLIO_SAVE_SCHEMA_VERSION
+      ? findPortfolioBoundViolation(current, validatedDocumentJson, boostState)
+      : findProgressBoundViolation(current, validatedDocumentJson, boostState);
+  } catch (error) {
+    return await serverError(error);
+  }
   if (boundViolation !== null) {
     return await reject(
       errorResponse(422, 'save_rejected', 'Claimed progress exceeds what the elapsed time allows.', {
@@ -678,14 +982,14 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     );
   }
 
-  const receivedAt = new Date().toISOString();
   const revision = (current?.revision ?? 0) + 1;
 
   let applied: boolean;
   try {
     applied = await deps.writeSaveRow(caller.userId, {
       revision,
-      schemaVersion: CURRENT_SAVE_SCHEMA_VERSION,
+      schemaVersion: schemaVersion === PORTFOLIO_SAVE_SCHEMA_VERSION
+        ? PORTFOLIO_SAVE_SCHEMA_VERSION : CURRENT_SAVE_SCHEMA_VERSION,
       documentJson: validatedDocumentJson,
       receivedAt,
       previousRevision: current?.revision ?? null,
@@ -738,7 +1042,12 @@ async function handleSaveUpload(request: Request, deps: SaveSyncDeps, origin: st
     documentJson: validatedDocumentJson,
   });
 
-  return jsonResponse(200, { revision, receivedAt }, origin);
+  return jsonResponse(200, {
+    revision,
+    receivedAt,
+    document: schemaVersion === PORTFOLIO_SAVE_SCHEMA_VERSION
+      ? JSON.parse(validatedDocumentJson) : undefined,
+  }, origin);
 }
 
 /**
@@ -765,8 +1074,12 @@ async function publishLeaderboardEntry(
   },
 ): Promise<void> {
   try {
-    const state = deserializeState(params.documentJson);
-    const magnitude = toLeaderboardMagnitude(calculateLifetimeGoldEarned(state));
+    const lifetimeGold = readStoredSchemaVersion(params.documentJson) === PORTFOLIO_SAVE_SCHEMA_VERSION
+      ? calculatePortfolioLifetimeGoldEarned(
+        deserializePortfolioSaveDocument(JSON.parse(params.documentJson)).portfolio,
+      )
+      : calculateLifetimeGoldEarned(deserializeState(params.documentJson));
+    const magnitude = toLeaderboardMagnitude(lifetimeGold);
     const displayName = await deps.readDisplayName(params.userId, params.bearerToken);
 
     await deps.writeLeaderboardEntry({
@@ -964,6 +1277,77 @@ function findProgressBoundViolation(
   }
 }
 
+function readStoredSchemaVersion(documentJson: string): number {
+  const candidate = JSON.parse(documentJson) as { schemaVersion?: unknown };
+  if (typeof candidate.schemaVersion !== 'number') {
+    throw new Error('Stored save has no numeric schemaVersion.');
+  }
+  return candidate.schemaVersion;
+}
+
+function reanchorAdoptedPortfolio(documentJson: string, serverNowMs: number): string {
+  const document = JSON.parse(documentJson) as {
+    readonly mines: Readonly<Record<string, {
+      readonly purchasedAtMs: number;
+      readonly state: { readonly lastUpdateTimestampMs: number };
+      readonly offline: { readonly startedAtMs: number } | null;
+    }>>;
+  };
+  const mines: Record<string, unknown> = {};
+  for (const mineId of MINE_SITE_IDS) {
+    const mine = document.mines[mineId];
+    if (mine === undefined) continue;
+    mines[mineId] = {
+      ...mine,
+      purchasedAtMs: Math.min(mine.purchasedAtMs, serverNowMs),
+      state: { ...mine.state, lastUpdateTimestampMs: serverNowMs },
+      offline: mine.offline === null ? null : {
+        ...mine.offline,
+        startedAtMs: serverNowMs,
+      },
+    };
+  }
+  return JSON.stringify(validatePortfolioSaveDocument({
+    ...document,
+    savedAtTimestampMs: serverNowMs,
+    boostMineId: null,
+    mines,
+  }));
+}
+
+function findPortfolioBoundViolation(
+  current: StoredSaveRow | null,
+  candidateDocumentJson: string,
+  boostState: BoostState,
+): ProgressBoundDetail | null {
+  if (current === null) return null; // Account adoption retains the V3 first-save rule.
+  const storedVersion = readStoredSchemaVersion(current.documentJson);
+  const candidateVersion = readStoredSchemaVersion(candidateDocumentJson);
+  if (storedVersion !== PORTFOLIO_SAVE_SCHEMA_VERSION ||
+    candidateVersion !== PORTFOLIO_SAVE_SCHEMA_VERSION) {
+    return {
+      counter: 'schemaVersion',
+      claimed: String(candidateVersion),
+      maximum: String(storedVersion),
+    };
+  }
+  const previousReceivedAtMs = Date.parse(current.receivedAt);
+  if (!Number.isFinite(previousReceivedAtMs)) {
+    throw new Error('Stored portfolio receipt time is invalid.');
+  }
+  const previous = deserializePortfolioSaveDocument(JSON.parse(current.documentJson));
+  const candidate = deserializePortfolioSaveDocument(JSON.parse(candidateDocumentJson));
+  return evaluatePortfolioRoutineBound({
+    previous: previous.portfolio,
+    candidate: candidate.portfolio,
+    previousCatRoster: previous.catRoster,
+    candidateCatRoster: candidate.catRoster,
+    previousReceivedAtMs,
+    serverNowMs: Date.now(),
+    boostState,
+  });
+}
+
 function deserializeProjection(documentJson: string) {
   return deserializeSaveDocument(JSON.parse(documentJson), BASE_GAME_BALANCE);
 }
@@ -1039,6 +1423,7 @@ async function handleSaveDownload(request: Request, deps: SaveSyncDeps, origin: 
       receivedAt: current.receivedAt,
       document: JSON.parse(current.documentJson),
       offlineGrant: computeOfflineGrant(current, boostState, serverNowMs),
+      offlineGrants: computePortfolioOfflineGrants(current, boostState, serverNowMs),
       boost: boostState,
       serverNowMs,
     },
@@ -1064,6 +1449,11 @@ function computeOfflineGrant(
   serverNowMs: number,
 ): OfflineGrantBody | null {
   try {
+    if (readStoredSchemaVersion(row.documentJson) === PORTFOLIO_SAVE_SCHEMA_VERSION) {
+      const grants = computePortfolioOfflineGrants(row, boostState, serverNowMs);
+      const portfolio = deserializePortfolioSaveDocument(JSON.parse(row.documentJson)).portfolio;
+      return grants?.[portfolio.selectedMineId] ?? null;
+    }
     const document = JSON.parse(row.documentJson) as {
       readonly effectiveProductionRatePerSecond?: unknown;
     };
@@ -1093,6 +1483,44 @@ function computeOfflineGrant(
   } catch {
     return null;
   }
+}
+
+function computePortfolioOfflineGrants(
+  row: StoredSaveRow,
+  boostState: BoostState,
+  serverNowMs: number,
+): Partial<Record<(typeof MINE_SITE_IDS)[number], OfflineGrantBody>> | undefined {
+  if (readStoredSchemaVersion(row.documentJson) !== PORTFOLIO_SAVE_SCHEMA_VERSION) return undefined;
+  const loaded = deserializePortfolioSaveDocument(JSON.parse(row.documentJson));
+  let portfolio = loaded.portfolio;
+  const receiptMs = Date.parse(row.receivedAt);
+  if (portfolio.activeMineId !== null && Number.isSafeInteger(receiptMs) &&
+      serverNowMs - receiptMs > PORTFOLIO_FOREGROUND_RECEIPT_GRACE_MS) {
+    const active = activeGameState(portfolio);
+    if (active !== null && active.lastUpdateTimestampMs < receiptMs) {
+      portfolio = replaceActiveGameState(portfolio, {
+        ...active, lastUpdateTimestampMs: receiptMs,
+      });
+    }
+    const modifiers = createCatProductionModifiers(
+      projectCatRosterToMine(
+        loaded.catRoster,
+        portfolio.activeMineId,
+      ),
+    );
+    portfolio = suspendActiveMine(portfolio, receiptMs, modifiers);
+  }
+  const grants: Partial<Record<(typeof MINE_SITE_IDS)[number], OfflineGrantBody>> = {};
+  for (const mineId of MINE_SITE_IDS) {
+    const grant = previewMineOfflineGrant(portfolio, mineId, serverNowMs, boostState as never);
+    if (grant === null) continue;
+    grants[mineId] = {
+      elapsedDurationMs: grant.elapsedDurationMs,
+      creditedDurationMs: grant.creditedDurationMs,
+      reward: grant.reward.serialize(),
+    };
+  }
+  return grants;
 }
 
 /**
@@ -1265,6 +1693,54 @@ async function writeSaveRowViaServiceRole(userId: string, row: SaveRowToWrite): 
   return (data?.length ?? 0) > 0;
 }
 
+function portfolioAdminClient() {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('save-sync: portfolio command service role is not configured.');
+  }
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+async function readPortfolioCommandReceiptViaServiceRole(
+  userId: string,
+  idempotencyKey: string,
+): Promise<PortfolioCommandReceipt | null> {
+  const { data, error } = await portfolioAdminClient()
+    .from('portfolio_command_receipts')
+    .select('fingerprint,response_json')
+    .eq('user_id', userId)
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle();
+  if (error) throw new Error(`save-sync: reading portfolio receipt failed: ${error.message}`);
+  if (data === null) return null;
+  return {
+    fingerprint: data.fingerprint as string,
+    response: data.response_json as Record<string, unknown>,
+  };
+}
+
+async function applyPortfolioCommandViaServiceRole(
+  command: PortfolioCommandWrite,
+): Promise<Record<string, unknown>> {
+  const { data, error } = await portfolioAdminClient().rpc('apply_portfolio_command', {
+    p_user_id: command.userId,
+    p_idempotency_key: command.idempotencyKey,
+    p_fingerprint: command.fingerprint,
+    p_base_revision: command.baseRevision,
+    p_document_json: command.documentJson,
+    p_received_at: command.receivedAt,
+    p_result_json: command.result,
+  });
+  if (error) throw new Error(`save-sync: applying portfolio command failed: ${error.message}`);
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw new Error('save-sync: portfolio command RPC returned no object.');
+  }
+  return data as Record<string, unknown>;
+}
+
 /**
  * Step 24: the only writer of `save_audit`. That table carries no RLS policy
  * at all (Step 3's matrix: no select/insert/update/delete for any client
@@ -1407,6 +1883,8 @@ const defaultSaveSyncDeps: SaveSyncDeps = {
   rateLimit: createSaveSyncRateLimiters(),
   readSaveBody: readSaveBodyFromRequest,
   parseSaveBody: parseSaveBodyJson,
+  readPortfolioCommandReceipt: readPortfolioCommandReceiptViaServiceRole,
+  applyPortfolioCommand: applyPortfolioCommandViaServiceRole,
 };
 
 export async function handleRequest(
@@ -1438,6 +1916,18 @@ export async function handleRequest(
     return errorResponse(400, 'malformed_request', 'Unsupported method for this route.', {
       detail: { method: request.method, route },
       origin,
+    });
+  }
+
+  if (route === PORTFOLIO_COMMAND_ROUTE) {
+    if (request.method === 'OPTIONS') {
+      return corsPreflightResponse(request, 'POST, OPTIONS');
+    }
+    if (request.method === 'POST') {
+      return await handlePortfolioCommand(request, deps, origin);
+    }
+    return errorResponse(400, 'malformed_request', 'Unsupported method for this route.', {
+      detail: { method: request.method, route }, origin,
     });
   }
 

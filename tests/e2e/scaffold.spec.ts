@@ -34,6 +34,13 @@ test('boots one Phaser canvas and scene across a reload', async ({ page }) => {
   });
 
   await page.reload();
+  const returningReward = page.getByTestId('offline-reward-modal');
+  await expect.poll(async () =>
+    await returningReward.isVisible() || await page.locator('#app canvas').count() === 1,
+  ).toBe(true);
+  if (await returningReward.isVisible()) {
+    await page.getByTestId('offline-reward-claim').click();
+  }
   await assertSingleBoot(page);
 
   expect(browserErrors).toEqual([]);
@@ -182,7 +189,7 @@ async function readStoredGold(page: Page): Promise<string | null> {
     });
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: { state?: { gold?: string } } }>(
+    const record = await new Promise<{ document?: { state?: { gold?: string }; walletGold?: string } }>(
       (resolve, reject) => {
         getRequest.onerror = () => reject(getRequest.error);
         getRequest.onsuccess = () => resolve(getRequest.result);
@@ -190,6 +197,6 @@ async function readStoredGold(page: Page): Promise<string | null> {
     );
     database.close();
 
-    return record?.document?.state?.gold ?? null;
+    return record?.document?.walletGold ?? record?.document?.state?.gold ?? null;
   });
 }

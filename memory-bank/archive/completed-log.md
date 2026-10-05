@@ -3474,3 +3474,19 @@ Lowered the shared gold-pile layout anchor 7 logical pixels. This compensates
 for transparent padding at the bottom of the existing art, placing visible ore
 on the floor line across all unlocked mine floors. Mining effects follow the
 same anchor; miner and excavator routes, production and saves are unchanged.
+
+## 2026-10-05 — Multi-mine Map and resource-specific mine families
+
+Completed the six-site portfolio for Gold, Amethyst, Ruby, Sapphire, Emerald
+and Diamond. The player owns one shared wallet, chooses one foreground mine,
+buys later sites through a fixed progression and receives each inactive mine's
+bounded reward only when entering it. Every site has fifteen floors organized
+into upper, middle and deep art bands, with matching walls, ore, structures,
+shaft, surface landmarks, piles, cargo and effects. Map, Collection,
+Marketplace, Boost and cat assignment all follow the selected mine.
+
+V1–V3 saves migrate to V4. Configured accounts keep offline mine entry
+playable through a durable command journal and settle the original server-time
+boundary once after reconnect, including merge with newer local progress.
+Aggregate client, production and live Supabase verification passed, and the
+asset manifest plus native mobile captures record the visual review.

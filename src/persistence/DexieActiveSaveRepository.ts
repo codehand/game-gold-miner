@@ -4,6 +4,7 @@ import Dexie, {
 } from 'dexie';
 
 import type { ActiveSaveRepository } from './ActiveSaveRepository';
+import type { PortfolioSaveDocumentV4 } from './portfolioSaveSchema';
 import type { SaveDocumentV2 } from './saveSchema';
 
 export const ACTIVE_SAVE_DATABASE_NAME = 'cat-mine-idle';
@@ -13,7 +14,7 @@ export const ACTIVE_SAVE_RECORD_ID = 'active';
 
 interface ActiveSaveRecord {
   readonly id: typeof ACTIVE_SAVE_RECORD_ID;
-  readonly document: SaveDocumentV2;
+  readonly document: SaveDocumentV2 | PortfolioSaveDocumentV4;
 }
 
 class ActiveSaveDatabase extends Dexie {
@@ -32,7 +33,10 @@ export interface DexieActiveSaveRepositoryOptions {
   readonly dexieOptions?: DexieOptions;
 }
 
-export class DexieActiveSaveRepository implements ActiveSaveRepository {
+export class DexieActiveSaveRepository<
+  TDocument extends SaveDocumentV2 | PortfolioSaveDocumentV4 = SaveDocumentV2,
+>
+implements ActiveSaveRepository<TDocument> {
   readonly #database: ActiveSaveDatabase;
 
   public constructor(options: DexieActiveSaveRepositoryOptions = {}) {
@@ -48,7 +52,7 @@ export class DexieActiveSaveRepository implements ActiveSaveRepository {
     return record?.document ?? null;
   }
 
-  public async storeActiveSave(document: SaveDocumentV2): Promise<void> {
+  public async storeActiveSave(document: TDocument): Promise<void> {
     await this.#database.saves.put({
       id: ACTIVE_SAVE_RECORD_ID,
       document,

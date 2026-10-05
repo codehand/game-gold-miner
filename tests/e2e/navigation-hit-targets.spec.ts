@@ -11,6 +11,8 @@ for (const touch of [false, true]) {
     let closes = 0;
     let leaderboardCloses = 0;
     let boostCloses = 0;
+    let mapCloses = 0;
+    let collectionCloses = 0;
     // Include a resize to catch CSS-to-canvas coordinate regressions.
     for (const viewport of [{ width: 553, height: 934 }, { width: 320, height: 568 }]) {
       await page.setViewportSize(viewport);
@@ -61,7 +63,14 @@ for (const touch of [false, true]) {
           } else if (key === 'managers') {
             await expect(page.getByRole('dialog', { name: 'Cat Collection' })).toBeVisible();
             await page.getByRole('button', { name: 'Close collection' }).click();
-            await expect(page.getByRole('dialog', { name: 'Cat Collection' })).not.toBeVisible();
+            await expect(canvas).toHaveAttribute(
+              'data-collection-close-count',
+              String(++collectionCloses),
+            );
+          } else if (key === 'map') {
+            await expect(page.getByRole('dialog', { name: 'Mine Map' })).toBeVisible();
+            await page.getByRole('button', { name: 'Close Map' }).click();
+            await expect(canvas).toHaveAttribute('data-map-close-count', String(++mapCloses));
           }
         }
       }

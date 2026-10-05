@@ -2,6 +2,25 @@
 
 ## Current Focus
 
+**Multi-mine Map, 2026-10-05 — complete and release-verified.** The V4
+portfolio now provides six purchasable resource sites, one shared wallet, one
+foreground mine, per-mine offline intervals, fixed-price progression,
+mine-qualified cat assignments and mine-bound Boost. Gold, Amethyst, Ruby,
+Sapphire, Emerald and Diamond each use their own palette, ore, structures,
+cargo and upper/middle/deep floor family across all fifteen floors. Native
+360×640 captures cover floors 1, 5, 10 and 15, default and purchased workers,
+empty/full cargo, Map landmarks and offline-claim presentation.
+
+Local and configured accounts use the same player rules. A configured player
+can enter an owned mine while cloud sync is unavailable; the client records a
+durable version-2 command journal, keeps the target mine active, and shows the
+reward as pending. Reconnect submits the original server-time boundary, the
+server validates and settles that exact interval once, and the accepted result
+merges into newer local progress without double credit. V1–V3 saves migrate to
+V4. `npm run verify` and `npm run verify:server` pass: 866 unit, 83 client E2E,
+10 production smoke, 218 Deno, 146 live integration and 15 live server E2E
+tests, plus lint, builds, secret scan and synchronized schema documentation.
+
 **Mine-floor gold pile grounding, 2026-09-30 — fixed locally.** The shared
 pile layout is 7 logical pixels lower so the visible ore (not its transparent
 canvas) meets the floor line. Mining impacts follow the same anchor; miners,

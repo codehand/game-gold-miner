@@ -14,6 +14,7 @@ export interface SaveDiagnosticNotice {
 
 export interface SaveDiagnosticBanner {
   report(notice: SaveDiagnosticNotice): void;
+  dismiss(code?: string): void;
   destroy(): void;
 }
 
@@ -123,6 +124,9 @@ export function createSaveDiagnosticBanner(
       // content changes, which is what an assistive technology watches for.
       parent.append(elements.banner);
       elements.message.textContent = notice.message;
+    },
+    dismiss(code?: string): void {
+      if (code === undefined || displayedCode === code) dismiss();
     },
     destroy(): void {
       destroyed = true;

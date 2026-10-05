@@ -245,6 +245,7 @@ for (const scenario of [
 
 async function clickFirstMiner(page: Page): Promise<void> {
   const canvas = page.locator('#game-viewport canvas');
+  await expect(canvas).toHaveAttribute('data-floor-views', /minerCrew/);
   const box = (await canvas.boundingBox())!;
   const floor = JSON.parse((await canvas.getAttribute('data-floor-views'))!)[0] as {
     minerCrew: Array<{ x: number; y: number }>;
@@ -261,7 +262,7 @@ async function clickFirstMiner(page: Page): Promise<void> {
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
-  test(`filters candidates, compares, and keeps the old cat on offline rejection at ${viewport.width}px`, async ({ page }) => {
+  test(`filters candidates, compares, and saves the new cat locally at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.clock.install({ time: FIXTURE_TIMESTAMP_MS });
     await page.clock.setFixedTime(FIXTURE_TIMESTAMP_MS);
@@ -282,9 +283,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     await expect(dialog).toContainText('Forge → Mica');
     await expect(dialog).toContainText('Role score');
     await dialog.getByRole('button', { name: 'Confirm change' }).click();
-    await expect(dialog).toContainText('Reconnect and retry.');
+    await expect(dialog).toContainText('Cat changed. The new assignment is saved.');
     await expect(dialog).toContainText('Mica');
-    await expect(dialog.locator('.cat-assignment-candidate')).toHaveCount(1);
     expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await dialog.getByRole('button', { name: 'Close assigned cat' }).click();
+    await page.reload();
+    await clickFirstMiner(page);
+    await expect(page.getByRole('dialog', { name: 'Assigned cat' })).toContainText('Mica');
   });
 }

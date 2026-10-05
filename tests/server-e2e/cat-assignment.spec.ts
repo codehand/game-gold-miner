@@ -1,14 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { BASE_GAME_BALANCE } from '../../src/config';
 import {
   CAT_CALCULATION_VERSION,
-  createInitialGameState,
+  createInitialPortfolio,
+  migratePortfolioCatRoster,
   type CatRosterState,
 } from '../../src/core';
 import { calculateFloorSlotRegion } from '../../src/game/layout';
-import { PLACEHOLDER_ANIMATION_TEXTURES } from '../../src/game/assets/placeholderAssets';
-import { createSaveDocument } from '../../src/persistence';
+import {
+  createPortfolioSaveDocument,
+  type PortfolioSaveDocumentV4,
+} from '../../src/persistence';
+import { finishPortfolioBoot } from './portfolioBootFixture';
 
 const FIXTURE_TIMESTAMP_MS = new Date('2026-09-19T08:00:00.000Z').getTime();
 
@@ -64,14 +67,12 @@ function toApiProjection(roster: CatRosterState): object {
   };
 }
 
-async function seedSave(page: Page, roster: CatRosterState): Promise<void> {
+async function seedSave(
+  page: Page,
+  roster: CatRosterState,
+): Promise<PortfolioSaveDocumentV4> {
   const now = Date.now();
-  const document = createSaveDocument(
-    createInitialGameState(BASE_GAME_BALANCE, now),
-    BASE_GAME_BALANCE,
-    now,
-    roster,
-  );
+  const document = createPortfolioSaveDocument(createInitialPortfolio(now), now, roster);
   await page.addInitScript((seeded) => {
     if (sessionStorage.getItem('cat-assignment-fixture-seeded') === '1') {
       return;
@@ -97,6 +98,7 @@ async function seedSave(page: Page, roster: CatRosterState): Promise<void> {
       };
     });
   }, document);
+  return document;
 }
 
 async function clickFirstMiner(page: Page): Promise<void> {
@@ -123,7 +125,46 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     let currentRoster = before;
     let assignmentPayload: unknown = null;
 
-    await seedSave(page, before);
+    let cloudDocument = await seedSave(page, before);
+    let cloudRevision = 1;
+    await page.route('**/functions/v1/save-sync/v1/**', async (route) => {
+      const headers = { 'access-control-allow-origin': '*' };
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers });
+        return;
+      }
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers,
+          body: JSON.stringify({
+            revision: cloudRevision,
+            receivedAt: new Date().toISOString(),
+            document: cloudDocument,
+            offlineGrants: {},
+          }),
+        });
+        return;
+      }
+      if (route.request().method() === 'PUT') {
+        const body = JSON.parse(route.request().postData() ?? '{}') as {
+          document?: PortfolioSaveDocumentV4;
+        };
+        if (body.document !== undefined) cloudDocument = body.document;
+        cloudRevision += 1;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers,
+        body: JSON.stringify({
+          revision: cloudRevision,
+          receivedAt: new Date().toISOString(),
+          document: cloudDocument,
+        }),
+      });
+    });
     await page.route('**/functions/v1/cat-collection/v1/collection', async (route) => {
       await route.fulfill({
         status: 200,
@@ -145,23 +186,31 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
       }
       assignmentPayload = JSON.parse(route.request().postData() ?? 'null');
       currentRoster = after;
+      const canonical = migratePortfolioCatRoster(after);
+      cloudRevision += 1;
+      cloudDocument = {
+        ...cloudDocument,
+        cats: canonical.cats,
+        assignments: canonical.assignments,
+        assignmentRevision: canonical.assignmentRevision,
+        collectionRevision: canonical.collectionRevision,
+      };
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         headers: { 'access-control-allow-origin': '*' },
-        body: JSON.stringify(toApiProjection(after)),
+        body: JSON.stringify({
+          ...toApiProjection(after),
+          walletGold: cloudDocument.walletGold,
+          saveRevision: cloudRevision,
+        }),
       });
     });
 
     await page.setViewportSize(viewport);
     await page.goto('/');
     await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/);
-    await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
-    const offlineReward = page.getByTestId('offline-reward-modal');
-    if (await offlineReward.count() > 0) {
-      await page.getByTestId('offline-reward-claim').click();
-      await expect(offlineReward).toHaveCount(0);
-    }
+    await finishPortfolioBoot(page);
     await clickFirstMiner(page);
 
     const dialog = page.getByRole('dialog', { name: 'Assigned cat' });
@@ -174,7 +223,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     await expect(dialog).toContainText('Mica');
     expect(assignmentPayload).toEqual({
       catInstanceId: 'cat-miner-mica',
-      slotKey: 'miner:floor-1',
+      slotKey: 'mine:gold:miner:floor-1',
       expectedAssignmentRevision: 1,
     });
 
@@ -194,28 +243,27 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
       });
     })).toBe('Mica');
 
-    const runtime = page.locator('#game-viewport canvas');
     await expect.poll(async () => page.evaluate(() => (
       JSON.parse(document.querySelector('#game-viewport canvas')?.getAttribute('data-cat-runtime-bindings') ?? '[]')
         .find((binding: { slotKey: string }) => binding.slotKey === 'miner:floor-1')
     ))).toMatchObject({
       catInstanceId: 'cat-miner-mica',
       assignedAssetId: 'miner:N:mica:idle',
-      runtimeAssetId: null,
-      usesFallback: true,
-      textureKey: PLACEHOLDER_ANIMATION_TEXTURES.minerWalk,
+      runtimeAssetId: 'miner:N:mica:idle',
+      usesFallback: false,
+      textureKey: 'marketplace-runtime-miner-mica-walk-right',
     });
 
     await page.reload();
-    await expect(runtime).toHaveAttribute('data-boot-scene', 'BootScene');
+    await finishPortfolioBoot(page);
     await expect.poll(async () => page.evaluate(() => (
       JSON.parse(document.querySelector('#game-viewport canvas')?.getAttribute('data-cat-runtime-bindings') ?? '[]')
         .find((binding: { slotKey: string }) => binding.slotKey === 'miner:floor-1')
     ))).toMatchObject({
       catInstanceId: 'cat-miner-mica',
       assignedAssetId: 'miner:N:mica:idle',
-      runtimeAssetId: null,
-      usesFallback: true,
+      runtimeAssetId: 'miner:N:mica:idle',
+      usesFallback: false,
     });
   });
 }

@@ -15,11 +15,17 @@ import assert from 'node:assert/strict';
 
 import {
   createInitialGameState,
+  createInitialPortfolio,
+  createPortfolioSaveDocument,
   createSaveDocument,
   GameNumber,
+  advanceActiveMine,
+  enterMine,
   LIFETIME_GOLD_BOARD_KEY,
   toLeaderboardMagnitude,
   BASE_GAME_BALANCE,
+  suspendActiveMine,
+  purchaseMine,
 } from '../_shared/generated/core-bundle.js';
 import type { RateLimiter } from '../_shared/rateLimit.ts';
 import {
@@ -41,6 +47,10 @@ const NOW_MS = 1_757_000_000_000;
 function validSaveDocument(): unknown {
   const state = createInitialGameState(BASE_GAME_BALANCE, NOW_MS);
   return createSaveDocument(state, BASE_GAME_BALANCE, NOW_MS);
+}
+
+function validPortfolioSaveDocument(): unknown {
+  return createPortfolioSaveDocument(createInitialPortfolio(NOW_MS), NOW_MS);
 }
 
 /** The schema version the server stamps rows with, read off a valid document rather than hardcoded. */
@@ -147,6 +157,14 @@ function getSaveRequest(init: { readonly token?: string | null } = {}): Request 
     headers.authorization = `Bearer ${token}`;
   }
   return new Request('http://localhost/v1/save', { method: 'GET', headers });
+}
+
+function portfolioCommandRequest(body: unknown): Request {
+  return new Request('http://localhost/v1/portfolio/command', {
+    method: 'POST',
+    headers: { authorization: 'Bearer a-valid-token', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 Deno.test('resolveFunctionRoute strips the platform and function route prefixes', () => {
@@ -306,7 +324,7 @@ Deno.test('handleSaveUpload answers 400 when baseRevision is neither a number no
 });
 
 Deno.test('handleSaveUpload answers 422 schema_unsupported for a schemaVersion the server does not understand', async () => {
-  const document = { ...(validSaveDocument() as Record<string, unknown>), schemaVersion: 4 };
+  const document = { ...(validSaveDocument() as Record<string, unknown>), schemaVersion: 5 };
   const request = putSaveRequest({ baseRevision: null, document });
   const response = await handleRequest(
     request,
@@ -316,7 +334,7 @@ Deno.test('handleSaveUpload answers 422 schema_unsupported for a schemaVersion t
   assert.equal(response.status, 422);
   const body = await response.json();
   assert.equal(body.error.code, 'schema_unsupported');
-  assert.deepEqual(body.error.detail.supported, [serverSchemaVersion()]);
+  assert.deepEqual(body.error.detail.supported, [serverSchemaVersion(), 4]);
 });
 
 Deno.test('handleSaveUpload migrates and accepts an older version-1 document rather than refusing it', async () => {
@@ -587,6 +605,352 @@ Deno.test('handleSaveUpload accepts a document within the elapsed-time bound', a
 
   assert.equal(response.status, 200);
   assert.equal(written, true);
+});
+
+Deno.test('V4 routine upload accepts an unchanged portfolio and writes schema version 4', async () => {
+  const document = validPortfolioSaveDocument();
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(document),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  let writtenVersion: number | null = null;
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async (_userId, row) => {
+        writtenVersion = row.schemaVersion;
+        return true;
+      },
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(writtenVersion, 4);
+});
+
+Deno.test('V4 first upload anchors offline intervals to the server receipt', async () => {
+  const suspended = suspendActiveMine(createInitialPortfolio(NOW_MS), NOW_MS + 1_000);
+  const document = createPortfolioSaveDocument(suspended, NOW_MS + 1_000);
+  let savedDocument: Record<string, unknown> | null = null;
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: null, document }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => null,
+      writeSaveRow: async (_userId, row) => {
+        savedDocument = JSON.parse(row.documentJson);
+        return true;
+      },
+    }),
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  const anchor = Date.parse(body.receivedAt);
+  assert.equal(body.document.savedAtTimestampMs, anchor);
+  assert.equal(body.document.mines.gold.offline.startedAtMs, anchor);
+  assert.deepEqual(body.document, savedDocument);
+});
+
+Deno.test('V4 routine upload rejects wallet minting and a direct offline claim', async () => {
+  const document = validPortfolioSaveDocument() as {
+    walletGold: string;
+    mines: { gold: { state: { warehouse: Record<string, unknown> } } };
+  } & Record<string, unknown>;
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(document),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const deps = noopDeps({
+    resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+    readCurrentSave: async () => stored,
+    writeSaveRow: async () => { throw new Error('Rejected V4 save reached the writer.'); },
+  });
+  const minted = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document: { ...document, walletGold: '999' } }),
+    deps,
+  );
+  assert.equal(minted.status, 422);
+  assert.equal((await minted.json()).error.detail.counter, 'walletGold');
+
+  const claimed = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document: {
+      ...document,
+      mines: { gold: {
+        ...document.mines.gold,
+        state: {
+          ...document.mines.gold.state,
+          warehouse: {
+            ...document.mines.gold.state.warehouse,
+            totalOfflineGoldClaimed: '1',
+          },
+        },
+      } },
+    } }),
+    deps,
+  );
+  assert.equal(claimed.status, 422);
+  assert.equal((await claimed.json()).error.detail.counter, 'mines.gold.offlineClaim');
+});
+
+Deno.test('V4 upload against a V3 row requires an explicit migration', async () => {
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document: validPortfolioSaveDocument() }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async () => { throw new Error('Migration bypassed the command.'); },
+    }),
+  );
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).error.detail.counter, 'schemaVersion');
+});
+
+Deno.test('portfolio purchase uses the shared wallet and replays one durable response', async () => {
+  const base = createInitialPortfolio(NOW_MS);
+  const gold = base.mines.gold!;
+  const portfolio = {
+    ...base,
+    walletGold: GameNumber.from('2000000000'),
+    mines: {
+      gold: {
+        ...gold,
+        state: {
+          ...gold.state,
+          floors: gold.state.floors.map(
+            (floor: Record<string, unknown>, index: number) =>
+              index < 5 ? { ...floor, isUnlocked: true, mineShaftLevel: index < 4 ? 10 : 1 } : floor,
+          ),
+        },
+      },
+    },
+  };
+  const current: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(createPortfolioSaveDocument(portfolio, NOW_MS)),
+    receivedAt: new Date(Date.now() - 1_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const key = '5f3955dc-e92e-422e-8b13-7272608a8ba0';
+  const receipts = new Map<string, { fingerprint: string; response: Record<string, unknown> }>();
+  let writes = 0;
+  const deps = noopDeps({
+    resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+    readCurrentSave: async () => current,
+    readPortfolioCommandReceipt: async (_userId, idempotencyKey) => receipts.get(idempotencyKey) ?? null,
+    applyPortfolioCommand: async (command) => {
+      writes += 1;
+      const response = {
+        status: 'applied', revision: 2, receivedAt: command.receivedAt,
+        document: JSON.parse(command.documentJson), result: command.result,
+      };
+      receipts.set(command.idempotencyKey, { fingerprint: command.fingerprint, response });
+      return response;
+    },
+  });
+  const body = { type: 'purchase', mineId: 'amethyst', baseRevision: 1, idempotencyKey: key };
+  const first = await handleRequest(portfolioCommandRequest(body), deps);
+  assert.equal(first.status, 200);
+  const accepted = await first.json();
+  assert.equal(accepted.document.mines.amethyst.visitCount, 0);
+  assert.equal(accepted.result.mineId, 'amethyst');
+  assert.equal(GameNumber.from(accepted.document.walletGold).lessThan('2000000000'), true);
+
+  const replay = await handleRequest(portfolioCommandRequest(body), deps);
+  assert.equal(replay.status, 200);
+  assert.deepEqual(await replay.json(), accepted);
+  assert.equal(writes, 1);
+});
+
+Deno.test('a replayed offline entry closes at its uploaded boundary, not retry time', async () => {
+  const startedAtMs = Date.now() - 120_000;
+  const base = createInitialPortfolio(startedAtMs);
+  const gold = base.mines.gold!;
+  const ready = {
+    ...base,
+    walletGold: GameNumber.from('2000000000'),
+    mines: {
+      gold: {
+        ...gold,
+        state: {
+          ...gold.state,
+          floors: gold.state.floors.map(
+            (floor: Record<string, unknown>, index: number) =>
+              index < 5 ? { ...floor, isUnlocked: true, mineShaftLevel: index < 4 ? 10 : 1 } : floor,
+          ),
+        },
+      },
+    },
+  };
+  const purchase = purchaseMine(ready, 'amethyst', startedAtMs);
+  assert.equal(purchase.status, 'purchased');
+  const visited = enterMine(purchase.portfolio, 'amethyst', startedAtMs + 1_000);
+  assert.equal(visited.status, 'entered');
+  const effectiveAtMs = startedAtMs + 61_000;
+  const sourcePortfolio = advanceActiveMine(visited.portfolio, effectiveAtMs);
+  const source = createPortfolioSaveDocument(sourcePortfolio, effectiveAtMs);
+  const response = await handleRequest(portfolioCommandRequest({
+    type: 'enter', mineId: 'gold', effectiveAtMs, baseRevision: 5,
+    idempotencyKey: 'acbbd8e4-f4ef-4234-95fb-463c788279c7',
+  }), noopDeps({
+    resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+    readCurrentSave: async () => ({
+      revision: 5,
+      documentJson: JSON.stringify(source),
+      // Simulate the command retry reaching the server one minute later.
+      receivedAt: new Date(effectiveAtMs + 60_000).toISOString(),
+      previousDocumentJson: null,
+      previousReceivedAt: null,
+    }),
+    readPortfolioCommandReceipt: async () => null,
+    applyPortfolioCommand: async (command) => ({
+      status: 'applied', revision: 6, receivedAt: command.receivedAt,
+      document: JSON.parse(command.documentJson), result: command.result,
+    }),
+  }));
+  assert.equal(response.status, 200);
+  const accepted = await response.json();
+  assert.equal(accepted.result.effectiveAtMs, effectiveAtMs);
+  assert.equal(accepted.result.grant.elapsedDurationMs, 60_000);
+  assert.equal(accepted.document.mines.gold.state.lastUpdateTimestampMs, effectiveAtMs);
+});
+
+Deno.test('a stale foreground receipt becomes an offline interval at its server timestamp', async () => {
+  const receiptMs = Date.now() - 10 * 60_000;
+  const document = createPortfolioSaveDocument(createInitialPortfolio(receiptMs), receiptMs);
+  const current: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(document),
+    receivedAt: new Date(receiptMs).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const deps = noopDeps({
+    resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+    readCurrentSave: async () => current,
+    readPortfolioCommandReceipt: async () => null,
+    applyPortfolioCommand: async (command) => ({
+      status: 'applied', revision: 2, receivedAt: command.receivedAt,
+      document: JSON.parse(command.documentJson), result: command.result,
+    }),
+  });
+  const suspended = await handleRequest(portfolioCommandRequest({
+    type: 'suspend', baseRevision: 1,
+    idempotencyKey: '942c4000-6634-4b41-b159-e2adebfbbd24',
+  }), deps);
+  assert.equal(suspended.status, 200);
+  const body = await suspended.json();
+  assert.equal(body.document.activeMineId, null);
+  assert.equal(body.document.mines.gold.offline.startedAtMs, receiptMs);
+  assert.equal(body.document.walletGold, document.walletGold);
+
+  const returned = await handleRequest(portfolioCommandRequest({
+    type: 'enter', mineId: 'gold', baseRevision: 1,
+    idempotencyKey: '8b9201af-9b4f-4f7c-a018-c9e9d3af9043',
+  }), deps);
+  assert.equal(returned.status, 200);
+  const entered = await returned.json();
+  assert.equal(entered.result.claimedSequence, 1);
+  assert.equal(entered.result.grant.elapsedDurationMs >= 10 * 60_000, true);
+  assert.equal(GameNumber.from(entered.result.grant.reward).greaterThan(0), true);
+  assert.equal(entered.document.walletGold,
+    GameNumber.from(document.walletGold).add(entered.result.grant.reward).serialize());
+});
+
+Deno.test('returning to the same mine closes even a short hidden interval', async () => {
+  const receiptMs = Date.now() - 5_000;
+  const document = createPortfolioSaveDocument(createInitialPortfolio(receiptMs), receiptMs);
+  const response = await handleRequest(portfolioCommandRequest({
+    type: 'enter', mineId: 'gold', baseRevision: 1,
+    idempotencyKey: '62bf6170-70d9-4e0b-a7d1-1030b9038c6d',
+  }), noopDeps({
+    resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+    readCurrentSave: async () => ({
+      revision: 1, documentJson: JSON.stringify(document),
+      receivedAt: new Date(receiptMs).toISOString(),
+      previousDocumentJson: null, previousReceivedAt: null,
+    }),
+    readPortfolioCommandReceipt: async () => null,
+    applyPortfolioCommand: async (command) => ({
+      status: 'applied', revision: 2, receivedAt: command.receivedAt,
+      document: JSON.parse(command.documentJson), result: command.result,
+    }),
+  }));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.document.activeMineId, 'gold');
+  assert.equal(body.result.claimedSequence, 1);
+  assert.equal(body.result.grant.elapsedDurationMs >= 5_000, true);
+});
+
+Deno.test('a stale foreground receipt cannot fund a new mine at full idle time', async () => {
+  const receiptMs = Date.now() - 10 * 60_000;
+  const document = createPortfolioSaveDocument(createInitialPortfolio(receiptMs), receiptMs);
+  const response = await handleRequest(portfolioCommandRequest({
+    type: 'purchase', mineId: 'amethyst', baseRevision: 1,
+    idempotencyKey: '4d1c05c8-9bd8-47d5-852c-b49f2ea92dfb',
+  }), noopDeps({
+    resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+    readCurrentSave: async () => ({
+      revision: 1,
+      documentJson: JSON.stringify(document),
+      receivedAt: new Date(receiptMs).toISOString(),
+      previousDocumentJson: null,
+      previousReceivedAt: null,
+    }),
+    readPortfolioCommandReceipt: async () => null,
+    applyPortfolioCommand: async () => {
+      throw new Error('A stale purchase must not reach the writer.');
+    },
+  }));
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).error.detail.reason, 'not-active');
+});
+
+Deno.test('portfolio migration anchors Gold offline time to the stored server receipt', async () => {
+  const receivedAt = new Date(Date.now() - 60_000).toISOString();
+  const current: StoredSaveRow = {
+    revision: 3,
+    documentJson: JSON.stringify(validSaveDocument()),
+    receivedAt,
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  let commandDocument: Record<string, unknown> | null = null;
+  const response = await handleRequest(portfolioCommandRequest({
+    type: 'migrate', baseRevision: 3,
+    idempotencyKey: 'dc03bdaa-1cb9-4e20-aa80-7d418fba6bc5',
+  }), noopDeps({
+    resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+    readCurrentSave: async () => current,
+    readPortfolioCommandReceipt: async () => null,
+    applyPortfolioCommand: async (command) => {
+      commandDocument = JSON.parse(command.documentJson);
+      return {
+        status: 'applied', revision: 4, receivedAt: command.receivedAt,
+        document: commandDocument, result: command.result,
+      };
+    },
+  }));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.document.schemaVersion, 4);
+  assert.equal(body.document.mines.gold.offline.startedAtMs, Date.parse(receivedAt));
+  assert.deepEqual(body.document, commandDocument);
 });
 
 Deno.test('handleSaveUpload accepts a dominating branch re-uploaded after a conflict, anchored at the stored row\'s ancestor', async () => {
@@ -929,6 +1293,30 @@ Deno.test('handleSaveUpload publishes a leaderboard entry from an accepted save,
   assert.deepEqual(displayNameLookup, { userId: FIXTURE_USER_ID, bearerToken: 'a-valid-token' });
 });
 
+Deno.test('V4 upload publishes portfolio lifetime gold instead of only the selected mine projection', async () => {
+  const document = structuredClone(validPortfolioSaveDocument()) as {
+    mines: { gold: { state: { warehouse: { totalGoldDelivered: string; totalOfflineGoldClaimed: string } } } };
+  } & Record<string, unknown>;
+  document.mines.gold.state.warehouse.totalGoldDelivered = '7';
+  document.mines.gold.state.warehouse.totalOfflineGoldClaimed = '3';
+  const published: LeaderboardEntryToWrite[] = [];
+
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: null, document }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => null,
+      writeSaveRow: async () => true,
+      writeLeaderboardEntry: async (entry) => { published.push(entry); },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(published.length, 1);
+  assert.equal(published[0].metricExact, '10');
+  assert.equal(published[0].sourceRevision, 1);
+});
+
 Deno.test('handleSaveUpload never publishes a leaderboard entry when Step 23 rejects the save', async () => {
   const current = validSaveDocument() as { state: { warehouse: Record<string, unknown> } } & Record<
     string,
@@ -1106,6 +1494,54 @@ Deno.test('handleSaveDownload answers 200 with the stored revision, receivedAt, 
     body.offlineGrant.elapsedDurationMs >= body.offlineGrant.creditedDurationMs,
     true,
   );
+});
+
+Deno.test('V4 download exposes the selected mine grant and the per-mine grant map', async () => {
+  const suspended = suspendActiveMine(createInitialPortfolio(NOW_MS), NOW_MS + 1_000);
+  const document = createPortfolioSaveDocument(suspended, NOW_MS + 1_000);
+  const stored: StoredSaveRow = {
+    revision: 2,
+    documentJson: JSON.stringify(document),
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const response = await handleRequest(
+    getSaveRequest(),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+    }),
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.offlineGrants.gold.creditedDurationMs, 7_200_000);
+  assert.deepEqual(body.offlineGrant, body.offlineGrants.gold);
+});
+
+Deno.test('V4 download previews a stale active mine as offline before the player claims it', async () => {
+  const receivedAtMs = Date.now() - 10 * 60_000;
+  const portfolio = createInitialPortfolio(receivedAtMs);
+  const document = createPortfolioSaveDocument(portfolio, receivedAtMs);
+  const stored: StoredSaveRow = {
+    revision: 2,
+    documentJson: JSON.stringify(document),
+    receivedAt: new Date(receivedAtMs).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const response = await handleRequest(
+    getSaveRequest(),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+    }),
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.document.activeMineId, 'gold');
+  assert.equal(body.offlineGrants.gold.creditedDurationMs >= 9 * 60_000, true);
+  assert.deepEqual(body.offlineGrant, body.offlineGrants.gold);
 });
 
 Deno.test('handleSaveDownload derives the offlineGrant from the server receipt, not the document timestamps', async () => {

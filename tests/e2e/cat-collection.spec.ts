@@ -107,6 +107,10 @@ async function bootCollectionFixture(page: Page): Promise<void> {
   });
 
   await page.goto('/');
+  const reward = page.getByTestId('offline-reward-modal');
+  await expect.poll(async () => await reward.isVisible() ||
+    await page.locator('#game-viewport canvas').count() === 1).toBe(true);
+  if (await reward.isVisible()) await page.getByTestId('offline-reward-claim').click();
   await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
 }
 
@@ -137,7 +141,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     await expect(dialog.locator('.collection-card')).toHaveCount(1);
     await dialog.getByRole('button', { name: 'View detail' }).click();
     await expect(dialog).toContainText('Mining Mastery');
-    await expect(dialog).toContainText('Assigned · miner:floor-1');
+    await expect(dialog).toContainText('Assigned · Gold Mine · Floor 1');
     await expect(dialog.locator('[data-icon="skill-mining-mastery"]')).toHaveCount(1);
 
     await dialog.getByRole('button', { name: '← Back to collection' }).click();

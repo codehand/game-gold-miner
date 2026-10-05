@@ -4,20 +4,22 @@ import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
-import { catchUpSimulation, createInitialGameState } from '../../src/core';
+import {
+  advanceActiveMine,
+  createEmptyCatRoster,
+  createInitialPortfolio,
+  enterMine,
+  suspendActiveMine,
+} from '../../src/core';
 import {
   PLACEHOLDER_ANIMATION_ASSETS,
   PLACEHOLDER_ASSETS,
 } from '../../src/game/assets/placeholderAssets';
 import { HUD_BACKGROUND, MINE_BACKGROUND } from '../../src/game/layout';
 import {
-  CORRUPT_SAVE_WARNING_MESSAGE,
-  INCOMPATIBLE_SAVE_WARNING_MESSAGE,
   LOAD_FAILURE_MESSAGE,
   SAVE_FAILURE_MESSAGE,
-  createSaveDocument,
-  deserializeSaveDocument,
-  type SaveDocumentV2,
+  createPortfolioSaveDocument,
 } from '../../src/persistence';
 
 interface Rect {
@@ -135,7 +137,7 @@ test('serves the optimized bundle and every runtime asset from the root base pat
   await expect(canvas).toHaveAttribute('data-layout-viewport', '360,640');
   await expect(canvas).toHaveAttribute(
     'data-layout-bottom-navigation',
-    '0,582,360,58',
+    '0,560,360,80',
   );
   await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
   await expect(page.getByTestId('save-diagnostic')).toHaveCount(0);
@@ -229,25 +231,24 @@ test('saves and restores authoritative progress across a production reload', asy
   await page.goto('/');
   await waitForBootedScene(page);
 
-  const initialState = createInitialGameState(
-    BASE_GAME_BALANCE,
-    START_TIMESTAMP_MS,
+  const suspendAtMs = START_TIMESTAMP_MS + FOREGROUND_MS;
+  const roster = createEmptyCatRoster();
+  const playedPortfolio = suspendActiveMine(
+    advanceActiveMine(createInitialPortfolio(START_TIMESTAMP_MS), suspendAtMs),
+    suspendAtMs,
   );
-  const playedState = catchUpSimulation(initialState, FOREGROUND_MS);
-  const playedDocument = createSaveDocument(
-    playedState,
-    BASE_GAME_BALANCE,
-    START_TIMESTAMP_MS + FOREGROUND_MS,
+  const playedDocument = createPortfolioSaveDocument(
+    playedPortfolio, suspendAtMs, roster,
   );
 
   // A fixture that produced nothing would let a reset-to-fresh reload pass the
   // restore assertion below.
   expect(
-    Number(playedDocument.state.gold),
+    Number(playedDocument.walletGold),
     'the fixture must actually earn gold before saving',
   ).toBeGreaterThan(BASE_GAME_BALANCE.startingGold);
 
-  await dispatchVisibility(page, 'hidden', START_TIMESTAMP_MS + FOREGROUND_MS);
+  await dispatchVisibility(page, 'hidden', suspendAtMs);
   await expect
     .poll(() => readStoredSave(page), {
       message: 'the production bundle writes the exact authoritative document',
@@ -257,29 +258,35 @@ test('saves and restores authoritative progress across a production reload', asy
   await page.reload();
   await waitForBootedScene(page);
 
-  // Reloading at the same instant credits no offline time, so a restored
-  // session re-settles the identical document while a reset one would not.
+  // Reloading at the same instant credits no offline time, then atomically
+  // re-enters Gold and consumes the closed interval without changing wallet.
   await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
+  const resumed = enterMine(playedPortfolio, 'gold', suspendAtMs);
+  expect(resumed.status).toBe('entered');
+  if (resumed.status !== 'entered') throw new Error('Expected Gold resume.');
+  const resumedDocument = createPortfolioSaveDocument(
+    resumed.portfolio, suspendAtMs, roster,
+  );
   await expect
     .poll(() => readStoredSave(page), {
       message: 'the reloaded production bundle restores the saved document',
     })
-    .toEqual(playedDocument);
+    .toEqual(resumedDocument);
 
-  const restoredState = deserializeSaveDocument(
-    playedDocument,
-    BASE_GAME_BALANCE,
-  ).state;
-  const continuedDocument = createSaveDocument(
-    catchUpSimulation(restoredState, AFTER_RELOAD_MS),
-    BASE_GAME_BALANCE,
-    START_TIMESTAMP_MS + FOREGROUND_MS + AFTER_RELOAD_MS,
+  const finalTimestampMs = suspendAtMs + AFTER_RELOAD_MS;
+  const continuedDocument = createPortfolioSaveDocument(
+    suspendActiveMine(
+      advanceActiveMine(resumed.portfolio, finalTimestampMs),
+      finalTimestampMs,
+    ),
+    finalTimestampMs,
+    roster,
   );
 
   await dispatchVisibility(
     page,
     'hidden',
-    START_TIMESTAMP_MS + FOREGROUND_MS + AFTER_RELOAD_MS,
+    finalTimestampMs,
   );
   await expect
     .poll(() => readStoredSave(page), {
@@ -293,18 +300,16 @@ test('saves and restores authoritative progress across a production reload', asy
 for (const recovery of [
   {
     name: 'corrupt',
-    message: CORRUPT_SAVE_WARNING_MESSAGE,
     code: 'corrupt-save',
     document: { schemaVersion: 1, state: { gold: 'not-a-number' } },
   },
   {
     name: 'unsupported',
-    message: INCOMPATIBLE_SAVE_WARNING_MESSAGE,
-    code: 'incompatible-save',
+    code: 'corrupt-save',
     document: { schemaVersion: 99, savedAtTimestampMs: 0, state: {} },
   },
 ] as const) {
-  test(`recovers from a ${recovery.name} save with a visible warning`, async ({
+  test(`preserves a ${recovery.name} save with a visible warning`, async ({
     page,
   }) => {
     await installControlledClock(page);
@@ -316,36 +321,23 @@ for (const recovery of [
     const browserErrors = collectBrowserErrors(page);
 
     await page.reload();
-    await waitForBootedScene(page);
 
     const banner = page.getByTestId('save-diagnostic');
     await expect(banner).toBeVisible();
     await expect(banner).toHaveAttribute('data-code', recovery.code);
     await expect(page.getByTestId('save-diagnostic-message')).toHaveText(
-      recovery.message,
+      'Local progress could not be read. The saved data has been preserved.',
     );
 
-    // Recovery is automatic and unblocking: the fresh game is already playable
-    // behind the notice, and the notice can be dismissed.
+    // A V4 portfolio never overwrites the only unreadable/newer candidate with
+    // a fresh game. The notice can be dismissed, but boot remains stopped until
+    // the player can retry with a compatible build or recover the data.
+    await expect(page.locator(CANVAS_SELECTOR)).toHaveCount(0);
+    await expect.poll(() => readStoredSave(page)).toEqual(recovery.document);
     await page.getByTestId('save-diagnostic-dismiss').click();
     await expect(banner).toHaveCount(0);
-    await expect(page.getByTestId('account-settings-modal')).toBeHidden();
-
-    const freshDocument = createSaveDocument(
-      catchUpSimulation(
-        createInitialGameState(BASE_GAME_BALANCE, START_TIMESTAMP_MS),
-        FOREGROUND_MS,
-      ),
-      BASE_GAME_BALANCE,
-      START_TIMESTAMP_MS + FOREGROUND_MS,
-    );
-
-    await dispatchVisibility(page, 'hidden', START_TIMESTAMP_MS + FOREGROUND_MS);
-    await expect
-      .poll(() => readStoredSave(page), {
-        message: 'the rejected payload is replaced by a valid fresh save',
-      })
-      .toEqual(freshDocument);
+    await expect(page.locator(CANVAS_SELECTOR)).toHaveCount(0);
+    await expect.poll(() => readStoredSave(page)).toEqual(recovery.document);
 
     expect(
       browserErrors,
@@ -519,7 +511,7 @@ for (const viewport of VIEWPORTS) {
 
     await expect(canvas).toHaveAttribute(
       'data-layout-bottom-navigation',
-      '0,582,360,58',
+      '0,560,360,80',
     );
     // Scoped to a direct child of the Phaser parent — see the identical
     // comment in tests/e2e/layout.spec.ts: the marketplace dialog renders its
@@ -611,7 +603,7 @@ async function waitForBootedScene(page: Page): Promise<void> {
   );
 }
 
-async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
+async function readStoredSave(page: Page): Promise<unknown | null> {
   return page.evaluate(async () => {
     const request = indexedDB.open('cat-mine-idle');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -626,7 +618,7 @@ async function readStoredSave(page: Page): Promise<SaveDocumentV2 | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: SaveDocumentV2 } | undefined>(
+    const record = await new Promise<{ document?: unknown } | undefined>(
       (resolve, reject) => {
         getRequest.onerror = () => reject(getRequest.error);
         getRequest.onsuccess = () => resolve(getRequest.result);

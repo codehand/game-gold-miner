@@ -570,7 +570,7 @@ async function createListingViaSupabase(
     p_idempotency_key: command.idempotencyKey,
   });
   if (error || typeof data !== 'string') throw new Error(error?.message ?? 'Listing creation failed.');
-  return readMarketplaceMutationProjection(userId, data, false);
+  return readMarketplaceMutationProjection(userId, data, true);
 }
 
 async function cancelListingViaSupabase(userId: string, listingId: string, idempotencyKey: string): Promise<MarketplaceMutationProjection> {
@@ -580,7 +580,7 @@ async function cancelListingViaSupabase(userId: string, listingId: string, idemp
     p_idempotency_key: idempotencyKey,
   });
   if (error || typeof data !== 'string') throw new Error(error?.message ?? 'Listing cancellation failed.');
-  return readMarketplaceMutationProjection(userId, data, false);
+  return readMarketplaceMutationProjection(userId, data, true);
 }
 
 async function buyListingViaSupabase(userId: string, listingId: string, idempotencyKey: string): Promise<MarketplaceMutationProjection> {
@@ -629,7 +629,9 @@ async function readWalletViaSupabase(userId: string): Promise<{
     throw new Error('Wallet document is invalid.');
   }
   const state = isRecord(document) ? document.state : null;
-  const walletGold = isRecord(state) ? state.gold : null;
+  const walletGold = isRecord(document) && document.schemaVersion === 4
+    ? document.walletGold
+    : isRecord(state) ? state.gold : null;
   if (!isNonEmptyString(walletGold) || !isSafeNonNegativeInteger(data.revision)) {
     throw new Error('Wallet document is invalid.');
   }
@@ -647,7 +649,11 @@ async function replaceAssignmentViaSupabase(
     p_expected_assignment_revision: command.expectedAssignmentRevision,
   });
   if (error) throw new Error(error.message);
-  return readCollectionViaSupabase(userId);
+  const [collection, wallet] = await Promise.all([
+    readCollectionViaSupabase(userId),
+    readWalletViaSupabase(userId),
+  ]);
+  return { ...collection, ...wallet };
 }
 
 async function settleDueRentalsViaSupabase(): Promise<void> {

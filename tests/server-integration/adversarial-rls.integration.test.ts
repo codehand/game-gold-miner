@@ -114,7 +114,20 @@ function seededRowFor(table: string, userId: string, randomHex: string): Record<
     case 'entitlements':
       return { user_id: userId, entitlement_key: 'cosmetic.supporter_badge', granted_by: 'rls-probe' };
     case 'mine_boosts':
-      return { user_id: userId, last_activated_at: new Date(Date.now() - 60_000).toISOString() };
+      return {
+        user_id: userId,
+        mine_id: 'gold',
+        last_activated_at: new Date(Date.now() - 60_000).toISOString(),
+      };
+    case 'portfolio_command_receipts':
+      return {
+        user_id: userId,
+        idempotency_key: randomUUID(),
+        fingerprint: randomHex,
+        base_revision: 1,
+        resulting_revision: 2,
+        response_json: { status: 'applied', revision: 2 },
+      };
     case 'cat_blueprints':
       // The migration owns the catalogue seed. The beforeAll hook reads this
       // row instead of inserting a duplicate so the matrix can probe the
@@ -290,13 +303,13 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
   /**
    * A regression guard for the derivation itself, not a substitute for it.
    *
-   * The matrix below is built from the migrations, so a seventh table is
+   * The matrix below is built from the migrations, so a new table is
    * covered automatically rather than missed. This asserts the reader still
-   * sees the fifteen tables the schema defines today, so a migration that renames
+   * sees the sixteen tables the schema defines today, so a migration that renames
    * or drops one — or a parser gap that silently starts returning fewer
    * tables — goes red instead of shrinking the matrix without a word.
    */
-    it('the derived table list still holds the fifteen tables the schema defines', () => {
+    it('the derived table list still holds the sixteen tables the schema defines', () => {
       expect(tables.map((table) => table.name).sort()).toEqual([
       'cat_assignments',
       'cat_blueprints',
@@ -309,6 +322,7 @@ describe('attack 6 (direct PostgREST writes to every table): the derived RLS mat
       'entitlements',
       'leaderboard_entries',
       'mine_boosts',
+      'portfolio_command_receipts',
       'profiles',
       'recovery_codes',
       'save_audit',

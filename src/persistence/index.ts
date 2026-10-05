@@ -1,4 +1,5 @@
 export type { ActiveSaveRepository } from './ActiveSaveRepository';
+export { commitPortfolio, commitPortfolioWithCoordinator } from './commitPortfolio';
 export {
   ACTIVE_SAVE_DATABASE_NAME,
   ACTIVE_SAVE_DATABASE_VERSION,
@@ -44,6 +45,17 @@ export {
   type SerializedWarehouseState,
 } from './saveSchema';
 export {
+  createPortfolioSaveDocument,
+  deserializePortfolioSaveDocument,
+  validatePortfolioSaveDocument,
+  PORTFOLIO_SAVE_SCHEMA_VERSION,
+  type LoadedPortfolioSaveDocument,
+  type PortfolioSaveDocumentV4,
+  type SerializedMineOfflineInterval,
+  type SerializedMineProgressState,
+  type SerializedOwnedMine,
+} from './portfolioSaveSchema';
+export {
   compareProgress,
   describeSaveConflictCandidate,
   resolveSaveConflict,
@@ -52,6 +64,7 @@ export {
   type SaveConflictRemote,
   type SaveConflictResolution,
 } from './saveConflictPolicy';
+export { comparePortfolioProgress } from './portfolioConflictPolicy';
 export {
   CLOUD_UPLOAD_MAX_CONFLICT_RESOLUTIONS,
   CLOUD_UPLOAD_MAX_RETRIES,

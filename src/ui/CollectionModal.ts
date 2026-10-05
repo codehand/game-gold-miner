@@ -1,9 +1,11 @@
+import { getMineSite } from '../config';
 import {
   calculateCatRoleEffect,
   type CatInstance,
   type CatRole,
   type CatRosterState,
 } from '../core';
+import { parseMineCatSlot } from '../core/portfolio/portfolioCatRoster';
 import { getMarketplaceAsset } from './marketplaceAssetRegistry';
 import { getMarketplaceIcon } from './marketplaceIconRegistry';
 import { getMarketplaceStatePresentation } from './marketplaceStatePresentation';
@@ -266,7 +268,8 @@ export class CollectionModal {
     const status = document.createElement('span');
     status.className = 'collection-status';
     status.dataset.state = cat.availabilityState;
-    status.textContent = cat.assignedSlotKey === null ? cat.availabilityState : `Assigned · ${cat.assignedSlotKey}`;
+    status.textContent = cat.assignedSlotKey === null
+      ? cat.availabilityState : `Assigned · ${formatAssignedSlot(cat.assignedSlotKey)}`;
     const level = document.createElement('span');
     level.className = 'collection-level';
     level.textContent = `${cat.rarityTier} · Lv ${cat.level}`;
@@ -301,7 +304,7 @@ export class CollectionModal {
     const status = document.createElement('p');
     status.className = 'collection-detail-status';
     const presentation = getMarketplaceStatePresentation(cat.availabilityState);
-    status.append(this.#icon(presentation.iconId, presentation.label), document.createTextNode(`${presentation.label} · ${cat.assignedSlotKey ?? 'Not assigned'}`));
+    status.append(this.#icon(presentation.iconId, presentation.label), document.createTextNode(`${presentation.label} · ${cat.assignedSlotKey === null ? 'Not assigned' : formatAssignedSlot(cat.assignedSlotKey)}`));
     status.title = presentation.description;
     section.append(status, this.#attributes(cat));
 
@@ -397,4 +400,16 @@ export class CollectionModal {
     wrapper.append(select);
     return wrapper;
   }
+}
+
+function formatAssignedSlot(slotKey: string): string {
+  const qualified = parseMineCatSlot(slotKey);
+  if (qualified === null) return slotKey;
+  const local = qualified.localSlotKey;
+  const roleLabel = local.startsWith('miner:')
+    ? `Floor ${local.slice('miner:'.length).replace(/^floor-/, '')}`
+    : local.startsWith('hauler:')
+      ? `Cart ${local.slice('hauler:'.length)}`
+      : local === 'elevator:main' ? 'Elevator' : 'Warehouse';
+  return `${getMineSite(qualified.mineId).name} · ${roleLabel}`;
 }

@@ -40,6 +40,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
 
 test('Rent, Sell, and My listings use live projections and commands', async ({ page }) => {
   await page.goto('/');
+  // Let application boot finish before opening the isolated native dialog.
+  // Otherwise a slower parallel run can call showModal() for the app's boot
+  // reward/conflict surface afterward, placing that dialog above this fixture
+  // in the top layer and making the visible Marketplace controls unclickable.
+  await expect(page.locator('canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
   await page.evaluate(async () => {
     document.querySelector<HTMLElement>('#app')!.style.display = 'none';
     const modulePath = '/src/ui/MarketplaceModal.ts';
@@ -76,6 +81,12 @@ test('Rent, Sell, and My listings use live projections and commands', async ({ p
     const sale = { ...listing, listingId: 'listing-sale-1', listingType: 'sale', priceExact: '10000' } as const;
     const parent = document.createElement('div');
     parent.id = 'marketplace-live-fixture';
+    // Phaser observes pointer events above the canvas. Keep this isolated DOM
+    // fixture from also activating a bottom-navigation hit target underneath
+    // it while its own button handlers continue to run normally.
+    for (const eventName of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click']) {
+      parent.addEventListener(eventName, (event) => event.stopPropagation());
+    }
     document.body.append(parent);
     const roster = { cats: [cat], assignments: [], assignmentRevision: 0, collectionRevision: 1 } as const;
     const command = (resultListing: typeof listing | typeof sale) => ({

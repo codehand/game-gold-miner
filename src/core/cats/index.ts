@@ -13,6 +13,7 @@ export {
   type CatAssignment,
   type CatAssignmentFailureReason,
   type CatAssignmentResult,
+  type BareCatSlotKey,
   type CatAttributes,
   type CatAvailabilityState,
   type CatBenefitMetric,

@@ -2,25 +2,25 @@
 
 ## Purpose
 
-This document is the Step 2 deliverable of `memory-bank/server-milestone-plan.md`.
-It specifies the client/server save-sync contract **before either side is
-written**: endpoints, request and response shapes, the error vocabulary, the
+This document began as the Step 2 deliverable of
+`memory-bank/server-milestone-plan.md` and now records the implemented V3/V4
+save-sync contract: endpoints, request and response shapes, the error vocabulary, the
 optimistic-concurrency token, what the client does for each failure and what the
 player sees, the conflict policy for divergent devices, the timestamp-anchoring
 rule, and where the session credential lives.
 
-No server code exists. This step changed no code, no balance value, and no
-schema version.
+The original decisions remain binding; later sections record the implemented
+portfolio command and migration extensions.
 
 ## Status
 
 | Field | Value |
 |---|---|
 | Plan | `memory-bank/server-milestone-plan.md` |
-| Step | 2 of 37 — Design the save-sync protocol |
-| Date | 2026-09-08 |
+| Step | Implemented protocol plus V4 portfolio extension |
+| Date | Updated 2026-10-05 |
 | Depends on | Step 1, `memory-bank/server-threat-model.md` |
-| Gate | Awaiting user validation. Step 3 must not begin before it. |
+| Gate | V4 client/server release verification passed |
 
 ## Decisions this step makes
 
@@ -79,11 +79,11 @@ player-facing copy is fixed in §4 so it can be reviewed without reading code.
 
 ### The save document
 
-The `document` field is a `SaveDocumentV2` exactly as
-`memory-bank/architecture.md` defines it, passed through byte-for-byte in both
-directions. The protocol adds no field to it and rewrites none of it. Examples
-below elide the floor array for readability; the real payload carries all
-fifteen entries.
+The `document` field is a supported save document exactly as
+`memory-bank/architecture.md` defines it. V3 remains accepted during migration;
+V4 is the portfolio document used by current clients. Examples below retain the
+historical V2 shape for readability and provenance; current validators dispatch
+by `schemaVersion` and preserve the exact accepted serialization.
 
 ```json
 {
@@ -631,6 +631,49 @@ server failure after the caller resolves is recorded as a `rejected` /
 `baseRevision` that is not `null` or a positive integer is a §5 violation and is
 refused as `400 malformed_request` (recorded, with a null revision in the row)
 before it could reach the audit's typed column.
+
+### 10.4 `POST /v1/portfolio/command` — V4 account mutation
+
+Authenticated JSON body has exactly `type`, `baseRevision` (positive integer),
+`idempotencyKey` (UUID), and `mineId` only for `purchase` or `enter`. An
+`enter` may also carry `effectiveAtMs` for a durably staged offline entry:
+
+```json
+{"type":"enter","mineId":"amethyst","effectiveAtMs":1791158400000,"baseRevision":12,"idempotencyKey":"00000000-0000-4000-8000-000000000001"}
+```
+
+Types are `migrate`, `purchase`, `enter`, `suspend`. `migrate` accepts every
+supported V1–V3 save; the others require V4. The server reads the current account row, applies
+the pure portfolio rule with its own clock, validates the V4 document, then
+calls the service-role `apply_portfolio_command` RPC. That transaction compares
+the revision and writes the new save plus an idempotent response receipt.
+The response is `200` with `{status:"applied",revision,receivedAt,document,
+result}`. An exact key replay returns that original body even after the save
+has advanced. Reusing a key for another command or sending a stale revision
+returns `409`; an unmet purchase/entry rule returns `422 save_rejected` with a
+reason. A failed command leaves the save and wallet unchanged. For `enter`,
+`result` includes `claimedSequence` and the capped `grant`; Gold reaches the
+shared wallet only in the accepted transaction. A V3 migration anchors Gold's
+offline start at the last server receipt. A V4 first upload similarly anchors
+all interval timestamps and returns its canonical accepted document, which
+the client must adopt before its next upload.
+
+`effectiveAtMs` is accepted only on `enter` and must equal both the uploaded
+V4 document's `savedAtTimestampMs` and its active mine's
+`state.lastUpdateTimestampMs`; it cannot be after server time. This proves the
+client first froze a foreground snapshot at one exact boundary. The server
+closes the target offline interval at that boundary even when the idempotent
+command arrives later, so retry delay cannot inflate the claim or overlap with
+new foreground earnings. The browser stores the source document, upload phase,
+command and accepted receipt in the per-user version-2 command journal before
+showing provisional play. It clears that journal only after the pending claim
+has been merged into the newer local state and durably saved.
+
+`GET /v1/save` for V4 includes both the selected mine's `offlineGrant` and an
+`offlineGrants` map keyed by owned mines with pending intervals. The configured
+browser client now boots through the V4 reconciler and serialized command
+adapter. The existing V3 upload/download and migration contract remains
+available for old local/cloud documents.
 
 ## 11. Boot order
 

@@ -52,11 +52,13 @@ export interface CatRosterState {
   readonly collectionRevision: number;
 }
 
-export type CatSlotKey =
+export type BareCatSlotKey =
   | `miner:${string}`
   | `hauler:${1 | 2 | 3 | 4 | 5}`
   | 'elevator:main'
   | 'warehouse:main';
+
+export type CatSlotKey = BareCatSlotKey | `mine:${string}:${BareCatSlotKey}`;
 
 export type CatBenefitMetric =
   | 'mining-output'
@@ -176,12 +178,13 @@ export function calculateCatRoleEffect(
 }
 
 export function getRoleForSlot(slotKey: string): CatRole | null {
-  if (/^hauler:[1-5]$/.test(slotKey)) return 'hauler';
-  if (slotKey.startsWith('miner:') && slotKey.length > 'miner:'.length) {
+  const localSlotKey = /^mine:[a-z][a-z0-9-]*:(.+)$/.exec(slotKey)?.[1] ?? slotKey;
+  if (/^hauler:[1-5]$/.test(localSlotKey)) return 'hauler';
+  if (localSlotKey.startsWith('miner:') && localSlotKey.length > 'miner:'.length) {
     return 'miner';
   }
 
-  return SLOT_ROLES[slotKey as keyof typeof SLOT_ROLES] ?? null;
+  return SLOT_ROLES[localSlotKey as keyof typeof SLOT_ROLES] ?? null;
 }
 
 export function isCatAssignable(cat: CatInstance): boolean {

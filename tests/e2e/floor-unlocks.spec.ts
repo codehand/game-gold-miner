@@ -275,6 +275,9 @@ async function extractedMaterialOnFloor(
   index: number,
 ): Promise<string> {
   for (let step = 0; step < MAX_EXTRACTION_SAMPLES; step += 1) {
+    await page.clock.setFixedTime(
+      new Date(FIXTURE_TIMESTAMP_MS + (step + 1) * EXTRACTION_SAMPLE_MS),
+    );
     await page.clock.runFor(EXTRACTION_SAMPLE_MS);
 
     const label = (await readFloorViews(page))[index].materialQueueLabel;
@@ -296,7 +299,7 @@ async function bootPausedFixture(page: Page, state: GameState): Promise<void> {
   );
 
   await page.clock.install({ time: FIXED_TIME });
-  await page.clock.pauseAt(FIXED_TIME);
+  await page.clock.setFixedTime(FIXED_TIME);
   await routeMainModule(
     page,
     `
@@ -459,14 +462,18 @@ async function readStoredFloorUnlocks(page: Page): Promise<boolean[]> {
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
     const record = await new Promise<{
-      document?: { state?: { floors?: { isUnlocked: boolean }[] } };
+      document?: {
+        state?: { floors?: { isUnlocked: boolean }[] };
+        mines?: { gold?: { state?: { floors?: { isUnlocked: boolean }[] } } };
+      };
     }>((resolve, reject) => {
       getRequest.onerror = () => reject(getRequest.error);
       getRequest.onsuccess = () => resolve(getRequest.result);
     });
     database.close();
 
-    return (record?.document?.state?.floors ?? []).map(
+    return (record?.document?.mines?.gold?.state?.floors ??
+      record?.document?.state?.floors ?? []).map(
       ({ isUnlocked }) => isUnlocked,
     );
   });

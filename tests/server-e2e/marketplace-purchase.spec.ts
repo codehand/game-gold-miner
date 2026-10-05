@@ -56,6 +56,28 @@ async function openShop(page: Page): Promise<void> {
   );
 }
 
+async function finishPortfolioBoot(page: Page): Promise<void> {
+  const canvas = page.locator('#game-viewport canvas');
+  const reward = page.getByRole('dialog', { name: 'Offline reward' });
+  const conflict = page.getByText('Your device and cloud have different mine progress.');
+  const deferred = page.getByText('Mine progress could not be synchronized.');
+  await expect.poll(async () =>
+    await canvas.count() > 0 || await reward.isVisible() ||
+      await conflict.isVisible() || await deferred.isVisible(), {
+    timeout: 15_000,
+  }).toBe(true);
+  if (await conflict.isVisible() || await deferred.isVisible()) {
+    throw new Error(`Portfolio boot failed: ${JSON.stringify({
+      boot: await page.locator('#app').getAttribute('data-portfolio-boot'),
+      conflict: await page.locator('#app').getAttribute('data-portfolio-conflict'),
+    })}`);
+  }
+  if (await reward.isVisible()) {
+    await reward.getByRole('button', { name: 'Claim', exact: true }).click();
+  }
+  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene', { timeout: 15_000 });
+}
+
 async function buy(page: Page, name: string, price: string): Promise<void> {
   await openShop(page);
   const marketplace = page.getByRole('dialog', { name: 'Marketplace' });
@@ -64,7 +86,14 @@ async function buy(page: Page, name: string, price: string): Promise<void> {
   await marketplace.getByRole('button', { name: 'View cat' }).click();
   await marketplace.getByRole('button', { name: `Buy for ${price} gold` }).click();
   await marketplace.getByRole('button', { name: /^(Confirm purchase|Buy listed cat)$/ }).click();
-  await expect(marketplace).toContainText(`${name} was added to your Collection.`, { timeout: 15_000 });
+  await expect.poll(async () => await marketplace.textContent(), { timeout: 15_000 })
+    .toMatch(new RegExp(`${name} was added|Purchase unavailable`));
+  if ((await marketplace.textContent())?.includes('Purchase unavailable')) {
+    throw new Error(`Portfolio purchase diagnostics: ${await page.locator('#app').evaluate((element) => ({
+      routine: (element as HTMLElement).dataset.portfolioRoutineSync,
+      purchase: (element as HTMLElement).dataset.portfolioCatPurchase,
+    })).then(JSON.stringify)}`);
+  }
   await marketplace.getByRole('button', { name: 'Close marketplace' }).click();
 }
 
@@ -90,7 +119,7 @@ test('buys Boru, assigns the excavator to a Miner floor and preserves it on relo
   await seedSave(page);
   await page.goto('/');
   const canvas = page.locator('#game-viewport canvas');
-  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
   await expect.poll(() => page.locator('#app').getAttribute('data-cloud-save-upload'), { timeout: 15_000 })
     .toMatch(/uploaded|same-progress/);
@@ -109,14 +138,14 @@ test('buys Boru, assigns the excavator to a Miner floor and preserves it on relo
   await expect.poll(() => canvas.getAttribute('data-cat-runtime-bindings')).toContain('miner:SSR:boru:idle');
   await page.screenshot({ path: testInfo.outputPath('boru-live-assigned.png') });
   await page.reload();
-  await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await expect.poll(() => canvas.getAttribute('data-cat-runtime-bindings')).toContain('miner:SSR:boru:idle');
 });
 
 test('performs live Buy purchases against Supabase', async ({ page }) => {
   await seedSave(page);
   await page.goto('/');
-  await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
 
   // The first hydrated local document is uploaded after the guest session and
@@ -156,7 +185,7 @@ test('performs live Buy purchases against Supabase', async ({ page }) => {
   ))).toMatchObject({ assignedAssetId: 'miner:N:mica:idle' });
 
   await page.reload();
-  await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await expect.poll(async () => page.evaluate(() => (
     JSON.parse(document.querySelector('#game-viewport canvas')?.getAttribute('data-cat-runtime-bindings') ?? '[]')
       .find((binding: { slotKey: string }) => binding.slotKey === 'miner:floor-1')
@@ -170,7 +199,7 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
   await seedSave(page, 20);
   await page.goto('/');
   const canvas = page.locator('#game-viewport canvas');
-  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
   await expect.poll(() => page.locator('#app').getAttribute('data-cloud-save-upload'), { timeout: 15_000 }).toMatch(/uploaded|same-progress/);
   await buy(page, 'Tobi', '18,000');
@@ -224,7 +253,7 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
   await page.screenshot({ path: testInfo.outputPath('hauler-crew-mobile.png') });
 
   await page.reload();
-  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
+  await finishPortfolioBoot(page);
   await expect.poll(bindings).toEqual(expect.arrayContaining([
     expect.objectContaining({ slotKey: 'hauler:1', assignedAssetId: 'hauler:SR:tobi:walk' }),
     expect.objectContaining({ slotKey: 'hauler:2', assignedAssetId: 'hauler:SSR:rivet:walk' }),

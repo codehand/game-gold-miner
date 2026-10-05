@@ -118,7 +118,10 @@ test('matches authoritative gold after a warehouse cycle completes', async ({
   // Comfortably past the 120 ms remaining on the current conversion and the
   // 1,200 ms cycle after it, and far enough past the last delivery that the
   // HUD's 100 ms diagnostic cadence cannot straddle it.
-  await page.clock.runFor(2_000);
+  await page.evaluate(() => {
+    (window as unknown as { catMineIdleAdvance: (deltaMs: number) => void })
+      .catMineIdleAdvance(2_000);
+  });
 
   const after = await readCoreState(page);
 
@@ -133,6 +136,9 @@ test('matches authoritative gold after a warehouse cycle completes', async ({
     'gold must have risen',
   ).toBe(true);
 
+  await expect.poll(async () => (await readRenderedHud(page)).goldValueLabel).toBe(
+    formatAmount(GameNumber.deserialize(after.gold)),
+  );
   const hudAfter = await readRenderedHud(page);
 
   expect(hudAfter.goldValueLabel, 'HUD after the cycle').toBe(
@@ -171,7 +177,7 @@ async function bootDriverFixture(
   state: GameState,
 ): Promise<CoreStateReadBack> {
   await page.clock.install({ time: FIXED_TIME });
-  await page.clock.pauseAt(FIXED_TIME);
+  await page.clock.setFixedTime(FIXED_TIME);
   await routeMainModule(
     page,
     `
@@ -185,10 +191,11 @@ async function bootDriverFixture(
         )},
         BASE_GAME_BALANCE,
       );
+      let coreNowMs = ${FIXTURE_TIMESTAMP_MS};
       const driver = new MineSimulationDriver({
         state: loaded.state,
         balance: BASE_GAME_BALANCE,
-        now: () => Date.now(),
+        now: () => coreNowMs,
       });
 
       const game = createGame(document.querySelector('#game-viewport'), driver);
@@ -205,6 +212,10 @@ async function bootDriverFixture(
           game.scene.getScene('BootScene').children.list,
         ),
       });
+      window.catMineIdleAdvance = (deltaMs) => {
+        coreNowMs += deltaMs;
+        driver.advance();
+      };
     `,
   );
 

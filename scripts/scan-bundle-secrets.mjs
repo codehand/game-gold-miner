@@ -29,7 +29,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { Buffer } from 'node:buffer';
 
@@ -110,6 +110,13 @@ function parseEnvFile(path) {
  * `SECRET_KEY`. Both bypass row-level security, so both are forbidden output.
  */
 function readLocalPrivilegedKeys(projectRoot) {
+  // Fixture directories and consumers without a Supabase project cannot own a
+  // local stack. Skipping the CLI probe there also avoids `npx` attempting to
+  // resolve a package from an unrelated temporary cwd while the real stack is
+  // running elsewhere.
+  if (!existsSync(join(projectRoot, 'supabase', 'config.toml'))) {
+    return { keys: [], stackRunning: false, unreadable: false };
+  }
   let output;
   try {
     output = execFileSync('npx', ['--no-install', 'supabase', 'status', '-o', 'json'], {

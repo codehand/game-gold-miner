@@ -92,6 +92,29 @@ async function readCollection(accessToken: string): Promise<CatCollectionRespons
 }
 
 describe('cat collection and role assignment against the live stack', () => {
+  it('skips roster projection for a legacy save with no schemaVersion', async () => {
+    const guest = await createGuestIdentity();
+    await uploadWallet(guest.accessToken);
+    const service = createServiceRoleClient(API_URL);
+    const { data: before, error: seedError } = await service.from('saves')
+      .update({ document_json: JSON.stringify({ rlsProbe: true }) })
+      .eq('user_id', guest.userId)
+      .select('revision, document_json')
+      .single();
+    expect(seedError).toBeNull();
+
+    const { error } = await service.rpc('sync_portfolio_cat_roster', {
+      p_user_id: guest.userId,
+    });
+    expect(error).toBeNull();
+    const { data: after, error: readError } = await service.from('saves')
+      .select('revision, document_json')
+      .eq('user_id', guest.userId)
+      .single();
+    expect(readError).toBeNull();
+    expect(after).toEqual(before);
+  });
+
   it('buys individual Haulers, forbids reuse, and restores default without losing ownership', async () => {
     const guest = await createGuestIdentity();
     await uploadWallet(guest.accessToken);
@@ -377,7 +400,11 @@ describe('cat collection and role assignment against the live stack', () => {
     ]));
 
     const admin = createServiceRoleClient(API_URL);
-    const expire = await admin.from('cat_rentals').update({ expires_at: new Date(Date.now() - 1_000).toISOString() }).eq('cat_instance_id', mica.catInstanceId);
+    const expiryNow = Date.now();
+    const expire = await admin.from('cat_rentals').update({
+      started_at: new Date(expiryNow - 2_000).toISOString(),
+      expires_at: new Date(expiryNow - 1_000).toISOString(),
+    }).eq('cat_instance_id', mica.catInstanceId);
     expect(expire.error).toBeNull();
     const afterExpiry = await readCollection(seller.accessToken);
     expect(afterExpiry.cats).toEqual(expect.arrayContaining([

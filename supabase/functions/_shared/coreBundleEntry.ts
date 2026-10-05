@@ -29,3 +29,4 @@
 export * from '../../../src/core';
 export * from '../../../src/config';
 export * from '../../../src/persistence/saveSchema';
+export * from '../../../src/persistence/portfolioSaveSchema';

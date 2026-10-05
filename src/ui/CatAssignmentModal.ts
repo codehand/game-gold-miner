@@ -379,7 +379,7 @@ export class CatAssignmentModal {
 
     const roster = this.#getRoster();
     this.#pending = true;
-    this.#message = 'Waiting for the server to confirm the change…';
+    this.#message = 'Saving the cat change…';
     this.#messageKind = '';
     this.#render();
 
@@ -502,6 +502,8 @@ export class CatAssignmentModal {
 
 function describeAssignmentFailure(result: Exclude<CatAssignmentCommandResult, { kind: 'applied' }>): string {
   if (result.kind === 'unavailable') {
+    if (result.reason === 'save-failed') return 'Could not save the cat change. Please retry.';
+    if (result.reason === 'busy') return 'A mine change is still being saved. Please retry.';
     return result.reason === 'unauthenticated'
       ? 'Sign in again before changing an active cat.'
       : 'The change could not be confirmed. Reconnect and retry.';

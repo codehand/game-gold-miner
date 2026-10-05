@@ -1,24 +1,33 @@
 import './style.css';
 
-import { BASE_GAME_BALANCE, validateBaseGameBalance } from './config';
+import { BASE_GAME_BALANCE, validateBaseGameBalance, type MineSiteId } from './config';
 import {
   activateBoost,
   calculateOfflineIncome,
   calculateSurfaceHaulerWorkforce,
   claimOfflineReward,
   createEmptyCatRoster,
+  createInitialPortfolio,
   createPendingOfflineReward,
   EMPTY_BOOST_STATE,
   GameNumber,
+  qualifyMineCatSlot,
+  type BareCatSlotKey,
   type PendingOfflineReward,
   type BoostState,
 } from './core';
-import { createGame, formatAmount, MineSimulationDriver } from './game';
+import { createGame, formatAmount, MineSimulationDriver, PortfolioMineRuntime } from './game';
+import { BOOT_SCENE_KEY, BootScene } from './game/scenes/BootScene';
 import {
+  commitPortfolioWithCoordinator,
+  createPortfolioSaveDocument,
+  deserializePortfolioSaveDocument,
+  validatePortfolioSaveDocument,
   createSaveDocument,
   CloudSaveReplica,
   describeCloudSaveNotice,
   DexieActiveSaveRepository,
+  LOAD_FAILURE_MESSAGE,
   loadActiveGame,
   ReplicatingActiveSaveRepository,
   SavePersistenceCoordinator,
@@ -26,9 +35,11 @@ import {
   type ActiveGameLoadResult,
   type SaveConflictCandidate,
   type SaveDocumentV2,
+  type PortfolioSaveDocumentV4,
 } from './persistence';
 import {
   adoptExistingLocalSave,
+  bootstrapPortfolioCloudSession,
   beginGoogleAccountSwitch,
   beginGoogleSignIn,
   bindSaveLifecycle,
@@ -40,6 +51,10 @@ import {
   generateRecoveryCode,
   getSupabaseApiUrl,
   LifecycleSafeActiveSaveRepository,
+  LIFECYCLE_SAVE_JOURNAL_KEY,
+  loadPortfolioSession,
+  PortfolioCloudGateway,
+  PortfolioCommandJournal,
   loadLeaderboardViaFetch,
   loadCatCollectionViaFetch,
   purchaseCatViaFetch,
@@ -60,6 +75,7 @@ import {
   reconcileCloudSaveAtBoot,
   redeemRecoveryCode,
   requestPersistentStorage,
+  resumePortfolioSession,
   shouldExplainMissingLocalSave,
   signOutOfSession,
   uploadCloudSaveViaFetch,
@@ -77,6 +93,8 @@ import {
   type MarketplaceCommandResult,
   type MarketplaceListingType,
   type MarketplaceListingsResult,
+  type PortfolioCloudAccepted,
+  type PortfolioCloudCommands,
 } from './platform/web';
 import { describeError } from './platform/describeError';
 import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
@@ -85,6 +103,7 @@ import {
   BoostModal,
   CatAssignmentModal,
   CollectionModal,
+  MineMapModal,
   LeaderboardModal,
   createSaveDiagnosticBanner,
   showOfflineRewardModal,
@@ -169,9 +188,10 @@ if (import.meta.hot) {
 // App host exists yet — `memory-bank/server-threat-model.md` finding F1), so
 // the guest chain below is the only one that ever runs in production right now.
 const telegramInitData = readTelegramInitData();
+let initialAuthSettled: Promise<void> = Promise.resolve();
 
 if (telegramInitData !== null) {
-  void supabaseClientPromise
+  initialAuthSettled = supabaseClientPromise
     .then((client) =>
       signInWithTelegram(
         telegramInitData,
@@ -222,7 +242,7 @@ if (telegramInitData !== null) {
       }
     });
 } else {
-  void supabaseClientPromise
+  initialAuthSettled = supabaseClientPromise
     .then((client) => ensureGuestSession(client?.auth ?? null))
     // `ensureGuestSession` itself never rejects — its own try/catch covers only
     // the collaborator calls made *inside* it — but `supabaseClientPromise` can:
@@ -358,6 +378,11 @@ const PREFER_GOOGLE_SIGN_IN_KEY = 'cat-mine-idle:prefer-google-sign-in';
  * verbatim. `null` whenever the last reconcile was not a fork.
  */
 let pendingSaveConflict: CloudSaveReconcileOutcome | null = null;
+let pendingPortfolioConflict: {
+  readonly local: PortfolioSaveDocumentV4;
+  readonly remote: PortfolioSaveDocumentV4;
+  readonly remoteRevision: number;
+} | null = null;
 let accountIdentity: AccountIdentityView = {
   status: 'loading',
   userId: null,
@@ -396,7 +421,9 @@ const backendConfigured = Boolean(
 );
 
 /** The running driver, owned by `startApplication` and shared with the Step 22 grant application. */
-let activeDriver: MineSimulationDriver | null = null;
+let activeDriver: MineSimulationDriver | PortfolioMineRuntime | null = null;
+let portfolioCloudCommands: PortfolioCloudCommands | null = null;
+let portfolioCloudGateway: PortfolioCloudGateway | null = null;
 let serverBoostState = EMPTY_BOOST_STATE;
 let serverClockOffsetMs = 0;
 let loadedForBoostProjection: Extract<ActiveGameLoadResult, { source: 'saved' }> | null = null;
@@ -436,10 +463,12 @@ let offlineRewardPresented = false;
  * chains above each need one.
  *
  * Applies §7's full dominance rule (Step 18) and never touches either save on
- * a genuine fork. Never awaited before the first frame; `startApplication()`
- * below does not depend on it.
+ * a genuine fork. Local-only boot stays independent. Configured portfolio boot
+ * waits for this chain because choosing a local or cloud source requires the
+ * authenticated user id and server revision first.
  */
 function triggerCloudSaveReconcile(): void {
+  if (backendConfigured) return;
   void refreshServerBoostStatus()
     .then(() => runCloudSaveReconcile())
     .catch(
@@ -505,11 +534,18 @@ function localTimelineBoost(boost: BoostState): BoostState {
     : { lastActivatedAtMs: boost.lastActivatedAtMs - serverClockOffsetMs };
 }
 
-function adoptServerBoostState(boost: BoostState, serverNowMs?: number): void {
+function adoptServerBoostState(
+  boost: BoostState,
+  serverNowMs?: number,
+  boostMineId?: MineSiteId | null,
+): void {
   // A status request started before activation must not replace a newer receipt.
   if ((boost.lastActivatedAtMs ?? 0) < (serverBoostState.lastActivatedAtMs ?? 0)) return;
   if (serverNowMs !== undefined) serverClockOffsetMs = serverNowMs - Date.now();
   serverBoostState = boost;
+  if (boostMineId !== undefined && import.meta.env.DEV) {
+    app.dataset.serverBoostMine = boostMineId ?? '';
+  }
   const localBoost = localTimelineBoost(boost);
   const driver = activeDriver;
   if (driver !== null) {
@@ -544,7 +580,7 @@ async function refreshServerBoostStatus(): Promise<void> {
     const result = await requestBoostViaFetch(
       supabaseFunctionUrl('/functions/v1/boost'), accessToken, 'status',
     );
-    adoptServerBoostState(result.boost, result.serverNowMs);
+    adoptServerBoostState(result.boost, result.serverNowMs, result.boostMineId);
   } catch {
     // The save download still carries its own Boost state; activation retries on demand.
   }
@@ -1041,6 +1077,21 @@ const repository = new ReplicatingActiveSaveRepository(localRepository, cloudRep
 const persistence = new SavePersistenceCoordinator(repository, {
   onDiagnostic: (diagnostic) => saveDiagnostics.report(diagnostic),
 });
+const portfolioIndexedRepository = new DexieActiveSaveRepository<PortfolioSaveDocumentV4>();
+const portfolioJournal = new WebLifecycleSaveJournal<PortfolioSaveDocumentV4>(
+  getAvailableLocalStorage(),
+  BASE_GAME_BALANCE,
+  validatePortfolioSaveDocument,
+);
+const portfolioLocalRepository = new LifecycleSafeActiveSaveRepository(
+  portfolioIndexedRepository,
+  portfolioJournal,
+  BASE_GAME_BALANCE,
+  validatePortfolioSaveDocument,
+);
+const portfolioPersistence = new SavePersistenceCoordinator(portfolioLocalRepository, {
+  onDiagnostic: (diagnostic) => saveDiagnostics.report(diagnostic),
+});
 let game: ReturnType<typeof createGame> | null = null;
 let offlineRewardModal: OfflineRewardModal | null = null;
 let accountSettingsModal: AccountSettingsModal | null = null;
@@ -1048,7 +1099,9 @@ let leaderboardModal: LeaderboardModal | null = null;
 let collectionModal: CollectionModal | null = null;
 let catAssignmentModal: CatAssignmentModal | null = null;
 let boostModal: BoostModal | null = null;
+let mineMapModal: MineMapModal | null = null;
 let unbindSaveLifecycle: (() => void) | null = null;
+let unbindPortfolioResume: (() => void) | null = null;
 let saveHeartbeatId: number | null = null;
 let disposed = false;
 /**
@@ -1101,11 +1154,13 @@ leaderboardModal = new LeaderboardModal({
 });
 collectionModal = new CollectionModal({
   parent: app,
-  getRoster: () => activeDriver?.catRoster ?? createEmptyCatRoster(),
+  getRoster: () => activeDriver instanceof PortfolioMineRuntime
+    ? activeDriver.fullCatRoster
+    : activeDriver?.catRoster ?? createEmptyCatRoster(),
   getStatus: () => catCollectionUiStatus,
   onRetry: () => {
     const driver = activeDriver;
-    if (driver !== null) {
+    if (driver instanceof MineSimulationDriver) {
       void hydrateCatRoster(driver);
     }
   },
@@ -1132,26 +1187,62 @@ async function activateMineBoost(): Promise<BoostCommandResult> {
     if (pendingReward !== null || pendingSaveConflict !== null) {
       return { kind: 'unavailable', message: 'Resolve the pending reward or save conflict first.' };
     }
-    const client = await supabaseClientPromise;
-    const accessToken = client === null
-      ? null
-      : (await client.auth.getSession()).data.session?.access_token ?? null;
-    if (accessToken === null) {
-      return { kind: 'unavailable', message: 'Sign in to activate your free Boost.' };
+    if (!(driver instanceof PortfolioMineRuntime)) {
+      return { kind: 'unavailable', message: 'Portfolio progress is still loading.' };
     }
-    driver.advance();
-    const result = await requestBoostViaFetch(
-      supabaseFunctionUrl('/functions/v1/boost'), accessToken, 'activate',
-    );
-    adoptServerBoostState(result.boost, result.serverNowMs);
-    return result.kind === 'activated'
-      ? { kind: 'activated', boost: result.boost }
-      : { kind: 'cooldown', boost: result.boost };
+    try {
+      if (!await flushPortfolioRoutine(driver)) {
+        return { kind: 'unavailable', message: 'Save the active mine before activating Boost.' };
+      }
+      const client = await supabaseClientPromise;
+      const accessToken = client === null
+        ? null
+        : (await client.auth.getSession()).data.session?.access_token ?? null;
+      if (accessToken === null || portfolioCloudCommands === null) {
+        return { kind: 'unavailable', message: 'Sign in to activate your free Boost.' };
+      }
+      const result = await requestBoostViaFetch(
+        supabaseFunctionUrl('/functions/v1/boost'), accessToken, 'activate', {
+          mineId: driver.activeMineId,
+          baseRevision: portfolioCloudCommands.revision,
+          idempotencyKey: globalThis.crypto.randomUUID(),
+        },
+      );
+      if (result.kind === 'activated') {
+        if (result.saveRevision === undefined ||
+            !await adoptPortfolioExternalSave(driver, result.saveRevision)) {
+          return { kind: 'unavailable', message: 'Boost activated in the cloud. Reload to continue.' };
+        }
+      }
+      adoptServerBoostState(result.boost, result.serverNowMs, result.boostMineId);
+      return result.kind === 'activated'
+        ? { kind: 'activated', boost: result.boost }
+        : { kind: 'cooldown', boost: result.boost };
+    } catch {
+      return { kind: 'unavailable', message: 'Boost service is unavailable. Try again.' };
+    }
   }
   driver.advance();
   const result = activateBoost(driver.boostState, Date.now());
   if (result.kind === 'cooldown') {
     return { kind: 'cooldown', boost: driver.boostState };
+  }
+  if (driver instanceof PortfolioMineRuntime) {
+    try {
+      await commitPortfolioWithCoordinator(
+        portfolioPersistence,
+        { ...driver.portfolio, boostMineId: driver.activeMineId },
+        driver.catRoster,
+        Date.now(),
+      );
+    } catch {
+      return { kind: 'unavailable', message: 'Local save is unavailable; Boost was not activated.' };
+    }
+    if (!writeLocalBoostState(getAvailableLocalStorage(), result.boost)) {
+      return { kind: 'unavailable', message: 'Local storage is unavailable; Boost was not activated.' };
+    }
+    driver.bindBoostToActiveMine(result.boost);
+    return result;
   }
   if (!writeLocalBoostState(getAvailableLocalStorage(), result.boost)) {
     return { kind: 'unavailable', message: 'Local storage is unavailable; Boost was not activated.' };
@@ -1333,6 +1424,7 @@ async function handleLogout(): Promise<AccountActionResult> {
   disposed = true;
   localSavesSuspended = true;
   persistence.cancelScheduledSave();
+  portfolioPersistence.cancelScheduledSave();
   cloudReplica.stop();
   unbindSaveLifecycle?.();
   unbindSaveLifecycle = null;
@@ -1343,6 +1435,8 @@ async function handleLogout(): Promise<AccountActionResult> {
 
   try {
     lifecycleJournal.clear();
+    portfolioJournal.clear();
+    portfolioIndexedRepository.close();
     await indexedRepository.deleteDatabase();
     indexedRepository.close();
     window.location.reload();
@@ -1360,6 +1454,38 @@ async function handleLogout(): Promise<AccountActionResult> {
 async function handleConflictChoice(
   choice: 'local' | 'remote',
 ): Promise<AccountActionResult> {
+  const portfolioConflict = pendingPortfolioConflict;
+  if (portfolioConflict !== null) {
+    localSavesSuspended = true;
+    try {
+      let selected = portfolioConflict.remote;
+      if (choice === 'local') {
+        const gateway = portfolioCloudGateway;
+        if (gateway === null) throw new Error('Cloud portfolio service is unavailable.');
+        const uploaded = await gateway.upload(
+          portfolioConflict.remoteRevision, portfolioConflict.local,
+        );
+        if (uploaded.kind !== 'ok') {
+          throw new Error(uploaded.kind === 'rejected'
+            ? `Cloud rejected this device save: ${uploaded.reason ?? uploaded.code}.`
+            : 'Cloud progress changed again. Reload and review the latest saves.');
+        }
+        selected = uploaded.value.document;
+      }
+      await portfolioLocalRepository.storeActiveSave(selected);
+      portfolioJournal.clear();
+      pendingPortfolioConflict = null;
+      window.location.reload();
+      return { status: 'ok' };
+    } catch (error) {
+      localSavesSuspended = false;
+      return {
+        status: 'error',
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   const conflict = pendingSaveConflict;
   if (conflict?.kind !== 'deferred-conflict') {
     return { status: 'error', reason: 'This save conflict is no longer available.' };
@@ -1459,6 +1585,35 @@ function toAccountConflictCandidate(
   };
 }
 
+function toPortfolioAccountConflictView(
+  local: PortfolioSaveDocumentV4,
+  remote: PortfolioSaveDocumentV4,
+): AccountConflictView {
+  const candidate = (
+    document: PortfolioSaveDocumentV4,
+    title: string,
+  ): AccountConflictCandidateView => {
+    const mines = Object.values(document.mines).filter((mine) => mine !== undefined);
+    const floors = mines.flatMap((mine) => mine.state.floors);
+    const delivered = mines.reduce(
+      (sum, mine) => sum.add(GameNumber.from(mine.state.warehouse.totalGoldDelivered)),
+      GameNumber.from(0),
+    );
+    return {
+      title,
+      lastPlayedLabel: `Last played: ${new Date(document.savedAtTimestampMs).toLocaleString()}`,
+      goldLabel: `Gold: ${formatAmount(GameNumber.from(document.walletGold))}`,
+      floorsOpenLabel: `Floors open: ${floors.filter((floor) => floor.isUnlocked).length}`,
+      deepestShaftLabel: `Deepest shaft: ${Math.max(...floors.map((floor) => floor.mineShaftLevel))}`,
+      deliveredLabel: `Gold delivered: ${formatAmount(delivered)}`,
+    };
+  };
+  return {
+    local: candidate(local, 'This device'),
+    remote: candidate(remote, 'Cloud save'),
+  };
+}
+
 /** Sends the minimum assignment command and applies only an authoritative projection. */
 async function purchaseMarketplaceCat(assetId: string): Promise<MarketplacePurchaseResult> {
   const driver = activeDriver;
@@ -1470,6 +1625,10 @@ async function purchaseMarketplaceCat(assetId: string): Promise<MarketplacePurch
   // authoritative for the wallet: it locks the save row, checks the exact
   // price, deducts once, and creates the owned instance in one transaction.
   driver.advance();
+  if (driver instanceof PortfolioMineRuntime &&
+      !await flushPortfolioRoutine(driver)) {
+    return { kind: 'unavailable', reason: 'offline' };
+  }
   let client: SupabaseClient | null;
   try {
     client = await supabaseClientPromise;
@@ -1483,6 +1642,7 @@ async function purchaseMarketplaceCat(assetId: string): Promise<MarketplacePurch
     assetId,
     createIdempotencyKey('cat-purchase'),
   );
+  if (import.meta.env.DEV) app.dataset.portfolioCatPurchase = JSON.stringify(result);
 
   if (result.kind !== 'applied') {
     return result;
@@ -1491,29 +1651,30 @@ async function purchaseMarketplaceCat(assetId: string): Promise<MarketplacePurch
     return { kind: 'unavailable', reason: 'invalid-response' };
   }
 
-  driver.replaceState({
-    ...driver.state,
-    gold: GameNumber.from(result.walletGold),
-  });
-  driver.replaceCatRoster(result.roster);
-  // The purchase RPC increments the save revision outside the normal local
-  // repository path. Adopt that revision before the updated local document is
-  // offered to the cloud replica, otherwise the next upload would conflict
-  // with the purchase it already contains.
-  cloudReplica.acceptExternalRevision(result.saveRevision);
+  if (driver instanceof PortfolioMineRuntime) {
+    if (!await adoptPortfolioExternalSave(driver, result.saveRevision)) {
+      return { kind: 'unavailable', reason: 'offline' };
+    }
+  } else {
+    driver.replaceState({ ...driver.state, gold: GameNumber.from(result.walletGold) });
+    driver.replaceCatRoster(result.roster);
+    // The purchase RPC increments the save revision outside the normal local
+    // repository path. Adopt that revision before the updated local document
+    // is offered to the V3 cloud replica.
+    cloudReplica.acceptExternalRevision(result.saveRevision);
+  }
   catCollectionUiStatus = 'ready';
   collectionModal?.refresh();
   catAssignmentModal?.refresh();
 
-  const purchasedDocument = createSaveDocument(
-    driver.state,
-    BASE_GAME_BALANCE,
-    Date.now(),
-    driver.catRoster,
-  );
-  persistence.queueSave(purchasedDocument);
-  await persistence.flush();
-  repository.forceCloudUpload(purchasedDocument);
+  if (!(driver instanceof PortfolioMineRuntime)) {
+    const purchasedDocument = createSaveDocument(
+      driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster,
+    );
+    persistence.queueSave(purchasedDocument);
+    await persistence.flush();
+    repository.forceCloudUpload(purchasedDocument);
+  }
   return { kind: 'applied' };
 }
 
@@ -1580,13 +1741,17 @@ async function rentMarketplaceListing(listingId: string, durationHours: number):
 
 async function sendMarketplaceCommand(
   request: (client: SupabaseClient | null) => Promise<MarketplaceCommandResult>,
-  walletChanges = false,
+  _walletChanges = false,
 ): Promise<MarketplaceCommandResult> {
   const driver = activeDriver;
   if (driver === null || localSavesSuspended) {
     return { kind: 'unavailable', reason: 'offline' };
   }
   driver.advance();
+  if (driver instanceof PortfolioMineRuntime &&
+      !await flushPortfolioRoutine(driver)) {
+    return { kind: 'unavailable', reason: 'offline' };
+  }
   let client: SupabaseClient | null;
   try {
     client = await supabaseClientPromise;
@@ -1594,27 +1759,38 @@ async function sendMarketplaceCommand(
     return { kind: 'unavailable', reason: 'offline' };
   }
   const result = await request(client);
+  if (import.meta.env.DEV) app.dataset.portfolioMarketplaceCommand = JSON.stringify(result);
   if (result.kind !== 'applied' || disposed || activeDriver !== driver) {
     return result;
   }
-  if (walletChanges && (result.walletGold === undefined || result.saveRevision === undefined)) {
+  if (driver instanceof PortfolioMineRuntime &&
+      (result.walletGold === undefined || result.saveRevision === undefined)) {
+    return { kind: 'unavailable', reason: 'invalid-response' };
+  }
+  if (_walletChanges && (result.walletGold === undefined || result.saveRevision === undefined)) {
     return { kind: 'unavailable', reason: 'invalid-response' };
   }
 
-  driver.replaceCatRoster(result.roster);
-  if (result.walletGold !== undefined && result.saveRevision !== undefined) {
-    driver.replaceState({ ...driver.state, gold: GameNumber.from(result.walletGold) });
-    cloudReplica.acceptExternalRevision(result.saveRevision);
+  if (driver instanceof PortfolioMineRuntime) {
+    if (!await adoptPortfolioExternalSave(driver, result.saveRevision!)) {
+      return { kind: 'unavailable', reason: 'offline' };
+    }
+  } else {
+    driver.replaceCatRoster(result.roster);
+    if (result.walletGold !== undefined && result.saveRevision !== undefined) {
+      driver.replaceState({ ...driver.state, gold: GameNumber.from(result.walletGold) });
+      cloudReplica.acceptExternalRevision(result.saveRevision);
+    }
   }
   catCollectionUiStatus = 'ready';
   collectionModal?.refresh();
   catAssignmentModal?.refresh();
 
-  const document = createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster);
-  persistence.queueSave(document);
-  await persistence.flush();
-  if (result.walletGold !== undefined) {
-    repository.forceCloudUpload(document);
+  if (!(driver instanceof PortfolioMineRuntime)) {
+    const document = createSaveDocument(driver.state, BASE_GAME_BALANCE, Date.now(), driver.catRoster);
+    persistence.queueSave(document);
+    await persistence.flush();
+    if (result.walletGold !== undefined) repository.forceCloudUpload(document);
   }
   return result;
 }
@@ -1631,6 +1807,50 @@ async function replaceAssignedCat(
   const driver = activeDriver;
   if (driver === null) {
     return { kind: 'unavailable', reason: 'offline' };
+  }
+
+  if (driver instanceof PortfolioMineRuntime) {
+    if (backendConfigured) {
+      if (!await flushPortfolioRoutine(driver)) {
+        return { kind: 'unavailable', reason: 'offline' };
+      }
+      const client = await supabaseClientPromise;
+      const qualifiedSlot = qualifyMineCatSlot(
+        driver.activeMineId, command.slotKey as BareCatSlotKey,
+      );
+      const result = await replaceCatAssignmentViaFetch(
+        supabaseFunctionUrl('/functions/v1/cat-collection'),
+        client?.auth ?? null,
+        { ...command, slotKey: qualifiedSlot },
+      );
+      if (import.meta.env.DEV) app.dataset.portfolioAssignment = JSON.stringify(result);
+      if (result.kind !== 'applied' || result.walletGold === undefined ||
+          result.saveRevision === undefined) return result;
+      if (!await adoptPortfolioExternalSave(driver, result.saveRevision)) {
+        return { kind: 'unavailable', reason: 'offline' };
+      }
+      collectionModal?.refresh();
+      catAssignmentModal?.refresh();
+      return { kind: 'applied', roster: driver.catRoster };
+    }
+    const result = await driver.assignCatDurably(
+      command.slotKey,
+      command.catInstanceId,
+      command.expectedAssignmentRevision,
+      async (portfolio, roster, savedAtMs) => {
+        await commitPortfolioWithCoordinator(
+          portfolioPersistence, portfolio, roster, savedAtMs,
+        );
+      },
+    );
+    if (!result.success) {
+      return result.reason === 'save-failed' || result.reason === 'busy'
+        ? { kind: 'unavailable', reason: result.reason }
+        : { kind: 'rejected', code: result.reason };
+    }
+    collectionModal?.refresh();
+    catAssignmentModal?.refresh();
+    return { kind: 'applied', roster: driver.catRoster };
   }
 
   const client = await supabaseClientPromise;
@@ -1659,6 +1879,67 @@ async function replaceAssignedCat(
   }
 
   return result;
+}
+
+async function flushPortfolioRoutine(driver: PortfolioMineRuntime): Promise<boolean> {
+  const commands = portfolioCloudCommands;
+  if (commands === null) return false;
+  driver.advance();
+  const document = createPortfolioSaveDocument(
+    driver.portfolio, Date.now(), driver.fullCatRoster,
+  );
+  const result = await commands.syncRoutine(document);
+  if (import.meta.env.DEV) app.dataset.portfolioRoutineSync = JSON.stringify(result);
+  if (result.kind !== 'ok') return false;
+  try {
+    await portfolioLocalRepository.storeActiveSave(result.value.document);
+    return true;
+  } catch {
+    saveDiagnostics.report({
+      code: 'portfolio-local-save-failed',
+      message: 'The cloud saved your mine, but this device could not keep a local copy.',
+    });
+    return true;
+  }
+}
+
+/**
+ * Collection and Marketplace RPCs mutate the relational roster and the V4
+ * save in one server transaction. Download that exact revision instead of
+ * rebuilding a nearby document from the UI projection: the next routine save
+ * must carry byte-equivalent roster semantics for the server's `cats` bound.
+ */
+async function adoptPortfolioExternalSave(
+  driver: PortfolioMineRuntime,
+  revision: number,
+): Promise<boolean> {
+  const commands = portfolioCloudCommands;
+  const gateway = portfolioCloudGateway;
+  if (commands === null || gateway === null || activeDriver !== driver) return false;
+
+  const downloaded = await gateway.download();
+  if (downloaded.kind !== 'ok' || downloaded.value.revision !== revision) {
+    saveDiagnostics.report({
+      code: 'portfolio-external-save-conflict',
+      message: 'The account changed in the cloud. Reload before making another account change.',
+    });
+    return false;
+  }
+
+  try {
+    const document = validatePortfolioSaveDocument(downloaded.value.document);
+    const adopted = deserializePortfolioSaveDocument(document);
+    commands.acceptExternalRevision(revision);
+    driver.adoptPortfolio(adopted.portfolio, adopted.catRoster);
+    await portfolioLocalRepository.storeActiveSave(document);
+    return true;
+  } catch {
+    saveDiagnostics.report({
+      code: 'portfolio-external-save-invalid',
+      message: 'The cloud update could not be applied on this device. Reload to retry.',
+    });
+    return false;
+  }
 }
 
 /** Hydrates the server-authoritative cat projection without delaying first paint. */
@@ -1722,6 +2003,16 @@ async function startApplication(): Promise<void> {
   ]);
 
   if (disposed) {
+    return;
+  }
+
+  if (backendConfigured) {
+    await startConfiguredPortfolioApplication();
+    return;
+  }
+
+  if (!backendConfigured) {
+    await startLocalPortfolioApplication();
     return;
   }
 
@@ -1877,6 +2168,711 @@ async function startApplication(): Promise<void> {
   }, SAVE_HEARTBEAT_MS);
 }
 
+async function startConfiguredPortfolioApplication(): Promise<void> {
+  await initialAuthSettled;
+  const storage = getAvailableLocalStorage();
+  let client: SupabaseClient | null;
+  let session: Awaited<ReturnType<SupabaseClient['auth']['getSession']>>['data']['session'];
+  try {
+    client = await supabaseClientPromise;
+    session = client === null ? null : (await client.auth.getSession()).data.session;
+  } catch {
+    saveDiagnostics.report({
+      code: 'portfolio-session-unavailable',
+      message: 'Cloud account services are unavailable. Progress will stay on this device.',
+    });
+    if (storage !== null) await startLocalPortfolioApplication();
+    return;
+  }
+  if (client === null || session === null || storage === null || supabaseApiUrl === null) {
+    saveDiagnostics.report({
+      code: 'portfolio-session-unavailable',
+      message: 'Cloud account services are unavailable. Progress will stay on this device.',
+    });
+    if (storage !== null) await startLocalPortfolioApplication();
+    return;
+  }
+  await refreshServerBoostStatus();
+  const gateway = new PortfolioCloudGateway(
+    supabaseFunctionUrl('/functions/v1/save-sync'), client.auth,
+  );
+  portfolioCloudGateway = gateway;
+  let boot: Awaited<ReturnType<typeof bootstrapPortfolioCloudSession>>;
+  try {
+    boot = await bootstrapPortfolioCloudSession({
+      repository: portfolioLocalRepository,
+      storage,
+      gateway,
+      userId: session.user.id,
+      nowMs: Date.now(),
+      boost: localTimelineBoost(serverBoostState),
+      returningAccount: sessionIsNew === false,
+      newKey: () => globalThis.crypto.randomUUID(),
+      claimWithAction: (reward, mineId, claim) => new Promise((resolve) => {
+        offlineRewardModal = showOfflineRewardModal({
+          parent: app,
+          pendingReward: reward,
+          mineId,
+          onClaim: async () => {
+            const result = await claim();
+            if (result.kind !== 'ready') return false;
+            resolve(result);
+            return true;
+          },
+        });
+      }),
+    });
+  } catch {
+    saveDiagnostics.report({
+      code: 'portfolio-deferred',
+      message: 'Cloud progress could not be synchronized. You can keep playing on this device and retry after reloading.',
+    });
+    await startLocalPortfolioApplication({ cloudPendingUserId: session.user.id });
+    return;
+  }
+  if (import.meta.env.DEV) {
+    app.dataset.portfolioBoot = JSON.stringify(
+      boot.kind === 'ready'
+        ? { kind: boot.kind, revision: boot.commands.revision }
+        : { kind: boot.kind, reason: boot.kind === 'deferred' ? boot.reason : 'fork' },
+    );
+    if (boot.kind === 'conflict') {
+      app.dataset.portfolioConflict = JSON.stringify({
+        local: {
+          activeMineId: boot.local.activeMineId,
+          walletGold: boot.local.walletGold,
+          savedAtTimestampMs: boot.local.savedAtTimestampMs,
+        },
+        remote: {
+          activeMineId: boot.remote.activeMineId,
+          walletGold: boot.remote.walletGold,
+          savedAtTimestampMs: boot.remote.savedAtTimestampMs,
+        },
+        remoteRevision: boot.remoteRevision,
+      });
+    }
+  }
+  if (boot.kind !== 'ready') {
+    if (boot.kind === 'conflict') {
+      pendingPortfolioConflict = {
+        local: boot.local,
+        remote: boot.remote,
+        remoteRevision: boot.remoteRevision,
+      };
+      accountSettingsModal?.showConflict(
+        toPortfolioAccountConflictView(boot.local, boot.remote),
+      );
+    }
+    const deferredReason = boot.kind === 'deferred' ? boot.reason : null;
+    saveDiagnostics.report(deferredReason === 'local-save-missing'
+      ? {
+          code: 'local-save-missing',
+          message: 'This returning account has no local or cloud save. A new local game was opened without replacing cloud progress.',
+        }
+      : deferredReason === 'corrupt-local-save'
+        ? {
+            code: 'corrupt-save',
+            message: 'Local progress could not be read. The saved data has been preserved.',
+          }
+        : {
+            code: `portfolio-${boot.kind}`,
+            message: boot.kind === 'conflict'
+              ? 'Your device and cloud have different mine progress. Both copies are preserved.'
+              : 'Cloud progress could not be synchronized. You can keep playing on this device and retry after reloading.',
+          });
+    if (boot.kind === 'deferred' && boot.reason !== 'corrupt-local-save') {
+      // A network outage or a server refusal must not strand the player on an
+      // empty shell. The local portfolio remains the only writable candidate;
+      // cloud-only commands stay unavailable until a later clean boot.
+      await startLocalPortfolioApplication({ cloudPendingUserId: session.user.id });
+    }
+    return;
+  }
+  if (disposed) return;
+  if (import.meta.env.DEV) {
+    app.dataset.cloudSaveReconcile = JSON.stringify({
+      kind: 'same-progress', schemaVersion: 4,
+    });
+    app.dataset.cloudSaveUpload = JSON.stringify({
+      kind: 'uploaded', schemaVersion: 4,
+    });
+  }
+  portfolioCloudCommands = boot.commands;
+  const loaded = deserializePortfolioSaveDocument(boot.document);
+  const runtime = new PortfolioMineRuntime({
+    portfolio: loaded.portfolio,
+    catRoster: loaded.catRoster,
+    boostState: localTimelineBoost(serverBoostState),
+    now: () => Date.now(),
+    onCommandApplied: (next) => {
+      if (!localSavesSuspended) {
+        portfolioPersistence.queueSave(createPortfolioSaveDocument(
+          next, Date.now(), runtime.fullCatRoster,
+        ));
+      }
+    },
+  });
+  activeDriver = runtime;
+  catCollectionUiStatus = 'ready';
+  const scene = (): BootScene => {
+    if (game === null) throw new Error('The mine scene is still loading.');
+    return game.scene.getScene(BOOT_SCENE_KEY) as BootScene;
+  };
+  const accept = async (accepted: PortfolioCloudAccepted): Promise<void> => {
+    const adopted = deserializePortfolioSaveDocument(accepted.document);
+    runtime.adoptPortfolio(adopted.portfolio, adopted.catRoster);
+    try {
+      await portfolioLocalRepository.storeActiveSave(accepted.document);
+    } catch {
+      saveDiagnostics.report({
+        code: 'portfolio-local-save-failed',
+        message: 'The cloud saved your mine, but this device could not keep a local copy.',
+      });
+    }
+    collectionModal?.refresh();
+    catAssignmentModal?.refresh();
+  };
+  const commandDocument = (): PortfolioSaveDocumentV4 => {
+    runtime.advance();
+    return createPortfolioSaveDocument(
+      runtime.portfolio,
+      runtime.state.lastUpdateTimestampMs,
+      runtime.fullCatRoster,
+    );
+  };
+  const acceptCommand = async (accepted: PortfolioCloudAccepted): Promise<boolean> => {
+    await accept(accepted);
+    const completed = await boot.commands.completePending();
+    if (!completed) {
+      saveDiagnostics.report({
+        code: 'portfolio-command-journal-failed',
+        message: 'The cloud saved this action, but its local receipt could not be closed.',
+      });
+    }
+    return completed;
+  };
+  const pendingEntryMineId = (): MineSiteId | null => {
+    const pending = boot.commands.pending;
+    return pending?.type === 'enter' ? pending.mineId : null;
+  };
+  const settlePendingEntry = async (
+    accepted: PortfolioCloudAccepted,
+  ): Promise<boolean> => {
+    const mineId = pendingEntryMineId();
+    if (mineId === null || runtime.portfolio.activeMineId !== mineId) {
+      return await acceptCommand(accepted);
+    }
+    const mine = runtime.portfolio.mines[mineId];
+    const result = accepted.result;
+    const grant = result !== undefined && typeof result.grant === 'object' &&
+        result.grant !== null && !Array.isArray(result.grant)
+      ? result.grant as Record<string, unknown> : null;
+    const claimedSequence = result?.claimedSequence;
+    if (mine?.pendingClaim !== null && mine?.pendingClaim !== undefined) {
+      if (!Number.isSafeInteger(claimedSequence) ||
+          claimedSequence !== mine.pendingClaim.sequence ||
+          typeof grant?.reward !== 'string') {
+        saveDiagnostics.report({
+          code: 'portfolio-entry-receipt-invalid',
+          message: 'The mine-entry receipt did not match the pending reward. Reload before claiming it.',
+        });
+        return false;
+      }
+      runtime.settlePendingClaim(
+        mineId,
+        claimedSequence as number,
+        GameNumber.from(grant.reward),
+      );
+    }
+    const merged = createPortfolioSaveDocument(
+      runtime.portfolio,
+      Date.now(),
+      runtime.fullCatRoster,
+    );
+    try {
+      await portfolioLocalRepository.storeActiveSave(merged);
+    } catch {
+      saveDiagnostics.report({
+        code: 'portfolio-local-save-failed',
+        message: 'The reward is validated, but this device could not save its settlement.',
+      });
+      return false;
+    }
+    if (!await boot.commands.completePending()) return false;
+    const synced = await boot.commands.syncRoutine(merged);
+    if (synced.kind === 'ok') {
+      await accept(synced.value);
+    }
+    mineMapModal?.refresh();
+    saveDiagnostics.dismiss('portfolio-entry-pending');
+    return true;
+  };
+  let pendingEntryRetry: Promise<boolean> | null = null;
+  const retryPendingEntry = (): Promise<boolean> => {
+    if (pendingEntryRetry !== null) return pendingEntryRetry;
+    pendingEntryRetry = (async () => {
+      const command = boot.commands.pending;
+      if (command?.type !== 'enter') return false;
+      const replayed = await boot.commands.retryPending();
+      return replayed.kind === 'ok'
+        ? await settlePendingEntry(replayed.value)
+        : false;
+    })().finally(() => { pendingEntryRetry = null; });
+    return pendingEntryRetry;
+  };
+
+  mineMapModal = new MineMapModal({
+    parent: app,
+    getPortfolio: () => runtime.portfolio,
+    getPendingMineId: pendingEntryMineId,
+    previewOfflineReward: (mineId) => runtime.previewOfflineReward(mineId),
+    buyMine: async (mineId) => {
+      const result = await boot.commands.execute(
+        { type: 'purchase', mineId }, commandDocument(),
+      );
+      if (result.kind !== 'ok') {
+        return { ok: false, message: 'Mine purchase is pending. Check your connection and try again.' };
+      }
+      await acceptCommand(result.value);
+      return { ok: true };
+    },
+    enterMine: async (mineId) => {
+      try {
+        await scene().prepareSiteArt(mineId);
+        const sourceDocument = commandDocument();
+        const release = runtime.beginCloudCommand();
+        let result: Awaited<ReturnType<typeof boot.commands.execute>>;
+        try {
+          result = await boot.commands.execute(
+            { type: 'enter', mineId }, sourceDocument,
+          );
+        } finally {
+          release();
+        }
+        if (result.kind !== 'ok') {
+          if (result.kind === 'unavailable' && pendingEntryMineId() === mineId) {
+            const provisional = runtime.enterMineWithPendingClaim(
+              mineId,
+              sourceDocument.savedAtTimestampMs,
+            );
+            if (provisional.status === 'entered') {
+              await portfolioLocalRepository.storeActiveSave(
+                createPortfolioSaveDocument(
+                  runtime.portfolio,
+                  sourceDocument.savedAtTimestampMs,
+                  runtime.fullCatRoster,
+                ),
+              );
+              scene().activateSiteArt(mineId);
+              saveDiagnostics.report({
+                code: 'portfolio-entry-pending',
+                message: 'You can play this mine. Its offline reward will stay pending until the cloud validates it.',
+              });
+              return { ok: true };
+            }
+          }
+          return { ok: false, message: 'Mine entry is pending. Check your connection and try again.' };
+        }
+        await acceptCommand(result.value);
+        scene().activateSiteArt(mineId);
+        return { ok: true };
+      } catch {
+        return { ok: false, message: 'Could not load this mine. Please try again.' };
+      }
+    },
+  });
+  game = createGame(gameViewport, runtime, {
+    onMap: (onClosed) => mineMapModal?.open(onClosed),
+    onBoost: (onClosed) => boostModal?.open(onClosed),
+    onSettings: (onClosed) => accountSettingsModal?.open(onClosed),
+    onLeaderboard: (onClosed) => leaderboardModal?.open(onClosed),
+    onCollection: (onClosed) => collectionModal?.open(onClosed),
+    onCatSlot: (slotKey, onClosed) => catAssignmentModal?.open(slotKey, onClosed),
+    onMarketplacePurchase: purchaseMarketplaceCat,
+    getWalletGold: () => runtime.state.gold.serialize(),
+    getCollection: () => runtime.fullCatRoster,
+    loadMarketplaceListings,
+    onCreateMarketplaceListing: createMarketplaceListing,
+    onCancelMarketplaceListing: cancelMarketplaceListing,
+    onBuyMarketplaceListing: buyMarketplaceListing,
+    onRentMarketplaceListing: rentMarketplaceListing,
+  });
+
+  let resumePending = false;
+  let lifecycleSuspendPromise: Promise<void> | null = null;
+  const resumeConfiguredMine = async (): Promise<void> => {
+    if (resumePending) return;
+    resumePending = true;
+    const mineScene = scene();
+    mineScene.input.enabled = false;
+    const finish = (succeeded: boolean): boolean => {
+      if (succeeded) {
+        mineScene.input.enabled = true;
+        resumePending = false;
+      }
+      return succeeded;
+    };
+    const claim = async (): Promise<boolean> => {
+      await boot.commands.waitUntilIdle();
+      if (boot.commands.pending !== null) {
+        const pendingType = boot.commands.pending.type;
+        const replayed = await boot.commands.retryPending();
+        if (replayed.kind !== 'ok') return finish(false);
+        if (pendingType === 'enter') {
+          if (!await settlePendingEntry(replayed.value)) return finish(false);
+        } else {
+          await acceptCommand(replayed.value);
+        }
+        if (pendingType !== 'suspend') return finish(true);
+      }
+      if (runtime.portfolio.activeMineId !== null) return finish(true);
+      const entered = await boot.commands.executeAtRevision({
+        type: 'enter', mineId: runtime.mineSiteId,
+      });
+      if (entered.kind !== 'ok') return finish(false);
+      await acceptCommand(entered.value);
+      return finish(true);
+    };
+
+    await boot.commands.waitUntilIdle();
+    const snapshot = await gateway.download();
+    if (snapshot.kind !== 'ok' || snapshot.value.revision !== boot.commands.revision) {
+      saveDiagnostics.report({
+        code: 'portfolio-resume-conflict',
+        message: 'Cloud mine progress changed. Reload before continuing this mine.',
+      });
+      resumePending = false;
+      return;
+    }
+    const grant = snapshot.value.offlineGrants?.[runtime.mineSiteId];
+    if (grant !== undefined && GameNumber.from(grant.reward).greaterThan(0)) {
+      offlineRewardModal = showOfflineRewardModal({
+        parent: app,
+        pendingReward: {
+          creditedDurationMs: grant.creditedDurationMs,
+          reward: GameNumber.from(grant.reward),
+        },
+        mineId: runtime.mineSiteId,
+        onClaim: claim,
+      });
+      return;
+    }
+    if (!await claim()) {
+      offlineRewardModal = showOfflineRewardModal({
+        parent: app,
+        pendingReward: { creditedDurationMs: 0, reward: GameNumber.from(0) },
+        mineId: runtime.mineSiteId,
+        onClaim: claim,
+      });
+    }
+  };
+
+  unbindSaveLifecycle = bindSaveLifecycle(
+    portfolioPersistence,
+    () => {
+      runtime.advance();
+      return createPortfolioSaveDocument(runtime.portfolio, Date.now(), runtime.fullCatRoster);
+    },
+    {
+      journal: portfolioJournal,
+      onForceSave: (snapshotDocument) => {
+        if (lifecycleSuspendPromise !== null) return;
+        lifecycleSuspendPromise = (async () => {
+          await boot.commands.waitUntilIdle();
+          const result = await boot.commands.execute({ type: 'suspend' }, snapshotDocument);
+          if (result.kind === 'ok') {
+            await acceptCommand(result.value);
+            if (document.visibilityState === 'visible') {
+              await resumeConfiguredMine();
+            }
+          }
+        })().finally(() => { lifecycleSuspendPromise = null; });
+      },
+    },
+  );
+  const handleConfiguredVisible = (): void => {
+    if (document.visibilityState !== 'visible') return;
+    void (async () => {
+      await lifecycleSuspendPromise;
+      if (runtime.portfolio.activeMineId === null || boot.commands.pending !== null) {
+        await resumeConfiguredMine();
+      }
+    })();
+  };
+  document.addEventListener('visibilitychange', handleConfiguredVisible);
+  unbindPortfolioResume = () =>
+    document.removeEventListener('visibilitychange', handleConfiguredVisible);
+  let lastPersistedState = runtime.state;
+  saveHeartbeatId = window.setInterval(() => {
+    if (boot.commands.pending?.type === 'enter') {
+      void retryPendingEntry();
+      return;
+    }
+    if (localSavesSuspended || runtime.portfolio.activeMineId === null ||
+        runtime.state === lastPersistedState) return;
+    lastPersistedState = runtime.state;
+    const document = createPortfolioSaveDocument(
+      runtime.portfolio, Date.now(), runtime.fullCatRoster,
+    );
+    portfolioPersistence.queueSave(document);
+    void boot.commands.syncRoutine(document);
+  }, SAVE_HEARTBEAT_MS);
+}
+
+async function startLocalPortfolioApplication(options: {
+  readonly cloudPendingUserId?: string;
+} = {}): Promise<void> {
+  const localStorage = getAvailableLocalStorage();
+  const localBoost = readLocalBoostState(localStorage);
+  const loadNowMs = Date.now();
+  let preservedCloudEntry = false;
+  let loaded;
+  try {
+    const pending = options.cloudPendingUserId !== undefined && localStorage !== null
+      ? new PortfolioCommandJournal(localStorage, options.cloudPendingUserId).read()
+      : null;
+    const candidates: unknown[] = [];
+    if (pending?.command.type === 'enter') {
+      const pendingMineId = pending.command.mineId;
+      candidates.push(await portfolioIndexedRepository.loadActiveSave());
+      try {
+        const journalValue = localStorage?.getItem(LIFECYCLE_SAVE_JOURNAL_KEY);
+        if (journalValue !== null && journalValue !== undefined) {
+          candidates.push(JSON.parse(journalValue));
+        }
+      } catch {
+        // IndexedDB remains a valid recovery candidate.
+      }
+      const valid = candidates.flatMap((candidate) => {
+        if (candidate === null) return [];
+        try {
+          const value = deserializePortfolioSaveDocument(candidate);
+          return value.portfolio.activeMineId === pendingMineId
+            ? [value] : [];
+        } catch {
+          return [];
+        }
+      }).sort((a, b) => b.savedAtTimestampMs - a.savedAtTimestampMs);
+      const selected = valid[0];
+      if (selected !== undefined) {
+        preservedCloudEntry = true;
+        loaded = {
+          status: 'fresh' as const,
+          portfolio: selected.portfolio,
+          catRoster: selected.catRoster,
+          pendingGrant: null,
+        };
+      }
+    }
+    loaded ??= await loadPortfolioSession(
+      portfolioIndexedRepository,
+      localStorage,
+      loadNowMs,
+      localBoost,
+    );
+  } catch {
+    saveDiagnostics.report({
+      code: 'load-failed',
+      message: LOAD_FAILURE_MESSAGE,
+    });
+    // A storage backend that cannot even be opened must not leave the app on
+    // an empty shell. Run a fresh in-memory portfolio for this session; every
+    // attempted durable write still flows through the coordinator and reports
+    // `save-failed`, so the player is never told that volatile progress is safe.
+    loaded = {
+      status: 'fresh',
+      portfolio: createInitialPortfolio(loadNowMs),
+      catRoster: createEmptyCatRoster(),
+      pendingGrant: null,
+    } as const;
+  }
+  if (loaded.status === 'corrupt') {
+    saveDiagnostics.report({
+      code: 'corrupt-save',
+      message: 'Local progress could not be read. The saved data has been preserved.',
+    });
+    return;
+  }
+  let portfolio = loaded.portfolio;
+  const catRoster = loaded.catRoster;
+  if (preservedCloudEntry) {
+    saveDiagnostics.report({
+      code: 'portfolio-entry-pending',
+      message: 'You can keep playing this mine. Its offline reward is still pending cloud validation.',
+    });
+  }
+  catCollectionUiStatus = 'ready';
+  if (loaded.status === 'saved') {
+    const resume = async (): Promise<boolean> => {
+      const result = await resumePortfolioSession(
+        portfolioLocalRepository, portfolio, catRoster, loadNowMs, localBoost,
+      );
+      if (result.status !== 'entered') return false;
+      portfolio = result.portfolio;
+      return true;
+    };
+    if (loaded.pendingGrant.reward.greaterThan(0)) {
+      await new Promise<void>((resolve) => {
+        offlineRewardModal = showOfflineRewardModal({
+          parent: app,
+          pendingReward: loaded.pendingGrant,
+          mineId: portfolio.selectedMineId,
+          onClaim: async () => {
+            const succeeded = await resume();
+            if (succeeded) resolve();
+            return succeeded;
+          },
+        });
+      });
+    } else if (!await resume()) {
+      await new Promise<void>((resolve) => {
+        offlineRewardModal = showOfflineRewardModal({
+          parent: app,
+          pendingReward: loaded.pendingGrant,
+          mineId: portfolio.selectedMineId,
+          onClaim: async () => {
+            const succeeded = await resume();
+            if (succeeded) resolve();
+            return succeeded;
+          },
+        });
+      });
+    }
+  }
+  if (disposed) return;
+
+  const runtime = new PortfolioMineRuntime({
+    portfolio,
+    catRoster,
+    boostState: localBoost,
+    now: () => Date.now(),
+    onCommandApplied: (next) => {
+      if (!localSavesSuspended) {
+        portfolioPersistence.queueSave(
+          createPortfolioSaveDocument(next, Date.now(), runtime.fullCatRoster),
+        );
+      }
+    },
+  });
+  activeDriver = runtime;
+  const commitLocal = async (
+    next: typeof portfolio,
+    roster: typeof catRoster,
+    savedAtMs: number,
+  ): Promise<void> => {
+    await commitPortfolioWithCoordinator(portfolioPersistence, next, roster, savedAtMs);
+  };
+  const scene = (): BootScene => {
+    if (game === null) throw new Error('The mine scene is still loading.');
+    return game.scene.getScene(BOOT_SCENE_KEY) as BootScene;
+  };
+
+  mineMapModal = new MineMapModal({
+    parent: app,
+    getPortfolio: () => runtime.portfolio,
+    previewOfflineReward: (mineId) => runtime.previewOfflineReward(mineId),
+    buyMine: async (mineId) => {
+      if (preservedCloudEntry) {
+        return { ok: false, message: 'Finish the pending cloud entry before buying another mine.' };
+      }
+      const result = await runtime.buyMineDurably(mineId, commitLocal);
+      return {
+        ok: result.status === 'purchased',
+        message: result.status === 'save-failed'
+          ? 'Could not save the purchase. Please try again.'
+          : result.status === 'insufficient-gold'
+            ? 'You need more gold in the shared wallet.'
+            : result.status === 'prerequisite-locked'
+              ? 'Unlock floor 5 in the previous mine first.'
+              : undefined,
+      };
+    },
+    enterMine: async (mineId: MineSiteId) => {
+      try {
+        if (preservedCloudEntry) {
+          return { ok: false, message: 'Finish the pending cloud entry before switching again.' };
+        }
+        await scene().prepareSiteArt(mineId);
+        const result = await runtime.enterMineDurably(mineId, commitLocal);
+        if (result.status !== 'entered') {
+          return { ok: false, message: result.status === 'save-failed'
+            ? 'Could not save the mine switch. Please try again.'
+            : 'This mine is not ready to enter.' };
+        }
+        scene().activateSiteArt(mineId);
+        return { ok: true };
+      } catch {
+        return { ok: false, message: 'Could not load this mine. Please try again.' };
+      }
+    },
+  });
+  game = createGame(gameViewport, runtime, {
+    onMap: (onClosed) => mineMapModal?.open(onClosed),
+    onBoost: (onClosed) => boostModal?.open(onClosed),
+    onSettings: (onClosed) => accountSettingsModal?.open(onClosed),
+    onLeaderboard: (onClosed) => leaderboardModal?.open(onClosed),
+    onCollection: (onClosed) => collectionModal?.open(onClosed),
+    onCatSlot: (slotKey, onClosed) => catAssignmentModal?.open(slotKey, onClosed),
+    getWalletGold: () => runtime.state.gold.serialize(),
+    getCollection: () => runtime.fullCatRoster,
+  });
+
+  unbindSaveLifecycle = bindSaveLifecycle(
+    portfolioPersistence,
+    () => {
+      try {
+        runtime.suspend(Date.now());
+      } catch {
+        // An in-flight durable command already has a write in progress.
+      }
+      return createPortfolioSaveDocument(runtime.portfolio, Date.now(), runtime.fullCatRoster);
+    },
+    { journal: portfolioJournal },
+  );
+  let resumePending = false;
+  const handleVisible = (): void => {
+    if (document.visibilityState !== 'visible' ||
+      runtime.portfolio.activeMineId !== null || resumePending) return;
+    resumePending = true;
+    const mineScene = scene();
+    mineScene.input.enabled = false;
+    const claim = async (): Promise<boolean> => {
+      const result = await runtime.enterMineDurably(runtime.mineSiteId, commitLocal);
+      if (result.status !== 'entered') return false;
+      mineScene.input.enabled = true;
+      resumePending = false;
+      return true;
+    };
+    const reward = runtime.previewOfflineReward(runtime.mineSiteId);
+    const pending = reward ?? { creditedDurationMs: 0, reward: GameNumber.from(0) };
+    if (reward?.reward.greaterThan(0)) {
+      offlineRewardModal = showOfflineRewardModal({
+        parent: app, pendingReward: pending, mineId: runtime.mineSiteId, onClaim: claim,
+      });
+    } else {
+      void claim().then((succeeded) => {
+        if (!succeeded) {
+          offlineRewardModal = showOfflineRewardModal({
+            parent: app, pendingReward: pending, mineId: runtime.mineSiteId, onClaim: claim,
+          });
+        }
+      });
+    }
+  };
+  document.addEventListener('visibilitychange', handleVisible);
+  unbindPortfolioResume = () => document.removeEventListener('visibilitychange', handleVisible);
+
+  let lastPersistedState = runtime.state;
+  saveHeartbeatId = window.setInterval(() => {
+    if (localSavesSuspended || runtime.portfolio.activeMineId === null ||
+      runtime.state === lastPersistedState) return;
+    lastPersistedState = runtime.state;
+    portfolioPersistence.queueSave(
+      createPortfolioSaveDocument(runtime.portfolio, Date.now(), runtime.fullCatRoster),
+    );
+  }, SAVE_HEARTBEAT_MS);
+}
+
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     disposed = true;
@@ -1886,7 +2882,9 @@ if (import.meta.hot) {
     collectionModal?.destroy();
     catAssignmentModal?.destroy();
     boostModal?.destroy();
+    mineMapModal?.destroy();
     unbindSaveLifecycle?.();
+    unbindPortfolioResume?.();
 
     if (saveHeartbeatId !== null) {
       window.clearInterval(saveHeartbeatId);
@@ -1894,10 +2892,12 @@ if (import.meta.hot) {
     }
 
     persistence.cancelScheduledSave();
+    portfolioPersistence.cancelScheduledSave();
     // Step 19: clears any pending cadence/backoff timer so an HMR cycle does
     // not leave a replica uploading into a page that no longer exists.
     cloudReplica.stop();
     indexedRepository.close();
+    portfolioIndexedRepository.close();
     // Deliberately does not stop the Supabase client's auto-refresh here: the
     // client (and its promise) is cached on `import.meta.hot.data` precisely
     // so the *same* instance survives this reload, and stopping its refresh

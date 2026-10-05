@@ -40,7 +40,15 @@ async function waitForGuestSessionStatus(
 }
 
 async function assertGameIsPlayable(page: Page): Promise<void> {
-  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
+  const canvas = page.locator('#app canvas');
+  const reward = page.getByRole('dialog', { name: 'Offline reward' });
+  await expect.poll(async () => await canvas.count() > 0 || await reward.isVisible(), {
+    timeout: 15_000,
+  }).toBe(true);
+  if (await reward.isVisible()) {
+    await reward.getByRole('button', { name: 'Claim', exact: true }).click();
+  }
+  await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene', { timeout: 15_000 });
 }
 
 /**
@@ -74,6 +82,7 @@ test('a fresh browser boots instantly and holds a real anonymous session', async
   await page.goto('/');
 
   await assertGameIsPlayable(page);
+  await expect(page.locator('#app')).toHaveAttribute('data-portfolio-boot', /"kind":"ready"/);
   const diagnostic = await waitForGuestSessionStatus(page, 'signed-in');
 
   expect(diagnostic.user?.id).toMatch(UUID_PATTERN);
@@ -201,7 +210,7 @@ async function readStoredGold(page: Page): Promise<string | null> {
 
     const transaction = database.transaction('saves', 'readonly');
     const getRequest = transaction.objectStore('saves').get('active');
-    const record = await new Promise<{ document?: { state?: { gold?: string } } }>(
+    const record = await new Promise<{ document?: { walletGold?: string; state?: { gold?: string } } }>(
       (resolve, reject) => {
         getRequest.onerror = () => reject(getRequest.error);
         getRequest.onsuccess = () => resolve(getRequest.result);
@@ -209,6 +218,6 @@ async function readStoredGold(page: Page): Promise<string | null> {
     );
     database.close();
 
-    return record?.document?.state?.gold ?? null;
+    return record?.document?.walletGold ?? record?.document?.state?.gold ?? null;
   });
 }

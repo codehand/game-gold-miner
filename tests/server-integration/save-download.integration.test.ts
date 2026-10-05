@@ -2,8 +2,12 @@ import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
-import { createInitialGameState } from '../../src/core';
-import { createSaveDocument, type SaveDocumentV2 } from '../../src/persistence';
+import { createInitialGameState, createInitialPortfolio, suspendActiveMine } from '../../src/core';
+import {
+  createPortfolioSaveDocument,
+  createSaveDocument,
+  type SaveDocumentV2,
+} from '../../src/persistence';
 import { LOCAL_ANON_KEY } from './authFixture';
 
 /**
@@ -102,6 +106,24 @@ describe('GET /v1/save (server-milestone Step 17)', () => {
     // than the literal string.
     expect(Date.parse(body.receivedAt)).toBe(Date.parse(uploadedBody.receivedAt));
     expect(body.document).toEqual(document);
+  });
+
+  it('returns a server-anchored V4 portfolio and per-mine offline grants', async () => {
+    const guest = await createGuestIdentity();
+    const suspended = suspendActiveMine(createInitialPortfolio(NOW_MS), NOW_MS + 1_000);
+    const document = createPortfolioSaveDocument(suspended, NOW_MS + 1_000);
+    const uploaded = await putSave(guest.accessToken, { baseRevision: null, document });
+    expect(uploaded.status).toBe(200);
+    const accepted = await uploaded.json();
+
+    const downloaded = await getSave(guest.accessToken);
+    expect(downloaded.status).toBe(200);
+    const body = await downloaded.json();
+    expect(body.document).toEqual(accepted.document);
+    expect(body.document.mines.gold.offline.startedAtMs)
+      .toBe(Date.parse(accepted.receivedAt));
+    expect(body.offlineGrants.gold).toEqual(body.offlineGrant);
+    expect(typeof body.offlineGrants.gold.reward).toBe('string');
   });
 
   it('reflects the latest revision after a second upload', async () => {

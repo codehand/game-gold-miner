@@ -2,6 +2,26 @@
 
 ## Status Summary
 
+**Multi-mine Map, 2026-10-05 — complete and release-verified:** the six-site
+catalog, V4 portfolio/migration, shared wallet, single foreground runtime,
+fixed-price purchase chain, per-mine offline claim, positional Map and
+mine-qualified roster are complete. Configured accounts use server time,
+revision checks, idempotent receipts and a durable version-2 command journal.
+If cloud sync is unavailable, entering an owned mine remains playable and its
+claim stays pending; reconnect validates the saved `effectiveAtMs` boundary,
+settles the interval once, and merges the result into newer local progress.
+
+Gold, Amethyst, Ruby, Sapphire, Emerald and Diamond each have upper, middle and
+deep floor treatments across all fifteen floors, with matching ore, surface,
+structures, shaft, default and paid cargo, pour and impact effects. Boru's load
+uses the selected resource; claim UI reuses the site's landmark and palette.
+Reviewed native 360×640 captures cover floors 1, 5, 10 and 15 and the required
+worker/cargo states. The asset manifest records source, normalization and
+approval. `npm run verify` and `npm run verify:server` pass: 866 unit tests,
+83 client E2E tests, 10 production smoke tests, 218 Deno tests, 146 live
+integration tests and 15 live server E2E tests, plus lint, builds, secret scan
+and synchronized schema documentation.
+
 **Mine-floor gold pile grounding, 2026-09-30 — fixed:** moved the shared
 pile/impact anchor 7 logical pixels down, aligning visible ore with the floor
 line. Unit and Boru 1/5-worker browser checks, screenshot, lint/build pass;
