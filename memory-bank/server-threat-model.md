@@ -353,6 +353,11 @@ in its instructions before it starts.
 F1's resolution note above: `initData` verification needs no real Telegram
 infrastructure to prove, only the Mini App host (still unbuilt) needs it,
 and the host is not required for Step 12's own test.
+**Updated 2026-10-06:** the Mini App host now exists on Vercel, with the GAME
+button configured in BotFather. The first real phone launch stalls at Telegram's
+loading placeholder; PR #14 pins the SDK on the game origin and signals
+`WebApp.ready()` as soon as the loading shell exists. Live account creation
+and reuse remain a release gate.
 
 ### 7.4 Whether real money is ever taken — Phases 4 and 6
 
@@ -460,6 +465,11 @@ was added to `index.html` — that is the host itself, deliberately not built
 here), so this finding's prerequisite remains open and un-built, exactly as
 recorded; what changed is only that Step 12 no longer needs it resolved
 first, the way Step 11 needed §7.5 resolved before it could start at all.
+**Current resolution (2026-10-06):** the host was added in `index.html`,
+deployed to Vercel, and linked through BotFather. The structural prerequisite
+is satisfied. Real Mini App loading and sign-in are being validated separately;
+the first phone test stalled, prompting the local SDK and `ready()` patch in
+PR #14. The historical 2026-09-11 scope note above is retained as provenance.
 
 **F2 — Step 6 presumes `break_infinity.js` is consumable from Deno.**
 Every anti-cheat guarantee rests on the server running the identical `src/core`,

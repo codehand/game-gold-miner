@@ -8,8 +8,8 @@ sequential floor unlocks, and receives a capped reward for time spent away.
 
 The game runs in a mobile browser at a fixed 360×640 portrait logical viewport.
 The production web build is hosted at
-https://game-gold-miner-sepia.vercel.app/ and opens as a Telegram Mini App from
-the GAME menu button of `@ghn_alo_bot`.
+https://game-gold-miner-sepia.vercel.app/ and is configured as the Telegram
+Mini App behind the GAME menu button of `@ghn_alo_bot`.
 **The playable game stays fully playable offline** — no account or cloud save is
 required on any path; it boots, plays, and saves entirely in IndexedDB even with
 no network at all. The server milestone is implemented locally and documented
@@ -349,8 +349,12 @@ signups while the server's admin link flow creates verified Telegram accounts;
 see finding F13 in
 `memory-bank/server-threat-model.md` for the full reproduction. `src/platform/telegram/telegramSignIn.ts`'s
 `readTelegramInitData()` reads `window.Telegram.WebApp.initData` (never
-`initDataUnsafe`). `index.html` loads Telegram's official Web App SDK before
-the game bundle. Inside Telegram, `src/main.ts` calls `signInWithTelegram`
+`initDataUnsafe`). `index.html` loads a pinned snapshot of Telegram's official
+Web App SDK from `/vendor/telegram-web-app.js` before the game bundle; the
+snapshot's source, hash and license are recorded in `public/vendor/README.md`.
+The HTML shows an immediate loading message and calls `WebApp.ready()` as soon
+as that shell exists, before network-backed game boot; `src/main.ts` removes
+the message after creating the game. Inside Telegram it calls `signInWithTelegram`
 **instead of** the guest bootstrap; outside Telegram the empty `initData`
 selects the browser guest path. Telegram sign-in replaces the guest identity
 rather than linking to it. This is the

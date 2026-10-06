@@ -86,6 +86,7 @@ test('serves the optimized bundle and every runtime asset from the root base pat
   await forceCanvasReadback(page);
   await page.goto('/');
   await waitForBootedScene(page);
+  await expect(page.locator('#boot-status')).toHaveCount(0);
 
   // The bundle is served, not transpiled on demand: a dev server answers module
   // requests under `/src/`, and the built document references hashed assets.
@@ -96,7 +97,7 @@ test('serves the optimized bundle and every runtime asset from the root base pat
     return {
       scripts,
       documentReferences: [
-        ...scripts.filter((source) => source !== 'https://telegram.org/js/telegram-web-app.js?63'),
+        ...scripts.filter((source) => source !== '/vendor/telegram-web-app.js'),
         ...[...document.querySelectorAll('link[rel="stylesheet"]')].map((element) =>
           element.getAttribute('href'),
         ),
@@ -105,7 +106,7 @@ test('serves the optimized bundle and every runtime asset from the root base pat
   });
 
   expect(scripts[0], 'Telegram must provide signed initData before the game boots').toBe(
-    'https://telegram.org/js/telegram-web-app.js?63',
+    '/vendor/telegram-web-app.js',
   );
 
   expect(documentReferences.length).toBeGreaterThan(0);
