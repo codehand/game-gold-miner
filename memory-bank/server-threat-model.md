@@ -356,7 +356,8 @@ and the host is not required for Step 12's own test.
 **Updated 2026-10-06:** the Mini App host now exists on Vercel, with the GAME
 button configured in BotFather. The first real phone launch stalls at Telegram's
 loading placeholder; PR #14 pins the SDK on the game origin and signals
-`WebApp.ready()`. Live account creation and reuse remain a release gate.
+`WebApp.ready()` as soon as the loading shell exists. Live account creation
+and reuse remain a release gate.
 
 ### 7.4 Whether real money is ever taken — Phases 4 and 6
 

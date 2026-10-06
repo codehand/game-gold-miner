@@ -352,8 +352,9 @@ see finding F13 in
 `initDataUnsafe`). `index.html` loads a pinned snapshot of Telegram's official
 Web App SDK from `/vendor/telegram-web-app.js` before the game bundle; the
 snapshot's source, hash and license are recorded in `public/vendor/README.md`.
-After creating the game, `src/main.ts` calls `WebApp.ready()` to dismiss
-Telegram's loading placeholder. Inside Telegram it calls `signInWithTelegram`
+The HTML shows an immediate loading message and calls `WebApp.ready()` as soon
+as that shell exists, before network-backed game boot; `src/main.ts` removes
+the message after creating the game. Inside Telegram it calls `signInWithTelegram`
 **instead of** the guest bootstrap; outside Telegram the empty `initData`
 selects the browser guest path. Telegram sign-in replaces the guest identity
 rather than linking to it. This is the

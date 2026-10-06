@@ -10,8 +10,8 @@ The existing Edge Function verifies signed `initData` before creating/reusing
 the player's account. BotFather confirms GAME points at Vercel. macOS and
 iPhone launches remained on Telegram's loading placeholder; the phone's direct
 browser visit also stalled. PR #14 moves the official SDK snapshot onto the
-game origin, calls `WebApp.ready()` after game creation, and adds a static
-reachability page. Its 13 focused unit tests, build, lint, secret scan and 10
+game origin, calls `WebApp.ready()` after the initial loading shell appears,
+and adds a static reachability page. Its 13 focused unit tests, build, lint, secret scan and 10
 production smoke tests pass. The gate is a real phone launch and Supabase
 account creation/reuse after this patch deploys; production CORS preflight and
 malformed POST already behave as expected.

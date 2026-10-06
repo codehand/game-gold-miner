@@ -2015,7 +2015,9 @@ database transaction. No IndexedDB or localStorage journal schema changes.
   `null` outside Telegram. `index.html` loads a pinned snapshot of Telegram's
   official SDK from `/vendor/telegram-web-app.js` before the game bundle;
   `public/vendor/README.md` records its source, SHA-256 and license. The
-  `notifyTelegramReady()` adapter calls `WebApp.ready()` after game creation.
+  The HTML calls `WebApp.ready()` as soon as its loading shell exists, before
+  game boot can wait on Supabase; `notifyTelegramReady()` repeats it safely
+  when game creation removes the loading message.
   `signInWithTelegram`
   POSTs the raw `initData` and completes `verifyOtp` on success; same
   never-throws, typed-result shape as the other identity modules.

@@ -2133,7 +2133,7 @@ async function startApplication(): Promise<void> {
       catAssignmentModal.open(slotKey, onClosed);
     },
   });
-  notifyTelegramReady();
+  finishBoot();
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
     () => {
@@ -2502,7 +2502,7 @@ async function startConfiguredPortfolioApplication(): Promise<void> {
     onBuyMarketplaceListing: buyMarketplaceListing,
     onRentMarketplaceListing: rentMarketplaceListing,
   });
-  notifyTelegramReady();
+  finishBoot();
 
   let resumePending = false;
   let lifecycleSuspendPromise: Promise<void> | null = null;
@@ -2822,7 +2822,7 @@ async function startLocalPortfolioApplication(options: {
     getWalletGold: () => runtime.state.gold.serialize(),
     getCollection: () => runtime.fullCatRoster,
   });
-  notifyTelegramReady();
+  finishBoot();
 
   unbindSaveLifecycle = bindSaveLifecycle(
     portfolioPersistence,
@@ -2911,6 +2911,11 @@ if (import.meta.hot) {
     // timer now would leave the reused instance unable to refresh afterward.
     game?.destroy(true);
   });
+}
+
+function finishBoot(): void {
+  document.getElementById('boot-status')?.remove();
+  notifyTelegramReady();
 }
 
 function getRequiredElement(selector: string, name: string): HTMLElement {

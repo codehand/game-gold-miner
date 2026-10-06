@@ -86,6 +86,7 @@ test('serves the optimized bundle and every runtime asset from the root base pat
   await forceCanvasReadback(page);
   await page.goto('/');
   await waitForBootedScene(page);
+  await expect(page.locator('#boot-status')).toHaveCount(0);
 
   // The bundle is served, not transpiled on demand: a dev server answers module
   // requests under `/src/`, and the built document references hashed assets.

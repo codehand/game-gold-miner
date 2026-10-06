@@ -13,7 +13,8 @@ production Vercel URL. The first live launch stayed on Telegram's loading
 placeholder on both macOS and iPhone; the phone's direct browser visit also
 stalled, and Supabase has no created Telegram user. PR #14 serves a pinned
 official Telegram SDK snapshot from the game origin, calls `WebApp.ready()`
-after creating the game, and adds `/health.html` to isolate hosting reachability.
+as soon as the loading shell exists, and adds `/health.html` to isolate hosting
+reachability.
 Its build, 13 focused Telegram tests, lint, secret scan and all 10 production
 smoke tests pass. The remaining gate is to deploy #14 and verify a real phone
 launch, session creation, and returning-player sign-in.

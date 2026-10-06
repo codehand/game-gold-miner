@@ -864,8 +864,9 @@ resolves `null` outside Telegram. `index.html` loads a pinned snapshot of
 Telegram's official Web App SDK from `/vendor/telegram-web-app.js` before the
 game bundle, avoiding a second network host during page parsing. The snapshot
 source, SHA-256 and license are recorded in `public/vendor/README.md`.
-`notifyTelegramReady()` calls the SDK's `ready()` after `createGame` returns
-to dismiss Telegram's loading placeholder. A launch from `@ghn_alo_bot`
+An inline script calls the SDK's `ready()` after the initial loading message
+exists, before the network-backed boot; `finishBoot()` removes that message
+after `createGame` returns and safely calls `ready()` again. A launch from `@ghn_alo_bot`
 supplies the signed value. `signInWithTelegram` POSTs
 the raw `initData` to the function and completes `verifyOtp` on success;
 same never-throws, typed-result shape as `guestSession.ts`/`googleSignIn.ts`.
