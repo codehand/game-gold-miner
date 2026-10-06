@@ -860,9 +860,13 @@ are documented there rather than duplicated here.
 **Client side**, `src/platform/telegram/telegramSignIn.ts`: `readTelegramInitData()`
 reads `window.Telegram.WebApp.initData` — the raw, still-signed string,
 never `initDataUnsafe`, the SDK's own unverified convenience parse — and
-resolves `null` outside Telegram. `index.html` now loads Telegram's official
-Web App SDK before the game bundle, so a launch from `@ghn_alo_bot` supplies
-the signed value. `signInWithTelegram` POSTs
+resolves `null` outside Telegram. `index.html` loads a pinned snapshot of
+Telegram's official Web App SDK from `/vendor/telegram-web-app.js` before the
+game bundle, avoiding a second network host during page parsing. The snapshot
+source, SHA-256 and license are recorded in `public/vendor/README.md`.
+`notifyTelegramReady()` calls the SDK's `ready()` after `createGame` returns
+to dismiss Telegram's loading placeholder. A launch from `@ghn_alo_bot`
+supplies the signed value. `signInWithTelegram` POSTs
 the raw `initData` to the function and completes `verifyOtp` on success;
 same never-throws, typed-result shape as `guestSession.ts`/`googleSignIn.ts`.
 `src/main.ts` computes `readTelegramInitData()` once at boot, before either
@@ -885,6 +889,10 @@ disabled in production so an attacker cannot pre-create a predictable
 creates a row after a valid HMAC check. The shared CORS policy allows the
 exact Vercel origin. No save or relational schema changed for the Mini App
 host.
+
+BotFather confirmed that GAME points at this URL on 2026-10-06. The first
+real phone launch stalled before the game appeared, so live session creation
+is still an open release gate; PR #14 addresses the SDK loading dependency.
 
 `describeError` moved out of `src/platform/web/` to
 `src/platform/describeError.ts`, shared by `web/` and the new `telegram/`
