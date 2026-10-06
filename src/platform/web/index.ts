@@ -1,4 +1,9 @@
 export {
+  BOOT_FAILURE_MESSAGE,
+  reportBootFailure,
+  type BootStatusTarget,
+} from './bootFailure';
+export {
   LOCAL_BOOST_STORAGE_KEY,
   readLocalBoostState,
   writeLocalBoostState,

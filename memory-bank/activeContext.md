@@ -15,6 +15,10 @@ loads `/health.html` in Safari, but GAME still shows Telegram's native loading
 placeholder. Supabase has no created Telegram user. A follow-up fix draws the
 HTML loading shell and sends native `web_app_ready` before requesting the SDK,
 so a stalled SDK request cannot hide the shell or hold the native placeholder.
+Boot also can no longer stall silently behind sign-in: `signInWithTelegram`
+settles within `TELEGRAM_SIGN_IN_TIMEOUT_MS` (15 s, aborting the request) and
+falls back to local play, and a throw from `startApplication()` replaces the
+loading text with `reportBootFailure`'s visible message plus its reason.
 The remaining gate is to deploy this fix and verify a real phone game launch,
 session creation, and returning-player sign-in.
 
