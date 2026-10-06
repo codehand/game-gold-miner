@@ -9,15 +9,14 @@ player-facing Edge Functions. The exact Vercel origin is allowed by function
 CORS. `TELEGRAM_BOT_TOKEN` and a generated recovery pepper are in Supabase
 Secrets; public Auth signups are disabled against predictable Telegram
 placeholder-email preemption. BotFather confirms the GAME menu URL is the
-production Vercel URL. The first live launch stayed on Telegram's loading
-placeholder on both macOS and iPhone; the phone's direct browser visit also
-stalled, and Supabase has no created Telegram user. PR #14 serves a pinned
-official Telegram SDK snapshot from the game origin, calls `WebApp.ready()`
-as soon as the loading shell exists, and adds `/health.html` to isolate hosting
-reachability.
-Its build, 13 focused Telegram tests, lint, secret scan and all 10 production
-smoke tests pass. The remaining gate is to deploy #14 and verify a real phone
-launch, session creation, and returning-player sign-in.
+production Vercel URL. PR #14 is merged and production Ready; `/`,
+`/health.html` and the vendored Telegram SDK return HTTP 200. The real iPhone
+loads `/health.html` in Safari, but GAME still shows Telegram's native loading
+placeholder. Supabase has no created Telegram user. A follow-up fix draws the
+HTML loading shell and sends native `web_app_ready` before requesting the SDK,
+so a stalled SDK request cannot hide the shell or hold the native placeholder.
+The remaining gate is to deploy this fix and verify a real phone game launch,
+session creation, and returning-player sign-in.
 
 **Multi-mine Map, 2026-10-05 — complete and release-verified.** The V4
 portfolio now provides six purchasable resource sites, one shared wallet, one

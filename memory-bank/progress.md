@@ -7,14 +7,13 @@ hosts the game; Supabase production has 19 migrations, seven player-facing Edge
 Functions, bot-token and recovery-pepper Secrets. Public Auth signup is off so
 predictable Telegram placeholder emails cannot be claimed through `/signup`.
 The existing Edge Function verifies signed `initData` before creating/reusing
-the player's account. BotFather confirms GAME points at Vercel. macOS and
-iPhone launches remained on Telegram's loading placeholder; the phone's direct
-browser visit also stalled. PR #14 moves the official SDK snapshot onto the
-game origin, calls `WebApp.ready()` after the initial loading shell appears,
-and adds a static reachability page. Its 13 focused unit tests, build, lint, secret scan and 10
-production smoke tests pass. The gate is a real phone launch and Supabase
-account creation/reuse after this patch deploys; production CORS preflight and
-malformed POST already behave as expected.
+the player's account. BotFather confirms GAME points at Vercel. PR #14 is
+merged and Ready in production; the iPhone loads its static `/health.html`
+page in Safari, but GAME still shows Telegram's loading placeholder and no
+Supabase player exists. A follow-up moves the loading shell and native
+`web_app_ready` before the SDK request. The gate is a real phone game launch
+and Supabase account creation/reuse after this follow-up deploys; production
+CORS preflight and malformed POST already behave as expected.
 
 **Multi-mine Map, 2026-10-05 — complete and release-verified:** the six-site
 catalog, V4 portfolio/migration, shared wallet, single foreground runtime,
