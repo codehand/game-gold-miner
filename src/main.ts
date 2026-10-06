@@ -97,7 +97,12 @@ import {
   type PortfolioCloudCommands,
 } from './platform/web';
 import { describeError } from './platform/describeError';
-import { readTelegramInitData, signInWithTelegram, type TelegramSignInResult } from './platform/telegram';
+import {
+  notifyTelegramReady,
+  readTelegramInitData,
+  signInWithTelegram,
+  type TelegramSignInResult,
+} from './platform/telegram';
 import {
   AccountSettingsModal,
   BoostModal,
@@ -2128,6 +2133,7 @@ async function startApplication(): Promise<void> {
       catAssignmentModal.open(slotKey, onClosed);
     },
   });
+  notifyTelegramReady();
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
     () => {
@@ -2496,6 +2502,7 @@ async function startConfiguredPortfolioApplication(): Promise<void> {
     onBuyMarketplaceListing: buyMarketplaceListing,
     onRentMarketplaceListing: rentMarketplaceListing,
   });
+  notifyTelegramReady();
 
   let resumePending = false;
   let lifecycleSuspendPromise: Promise<void> | null = null;
@@ -2815,6 +2822,7 @@ async function startLocalPortfolioApplication(options: {
     getWalletGold: () => runtime.state.gold.serialize(),
     getCollection: () => runtime.fullCatRoster,
   });
+  notifyTelegramReady();
 
   unbindSaveLifecycle = bindSaveLifecycle(
     portfolioPersistence,

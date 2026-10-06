@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  notifyTelegramReady,
   readTelegramInitData,
   signInWithTelegram,
   type TelegramAuthClient,
@@ -44,6 +45,27 @@ describe('readTelegramInitData', () => {
   it('resolves the raw initData string when a Mini App host provides one', () => {
     vi.stubGlobal('window', { Telegram: { WebApp: { initData: 'auth_date=1&hash=abc' } } });
     expect(readTelegramInitData()).toBe('auth_date=1&hash=abc');
+  });
+});
+
+describe('notifyTelegramReady', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('does nothing outside a Telegram Mini App', () => {
+    expect(() => notifyTelegramReady()).not.toThrow();
+    vi.stubGlobal('window', {});
+    expect(() => notifyTelegramReady()).not.toThrow();
+  });
+
+  it('dismisses the native loading placeholder when the SDK is available', () => {
+    const ready = vi.fn();
+    vi.stubGlobal('window', { Telegram: { WebApp: { ready } } });
+
+    notifyTelegramReady();
+
+    expect(ready).toHaveBeenCalledExactlyOnceWith();
   });
 });
 

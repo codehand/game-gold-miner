@@ -55,6 +55,18 @@ export function readTelegramInitData(): string | null {
   return typeof initData === 'string' && initData !== '' ? initData : null;
 }
 
+/** Removes Telegram's native loading placeholder once the game canvas exists. */
+export function notifyTelegramReady(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const telegramWindow = window as unknown as {
+    Telegram?: { WebApp?: { ready?: () => void } };
+  };
+  telegramWindow.Telegram?.WebApp?.ready?.();
+}
+
 interface TelegramSignInResponseBody {
   readonly tokenHash?: unknown;
   readonly error?: { readonly message?: unknown };

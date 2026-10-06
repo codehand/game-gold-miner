@@ -11,6 +11,7 @@ export default defineConfig(
       'dist/**',
       'node_modules/**',
       'playwright-report/**',
+      'public/vendor/telegram-web-app.js',
       'supabase/functions/_shared/generated/**',
       'test-results/**',
     ],
