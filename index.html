@@ -8,7 +8,6 @@
     />
     <meta name="theme-color" content="#111827" />
     <title>Cat Mine Idle</title>
-    <script src="/vendor/telegram-web-app.js"></script>
     <style>
       #boot-status {
         position: absolute;
@@ -28,6 +27,14 @@
       <div id="game-viewport" data-testid="game-viewport"></div>
       <div id="boot-status" role="status">Đang tải game...</div>
     </main>
+    <script>
+      // Tell Telegram's native WebView that visible HTML exists even if the
+      // SDK request stalls. The SDK's ready() below repeats this harmlessly.
+      try {
+        window.TelegramWebviewProxy?.postEvent?.('web_app_ready', '{}');
+      } catch {}
+    </script>
+    <script src="/vendor/telegram-web-app.js"></script>
     <script>window.Telegram?.WebApp?.ready?.();</script>
     <script type="module" src="/src/main.ts"></script>
   </body>

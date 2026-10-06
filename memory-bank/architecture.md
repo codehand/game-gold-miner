@@ -891,9 +891,12 @@ creates a row after a valid HMAC check. The shared CORS policy allows the
 exact Vercel origin. No save or relational schema changed for the Mini App
 host.
 
-BotFather confirmed that GAME points at this URL on 2026-10-06. The first
-real phone launch stalled before the game appeared, so live session creation
-is still an open release gate; PR #14 addresses the SDK loading dependency.
+BotFather confirmed that GAME points at this URL on 2026-10-06. PR #14 is
+deployed; `/health.html` loads on the real iPhone, but Telegram's GAME still
+shows its loading placeholder and no player session has been created. The
+HTML now draws its loading shell before requesting the SDK and sends
+`web_app_ready` through Telegram's native bridge immediately. Live session
+creation remains an open release gate.
 
 `describeError` moved out of `src/platform/web/` to
 `src/platform/describeError.ts`, shared by `web/` and the new `telegram/`

@@ -73,23 +73,60 @@ interface TelegramSignInResponseBody {
 }
 
 /**
+ * Upper bound on the whole sign-in exchange (Edge Function round trip plus
+ * `verifyOtp`). `src/main.ts` awaits this result before it creates the game,
+ * so an unanswered request inside Telegram's WebView would otherwise leave the
+ * player on the loading shell forever. On timeout the request is aborted and
+ * the player boots on the local-only path, exactly as for any other failure.
+ */
+export const TELEGRAM_SIGN_IN_TIMEOUT_MS = 15_000;
+
+/**
  * Verifies `initData` against the `telegram-sign-in` Edge Function and
- * completes the resulting session. Never throws.
+ * completes the resulting session. Never throws, and always settles within
+ * `timeoutMs`.
  */
 export async function signInWithTelegram(
   initData: string,
   edgeFunctionUrl: string,
   auth: TelegramAuthClient | null,
+  timeoutMs: number = TELEGRAM_SIGN_IN_TIMEOUT_MS,
 ): Promise<TelegramSignInResult> {
   if (auth === null) {
     return { status: 'unconfigured' };
   }
 
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<TelegramSignInResult>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve({ status: 'error', reason: `Telegram sign-in timed out after ${timeoutMs} ms` });
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([
+      exchangeInitData(initData, edgeFunctionUrl, auth, controller.signal),
+      timedOut,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function exchangeInitData(
+  initData: string,
+  edgeFunctionUrl: string,
+  auth: TelegramAuthClient,
+  signal: AbortSignal,
+): Promise<TelegramSignInResult> {
   try {
     const response = await fetch(edgeFunctionUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ initData }),
+      signal,
     });
 
     const body = (await response.json().catch(() => null)) as TelegramSignInResponseBody | null;

@@ -59,6 +59,7 @@ import {
   loadCatCollectionViaFetch,
   purchaseCatViaFetch,
   readGoogleIdentityReturnError,
+  reportBootFailure,
   replaceCatAssignmentViaFetch,
   buyMarketplaceListingViaFetch,
   cancelMarketplaceListingViaFetch,
@@ -1256,7 +1257,14 @@ async function activateMineBoost(): Promise<BoostCommandResult> {
   return result;
 }
 
-void startApplication();
+void startApplication().catch((error: unknown) => {
+  // Boot is fire-and-forget, so a throw here would otherwise leave the loading
+  // shell up forever with nothing to say why — inside Telegram, the only
+  // thing the player can see. Surface it, and release Telegram's placeholder.
+  console.error('Cat Mine Idle failed to boot.', error);
+  reportBootFailure(document.getElementById('boot-status'), error);
+  notifyTelegramReady();
+});
 
 function getPreferGoogleSignIn(): boolean {
   return getAvailableLocalStorage()?.getItem(PREFER_GOOGLE_SIGN_IN_KEY) === '1';

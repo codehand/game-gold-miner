@@ -64,6 +64,45 @@ const RUNTIME_ASSET_PATHS: readonly string[] = [
   ...PLACEHOLDER_ANIMATION_ASSETS.map(([, path]) => path),
 ];
 
+test('shows loading and releases Telegram native placeholder before SDK completes', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const events: string[] = [];
+    Object.defineProperty(window, '__telegramBridgeEvents', { value: events });
+    Object.defineProperty(window, 'TelegramWebviewProxy', {
+      value: {
+        postEvent(eventType: string, payload: string) {
+          events.push(`${eventType}:${payload}`);
+        },
+      },
+    });
+  });
+
+  let releaseSdk!: () => void;
+  const sdkGate = new Promise<void>((resolve) => {
+    releaseSdk = resolve;
+  });
+  await page.route('**/vendor/telegram-web-app.js', async (route) => {
+    await sdkGate;
+    await route.continue();
+  });
+
+  try {
+    await page.goto('/', { waitUntil: 'commit' });
+    await expect(page.locator('#boot-status')).toBeVisible();
+    const bridgeEvents = await page.evaluate(
+      () =>
+        (window as Window & { __telegramBridgeEvents?: string[] }).__telegramBridgeEvents,
+    );
+    expect(bridgeEvents).toContain('web_app_ready:{}');
+  } finally {
+    releaseSdk();
+  }
+
+  await waitForBootedScene(page);
+});
+
 test('serves the optimized bundle and every runtime asset from the root base path', async ({
   page,
 }) => {
@@ -105,7 +144,7 @@ test('serves the optimized bundle and every runtime asset from the root base pat
     };
   });
 
-  expect(scripts[0], 'Telegram must provide signed initData before the game boots').toBe(
+  expect(scripts, 'Telegram SDK must be present in the production HTML').toContain(
     '/vendor/telegram-web-app.js',
   );
 

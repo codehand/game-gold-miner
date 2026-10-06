@@ -4,6 +4,7 @@ import {
   notifyTelegramReady,
   readTelegramInitData,
   signInWithTelegram,
+  TELEGRAM_SIGN_IN_TIMEOUT_MS,
   type TelegramAuthClient,
 } from '../../src/platform/telegram';
 
@@ -71,6 +72,7 @@ describe('notifyTelegramReady', () => {
 
 describe('signInWithTelegram', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -93,6 +95,7 @@ describe('signInWithTelegram', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ initData: 'init-data' }),
+      signal: expect.any(AbortSignal),
     });
     expect(auth.verifyOtp).toHaveBeenCalledExactlyOnceWith({
       token_hash: 'fixture-hash',
@@ -150,5 +153,60 @@ describe('signInWithTelegram', () => {
       status: 'error',
       reason: 'offline',
     });
+  });
+
+  // Regression: main.ts awaits this result before creating the game, so a
+  // request Telegram's WebView never answers kept the Mini App on the loading
+  // shell forever.
+  it('settles with an error and aborts the request when the function never answers', async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init: RequestInit) => {
+        requestSignal = init.signal ?? undefined;
+        return new Promise<Response>(() => {});
+      }),
+    );
+
+    const result = signInWithTelegram('init-data', EDGE_FUNCTION_URL, fakeAuth());
+    await vi.advanceTimersByTimeAsync(TELEGRAM_SIGN_IN_TIMEOUT_MS);
+
+    await expect(result).resolves.toEqual({
+      status: 'error',
+      reason: `Telegram sign-in timed out after ${TELEGRAM_SIGN_IN_TIMEOUT_MS} ms`,
+    });
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it('settles with an error when verifyOtp never settles', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(200, { tokenHash: 'fixture-hash' })),
+    );
+    const auth = fakeAuth({ verifyOtp: vi.fn(() => new Promise<{ error: unknown }>(() => {})) });
+
+    const result = signInWithTelegram('init-data', EDGE_FUNCTION_URL, auth, 1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(result).resolves.toEqual({
+      status: 'error',
+      reason: 'Telegram sign-in timed out after 1000 ms',
+    });
+  });
+
+  it('does not time out a sign-in that completes in time', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(200, { tokenHash: 'fixture-hash' })),
+    );
+
+    const result = signInWithTelegram('init-data', EDGE_FUNCTION_URL, fakeAuth(), 1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(result).resolves.toEqual({ status: 'signed-in' });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
