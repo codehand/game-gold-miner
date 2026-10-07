@@ -98,11 +98,28 @@ describe('telegram-sign-in (server-milestone Step 12)', () => {
     const first = (await (await callTelegramSignIn(mintValidInitData())).json()) as SignInSuccessBody;
     const { data: firstSession } = await completeSignIn(first.tokenHash);
 
-    const second = (await (await callTelegramSignIn(mintValidInitData())).json()) as SignInSuccessBody;
+    // Telegram clients can also include an Ed25519 `signature` field.
+    // The bot-token HMAC must cover it so a returning player reaches the
+    // same cloud account rather than falling back to an empty local game.
+    const secondResponse = await callTelegramSignIn(mintValidInitData({
+      signature: 'Zm9vYmFyLWVkMjU1MTktc2lnbmF0dXJlLWZpeHR1cmU',
+    }));
+    expect(secondResponse.status).toBe(200);
+    const second = (await secondResponse.json()) as SignInSuccessBody;
     const { data: secondSession } = await completeSignIn(second.tokenHash);
 
     expect(firstSession.session?.user.id).toBeDefined();
     expect(firstSession.session?.user.id).toBe(secondSession.session?.user.id);
+  });
+
+  it('rejects a signature field changed after Telegram signed the payload', async () => {
+    const signed = mintValidInitData({ signature: 'original-signature-value' });
+    const tampered = new URLSearchParams(signed);
+    tampered.set('signature', 'changed-signature-value');
+
+    const response = await callTelegramSignIn(tampered.toString());
+
+    expect(response.status).toBe(401);
   });
 
   it('rejects a tampered payload — no session issued', async () => {

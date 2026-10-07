@@ -810,9 +810,9 @@ token, no real bot or Mini App host required.
 
 **Verification algorithm**, implemented in
 `supabase/functions/telegram-sign-in/index.ts`'s `verifyTelegramInitData`,
-matching Telegram's own documentation exactly: every field except `hash`
-(and `signature`, a separate Ed25519 third-party scheme this function does
-not use), as `key=value` pairs sorted alphabetically and joined by `\n`, is
+matching Telegram's own documentation exactly: every field except `hash`,
+including the optional `signature`, as `key=value` pairs sorted alphabetically
+and joined by `\n`, is
 the data-check-string; `secret_key = HMAC_SHA256(key="WebAppData",
 data=botToken)`; `computed = hex(HMAC_SHA256(key=secret_key,
 data=dataCheckString))` must equal `hash`, compared in constant time.
@@ -897,6 +897,11 @@ shows its loading placeholder and no player session has been created. The
 HTML now draws its loading shell before requesting the SDK and sends
 `web_app_ready` through Telegram's native bridge immediately. Live session
 creation remains an open release gate.
+
+On 2026-10-07, the HMAC verifier was corrected to include the optional
+`signature` field and `telegram-sign-in` version 6 was deployed to production.
+The hosted endpoint passes CORS/malformed-payload smoke checks; a real-device
+return-save check remains open.
 
 `describeError` moved out of `src/platform/web/` to
 `src/platform/describeError.ts`, shared by `web/` and the new `telegram/`

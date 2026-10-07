@@ -10,9 +10,10 @@
  *
  * **Verification algorithm** (Telegram's own docs,
  * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app):
- * every field except `hash` (and `signature`, which belongs to a separate
- * Ed25519 third-party scheme this function does not use), as `key=value`
- * pairs sorted alphabetically and joined with `\n`, is the data-check-string.
+ * every field except `hash`, as `key=value` pairs sorted alphabetically and
+ * joined with `\n`, is the data-check-string. That includes `signature`:
+ * Telegram signs it into `hash` when present, and only the separate
+ * Ed25519 third-party scheme (not used here) drops it.
  * `secret_key = HMAC_SHA256(key="WebAppData", data=botToken)` — the literal
  * string `"WebAppData"` is the HMAC *key*, the bot token is the *message* —
  * then `computed = hex(HMAC_SHA256(key=secret_key, data=dataCheckString))`
@@ -176,10 +177,10 @@ export async function verifyTelegramInitData(
   }
 
   params.delete('hash');
-  // `signature` belongs to the separate Ed25519 third-party-verifier scheme
-  // this function does not implement; excluded from the data-check-string
-  // the same way `hash` itself is.
-  params.delete('signature');
+  // Only `hash` leaves the data-check-string. Real clients (Bot API 8.0+)
+  // also send `signature`, and Telegram's HMAC `hash` covers it; deleting it
+  // made genuine payloads containing it fail as `bad-hash`. Only the separate
+  // Ed25519 third-party scheme, which this function does not use, drops it.
 
   const dataCheckString = [...params.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))

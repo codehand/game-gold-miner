@@ -37,6 +37,7 @@ function signInitData(fields: Record<string, string>, botToken: string): string 
 export interface MintInitDataOptions {
   readonly authDateSecondsAgo?: number;
   readonly botToken?: string;
+  readonly signature?: string;
   readonly telegramUserId?: number;
 }
 
@@ -44,18 +45,18 @@ export function mintValidInitData(options: MintInitDataOptions = {}): string {
   const {
     authDateSecondsAgo = 60,
     botToken = FIXTURE_TELEGRAM_BOT_TOKEN,
+    signature,
     telegramUserId = FIXTURE_TELEGRAM_USER_ID,
   } = options;
   const authDateSeconds = Math.floor(Date.now() / 1000) - authDateSecondsAgo;
+  const fields: Record<string, string> = {
+    auth_date: String(authDateSeconds),
+    query_id: 'AAFixtureQueryId',
+    user: JSON.stringify({ id: telegramUserId, first_name: 'Ada', username: 'ada' }),
+  };
+  if (signature !== undefined) fields.signature = signature;
 
-  return signInitData(
-    {
-      auth_date: String(authDateSeconds),
-      query_id: 'AAFixtureQueryId',
-      user: JSON.stringify({ id: telegramUserId, first_name: 'Ada', username: 'ada' }),
-    },
-    botToken,
-  );
+  return signInitData(fields, botToken);
 }
 
 /** Validly signed, but past `MAX_INIT_DATA_AGE_SECONDS` — a replayed payload. */

@@ -2,25 +2,26 @@
 
 ## Current Focus
 
-**Production Telegram Mini App, 2026-10-06 — rollout in progress.** Vercel
+**Production Telegram Mini App, 2026-10-07 — return-save defect under repair.** Vercel
 serves `https://game-gold-miner-sepia.vercel.app/` from `master`. Supabase
 project `ntzdbwuouugvadisazge` now has all 19 migrations and seven
 player-facing Edge Functions. The exact Vercel origin is allowed by function
 CORS. `TELEGRAM_BOT_TOKEN` and a generated recovery pepper are in Supabase
 Secrets; public Auth signups are disabled against predictable Telegram
 placeholder-email preemption. BotFather confirms the GAME menu URL is the
-production Vercel URL. PR #14 is merged and production Ready; `/`,
-`/health.html` and the vendored Telegram SDK return HTTP 200. The real iPhone
-loads `/health.html` in Safari, but GAME still shows Telegram's native loading
-placeholder. Supabase has no created Telegram user. A follow-up fix draws the
-HTML loading shell and sends native `web_app_ready` before requesting the SDK,
-so a stalled SDK request cannot hide the shell or hold the native placeholder.
-Boot also can no longer stall silently behind sign-in: `signInWithTelegram`
-settles within `TELEGRAM_SIGN_IN_TIMEOUT_MS` (15 s, aborting the request) and
-falls back to local play, and a throw from `startApplication()` replaces the
-loading text with `reportBootFailure`'s visible message plus its reason.
-The remaining gate is to deploy this fix and verify a real phone game launch,
-session creation, and returning-player sign-in.
+production Vercel URL. PR #14 is merged and production Ready. The game now
+launches in Telegram, but a player reports floors and gold missing after
+closing and reopening it. A deterministic reproduction found that the
+deployed verifier's HMAC omitted Telegram's optional `signature` field, so
+signed payloads containing it fail with HTTP 401. The client then boots from
+local WebView storage without a cloud session. The source fix includes
+`signature` in the HMAC data-check-string; unit regression tests pass. A live
+integration test against the running local stack still returns 401 because
+that stack mounts an older `/private/tmp/ci-wt` checkout, not this worktree.
+The corrected `telegram-sign-in` Edge Function is deployed as production
+version 6; its endpoint answers CORS preflight with 204 and rejects malformed
+`initData` with 401. The remaining gate is to verify real-phone Telegram
+sign-in and that a gold/floor save survives close and reopen.
 
 **Multi-mine Map, 2026-10-05 — complete and release-verified.** The V4
 portfolio now provides six purchasable resource sites, one shared wallet, one

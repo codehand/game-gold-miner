@@ -1973,7 +1973,7 @@ database transaction. No IndexedDB or localStorage journal schema changes.
   provable against the real local stack with hand-signed fixture vectors,
   no real bot or Mini App host needed. `supabase/functions/telegram-sign-in/index.ts`'s
   `verifyTelegramInitData` matches Telegram's documented algorithm exactly
-  (data-check-string excludes `hash`/`signature`, sorted `key=value` pairs
+  (data-check-string excludes only `hash` and includes `signature` when present, sorted `key=value` pairs
   joined by `\n`; `secret_key = HMAC_SHA256(key="WebAppData", data=botToken)`;
   `computed = hex(HMAC_SHA256(key=secret_key, data=dataCheckString))` must
   equal `hash`, constant-time compared; `auth_date` freshness defaults to
