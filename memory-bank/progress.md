@@ -2,21 +2,34 @@
 
 ## Status Summary
 
-**Production Telegram Mini App, 2026-10-06 — rollout in progress:** Vercel
+**Production Telegram Mini App, 2026-10-07 — return-save defect under repair:** Vercel
 hosts the game; Supabase production has 19 migrations, seven player-facing Edge
 Functions, bot-token and recovery-pepper Secrets. Public Auth signup is off so
 predictable Telegram placeholder emails cannot be claimed through `/signup`.
-The existing Edge Function verifies signed `initData` before creating/reusing
-the player's account. BotFather confirms GAME points at Vercel. PR #14 is
-merged and Ready in production; the iPhone loads its static `/health.html`
-page in Safari, but GAME still shows Telegram's loading placeholder and no
-Supabase player exists. A follow-up moves the loading shell and native
-`web_app_ready` before the SDK request; sign-in now times out after 15 s
-and a boot exception is shown on the loading shell instead of hanging there
-(regression tests in `telegram-sign-in.test.ts` and `boot-failure.test.ts`;
-878 unit tests, lint and build pass). The gate is a real phone game launch
-and Supabase account creation/reuse after this follow-up deploys; production
-CORS preflight and malformed POST already behave as expected.
+BotFather confirms GAME points at Vercel and the game now launches. A player
+reports that floors and gold disappear after reopening. The Edge Function's
+bot-token HMAC omitted the optional `signature` field from Telegram `initData`;
+payloads containing it are rejected with 401, leaving the game on local
+WebView storage without a cloud session. The source fix and regression tests
+cover this signed field. The running local integration stack uses an older
+checkout, so its 401 is a reproduction of the old deployment rather than a
+verification of the edited source. The corrected `telegram-sign-in` function
+is deployed as production version 6; a smoke check receives 204 for CORS
+preflight and 401 for malformed `initData`. Safari inspection found the actual
+Telegram account and a V4 cloud save at revision 73 with four unlocked floors,
+elevator level 59 and warehouse level 20. `save_audit` exposed false
+`walletGold` rejections at the exact serialized bound, and the client delayed
+ordinary upgrades until its 30-second heartbeat while hiding failed uploads.
+The follow-up source fix canonicalizes that bound, saves upgrades locally at
+once, queues immediate cloud sync with latest-snapshot coalescing, and reports
+failed sync in the game. Focused regression tests, Deno handler tests, lint and
+build pass. The new `save-sync` source is deployed. Its health route initially
+falsely reported 503: Supabase's REST root requires a secret key, although a
+public-key `saves` read returned 200 and SQL remained available. The health
+probe now uses `saves`, with a regression test, and production health returns
+200. PR #16 has a Ready Vercel preview and awaits CI before frontend
+production deployment. Remaining gate: real Telegram close/reopen with the
+same account and known gold/floor values.
 
 **Multi-mine Map, 2026-10-05 — complete and release-verified:** the six-site
 catalog, V4 portfolio/migration, shared wallet, single foreground runtime,

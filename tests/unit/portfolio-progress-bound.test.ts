@@ -65,6 +65,36 @@ describe('server portfolio routine bound', () => {
     expect(bound(previous, candidate)?.counter).toBe('walletGold');
   });
 
+  it('accepts a wallet equal to the serialized delivery limit', () => {
+    const previous = createInitialPortfolio(0);
+    const priorGold = GameNumber.from('663932.2713306472');
+    const delivered = GameNumber.from('1103.956619838653');
+    const maximum = priorGold.add(delivered);
+    const candidateGold = GameNumber.from(maximum.serialize());
+    // Reproduces the production 422: internal floating bits compare greater
+    // even though both values serialize to the exact same save value.
+    expect(candidateGold.serialize()).toBe(maximum.serialize());
+    expect(candidateGold.greaterThan(maximum)).toBe(true);
+    const goldMine = previous.mines.gold!;
+    const candidate: PortfolioState = {
+      ...previous,
+      walletGold: candidateGold,
+      mines: {
+        gold: {
+          ...goldMine,
+          state: {
+            ...goldMine.state,
+            warehouse: {
+              ...goldMine.state.warehouse,
+              totalGoldDelivered: delivered,
+            },
+          },
+        },
+      },
+    };
+    expect(bound({ ...previous, walletGold: priorGold }, candidate, 1_000_000_000)).toBeNull();
+  });
+
   it('rejects direct claims, ownership changes, and inactive mine edits', () => {
     const original = createInitialPortfolio(0);
     const gold = original.mines.gold!;

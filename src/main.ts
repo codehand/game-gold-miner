@@ -54,6 +54,7 @@ import {
   LIFECYCLE_SAVE_JOURNAL_KEY,
   loadPortfolioSession,
   PortfolioCloudGateway,
+  PortfolioRoutineSyncQueue,
   PortfolioCommandJournal,
   loadLeaderboardViaFetch,
   loadCatCollectionViaFetch,
@@ -2312,6 +2313,18 @@ async function startConfiguredPortfolioApplication(): Promise<void> {
   }
   portfolioCloudCommands = boot.commands;
   const loaded = deserializePortfolioSaveDocument(boot.document);
+  const routineSync = new PortfolioRoutineSyncQueue(boot.commands, (outcome) => {
+    if (outcome.kind === 'ok') {
+      saveDiagnostics.dismiss('portfolio-routine-sync-failed');
+      return;
+    }
+    saveDiagnostics.report({
+      code: 'portfolio-routine-sync-failed',
+      message: outcome.kind === 'conflict'
+        ? 'Cloud progress changed. Reload the game before continuing.'
+        : 'Cloud could not save the latest progress. It remains on this device and will retry.',
+    });
+  });
   const runtime = new PortfolioMineRuntime({
     portfolio: loaded.portfolio,
     catRoster: loaded.catRoster,
@@ -2319,9 +2332,12 @@ async function startConfiguredPortfolioApplication(): Promise<void> {
     now: () => Date.now(),
     onCommandApplied: (next) => {
       if (!localSavesSuspended) {
-        portfolioPersistence.queueSave(createPortfolioSaveDocument(
+        const document = createPortfolioSaveDocument(
           next, Date.now(), runtime.fullCatRoster,
-        ));
+        );
+        portfolioPersistence.queueSave(document);
+        void portfolioPersistence.flush();
+        routineSync.enqueue(document);
       }
     },
   });
@@ -2629,7 +2645,7 @@ async function startConfiguredPortfolioApplication(): Promise<void> {
       runtime.portfolio, Date.now(), runtime.fullCatRoster,
     );
     portfolioPersistence.queueSave(document);
-    void boot.commands.syncRoutine(document);
+    routineSync.enqueue(document);
   }, SAVE_HEARTBEAT_MS);
 }
 

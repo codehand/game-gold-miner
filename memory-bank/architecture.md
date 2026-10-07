@@ -280,6 +280,20 @@ Configured and unconfigured clients plus save-sync use one strict `PortfolioSave
 
 Each `mines[id]` contains the exact V3 `state` fields except `gold`, plus non-negative `purchasedAtMs`, `visitCount`, `offlineSequence` and `lastClaimedSequence`; `offline` is `null` or `{ sequence, startedAtMs, savedRatePerSecond }`, and `pendingClaim` is `null` or that interval plus `endedAtMs`. Rates are non-negative numeric strings and timestamps/sequences must match the mine state, visits and claim cursors. A purchased but unvisited mine has neither interval. Normally the active mine has no `offline` interval and every previously visited inactive mine has one; during an unavailable configured entry, the active target may retain exactly one older `pendingClaim` while earning live from its later entry boundary. Another switch is blocked until that claim settles. `cats`, `assignments`, `assignmentRevision` and `collectionRevision` retain the V3 cat-field and revision constraints, but V4 assignment keys are `mine:<ownedMineId>:<role slot>`. The same short role slot may be occupied in different mines by different owned cats; one cat cannot occupy two slots. V3 and early local V4 short keys migrate to Gold; early V4 documents without `pendingClaim` migrate to `null`. The active scene projects only its mine's qualified assignments to short keys. V1/V2/V3 load into a suspended Gold portfolio before a durable V4 write. The server accepts bounded V4 routine saves against existing V4 rows, while only its command RPC may change ownership, the active mine or offline claims. Configured clients reconcile and adopt the canonical V4 document before runtime starts.
 
+Configured runtime commands now flush the local V4 document immediately and
+enqueue the newest snapshot for cloud upload; overlapping edits coalesce while
+one upload runs. The 30-second heartbeat still captures passive production and
+retries an unavailable upload. A failed routine upload raises a player-visible
+notice, and success clears it. The server compares `walletGold` against the
+delivery limit after serializing that computed limit, because `GameNumber` can
+retain a floating bit that is absent from the save's numeric string. This
+prevents a false `422 save_rejected` when claimed and maximum serialize
+identically without weakening the bound on any representable higher value.
+The `save-sync` health route probes anonymous `saves?select=revision&limit=1`
+through PostgREST, which returns 200 with no rows under `saves_select_own`.
+The REST root requires a secret key and cannot serve as an anon-key database
+health probe; it falsely returned 503 while SQL and table reads were healthy.
+
 ## Save Recovery Contract
 
 `loadActiveGame` is the application load boundary above raw persistence. Empty storage creates a normal fresh state without a warning. A valid document is fully migrated, validated, and deserialized before any authoritative state is returned. If migration or validation fails, no field from the candidate enters runtime state: the loader classifies unsupported schema versions as incompatible and all other invalid candidates as corrupt, records a stable warning with a detached structured-clone snapshot when safe, and creates a complete fresh state at the caller-provided timestamp. Diagnostic callbacks are best-effort and cannot turn a recoverable persistence or save-format failure into an uncaught exception. The invalid IndexedDB record is not mutated during recovery.
@@ -810,9 +824,9 @@ token, no real bot or Mini App host required.
 
 **Verification algorithm**, implemented in
 `supabase/functions/telegram-sign-in/index.ts`'s `verifyTelegramInitData`,
-matching Telegram's own documentation exactly: every field except `hash`
-(and `signature`, a separate Ed25519 third-party scheme this function does
-not use), as `key=value` pairs sorted alphabetically and joined by `\n`, is
+matching Telegram's own documentation exactly: every field except `hash`,
+including the optional `signature`, as `key=value` pairs sorted alphabetically
+and joined by `\n`, is
 the data-check-string; `secret_key = HMAC_SHA256(key="WebAppData",
 data=botToken)`; `computed = hex(HMAC_SHA256(key=secret_key,
 data=dataCheckString))` must equal `hash`, compared in constant time.
@@ -897,6 +911,11 @@ shows its loading placeholder and no player session has been created. The
 HTML now draws its loading shell before requesting the SDK and sends
 `web_app_ready` through Telegram's native bridge immediately. Live session
 creation remains an open release gate.
+
+On 2026-10-07, the HMAC verifier was corrected to include the optional
+`signature` field and `telegram-sign-in` version 6 was deployed to production.
+The hosted endpoint passes CORS/malformed-payload smoke checks; a real-device
+return-save check remains open.
 
 `describeError` moved out of `src/platform/web/` to
 `src/platform/describeError.ts`, shared by `web/` and the new `telegram/`

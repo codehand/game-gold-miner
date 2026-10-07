@@ -75,6 +75,55 @@ Deno.test('verifyTelegramInitData accepts a validly signed, fresh payload', asyn
   assert.deepEqual(result, { valid: true, telegramUserId: TELEGRAM_USER_ID });
 });
 
+// Regression: real Telegram clients (Bot API 8.0+) send a `signature` field
+// alongside `hash`, and Telegram's HMAC `hash` covers it. Deleting it before
+// hashing rejected genuine payloads containing it as `bad-hash`.
+Deno.test('verifyTelegramInitData accepts a real-client payload whose signed fields include signature', async () => {
+  const initData = await signInitData(
+    {
+      ...baseFields(NOW_SECONDS - 60),
+      chat_instance: '-1234567890123456789',
+      chat_type: 'sender',
+      signature: 'Zm9vYmFyLWVkMjU1MTktc2lnbmF0dXJlLWZpeHR1cmU',
+    },
+    BOT_TOKEN,
+  );
+
+  const result = await verifyTelegramInitData(initData, BOT_TOKEN, NOW_MS);
+
+  assert.deepEqual(result, { valid: true, telegramUserId: TELEGRAM_USER_ID });
+});
+
+Deno.test('verifyTelegramInitData rejects a payload whose signature field was altered after signing', async () => {
+  const signed = await signInitData(
+    { ...baseFields(NOW_SECONDS - 60), signature: 'original-signature-value' },
+    BOT_TOKEN,
+  );
+  const tampered = new URLSearchParams(signed);
+  tampered.set('signature', 'replaced-signature-value');
+
+  const result = await verifyTelegramInitData(tampered.toString(), BOT_TOKEN, NOW_MS);
+
+  assert.deepEqual(result, { valid: false, reason: 'bad-hash' });
+});
+
+Deno.test('handleTelegramSignIn accepts a signed payload containing signature through the real verifier', async () => {
+  const initData = await signInitData(
+    { ...baseFields(NOW_SECONDS - 60), signature: 'signed-third-party-field' },
+    BOT_TOKEN,
+  );
+  const response = await handleTelegramSignIn(request({ initData }), {
+    verify: (raw) => verifyTelegramInitData(raw, BOT_TOKEN, NOW_MS),
+    mintSession: (telegramUserId) => {
+      assert.equal(telegramUserId, TELEGRAM_USER_ID);
+      return Promise.resolve({ status: 'minted', tokenHash: 'fixture-token-hash' });
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { tokenHash: 'fixture-token-hash' });
+});
+
 Deno.test('verifyTelegramInitData rejects a payload tampered after signing', async () => {
   const initData = await signInitData(baseFields(NOW_SECONDS - 60), BOT_TOKEN);
   const tampered = initData.replace('Ada', 'Eve');
