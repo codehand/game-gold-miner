@@ -694,6 +694,17 @@ variants and the future Unloader role remain preview/source assets.
 
 **Portfolio document V4:** `schemaVersion` is exactly `4`; `savedAtTimestampMs` is a non-negative safe integer. `walletGold` is the sole non-negative numeric string for spendable gold. `activeMineId` is a configured site id or `null`; `selectedMineId` is an owned site id and equals the active id when active; `boostMineId` is `null` or an owned site id. `mines` has keys only from Gold, Amethyst, Ruby, Sapphire, Emerald and Diamond, always includes Gold, and requires ownership of each site's prerequisite. Unknown fields are rejected. Each owned mine holds the exact V3 `state` fields except `gold`, non-negative `purchasedAtMs`, `visitCount`, `offlineSequence` and `lastClaimedSequence`; `offline` is `null` or `{ sequence, startedAtMs, savedRatePerSecond }`, and `pendingClaim` is `null` or that interval plus `endedAtMs`. Rates are non-negative numeric strings and all timestamps, visit counts and claim cursors must agree. An unvisited mine has neither interval. Normally the active mine has no `offline` interval and every previously visited inactive mine has one; an unavailable configured entry may leave one older `pendingClaim` on the active target while its foreground state advances from the later entry boundary, and blocks another switch until settlement. Cat records and two revision fields retain V3 field validation; V4 assignments use `mine:<ownedMineId>:<role slot>` and remain unique per cat and per qualified slot. V3 and early V4 short keys migrate to Gold; early V4 documents without `pendingClaim` migrate to `null`. The active scene projects only its mine's assignments to short keys. V1/V2/V3 load into a suspended Gold portfolio before a durable V4 write. The save-sync server accepts V4 routine uploads after a V4 row exists and rejects direct client changes to ownership, mine selection, inactive progress and offline claims. First V4 account upload reanchors timestamps to the server receipt. The portfolio command RPC owns migration, purchase and claim revisions. Configured clients use V4 and adopt canonical command receipts before the next routine sync.
 
+The 2026-10-07 return-save repair adds `PortfolioRoutineSyncQueue` to coalesce
+configured command snapshots, upload them immediately after a local flush, and
+retry a failed upload on the next edit or heartbeat. The game shows a sync
+failure notice instead of silently ignoring the result. The server's V4
+`walletGold` upper-bound comparison canonicalizes the computed maximum through
+`GameNumber.serialize()` before comparing it with the document's representable
+numeric string. This fixes observed production `save_audit` false rejections
+where claimed and maximum strings were identical. Run
+`npm run build:server-core` before testing or deploying `save-sync`; that generated
+bundle is the Edge Function's actual copy of the shared core.
+
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 
 ## Complete Database Schema

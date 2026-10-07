@@ -20,8 +20,18 @@ integration test against the running local stack still returns 401 because
 that stack mounts an older `/private/tmp/ci-wt` checkout, not this worktree.
 The corrected `telegram-sign-in` Edge Function is deployed as production
 version 6; its endpoint answers CORS preflight with 204 and rejects malformed
-`initData` with 401. The remaining gate is to verify real-phone Telegram
-sign-in and that a gold/floor save survives close and reopen.
+`initData` with 401. Safari inspection on 2026-10-07 found one Telegram Auth
+user and one cloud V4 save; revision 73 retained four unlocked Gold floors,
+elevator level 59, warehouse level 20 and a growing wallet. The production
+`save_audit` also recorded three false `walletGold` rejections where claimed and
+maximum serialized to identical strings, plus two rejected uploads of a
+suspended mine. The client only uploaded ordinary upgrades on its 30-second
+heartbeat and ignored the upload result. A local follow-up now compares the
+server's wallet bound at serialized precision, flushes local upgrades at once,
+queues immediate coalesced cloud uploads, and shows a retry notice on failure.
+Focused Vitest, Deno handler, lint and build pass. The new save-sync function
+and Vercel client are not deployed yet; real-phone close/reopen remains the
+release gate.
 
 **Multi-mine Map, 2026-10-05 — complete and release-verified.** The V4
 portfolio now provides six purchasable resource sites, one shared wallet, one

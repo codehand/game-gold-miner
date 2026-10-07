@@ -15,8 +15,16 @@ cover this signed field. The running local integration stack uses an older
 checkout, so its 401 is a reproduction of the old deployment rather than a
 verification of the edited source. The corrected `telegram-sign-in` function
 is deployed as production version 6; a smoke check receives 204 for CORS
-preflight and 401 for malformed `initData`. Remaining gate: confirm the same
-real Telegram account restores gold and floors after close and reopen.
+preflight and 401 for malformed `initData`. Safari inspection found the actual
+Telegram account and a V4 cloud save at revision 73 with four unlocked floors,
+elevator level 59 and warehouse level 20. `save_audit` exposed false
+`walletGold` rejections at the exact serialized bound, and the client delayed
+ordinary upgrades until its 30-second heartbeat while hiding failed uploads.
+The follow-up source fix canonicalizes that bound, saves upgrades locally at
+once, queues immediate cloud sync with latest-snapshot coalescing, and reports
+failed sync in the game. Focused regression tests, Deno handler tests, lint and
+build pass. The new source is not yet deployed; remaining gate: real Telegram
+close/reopen with the same account and known gold/floor values.
 
 **Multi-mine Map, 2026-10-05 — complete and release-verified:** the six-site
 catalog, V4 portfolio/migration, shared wallet, single foreground runtime,

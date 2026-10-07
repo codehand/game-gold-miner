@@ -84,7 +84,9 @@ export function evaluatePortfolioRoutineBound(
     before.state.warehouse.totalGoldDelivered,
   );
   const maximumWallet = previous.walletGold.add(deltaDelivered);
-  if (candidate.walletGold.greaterThan(maximumWallet)) {
+  // The computed Decimal can retain a sub-serialized rounding bit. Compare
+  // the same canonical value that a save document can actually represent.
+  if (candidate.walletGold.greaterThan(GameNumber.from(maximumWallet.serialize()))) {
     return violation('walletGold', candidate.walletGold.serialize(), maximumWallet.serialize());
   }
 

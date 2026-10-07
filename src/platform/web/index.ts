@@ -78,6 +78,7 @@ export {
   type PortfolioCommandOutcome,
   type PendingPortfolioCommand,
 } from './portfolioCloudCommands';
+export { PortfolioRoutineSyncQueue } from './portfolioRoutineSyncQueue';
 export {
   PORTFOLIO_COMMAND_JOURNAL_PREFIX,
   PortfolioCommandJournal,

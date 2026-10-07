@@ -699,6 +699,49 @@ Deno.test('V4 routine upload rejects wallet minting and a direct offline claim',
   assert.equal((await claimed.json()).error.detail.counter, 'mines.gold.offlineClaim');
 });
 
+Deno.test('V4 routine upload accepts a wallet at the serialized delivery limit', async () => {
+  const previous = validPortfolioSaveDocument() as {
+    walletGold: string;
+    mines: { gold: { state: { warehouse: Record<string, unknown> } } };
+  } & Record<string, unknown>;
+  const priorGold = GameNumber.from('663932.2713306472');
+  const delivered = GameNumber.from('1103.956619838653');
+  const maximum = priorGold.add(delivered);
+  const candidateGold = GameNumber.from(maximum.serialize());
+  assert.equal(candidateGold.greaterThan(maximum), true);
+  const storedDocument = { ...previous, walletGold: priorGold.serialize() };
+  const candidateDocument = {
+    ...previous,
+    walletGold: candidateGold.serialize(),
+    mines: { gold: {
+      ...previous.mines.gold,
+      state: {
+        ...previous.mines.gold.state,
+        warehouse: {
+          ...previous.mines.gold.state.warehouse,
+          totalGoldDelivered: delivered.serialize(),
+        },
+      },
+    } },
+  };
+  const stored: StoredSaveRow = {
+    revision: 1,
+    documentJson: JSON.stringify(storedDocument),
+    receivedAt: new Date(Date.now() - 1_000_000_000).toISOString(),
+    previousDocumentJson: null,
+    previousReceivedAt: null,
+  };
+  const response = await handleRequest(
+    putSaveRequest({ baseRevision: 1, document: candidateDocument }),
+    noopDeps({
+      resolveCaller: async () => ({ userId: FIXTURE_USER_ID }),
+      readCurrentSave: async () => stored,
+      writeSaveRow: async () => true,
+    }),
+  );
+  assert.equal(response.status, 200);
+});
+
 Deno.test('V4 upload against a V3 row requires an explicit migration', async () => {
   const stored: StoredSaveRow = {
     revision: 1,

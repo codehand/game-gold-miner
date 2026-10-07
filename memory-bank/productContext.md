@@ -30,7 +30,10 @@ game. Telegram supplies a signed identity at launch; a first-time player gets
 an account automatically and a returning player enters the same account without
 an extra registration form. The game verifies that identity on the server before
 loading cloud progress. Browser players can still open the Vercel URL directly
-and play with local storage.
+and play with local storage. Upgrades and newly opened floors should be saved
+locally at once and sent promptly to the account's cloud save, so a short
+Telegram visit can be resumed after closing the Mini App. A failed cloud write
+needs a visible retry notice while the local copy remains intact.
 
 The multi-mine Map expands this journey into six resource locations. One shared
 gold wallet pays for new sites, while only the selected mine earns live gold.
