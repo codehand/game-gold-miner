@@ -704,6 +704,11 @@ numeric string. This fixes observed production `save_audit` false rejections
 where claimed and maximum strings were identical. Run
 `npm run build:server-core` before testing or deploying `save-sync`; that generated
 bundle is the Edge Function's actual copy of the shared core.
+The production `save-sync` health probe uses the anon-readable
+`/rest/v1/saves?select=revision&limit=1` path. Supabase's REST root now
+requires a secret key, so probing it with `SUPABASE_ANON_KEY` falsely produced
+`503 service_unavailable` despite a healthy database. The corrected production
+health endpoint returned HTTP 200 after redeployment.
 
 Production-only services, when justified, are Node.js/Fastify, PostgreSQL, and optional Redis. The MVP should remain client-only.
 

@@ -289,6 +289,10 @@ delivery limit after serializing that computed limit, because `GameNumber` can
 retain a floating bit that is absent from the save's numeric string. This
 prevents a false `422 save_rejected` when claimed and maximum serialize
 identically without weakening the bound on any representable higher value.
+The `save-sync` health route probes anonymous `saves?select=revision&limit=1`
+through PostgREST, which returns 200 with no rows under `saves_select_own`.
+The REST root requires a secret key and cannot serve as an anon-key database
+health probe; it falsely returned 503 while SQL and table reads were healthy.
 
 ## Save Recovery Contract
 

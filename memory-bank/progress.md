@@ -23,8 +23,13 @@ ordinary upgrades until its 30-second heartbeat while hiding failed uploads.
 The follow-up source fix canonicalizes that bound, saves upgrades locally at
 once, queues immediate cloud sync with latest-snapshot coalescing, and reports
 failed sync in the game. Focused regression tests, Deno handler tests, lint and
-build pass. The new source is not yet deployed; remaining gate: real Telegram
-close/reopen with the same account and known gold/floor values.
+build pass. The new `save-sync` source is deployed. Its health route initially
+falsely reported 503: Supabase's REST root requires a secret key, although a
+public-key `saves` read returned 200 and SQL remained available. The health
+probe now uses `saves`, with a regression test, and production health returns
+200. PR #16 has a Ready Vercel preview and awaits CI before frontend
+production deployment. Remaining gate: real Telegram close/reopen with the
+same account and known gold/floor values.
 
 **Multi-mine Map, 2026-10-05 — complete and release-verified:** the six-site
 catalog, V4 portfolio/migration, shared wallet, single foreground runtime,

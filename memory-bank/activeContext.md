@@ -29,9 +29,13 @@ suspended mine. The client only uploaded ordinary upgrades on its 30-second
 heartbeat and ignored the upload result. A local follow-up now compares the
 server's wallet bound at serialized precision, flushes local upgrades at once,
 queues immediate coalesced cloud uploads, and shows a retry notice on failure.
-Focused Vitest, Deno handler, lint and build pass. The new save-sync function
-and Vercel client are not deployed yet; real-phone close/reopen remains the
-release gate.
+Focused Vitest, Deno handler, lint and build pass. `save-sync` is deployed to
+production; PR #16 has a Ready Vercel preview and awaits its required CI gates
+before the client reaches production. Its first health check falsely returned
+503 because Supabase's `/rest/v1/` root now requires a secret key even while
+anonymous table reads work. A follow-up probes `/rest/v1/saves` under the
+select-own policy; its production health check now returns 200. Real-phone
+close/reopen remains the release gate.
 
 **Multi-mine Map, 2026-10-05 — complete and release-verified.** The V4
 portfolio now provides six purchasable resource sites, one shared wallet, one

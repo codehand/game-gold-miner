@@ -32,6 +32,7 @@ import {
   createSaveSyncRateLimiters,
   handleRequest,
   normalizeAuditRevision,
+  probeDatabase,
   resolveFunctionRoute,
   SAVE_UPLOAD_MAX_PER_USER,
   type LeaderboardEntryToWrite,
@@ -206,6 +207,21 @@ Deno.test('handleRequest rejects a non-GET/HEAD method on the health route', asy
   const body = await response.json();
   assert.equal(body.error.code, 'malformed_request');
   assert.equal(body.error.detail.method, 'POST');
+});
+
+Deno.test('health probes an anon-readable saves path instead of the secret-only REST root', async () => {
+  const result = await probeDatabase(
+    'https://example.supabase.co/',
+    'public-key',
+    async (input, init) => {
+      assert.equal(String(input),
+        'https://example.supabase.co/rest/v1/saves?select=revision&limit=1');
+      assert.equal((init as { headers?: Record<string, string> } | undefined)?.headers?.apikey,
+        'public-key');
+      return new Response('[]', { status: 200 });
+    },
+  );
+  assert.equal(result, 'ok');
 });
 
 // `handleHealth` itself calls `fetch` against `Deno.env.get('SUPABASE_URL')`

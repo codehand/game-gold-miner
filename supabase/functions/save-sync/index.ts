@@ -235,19 +235,18 @@ export function resolveFunctionRoute(requestUrl: string): string {
 }
 
 /**
- * Proves the database is reachable through the same pooled path a save read
- * would take. PostgREST holds the connection pool and answers 503 when the
- * database is down, so its root document is a real round trip rather than a
- * self-report. The anon key is used deliberately: see the file header.
- *
- * Step 16 replaces this with a query against `saves` once that table exists;
- * until then no table does, so no narrower probe is available.
+ * Probe the same PostgREST table path a save read uses. Supabase's REST root
+ * now requires a secret key even while anon table reads work; probing `/`
+ * with the public key falsely reports a healthy database as unreachable.
+ * The `saves` select-own policy returns an empty array to an anonymous probe.
  */
 type DatabaseProbeResult = 'ok' | 'unreachable' | 'misconfigured';
 
-async function probeDatabase(): Promise<DatabaseProbeResult> {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+export async function probeDatabase(
+  supabaseUrl = Deno.env.get('SUPABASE_URL'),
+  anonKey = Deno.env.get('SUPABASE_ANON_KEY'),
+  fetchFn: typeof fetch = fetch,
+): Promise<DatabaseProbeResult> {
 
   if (!supabaseUrl || !anonKey) {
     console.error('save-sync health: SUPABASE_URL or SUPABASE_ANON_KEY is not configured.');
@@ -255,7 +254,7 @@ async function probeDatabase(): Promise<DatabaseProbeResult> {
   }
 
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/`, {
+    const response = await fetchFn(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/saves?select=revision&limit=1`, {
       headers: { apikey: anonKey, accept: 'application/json' },
       signal: AbortSignal.timeout(DATABASE_PROBE_TIMEOUT_MS),
     });
