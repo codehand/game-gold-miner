@@ -145,7 +145,8 @@ describe('configured portfolio bootstrap', () => {
           };
         },
       },
-      claimWithAction: async (reward, mineId, claim) => {
+      claimWithAction: async (reward, mineId, claim, previewDocument) => {
+        expect(previewDocument).toEqual(suspended);
         events.push(`preview:${mineId}:${reward.reward.serialize()}`);
         return await claim();
       },

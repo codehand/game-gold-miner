@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import {
@@ -95,6 +96,7 @@ for (const viewport of VIEWPORTS) {
 
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto('/');
+    await openIntroMine(page);
 
     const canvas = page.locator(CANVAS_SELECTOR);
     await expect(canvas).toHaveCount(1);
@@ -232,6 +234,7 @@ for (const viewport of VIEWPORTS) {
 
 test('renders five icon buttons and acknowledges every click', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
 
   const canvas = page.locator(CANVAS_SELECTOR);
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');

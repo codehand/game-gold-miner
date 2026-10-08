@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -107,6 +108,7 @@ async function bootCollectionFixture(page: Page): Promise<void> {
   });
 
   await page.goto('/');
+  await openIntroMine(page);
   const reward = page.getByTestId('offline-reward-modal');
   await expect.poll(async () => await reward.isVisible() ||
     await page.locator('#game-viewport canvas').count() === 1).toBe(true);
@@ -157,6 +159,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
 
 test('distinguishes an unavailable collection from a genuinely empty one', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
 
   await page.evaluate(async () => {

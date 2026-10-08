@@ -54,6 +54,7 @@ export async function bootstrapPortfolioCloudSession(options: {
     reward: PendingOfflineReward,
     mineId: PortfolioSaveDocumentV4['selectedMineId'],
     claim: () => Promise<PortfolioCloudResumeOutcome>,
+    document: PortfolioSaveDocumentV4,
   ) => Promise<PortfolioCloudResumeOutcome>;
 }): Promise<PortfolioCloudSessionOutcome> {
   const loaded = await loadPortfolioSession(
@@ -158,7 +159,9 @@ export async function bootstrapPortfolioCloudSession(options: {
       };
   const resumed = reward !== null && reward.reward.greaterThan(0) &&
       options.claimWithAction !== undefined
-    ? await options.claimWithAction(reward, reconciled.document.selectedMineId, claim)
+    ? await options.claimWithAction(
+        reward, reconciled.document.selectedMineId, claim, reconciled.document,
+      )
     : await claim();
   if (resumed.kind !== 'ready') {
     return { kind: 'deferred', reason: resumed.reason };

@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import {
   expect,
   test,
@@ -199,6 +200,7 @@ async function runJourney(
     await page.clock.setFixedTime(JOURNEY_START);
     await routeCleanApplication(page, runId);
     await page.goto('/');
+    await openIntroMine(page);
     await waitForBootedScene(page);
 
     expect(
@@ -258,6 +260,7 @@ async function runJourney(
     await page.goto('/step-33-away.html');
     await page.clock.setFixedTime(new Date(plan.returnTimestampMs));
     await page.goto('/');
+    await openIntroMine(page);
 
     const modal = page.getByTestId('offline-reward-modal');
 
@@ -282,6 +285,7 @@ async function runJourney(
     // consumed and cannot create a second reward. Reload begins a new zero-time
     // visit, so its interval cursor can advance while money stays unchanged.
     await page.reload();
+    await openIntroMine(page);
     await waitForBootedScene(page);
     await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
     const afterReload = await requireStoredSave(page);

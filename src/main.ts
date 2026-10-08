@@ -718,7 +718,7 @@ function finishOfflineRewardDecision(allowsLocalFallback: boolean): void {
  * waits for the reconcile to declare that no server figure exists.
  */
 function maybePresentOfflineReward(): void {
-  if (offlineRewardPresented || activeDriver === null) {
+  if (offlineRewardPresented || activeDriver === null || game === null) {
     return;
   }
 
@@ -2094,8 +2094,6 @@ async function startApplication(): Promise<void> {
   if (backendConfigured && loadResult.source === 'saved' && serverBoostState !== EMPTY_BOOST_STATE) {
     adoptServerBoostState(serverBoostState);
   }
-  maybePresentOfflineReward();
-
   await showIntro();
   if (disposed) return;
   game = createGame(gameViewport, driver, {
@@ -2148,6 +2146,7 @@ async function startApplication(): Promise<void> {
     },
   });
   finishBoot();
+  maybePresentOfflineReward();
   unbindSaveLifecycle = bindSaveLifecycle(
     persistence,
     () => {
@@ -2227,19 +2226,39 @@ async function startConfiguredPortfolioApplication(): Promise<void> {
       boost: localTimelineBoost(serverBoostState),
       returningAccount: sessionIsNew === false,
       newKey: () => globalThis.crypto.randomUUID(),
-      claimWithAction: (reward, mineId, claim) => new Promise((resolve) => {
-        offlineRewardModal = showOfflineRewardModal({
-          parent: app,
-          pendingReward: reward,
-          mineId,
-          onClaim: async () => {
-            const result = await claim();
-            if (result.kind !== 'ready') return false;
-            resolve(result);
-            return true;
-          },
+      claimWithAction: async (reward, mineId, claim, document) => {
+        await showIntro();
+        if (disposed) return { kind: 'deferred', reason: 'disposed' };
+
+        // The player enters a real mine scene before the claim appears. The
+        // reconciled cloud document is the visual source until the claim's
+        // authoritative receipt replaces it below.
+        const preview = deserializePortfolioSaveDocument(document);
+        const mine = preview.portfolio.mines[mineId];
+        if (mine === undefined) throw new Error('The selected mine is unavailable.');
+        game = createGame(gameViewport, new PortfolioMineRuntime({
+          portfolio: { ...preview.portfolio, activeMineId: mineId },
+          catRoster: preview.catRoster,
+          boostState: localTimelineBoost(serverBoostState),
+          now: () => mine.state.lastUpdateTimestampMs,
+        }));
+        finishBoot();
+        return new Promise((resolve) => {
+          offlineRewardModal = showOfflineRewardModal({
+            parent: app,
+            pendingReward: reward,
+            mineId,
+            onClaim: async () => {
+              const result = await claim();
+              if (result.kind !== 'ready') return false;
+              game?.destroy(true);
+              game = null;
+              resolve(result);
+              return true;
+            },
+          });
         });
-      }),
+      },
     });
   } catch {
     saveDiagnostics.report({
@@ -2304,6 +2323,16 @@ async function startConfiguredPortfolioApplication(): Promise<void> {
       // empty shell. The local portfolio remains the only writable candidate;
       // cloud-only commands stay unavailable until a later clean boot.
       await startLocalPortfolioApplication({ cloudPendingUserId: session.user.id });
+    } else {
+      // A preserved unreadable save or account conflict cannot prepare an
+      // Enter action. Reveal the recovery notice instead of leaving a disabled
+      // intro over its controls forever.
+      document.getElementById('intro-screen')?.remove();
+      const bootStatus = document.getElementById('boot-status');
+      if (bootStatus !== null) {
+        bootStatus.textContent = LOAD_FAILURE_MESSAGE;
+        bootStatus.hidden = false;
+      }
     }
     return;
   }
@@ -2728,6 +2757,12 @@ async function startLocalPortfolioApplication(options: {
       code: 'corrupt-save',
       message: 'Local progress could not be read. The saved data has been preserved.',
     });
+    document.getElementById('intro-screen')?.remove();
+    const bootStatus = document.getElementById('boot-status');
+    if (bootStatus !== null) {
+      bootStatus.textContent = LOAD_FAILURE_MESSAGE;
+      bootStatus.hidden = false;
+    }
     return;
   }
   let portfolio = loaded.portfolio;
@@ -2748,32 +2783,37 @@ async function startLocalPortfolioApplication(options: {
       portfolio = result.portfolio;
       return true;
     };
+    const showClaim = async (): Promise<void> => {
+      await showIntro();
+      if (disposed) return;
+      const mine = portfolio.mines[portfolio.selectedMineId];
+      if (mine === undefined) throw new Error('The selected mine is unavailable.');
+      game = createGame(gameViewport, new PortfolioMineRuntime({
+        portfolio: { ...portfolio, activeMineId: portfolio.selectedMineId },
+        catRoster,
+        boostState: localBoost,
+        now: () => mine.state.lastUpdateTimestampMs,
+      }));
+      finishBoot();
+      await new Promise<void>((resolve) => {
+        offlineRewardModal = showOfflineRewardModal({
+          parent: app,
+          pendingReward: loaded.pendingGrant,
+          mineId: portfolio.selectedMineId,
+          onClaim: async () => {
+            const succeeded = await resume();
+            if (succeeded) resolve();
+            return succeeded;
+          },
+        });
+      });
+      game?.destroy(true);
+      game = null;
+    };
     if (loaded.pendingGrant.reward.greaterThan(0)) {
-      await new Promise<void>((resolve) => {
-        offlineRewardModal = showOfflineRewardModal({
-          parent: app,
-          pendingReward: loaded.pendingGrant,
-          mineId: portfolio.selectedMineId,
-          onClaim: async () => {
-            const succeeded = await resume();
-            if (succeeded) resolve();
-            return succeeded;
-          },
-        });
-      });
+      await showClaim();
     } else if (!await resume()) {
-      await new Promise<void>((resolve) => {
-        offlineRewardModal = showOfflineRewardModal({
-          parent: app,
-          pendingReward: loaded.pendingGrant,
-          mineId: portfolio.selectedMineId,
-          onClaim: async () => {
-            const succeeded = await resume();
-            if (succeeded) resolve();
-            return succeeded;
-          },
-        });
-      });
+      await showClaim();
     }
   }
   if (disposed) return;
@@ -2947,34 +2987,32 @@ if (import.meta.hot) {
 }
 
 function finishBoot(): void {
+  document.getElementById('intro-screen')?.remove();
   document.getElementById('boot-status')?.remove();
   notifyTelegramReady();
 }
 
-/** A short title reveal after save restoration, with an immediate skip for returning players. */
+/** Keeps the opening screen visible until the mine is prepared and the player enters. */
 function showIntro(): Promise<void> {
   const intro = document.getElementById('intro-screen');
-  const enter = document.getElementById('intro-enter');
-  const bootStatus = document.getElementById('boot-status');
+  const enter = document.querySelector<HTMLButtonElement>('#intro-enter');
   if (intro === null || enter === null) return Promise.resolve();
+  if (intro.dataset.entered === '1') return Promise.resolve();
 
-  if (bootStatus !== null) bootStatus.hidden = true;
-  intro.hidden = false;
+  enter.disabled = false;
+  const status = document.getElementById('intro-status');
+  if (status !== null) status.textContent = 'Your mine is ready';
   enter.focus({ preventScroll: true });
   notifyTelegramReady();
 
   return new Promise((resolve) => {
-    let settled = false;
     const complete = (): void => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeoutId);
       enter.removeEventListener('click', complete);
-      intro.remove();
+      enter.disabled = true;
+      intro.dataset.entered = '1';
       resolve();
     };
     enter.addEventListener('click', complete);
-    const timeoutId = window.setTimeout(complete, 2200);
   });
 }
 

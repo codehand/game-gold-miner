@@ -20,13 +20,31 @@
         pointer-events: none;
         text-align: center;
       }
+      #boot-status[hidden] { display: none; }
+      #intro-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: grid;
+        place-items: center;
+        background: #101b30;
+        color: #fff7df;
+        text-align: center;
+      }
+      #intro-screen .intro-frame {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: min(100%, 480px);
+        height: 100%;
+      }
     </style>
   </head>
   <body>
     <main id="app">
       <div id="game-viewport" data-testid="game-viewport"></div>
-      <div id="boot-status" role="status">Đang tải game...</div>
-      <section id="intro-screen" class="intro-screen" aria-labelledby="intro-title" hidden>
+      <div id="boot-status" role="status" hidden>Đang tải game...</div>
+      <section id="intro-screen" class="intro-screen" aria-labelledby="intro-title">
         <div class="intro-frame">
           <div class="intro-glow" aria-hidden="true"></div>
           <div class="intro-topline" aria-hidden="true"><span>✦</span> A LITTLE WORLD BELOW <span>✦</span></div>
@@ -50,8 +68,8 @@
             <div class="intro-gem intro-gem-three"></div>
           </div>
           <div class="intro-footer">
-            <button id="intro-enter" class="intro-enter" type="button">ENTER THE MINE <span aria-hidden="true">➜</span></button>
-            <p>Opening automatically...</p>
+            <button id="intro-enter" class="intro-enter" type="button" disabled>ENTER THE MINE <span aria-hidden="true">➜</span></button>
+            <p id="intro-status" role="status">Preparing your mine...</p>
           </div>
         </div>
       </section>

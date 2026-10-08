@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test } from '@playwright/test';
 
 import { MARKETPLACE_RUNTIME_ANIMATION_ASSETS, MARKETPLACE_RUNTIME_ROLE_ASSETS } from '../../src/game/assets/marketplaceRuntimeAssets';
@@ -16,6 +17,7 @@ const RUNTIME_ASSETS = [...new Map([
 test('renders default and Marketplace role assets in runtime presentation slots', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
+  await openIntroMine(page);
   const canvas = page.locator('#game-viewport canvas');
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
 
@@ -100,6 +102,7 @@ test('renders default and Marketplace role assets in runtime presentation slots'
 
 test('keeps Mica right-facing walk and strike frames at one in-world scale and baseline', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   const frames = await page.evaluate(async () => {
     const paths = [
       '/assets/marketplace/runtime/miner/mica-walk-right-4f-sheet.png',

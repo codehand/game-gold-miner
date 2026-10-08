@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test } from '@playwright/test';
 
 const CATALOG_PORTRAITS = [
@@ -15,6 +16,7 @@ const CATALOG_PORTRAITS = [
 
 test('serves every Marketplace catalog portrait at its canonical native size', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
 
   const portraits = await page.evaluate(async (paths) => {
     return Promise.all(paths.map((src) => new Promise((resolve) => {
@@ -34,6 +36,7 @@ test('serves every Marketplace catalog portrait at its canonical native size', a
 
 test('Boru portrait fills its catalog canvas for Marketplace and assignment', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   const bounds = await page.evaluate(async () => {
     const image = new Image();
     image.src = '/assets/marketplace/catalog/miner/ssr/boru/idle-1.png';

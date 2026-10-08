@@ -23,7 +23,7 @@ Many management games obscure cause and effect or require constant tapping. This
 
 ## Core Journey
 
-The player claims offline gold, inspects the mine, upgrades the slowest stage, opens deeper floors, assigns managers, activates a boost, and leaves while production continues. Short-term goals are the next upgrade and floor; the prototype's long-term goal is fully automating and optimizing all fifteen floors.
+The opening screen is visible from first paint while the save and account load. Its Enter the Mine button becomes available when the mine is ready; entry requires a tap and has no automatic timeout. The player then sees the mine with the offline claim on top when a reward is due. After claiming, they inspect the mine, upgrade the slowest stage, open deeper floors, assign managers, activate a boost, and leave while production continues. Short-term goals are the next upgrade and floor; the prototype's long-term goal is fully automating and optimizing all fifteen floors.
 
 In Telegram, the GAME menu button of `@ghn_alo_bot` opens the same portrait
 game. Telegram supplies a signed identity at launch; a first-time player gets

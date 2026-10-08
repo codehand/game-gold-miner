@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -514,6 +515,7 @@ async function bootDriverFixture(
   );
 
   await page.goto('/');
+  await openIntroMine(page);
   await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute(
     'data-boot-scene',
     'BootScene',

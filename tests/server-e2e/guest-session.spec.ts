@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { tolerateNavigation } from './navigationFixture';
@@ -80,6 +81,7 @@ async function readAccessTokenFromStorage(page: Page): Promise<string> {
 
 test('a fresh browser boots instantly and holds a real anonymous session', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
 
   await assertGameIsPlayable(page);
   await expect(page.locator('#app')).toHaveAttribute('data-portfolio-boot', /"kind":"ready"/);
@@ -96,6 +98,7 @@ test('a blocked auth service never delays boot, and local progress still persist
   await page.route('**/auth/v1/**', (route) => route.abort());
 
   await page.goto('/');
+  await openIntroMine(page);
 
   await assertGameIsPlayable(page);
   const diagnostic = await waitForGuestSessionStatus(page, 'sign-in-failed');
@@ -110,6 +113,7 @@ test('a blocked auth service never delays boot, and local progress still persist
   await expect.poll(() => tolerateNavigation(() => readStoredGold(page))).not.toBeNull();
 
   await page.reload();
+  await openIntroMine(page);
   await assertGameIsPlayable(page);
   await expect.poll(() => tolerateNavigation(() => readStoredGold(page))).not.toBeNull();
 });

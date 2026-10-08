@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { getMineBalance, MINE_SITE_IDS, type MineSiteId } from '../../src/config';
@@ -99,6 +100,7 @@ test('renders each owned site with its own surface and floor art', async ({ page
     });
   });
   await page.goto('/');
+  await openIntroMine(page);
   const canvas = page.locator('#game-viewport canvas');
   await expect(canvas).toHaveAttribute('data-mine-site-id', 'gold');
 
@@ -195,6 +197,7 @@ test('renders each owned site with its own surface and floor art', async ({ page
     await page.screenshot({ path: `test-results/mine-site-${siteId}-deep.png` });
   }
   await page.reload();
+  await openIntroMine(page);
   await expect(canvas).toHaveAttribute('data-mine-site-id', 'diamond');
   await expect.poll(async () => {
     const animation = JSON.parse((await canvas.getAttribute('data-animation'))!) as {

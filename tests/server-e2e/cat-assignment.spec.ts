@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import {
@@ -209,6 +210,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
 
     await page.setViewportSize(viewport);
     await page.goto('/');
+    await openIntroMine(page);
     await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/);
     await finishPortfolioBoot(page);
     await clickFirstMiner(page);
@@ -255,6 +257,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     });
 
     await page.reload();
+    await openIntroMine(page);
     await finishPortfolioBoot(page);
     await expect.poll(async () => page.evaluate(() => (
       JSON.parse(document.querySelector('#game-viewport canvas')?.getAttribute('data-cat-runtime-bindings') ?? '[]')

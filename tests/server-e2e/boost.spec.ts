@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { finishPortfolioBoot } from './portfolioBootFixture';
@@ -19,6 +20,7 @@ async function openBoost(page: Page): Promise<void> {
 
 test('server Boost survives reload and rejects a second free activation', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
   await expect(page.locator('#app')).toHaveAttribute('data-cloud-save-reconcile', /no-cloud-save|same-progress|kept-local/, { timeout: 15_000 });
   await finishPortfolioBoot(page);
@@ -31,6 +33,7 @@ test('server Boost survives reload and rejects a second free activation', async 
   await dialog.getByRole('button', { name: 'Close Boost' }).click();
 
   await page.reload();
+  await openIntroMine(page);
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
   await finishPortfolioBoot(page);
   await openBoost(page);

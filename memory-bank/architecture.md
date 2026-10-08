@@ -330,6 +330,8 @@ does not change the V3 save document or IndexedDB schema.
 
 ## Portrait Layout Contract
 
+`index.html` paints `#intro-screen` before the application module loads, in place of the former normal loading screen. The Enter button stays disabled while local or cloud recovery runs, then waits for an explicit player click. The intro continues covering the viewport until the Phaser scene is created. A returning player's offline reward appears over a mine scene after entry; a temporary, frozen visual runtime is used while a local or server claim awaits its authoritative receipt. An unrecoverable save instead reveals the boot error and diagnostic controls. The intro uses the same safe-area insets as the game viewport.
+
 The logical viewport stays fixed at 360×640. `#app` absorbs `env(safe-area-inset-*)` as padding so the `#game-viewport` Phaser parent is already the safe box when the scale manager measures it; `index.html` opts in with `viewport-fit=cover`. The scale manager uses `FIT` with `CENTER_BOTH`, which preserves aspect ratio and letterboxes rather than cropping, so no required control can leave the host viewport at any size.
 
 `calculateMineLayout(width, height)` is pure and Phaser-free. It tiles four full-width regions top to bottom with no gaps or overlaps:

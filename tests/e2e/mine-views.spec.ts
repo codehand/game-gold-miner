@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -200,6 +201,7 @@ test('binds the first floor group and both shared stages to a known core snapsho
   });
 
   await page.goto('/');
+  await openIntroMine(page);
 
   const canvas = page.locator(CANVAS_SELECTOR);
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
@@ -393,6 +395,7 @@ test('default Mica strikes the gold pile with a separate impact', async ({ page 
   await page.clock.setFixedTime(FIXED_TIME);
   await seedActiveSave(page, fixture);
   await page.goto('/');
+  await openIntroMine(page);
   await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute('data-boot-scene', 'BootScene');
 
   await expect.poll(async () => {
@@ -415,6 +418,7 @@ test('default Mica returns to the unloader with the impact hidden', async ({ pag
   await page.clock.setFixedTime(FIXED_TIME);
   await seedActiveSave(page, fixture);
   await page.goto('/');
+  await openIntroMine(page);
   await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute('data-boot-scene', 'BootScene');
 
   await expect.poll(async () => {
@@ -451,6 +455,7 @@ for (const scenario of [
       createRevealGateState(scenario.deepestUnlockedFloor),
     );
     await page.goto('/');
+    await openIntroMine(page);
 
     const canvas = page.locator(CANVAS_SELECTOR);
     await expect(canvas).toHaveAttribute(
@@ -520,6 +525,7 @@ test('reveals the same level-derived miner crew progression on every floor', asy
   });
 
   await page.goto('/');
+  await openIntroMine(page);
 
   await expect(page.locator(CANVAS_SELECTOR)).toHaveCount(1);
   expect(browserErrors).toEqual([]);
@@ -625,6 +631,7 @@ test('republishes rendered values whenever a newer snapshot is applied', async (
   });
 
   await page.goto('/');
+  await openIntroMine(page);
 
   const canvas = page.locator(CANVAS_SELECTOR);
   await expect(canvas).toHaveAttribute('data-floor-views', /Floor 1/);

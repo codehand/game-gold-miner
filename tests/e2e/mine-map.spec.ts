@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -92,6 +93,7 @@ test('buys a site from the shared wallet, enters it and restores it on reload', 
   });
 
   await page.goto('/');
+  await openIntroMine(page);
   const canvas = page.locator('#game-viewport canvas');
   await expect(canvas).toHaveAttribute('data-mine-site-id', 'gold');
   await expect.poll(() => assignedMinerAsset(page)).toBe('miner:SSR:forge:idle');
@@ -133,6 +135,7 @@ test('buys a site from the shared wallet, enters it and restores it on reload', 
   await page.goto('/mine-map-away.html');
   await page.clock.setFixedTime(new Date(FIXED_TIME_MS + 60_000));
   await page.goto('/');
+  await openIntroMine(page);
   const amethystReward = page.getByRole('dialog', { name: 'Offline reward' });
   await expect(amethystReward).toBeVisible();
   await expect(amethystReward.getByText('Amethyst Cavern · Amethyst')).toBeVisible();
@@ -145,6 +148,7 @@ test('buys a site from the shared wallet, enters it and restores it on reload', 
   await expect(canvas).toHaveAttribute('data-mine-site-id', 'amethyst');
 
   await page.reload();
+  await openIntroMine(page);
   await expect(canvas).toHaveAttribute('data-mine-site-id', 'amethyst');
   await expect.poll(() => assignedMinerAsset(page)).toBe('miner:SSR:forge:idle');
   await openMap(page);
@@ -166,6 +170,7 @@ test('buys a site from the shared wallet, enters it and restores it on reload', 
   expect(claimed.mines.gold.offline).toBeNull();
 
   await page.reload();
+  await openIntroMine(page);
   await expect(canvas).toHaveAttribute('data-mine-site-id', 'gold');
   const reloaded = await readSavedPortfolio(page);
   expect(reloaded.mines.gold.lastClaimedSequence).toBeGreaterThanOrEqual(goldIntervalSequence);

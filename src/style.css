@@ -262,6 +262,12 @@ body {
   box-shadow: 0 2px 0 #91502b, 0 5px 12px rgb(0 0 0 / 38%);
 }
 
+.intro-enter:disabled {
+  opacity: 0.68;
+  cursor: wait;
+  box-shadow: 0 4px 0 #91502b, 0 8px 16px rgb(0 0 0 / 25%);
+}
+
 .intro-enter:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 4px;

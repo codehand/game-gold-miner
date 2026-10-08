@@ -6,13 +6,19 @@ test('shows the opening screen and enters the restored game on tap', async ({ pa
 
   const intro = page.locator('#intro-screen');
   await expect(intro).toBeVisible();
+  await expect(page.locator('#boot-status')).toBeHidden();
+  await expect(page.locator('#app canvas')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'CAT MINE IDLE' })).toBeVisible();
   const tagline = await page.locator('.intro-tagline').boundingBox();
   const button = await page.locator('#intro-enter').boundingBox();
   expect(tagline).not.toBeNull();
   expect(button).not.toBeNull();
   expect(tagline!.y + tagline!.height).toBeLessThan(button!.y);
-  await page.getByRole('button', { name: 'ENTER THE MINE' }).click();
+  const enter = page.getByRole('button', { name: 'ENTER THE MINE' });
+  await expect(enter).toBeEnabled();
+  await page.waitForTimeout(2300);
+  await expect(intro).toBeVisible();
+  await enter.click();
 
   await expect(intro).toHaveCount(0);
   await assertSingleBoot(page);
@@ -32,6 +38,7 @@ test('boots one Phaser canvas and scene across a reload', async ({ page }) => {
   });
 
   await page.goto('/');
+  await enterMine(page);
 
   await expect(page).toHaveTitle('Cat Mine Idle');
   await assertSingleBoot(page);
@@ -53,6 +60,7 @@ test('boots one Phaser canvas and scene across a reload', async ({ page }) => {
   });
 
   await page.reload();
+  await enterMine(page);
   const returningReward = page.getByTestId('offline-reward-modal');
   await expect.poll(async () =>
     await returningReward.isVisible() || await page.locator('#app canvas').count() === 1,
@@ -97,9 +105,12 @@ test('presents, claims, persists, and cannot duplicate offline rewards', async (
   });
 
   await page.goto('/');
+  await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
+  await enterMine(page);
 
   const modal = page.getByTestId('offline-reward-modal');
   await expect(modal).toBeVisible();
+  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
   await expect(page.getByTestId('offline-reward-time')).toHaveText('2h credited');
   await expect(page.getByTestId('offline-reward-amount')).toHaveText(
     '18k gold',
@@ -110,6 +121,7 @@ test('presents, claims, persists, and cannot duplicate offline rewards', async (
   await expect.poll(() => readStoredGold(page)).toBe('18100');
 
   await page.reload();
+  await enterMine(page);
   await assertSingleBoot(page);
   await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
   await expect.poll(() => readStoredGold(page)).toBe('18100');
@@ -125,6 +137,10 @@ async function assertSingleBoot(page: Page) {
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
   await expect(canvas).toHaveAttribute('data-boot-scene-starts', '1');
   await expect(canvas).toHaveAttribute('data-renderer', /^(canvas|webgl)$/);
+}
+
+async function enterMine(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'ENTER THE MINE' }).click();
 }
 
 function createSeededMainModule(): string {

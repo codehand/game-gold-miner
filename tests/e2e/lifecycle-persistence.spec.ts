@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import {
@@ -27,6 +28,7 @@ test('treats hidden-tab time as one claimed Gold Mine offline interval', async (
   await routeControlledApplication(page, 'visibility');
   await setControlledTime(page, START_TIMESTAMP_MS);
   await page.goto('/');
+  await openIntroMine(page);
   await waitForBootedScene(page);
 
   const hideAtMs = START_TIMESTAMP_MS + FOREGROUND_BEFORE_TRANSITION_MS;
@@ -76,6 +78,7 @@ test('persists abrupt navigation and consumes offline time exactly once', async 
   });
   await setControlledTime(page, START_TIMESTAMP_MS);
   await page.goto('/');
+  await openIntroMine(page);
   await waitForBootedScene(page);
 
   await setControlledTime(
@@ -97,6 +100,7 @@ test('persists abrupt navigation and consumes offline time exactly once', async 
 
   await setControlledTime(page, FINAL_TIMESTAMP_MS);
   await page.goto('/');
+  await openIntroMine(page);
   const claim = enterMine(suspended, 'gold', FINAL_TIMESTAMP_MS);
   if (claim.status !== 'entered' || !claim.grant.reward.greaterThan(0)) {
     throw new Error('The lifecycle fixture must produce an offline reward.');
@@ -121,6 +125,7 @@ test('persists abrupt navigation and consumes offline time exactly once', async 
     .toBeNull();
 
   await page.reload();
+  await openIntroMine(page);
   await waitForBootedScene(page);
   await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
   const afterReload = await readStoredSave(page);

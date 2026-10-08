@@ -90,7 +90,8 @@ test('shows loading and releases Telegram native placeholder before SDK complete
 
   try {
     await page.goto('/', { waitUntil: 'commit' });
-    await expect(page.locator('#boot-status')).toBeVisible();
+    await expect(page.locator('#intro-screen')).toBeVisible();
+    await expect(page.locator('#boot-status')).toBeHidden();
     const bridgeEvents = await page.evaluate(
       () =>
         (window as Window & { __telegramBridgeEvents?: string[] }).__telegramBridgeEvents,
@@ -647,6 +648,7 @@ async function seedActiveSave(page: Page, payload: unknown): Promise<void> {
 }
 
 async function waitForBootedScene(page: Page): Promise<void> {
+  await page.locator('#intro-enter').click();
   await expect(page.locator(CANVAS_SELECTOR)).toHaveAttribute(
     'data-boot-scene',
     'BootScene',
