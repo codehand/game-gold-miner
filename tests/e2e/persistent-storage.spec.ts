@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test } from '@playwright/test';
 
 /**
@@ -12,6 +13,7 @@ import { expect, test } from '@playwright/test';
  */
 test('records the browser answer for navigator.storage persistent storage', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
 
   const raw = await page.locator('#app').getAttribute('data-persistent-storage');

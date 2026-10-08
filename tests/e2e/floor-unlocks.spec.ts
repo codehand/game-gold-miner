@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -241,6 +242,7 @@ test('blocks a premature unlock, then opens the floor and keeps it open', async 
   ).toEqual([true, true, ...Array.from({ length: 13 }, () => false)]);
 
   await page.reload();
+  await openIntroMine(page);
   await waitForBootedScene(page);
 
   const restored = (await readFloorViews(page))[1];
@@ -328,6 +330,7 @@ async function bootPausedFixture(page: Page, state: GameState): Promise<void> {
   );
 
   await page.goto('/');
+  await openIntroMine(page);
   await waitForBootedScene(page);
   // A clock paused at the save's own timestamp leaves no offline interval, so
   // no reward modal covers the mine.

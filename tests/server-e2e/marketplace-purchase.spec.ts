@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -124,6 +125,7 @@ test('buys Boru, assigns the excavator to a Miner floor and preserves it on relo
   await page.setViewportSize({ width: 390, height: 844 });
   await seedSave(page);
   await page.goto('/');
+  await openIntroMine(page);
   const canvas = page.locator('#game-viewport canvas');
   await finishPortfolioBoot(page);
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
@@ -144,6 +146,7 @@ test('buys Boru, assigns the excavator to a Miner floor and preserves it on relo
   await expect.poll(() => canvas.getAttribute('data-cat-runtime-bindings')).toContain('miner:SSR:boru:idle');
   await page.screenshot({ path: testInfo.outputPath('boru-live-assigned.png') });
   await page.reload();
+  await openIntroMine(page);
   await finishPortfolioBoot(page);
   await expect.poll(() => canvas.getAttribute('data-cat-runtime-bindings')).toContain('miner:SSR:boru:idle');
 });
@@ -151,6 +154,7 @@ test('buys Boru, assigns the excavator to a Miner floor and preserves it on relo
 test('performs live Buy purchases against Supabase', async ({ page }) => {
   await seedSave(page);
   await page.goto('/');
+  await openIntroMine(page);
   await finishPortfolioBoot(page);
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
 
@@ -191,6 +195,7 @@ test('performs live Buy purchases against Supabase', async ({ page }) => {
   ))).toMatchObject({ assignedAssetId: 'miner:N:mica:idle' });
 
   await page.reload();
+  await openIntroMine(page);
   await finishPortfolioBoot(page);
   await expect.poll(async () => page.evaluate(() => (
     JSON.parse(document.querySelector('#game-viewport canvas')?.getAttribute('data-cat-runtime-bindings') ?? '[]')
@@ -204,6 +209,7 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
   await page.setViewportSize({ width: 390, height: 844 });
   await seedSave(page, 20);
   await page.goto('/');
+  await openIntroMine(page);
   const canvas = page.locator('#game-viewport canvas');
   await finishPortfolioBoot(page);
   await expect(page.locator('#app')).toHaveAttribute('data-guest-session', /signed-in/, { timeout: 15_000 });
@@ -266,6 +272,7 @@ test('buys and equips Tobi and Rivet per cart, persists and returns to default',
   await page.screenshot({ path: testInfo.outputPath('hauler-crew-mobile.png') });
 
   await page.reload();
+  await openIntroMine(page);
   await finishPortfolioBoot(page);
   await expect.poll(bindings).toEqual(expect.arrayContaining([
     expect.objectContaining({ slotKey: 'hauler:1', assignedAssetId: 'hauler:SR:tobi:walk' }),

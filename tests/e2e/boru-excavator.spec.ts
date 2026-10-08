@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test } from '@playwright/test';
 
 for (const count of [1, 5]) {
@@ -29,6 +30,7 @@ for (const count of [1, 5]) {
       `,
     }));
     await page.goto('/');
+    await openIntroMine(page);
     const canvas = page.locator('#game-viewport canvas');
     await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
     const floor = () => canvas.evaluate(el => JSON.parse(el.getAttribute('data-floor-views')!)[0]);

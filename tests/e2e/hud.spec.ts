@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -220,6 +221,7 @@ async function bootDriverFixture(
   );
 
   await page.goto('/');
+  await openIntroMine(page);
   await waitForBootedScene(page);
 
   return readCoreState(page);
@@ -263,6 +265,7 @@ async function bootPausedFixture(page: Page, state: GameState): Promise<void> {
   );
 
   await page.goto('/');
+  await openIntroMine(page);
   await waitForBootedScene(page);
   // A pinned clock leaves no offline interval, so the mine is not covered.
   await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);

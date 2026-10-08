@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test } from '@playwright/test';
 
 import type { MarketplaceListingType } from '../../src/platform/web/marketplace';
@@ -6,6 +7,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
   test(`marketplace browse remains responsive at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto('/');
+    await openIntroMine(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
     const items = JSON.parse((await canvas.getAttribute('data-bottom-navigation-items'))!);
@@ -40,6 +42,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
 
 test('Rent, Sell, and My listings use live projections and commands', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   // Let application boot finish before opening the isolated native dialog.
   // Otherwise a slower parallel run can call showModal() for the app's boot
   // reward/conflict surface afterward, placing that dialog above this fixture
@@ -148,6 +151,7 @@ test('Rent, Sell, and My listings use live projections and commands', async ({ p
 
 test('runs the close callback exactly once per dismissal path', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   const canvas = page.locator('canvas');
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
   // A callback that only re-enables input is idempotent, so the fire count is
@@ -180,6 +184,7 @@ test('runs the close callback exactly once per dismissal path', async ({ page })
 test('falls back to the safe placeholder when a catalog portrait fails', async ({ page }) => {
   await page.route('**/assets/marketplace/catalog/elevator-cargo-cat/ssr/mofy/idle-1.png', (route) => route.abort());
   await page.goto('/');
+  await openIntroMine(page);
   const canvas = page.locator('canvas');
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
   const items = JSON.parse((await canvas.getAttribute('data-bottom-navigation-items'))!);

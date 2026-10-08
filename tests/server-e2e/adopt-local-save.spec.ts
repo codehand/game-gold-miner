@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -159,6 +160,7 @@ test('adopts a pre-milestone version-1 local save on first sign-in, byte-for-byt
 
   await seedVersionOneIndexedDb(page, preMilestone);
   await page.goto('/');
+  await openIntroMine(page);
 
   await finishPortfolioBoot(page);
   await waitForGuestSessionStatus(page);

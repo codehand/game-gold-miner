@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 async function openBoost(page: Page): Promise<void> {
@@ -22,6 +23,7 @@ async function openBoost(page: Page): Promise<void> {
 
 test('free Boost activates once, persists across reload and shows cooldown', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   await openBoost(page);
   const dialog = page.getByRole('dialog', { name: 'Mine Boost' });
   await expect(dialog).toContainText('Mining, Elevator and Warehouse run 4× faster');
@@ -31,6 +33,7 @@ test('free Boost activates once, persists across reload and shows cooldown', asy
   await dialog.getByRole('button', { name: 'Close Boost' }).click();
 
   await page.reload();
+  await openIntroMine(page);
   await openBoost(page);
   await expect(dialog).toContainText('Active ·');
   await expect(dialog.getByRole('button', { name: 'Boost active' })).toBeDisabled();

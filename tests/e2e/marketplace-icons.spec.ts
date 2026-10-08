@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test } from '@playwright/test';
 
 const ICONS = [
@@ -21,6 +22,7 @@ const ICONS = [
 
 test('renders the Marketplace icon family at native 24px and 32px sizes', async ({ page }) => {
   await page.goto('/');
+  await openIntroMine(page);
   await page.evaluate((icons) => {
     document.body.innerHTML = `
       <main style="display:grid;grid-template-columns:repeat(8,40px);gap:18px;padding:24px;background:#101f32;color:#8ee5e3">

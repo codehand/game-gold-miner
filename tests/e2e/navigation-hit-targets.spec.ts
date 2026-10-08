@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test } from '@playwright/test';
 
 for (const touch of [false, true]) {
@@ -5,6 +6,7 @@ for (const touch of [false, true]) {
     const context = await browser.newContext({ viewport: { width: 553, height: 934 }, hasTouch: touch });
     const page = await context.newPage();
     await page.goto('/');
+    await openIntroMine(page);
     const canvas = page.locator('#game-viewport canvas');
     await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
     let presses = 0;

@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -1055,6 +1056,7 @@ async function runAnimationSpeedTrial(
   );
 
   await page.goto(`/?animationSpeed=${animationSpeedMultiplier}`);
+  await openIntroMine(page);
 
   const canvas = page.locator(CANVAS_SELECTOR);
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');
@@ -1128,6 +1130,7 @@ async function bootPausedFixture(
   );
 
   await page.goto('/');
+  await openIntroMine(page);
 
   const canvas = page.locator(CANVAS_SELECTOR);
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene');

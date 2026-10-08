@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { resolveHaulerCartAsset } from '../../src/game/assets/marketplaceRuntimeAssets';
@@ -65,6 +66,7 @@ for (const [slot, name, assetId] of [
       `,
     }));
     await page.goto('/');
+    await openIntroMine(page);
     const canvas = page.locator('#game-viewport canvas');
     await expect.poll(async () => {
       await page.clock.runFor(100);

@@ -6,6 +6,8 @@ test('Buy detail confirms and invokes the authoritative purchase callback', asyn
     contentType: 'application/javascript',
   }));
   await page.goto('/');
+  // This component fixture deliberately replaces main.ts with an empty module.
+  await page.evaluate(() => document.getElementById('intro-screen')?.remove());
 
   await page.evaluate(async () => {
     const modulePath = '/src/ui/MarketplaceModal.ts';

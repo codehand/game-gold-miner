@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -154,6 +155,7 @@ async function bootAssignmentFixture(
   });
 
   await page.goto('/');
+  await openIntroMine(page);
   await expect(page.locator('#game-viewport canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
 }
 
@@ -288,6 +290,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
     expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
     await dialog.getByRole('button', { name: 'Close assigned cat' }).click();
     await page.reload();
+    await openIntroMine(page);
     await clickFirstMiner(page);
     await expect(page.getByRole('dialog', { name: 'Assigned cat' })).toContainText('Mica');
   });

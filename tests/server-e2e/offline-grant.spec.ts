@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -115,6 +116,9 @@ async function clearLocalSaveOnceOnNextLoad(page: Page): Promise<void> {
 
 test('credits the server offlineGrant, not the client clock projection', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#intro-screen')).toBeVisible();
+  await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
+  await openIntroMine(page);
   await finishPortfolioBoot(page);
 
   const guest = await waitForGuestSession(page);
@@ -191,6 +195,9 @@ test('credits the server offlineGrant, not the client clock projection', async (
   expect(error).toBeNull();
 
   await page.goto('/');
+  await expect(page.locator('#intro-screen')).toBeVisible();
+  await expect(page.getByTestId('offline-reward-modal')).toHaveCount(0);
+  await openIntroMine(page);
 
   const expectedReward = formatAmount(
     GameNumber.deserialize(RATE_PER_SECOND).multiply(7_200).multiply(0.5),
@@ -198,6 +205,7 @@ test('credits the server offlineGrant, not the client clock projection', async (
 
   const modal = page.getByTestId('offline-reward-modal');
   await expect(modal).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('#app canvas')).toHaveAttribute('data-boot-scene', 'BootScene');
   await expect(page.getByTestId('offline-reward-time')).toHaveText('2h credited');
   await expect(page.getByTestId('offline-reward-amount')).toHaveText(`${expectedReward} gold`);
 

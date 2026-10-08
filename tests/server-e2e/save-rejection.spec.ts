@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -133,6 +134,7 @@ test('a rejected upload keeps the save, keeps playing, and shows one notice', as
 
   await seedIndexedDb(page, localDocument());
   await page.goto('/');
+  await openIntroMine(page);
   await waitForSignedIn(page);
   await finishPortfolioBoot(page);
 

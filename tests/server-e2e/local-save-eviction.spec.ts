@@ -1,3 +1,4 @@
+import { openIntroMine } from '../helpers/openIntroMine';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_GAME_BALANCE } from '../../src/config';
@@ -243,6 +244,7 @@ async function readStoredLevel(page: Page): Promise<number | null> {
 test('restores a signed-in player from the cloud after the local save is evicted', async ({ page }) => {
   await seedVersionOneIndexedDb(page, preMilestoneVersionOneDocument());
   await page.goto('/');
+  await openIntroMine(page);
 
   await finishPortfolioBoot(page);
   await waitForGuestSessionStatus(page);
@@ -264,6 +266,7 @@ test('restores a signed-in player from the cloud after the local save is evicted
   // Evict only the local save, keep the session, and reload.
   await clearLocalSaveOnceOnNextLoad(page);
   await page.reload();
+  await openIntroMine(page);
 
   await expect
     .poll(() => tolerateNavigation(() => readStoredLevel(page)), {
@@ -297,6 +300,7 @@ test('tells an unlinked guest with no cloud copy that the local save is gone', a
   });
 
   await page.goto('/');
+  await openIntroMine(page);
   await finishPortfolioBoot(page);
   await waitForGuestSessionStatus(page);
 
@@ -304,6 +308,7 @@ test('tells an unlinked guest with no cloud copy that the local save is gone', a
   // the session; this one reuses it, which is what makes the state decidable.
   await clearLocalSaveOnceOnNextLoad(page);
   await page.reload();
+  await openIntroMine(page);
 
   const diagnostic = await waitForGuestSessionStatus(page);
   expect(diagnostic.isNewSession).toBe(false);
@@ -335,6 +340,7 @@ test('keeps the accurate corrupt-save warning instead of a false "not found"', a
   });
 
   await page.goto('/');
+  await openIntroMine(page);
   await finishPortfolioBoot(page);
   await waitForGuestSessionStatus(page);
 
