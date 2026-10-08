@@ -26,6 +26,35 @@
     <main id="app">
       <div id="game-viewport" data-testid="game-viewport"></div>
       <div id="boot-status" role="status">Đang tải game...</div>
+      <section id="intro-screen" class="intro-screen" aria-labelledby="intro-title" hidden>
+        <div class="intro-frame">
+          <div class="intro-glow" aria-hidden="true"></div>
+          <div class="intro-topline" aria-hidden="true"><span>✦</span> A LITTLE WORLD BELOW <span>✦</span></div>
+          <div class="intro-hero" aria-hidden="true">
+            <div class="intro-orbit intro-orbit-one"></div>
+            <div class="intro-orbit intro-orbit-two"></div>
+            <img class="intro-cat" src="/assets/marketplace/catalog/miner/n/mica/idle-1.png" alt="" />
+            <span class="intro-spark intro-spark-one">✦</span>
+            <span class="intro-spark intro-spark-two">✦</span>
+            <span class="intro-spark intro-spark-three">✦</span>
+          </div>
+          <div class="intro-wordmark">
+            <p class="intro-kicker">WELCOME TO</p>
+            <h1 id="intro-title">CAT MINE <span>IDLE</span></h1>
+            <p class="intro-tagline">Tiny miners. Big discoveries.</p>
+          </div>
+          <div class="intro-ground" aria-hidden="true">
+            <div class="intro-rail"></div>
+            <div class="intro-gem intro-gem-one"></div>
+            <div class="intro-gem intro-gem-two"></div>
+            <div class="intro-gem intro-gem-three"></div>
+          </div>
+          <div class="intro-footer">
+            <button id="intro-enter" class="intro-enter" type="button">ENTER THE MINE <span aria-hidden="true">➜</span></button>
+            <p>Opening automatically...</p>
+          </div>
+        </div>
+      </section>
     </main>
     <script>
       // Tell Telegram's native WebView that visible HTML exists even if the

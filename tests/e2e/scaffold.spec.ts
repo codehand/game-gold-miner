@@ -1,5 +1,24 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test('shows the opening screen and enters the restored game on tap', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('/');
+
+  const intro = page.locator('#intro-screen');
+  await expect(intro).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CAT MINE IDLE' })).toBeVisible();
+  const tagline = await page.locator('.intro-tagline').boundingBox();
+  const button = await page.locator('#intro-enter').boundingBox();
+  expect(tagline).not.toBeNull();
+  expect(button).not.toBeNull();
+  expect(tagline!.y + tagline!.height).toBeLessThan(button!.y);
+  await page.getByRole('button', { name: 'ENTER THE MINE' }).click();
+
+  await expect(intro).toHaveCount(0);
+  await assertSingleBoot(page);
+  await expect(page.locator('#boot-status')).toHaveCount(0);
+});
+
 test('boots one Phaser canvas and scene across a reload', async ({ page }) => {
   const browserErrors: string[] = [];
 

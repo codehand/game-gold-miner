@@ -1263,7 +1263,10 @@ void startApplication().catch((error: unknown) => {
   // shell up forever with nothing to say why — inside Telegram, the only
   // thing the player can see. Surface it, and release Telegram's placeholder.
   console.error('Cat Mine Idle failed to boot.', error);
-  reportBootFailure(document.getElementById('boot-status'), error);
+  document.getElementById('intro-screen')?.remove();
+  const bootStatus = document.getElementById('boot-status');
+  if (bootStatus !== null) bootStatus.hidden = false;
+  reportBootFailure(bootStatus, error);
   notifyTelegramReady();
 });
 
@@ -2093,6 +2096,8 @@ async function startApplication(): Promise<void> {
   }
   maybePresentOfflineReward();
 
+  await showIntro();
+  if (disposed) return;
   game = createGame(gameViewport, driver, {
     onBoost: (onClosed) => {
       if (boostModal === null) {
@@ -2510,6 +2515,8 @@ async function startConfiguredPortfolioApplication(): Promise<void> {
       }
     },
   });
+  await showIntro();
+  if (disposed) return;
   game = createGame(gameViewport, runtime, {
     onMap: (onClosed) => mineMapModal?.open(onClosed),
     onBoost: (onClosed) => boostModal?.open(onClosed),
@@ -2836,6 +2843,8 @@ async function startLocalPortfolioApplication(options: {
       }
     },
   });
+  await showIntro();
+  if (disposed) return;
   game = createGame(gameViewport, runtime, {
     onMap: (onClosed) => mineMapModal?.open(onClosed),
     onBoost: (onClosed) => boostModal?.open(onClosed),
@@ -2940,6 +2949,33 @@ if (import.meta.hot) {
 function finishBoot(): void {
   document.getElementById('boot-status')?.remove();
   notifyTelegramReady();
+}
+
+/** A short title reveal after save restoration, with an immediate skip for returning players. */
+function showIntro(): Promise<void> {
+  const intro = document.getElementById('intro-screen');
+  const enter = document.getElementById('intro-enter');
+  const bootStatus = document.getElementById('boot-status');
+  if (intro === null || enter === null) return Promise.resolve();
+
+  if (bootStatus !== null) bootStatus.hidden = true;
+  intro.hidden = false;
+  enter.focus({ preventScroll: true });
+  notifyTelegramReady();
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const complete = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      enter.removeEventListener('click', complete);
+      intro.remove();
+      resolve();
+    };
+    enter.addEventListener('click', complete);
+    const timeoutId = window.setTimeout(complete, 2200);
+  });
 }
 
 function getRequiredElement(selector: string, name: string): HTMLElement {
