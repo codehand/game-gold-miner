@@ -48,6 +48,7 @@ async function seedSave(page: Page, warehouseLevel = 1): Promise<void> {
 
 async function openShop(page: Page): Promise<void> {
   const canvas = page.locator('#game-viewport canvas');
+  await expect(canvas).toHaveAttribute('data-bottom-navigation-items', /"shop"/, { timeout: 15_000 });
   const items = JSON.parse((await canvas.getAttribute('data-bottom-navigation-items'))!);
   const bounds = items.find((item: { key: string }) => item.key === 'shop').bounds;
   const box = (await canvas.boundingBox())!;
@@ -75,8 +76,10 @@ async function finishPortfolioBoot(page: Page): Promise<void> {
   }
   if (await reward.isVisible()) {
     await reward.getByRole('button', { name: 'Claim', exact: true }).click();
+    await expect(reward).toHaveCount(0);
   }
   await expect(canvas).toHaveAttribute('data-boot-scene', 'BootScene', { timeout: 15_000 });
+  await expect(canvas).toHaveAttribute('data-bottom-navigation-items', /"shop"/, { timeout: 15_000 });
 }
 
 async function buy(page: Page, name: string, price: string): Promise<void> {
